@@ -4,25 +4,7 @@ package ray.rpc;
 
 import "gcs.proto";
 
-message PushRequest {
-  // The push ID to allow the receiver to differentiate different push attempts
-  // from the same sender.
-  bytes push_id = 1;
-  // The object ID being transferred.
-  bytes object_id = 2;
-  // The client ID of client sending this object
-  bytes client_id = 3;
-  // The index of the chunk being transferred.
-  uint32 chunk_index = 4;
-  // The data_size include object_size and metadata_size
-  uint64 data_size = 5;
-  // The metadata size.
-  uint64 metadata_size = 6;
-  // The chunk data
-  bytes data = 7;
-}
-
-// data structure
+// Data structure.
 message ResourceIdSetInfo {
   // The name of the resource.
   bytes resource_name = 1;
@@ -59,6 +41,31 @@ message IntentionalDisconnectClientRequest {
 message GetTaskRequest {
 }
 
+message ExecuteTaskRequest {
+}
+message FetchOrReconstructRequest {
+}
+message NotifyUnblockedRequest {
+}
+message GetActorFrontierRequest {
+}
+message SetActorFrontierRequest {
+}
+message WaitRequest{
+}
+message PushErrorRequest {
+}
+message PushProfileEventsRequest {
+}
+message FreeObjectsInObjectStoreRequest {
+}
+message PrepareActorCheckpointRequest {
+}
+message NotifyActorResumedFromCheckpointRequest {
+}
+message SetResourceRequest {
+}
+
 // service reply
 message SubmitTaskReply {
 }
@@ -76,8 +83,33 @@ message GetTaskReply {
   // A string of bytes representing the task specification.
   bytes task_spec = 1;
   // A list of the resources reserved for this worker.
-  fractional_resource_ids: [ResourceIdSetInfo];
+  repeated ResourceIdSetInfo fractional_resource_ids = 2;
 }
+message ExecuteTaskReply {
+}
+message FetchOrReconstructReply {
+}
+message NotifyUnblockedReply {
+}
+message GetActorFrontierReply {
+}
+message SetActorFrontierReply {
+}
+message WaitReply{
+}
+message PushErrorReply {
+}
+message PushProfileEventsReply {
+}
+message FreeObjectsInObjectStoreReply {
+}
+message PrepareActorCheckpointReply {
+}
+message NotifyActorResumedFromCheckpointReply {
+}
+message SetResourceReply {
+}
+
 
 // service interface
 service RayletService {
@@ -94,22 +126,22 @@ service RayletService {
   rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
   // Notify the raylet that this client is disconnecting unexpectedly.
   // This is sent from a worker to a raylet.
-  rpc DisconnectClient() returns ();
+  rpc DisconnectClient(DisconnectClientRequest) returns (DisconnectClientReply);
   // Notify the raylet that this client is disconnecting gracefully.
   // This is sent from a worker to a raylet.
-  rpc IntentionalDisconnectClient() returns ();
+  rpc IntentionalDisconnectClient(IntentionalDisconnectClientRequest) returns (IntentionalDisconnectClientReply);
   // Get a new task from the raylet. This is sent from a worker to a
   // raylet.
-  rpc GetTask() returns ();
+  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
-  rpc ExecuteTask() returns ();
+  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply);
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a raylet.
-  rpc FetchOrReconstruct() returns ();
+  rpc FetchOrReconstruct(FetchOrReconstructRequest) returns (FetchOrReconstructReply);
   // For a worker that was blocked on some object(s), tell the raylet
   // that the worker is now unblocked. This is sent from a worker to a raylet.
-  rpc NotifyUnblocked() returns ();
+  rpc NotifyUnblocked(NotifyUnblockedRequest) returns (NotifyUnblockedReply);
   // A request to get the task frontier for an actor, called by the actor when
   // saving a checkpoint.
   // The ActorFrontier response to a GetActorFrontierRequest. The raylet
@@ -122,24 +154,24 @@ service RayletService {
   // counts and execution dependencies, discard any tasks that already executed
   // before the checkpoint, and make any tasks on the frontier runnable by
   // making their execution dependencies available.
-  rpc SetActorFrontier() returns ();
+  rpc SetActorFrontier(SetActorFrontierRequest) returns (SetActorFrontierReply);
   // Wait for objects to be ready either from local or remote Plasma stores.
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.
   rpc Wait(WaitRequest) returns (WaitReply);
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
-  rpc PushError(PushErrorRequest) returns ();
+  rpc PushError(PushErrorRequest) returns (PushErrorReply);
   // Push some profiling events to the GCS. When sending this message to the
   // node manager, the message itself is serialized as a ProfileTableData object.
-  rpc PushProfileEvents(PushProfileEventsRequest) returns ();
+  rpc PushProfileEvents(PushProfileEventsRequest) returns (PushProfileEventsReply);
   // Free the objects in objects store.
-  rpc FreeObjectsInObjectStore(FreeObjectsInObjectStoreRequest) returns ();
+  rpc FreeObjectsInObjectStore(FreeObjectsInObjectStoreRequest) returns (FreeObjectsInObjectStoreReply);
   // Request raylet backend to prepare a checkpoint for an actor.
   // Reply of `PrepareActorCheckpointRequest`.
   rpc PrepareActorCheckpoint(PrepareActorCheckpointRequest) returns (PrepareActorCheckpointReply);
   // Notify raylet backend that an actor was resumed from a checkpoint.
-  rpc NotifyActorResumedFromCheckpoint() returns ();
+  rpc NotifyActorResumedFromCheckpoint(NotifyActorResumedFromCheckpointRequest) returns (NotifyActorResumedFromCheckpointReply);
   // Set dynamic custom resource
-  rpc SetResource(SetResourceRequest) returns ();
+  rpc SetResource(SetResourceRequest) returns (SetResourceReply);
 }

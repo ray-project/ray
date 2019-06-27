@@ -53,8 +53,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service) {
-  // Start listening for clients.
-  DoAccept();
+  
 
   RAY_CHECK_OK(RegisterGcs(
       node_ip_address, socket_name_, object_manager_config.store_socket_name,
