@@ -401,18 +401,18 @@ class ObjectManager : public ObjectManagerInterface,
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 
-  /// Multi-thread asio service, deal with all send and receive request
-  boost::asio::io_service rpc_service_;
-
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
   boost::asio::io_service *main_service_;
 
+  /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
+  boost::asio::io_service rpc_service_;
+
+  /// Keep rpc service running when no task in rpc service.
   boost::asio::io_service::work rpc_work_;
 
-  /// Runs the rpc service, which handle all send request and receive request
-  ///
-  /// Data copy operations during request send and receive are done in this thread pool
+  /// The thread pool used for running `rpc_service`.
+  /// Data copy operations during request are done in this thread pool.
   std::vector<std::thread> rpc_threads_;
 
   /// Connection pool for reusing outgoing connections to remote object managers.

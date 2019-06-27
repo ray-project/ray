@@ -9,7 +9,6 @@ import numpy as np
 import pytest
 import time
 import warnings
-import os
 
 import ray
 from ray.tests.cluster_utils import Cluster
