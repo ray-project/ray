@@ -72,7 +72,6 @@ from ray.state import (global_state, nodes, tasks, objects, timeline,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
     LOCAL_MODE,
-    PYTHON_MODE,
     SCRIPT_MODE,
     WORKER_MODE,
     connect,

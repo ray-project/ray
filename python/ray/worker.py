@@ -68,11 +68,11 @@ from ray.utils import (
     setup_logger,
     thread_safe_client,
 )
+from ray.local_mode_manager import LocalModeManager
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
-PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -270,7 +270,7 @@ class Worker(object):
         The mode LOCAL_MODE should be used if this Worker is a driver and if
         you want to run the driver in a manner equivalent to serial Python for
         debugging purposes. It will not send remote function calls to the
-        scheduler and will insead execute them in a blocking fashion.
+        scheduler and will instead execute them in a blocking fashion.
 
         Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
@@ -497,6 +497,10 @@ class Worker(object):
                 raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
+
+        if self.mode == LOCAL_MODE:
+            return self.local_mode_manager.get_object(object_ids)
+
         # Do an initial fetch for remote objects. We divide the fetch into
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
@@ -1064,7 +1068,7 @@ def get_gpu_ids():
         A list of GPU IDs.
     """
     if _mode() == LOCAL_MODE:
-        raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
+        raise Exception("ray.get_gpu_ids() currently does not work in LOCAL "
                         "MODE.")
 
     all_resource_ids = global_worker.raylet_client.resource_ids()
@@ -1092,7 +1096,7 @@ def get_resource_ids():
     """
     if _mode() == LOCAL_MODE:
         raise Exception(
-            "ray.get_resource_ids() currently does not work in PYTHON "
+            "ray.get_resource_ids() currently does not work in LOCAL "
             "MODE.")
 
     return global_worker.raylet_client.resource_ids()
@@ -1742,6 +1746,7 @@ def connect(node,
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
     if mode == LOCAL_MODE:
+        worker.local_mode_manager = LocalModeManager()
         return
 
     # Create a Redis client.
@@ -2174,17 +2179,12 @@ def get(object_ids):
     worker = global_worker
     worker.check_connected()
     with profiling.profile("ray.get"):
-        if worker.mode == LOCAL_MODE:
-            # In LOCAL_MODE, ray.get is the identity operation (the input will
-            # actually be a value not an objectid).
-            return object_ids
-
         is_individual_id = isinstance(object_ids, ray.ObjectID)
         if is_individual_id:
             object_ids = [object_ids]
 
         if not isinstance(object_ids, list):
-            raise ValueError("'object_ids' must either by an object ID "
+            raise ValueError("'object_ids' must either be an object ID "
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
@@ -2215,14 +2215,14 @@ def put(value):
     worker = global_worker
     worker.check_connected()
     with profiling.profile("ray.put"):
-        if worker.mode == LOCAL_MODE:
-            # In LOCAL_MODE, ray.put is the identity operation.
-            return value
         object_id = ray._raylet.compute_put_id(
             worker.current_task_id,
             worker.task_context.put_index,
         )
-        worker.put_object(object_id, value)
+        if worker.mode == LOCAL_MODE:
+            worker.local_mode_manager.put_object(object_id, value)
+        else:
+            worker.put_object(object_id, value)
         worker.task_context.put_index += 1
         return object_id
 
@@ -2282,12 +2282,10 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise ValueError("The 'timeout' argument must be nonnegative. "
                          "Received {}".format(timeout))
 
-    if worker.mode != LOCAL_MODE:
-        for object_id in object_ids:
-            if not isinstance(object_id, ObjectID):
-                raise TypeError("wait() expected a list of ray.ObjectID, "
-                                "got list containing {}".format(
-                                    type(object_id)))
+    for object_id in object_ids:
+        if not isinstance(object_id, ObjectID):
+            raise TypeError("wait() expected a list of ray.ObjectID, "
+                            "got list containing {}".format(type(object_id)))
 
     worker.check_connected()
     # TODO(swang): Check main thread.

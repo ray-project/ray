@@ -526,40 +526,40 @@ class ActorHandle(object):
             kwargs = {}
         args = signature.extend_args(function_signature, args, kwargs)
 
-        # Execute functions locally if Ray is run in LOCAL_MODE
-        # Copy args to prevent the function from mutating them.
-        if worker.mode == ray.LOCAL_MODE:
-            return getattr(worker.actors[self._ray_actor_id],
-                           method_name)(*copy.deepcopy(args))
-
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
-        with self._ray_actor_lock:
-            object_ids = worker.submit_task(
-                function_descriptor,
-                args,
-                actor_id=self._ray_actor_id,
-                actor_handle_id=self._ray_actor_handle_id,
-                actor_counter=self._ray_actor_counter,
-                actor_creation_dummy_object_id=(
-                    self._ray_actor_creation_dummy_object_id),
-                execution_dependencies=[self._ray_actor_cursor],
-                new_actor_handles=self._ray_new_actor_handles,
-                # We add one for the dummy return ID.
-                num_return_vals=num_return_vals + 1,
-                resources={"CPU": self._ray_actor_method_cpus},
-                placement_resources={},
-                job_id=self._ray_actor_job_id,
-            )
-            # Update the actor counter and cursor to reflect the most recent
-            # invocation.
-            self._ray_actor_counter += 1
-            # The last object returned is the dummy object that should be
-            # passed in to the next actor method. Do not return it to the user.
-            self._ray_actor_cursor = object_ids.pop()
-            # We have notified the backend of the new actor handles to expect
-            # since the last task was submitted, so clear the list.
-            self._ray_new_actor_handles = []
+
+        if worker.mode == ray.LOCAL_MODE:
+            function = getattr(worker.actors[self._ray_actor_id], method_name)
+            object_ids = worker.local_mode_manager.execute(
+                function, function_descriptor, args, num_return_vals)
+        else:
+            with self._ray_actor_lock:
+                object_ids = worker.submit_task(
+                    function_descriptor,
+                    args,
+                    actor_id=self._ray_actor_id,
+                    actor_handle_id=self._ray_actor_handle_id,
+                    actor_counter=self._ray_actor_counter,
+                    actor_creation_dummy_object_id=(
+                        self._ray_actor_creation_dummy_object_id),
+                    execution_dependencies=[self._ray_actor_cursor],
+                    new_actor_handles=self._ray_new_actor_handles,
+                    # We add one for the dummy return ID.
+                    num_return_vals=num_return_vals + 1,
+                    resources={"CPU": self._ray_actor_method_cpus},
+                    placement_resources={},
+                    job_id=self._ray_actor_job_id,
+                )
+                # Update the actor counter and cursor to reflect the most recent
+                # invocation.
+                self._ray_actor_counter += 1
+                # The last object returned is the dummy object that should be
+                # passed in to the next actor method. Do not return it to the user.
+                self._ray_actor_cursor = object_ids.pop()
+                # We have notified the backend of the new actor handles to expect
+                # since the last task was submitted, so clear the list.
+                self._ray_new_actor_handles = []
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
