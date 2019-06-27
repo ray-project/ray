@@ -439,8 +439,7 @@ class ValueNetworkMixin(object):
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    if config["use_kl_loss"]:
-        KLCoeffMixin.__init__(policy, config)
+    KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy)
 
 

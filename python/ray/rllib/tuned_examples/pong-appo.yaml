@@ -5,7 +5,7 @@ pong-appo:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     config:
-        vtrace: False
+        vtrace: True
         use_kl_loss: False
         sample_batch_size: 50
         train_batch_size: 750
