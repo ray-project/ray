@@ -68,16 +68,16 @@ class TaskArg {
   const std::shared_ptr<Buffer> data_;
 };
 
+enum class TaskType { NORMAL_TASK, ACTOR_CREATION_TASK, ACTOR_TASK };
+
 /// Information of a task
 struct TaskInfo {
   /// The ID of task.
   const TaskID task_id;
   /// The driver ID.
   const DriverID driver_id;
-  /// Whether this task is to create an actor.
-  const bool is_actor_creation_task;
-  /// Whether this task is to execute a function of an actor.
-  const bool is_actor_task;
+  /// The type of task.
+  const TaskType task_type;
 };
 
 /// Task specification, which includes the immutable information about the task
