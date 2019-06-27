@@ -30,6 +30,8 @@ class ClientCall {
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
   virtual void OnReplyReceived() = 0;
+
+  virtual ~ClientCall() = default;
 };
 
 class ClientCallManager;
@@ -142,7 +144,7 @@ class ClientCallManager {
     bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     while (cq_.Next(&got_tag, &ok)) {
-      ClientCall *call = reinterpret_cast<ClientCall *>(got_tag);
+      auto *call = reinterpret_cast<ClientCall *>(got_tag);
       if (ok) {
         // Post the callback to the main event loop.
         main_service_.post([call]() {
