@@ -43,17 +43,16 @@ def wait_for_sync():
 
 class BaseSyncer(object):
     def __init__(self, local_dir, remote_dir, sync_function=None):
-        """
+        """Syncs between two directories with the sync_function.
+
         Arguments:
             local_dir (str): Directory to sync. Uniquely identifies the syncer.
             remote_dir (str): Remote directory to sync with.
             sync_function (func): Function for syncing the local_dir to
                 remote_dir. Defaults to a Noop.
         """
-        if local_dir:
-            self._local_dir = os.path.join(local_dir, "")
-        else:
-            self._local_dir = local_dir
+        self._local_dir = (os.path.join(local_dir, "")
+                           if local_dir else local_dir)
         self._remote_dir = remote_dir
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
@@ -118,7 +117,8 @@ class BaseSyncer(object):
 
 class CommandSyncer(BaseSyncer):
     def __init__(self, local_dir, remote_dir, sync_template):
-        """
+        """Syncs between two directories with the given command.
+
         Arguments:
             local_dir (str): Directory to sync.
             remote_dir (str): Remote directory to sync with.
@@ -180,7 +180,9 @@ def _get_sync_cls(sync_function):
 
 
 def get_syncer(local_dir, remote_dir=None, sync_function=None):
-    """This returns a Syncer depending on given args.
+    """Returns a Syncer depending on given args.
+
+    This syncer is in charge of syncing the local_dir with upload_dir.
 
     Args:
         local_dir: Source directory for syncing.
@@ -228,6 +230,18 @@ def get_syncer(local_dir, remote_dir=None, sync_function=None):
 
 
 def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
+    """Returns a Syncer depending on given args.
+
+    This syncer is in charge of syncing the local_dir with remote local_dir.
+
+    Args:
+        local_dir: Source directory for syncing.
+        remote_dir: Target directory for syncing. If None,
+            returns NoopSyncer.
+        sync_function (func | str): Function for syncing the local_dir to
+            remote_dir. If string, then it must be a string template for
+            syncer to run. If not provided, it defaults rsync.
+        """
     key = (local_dir, remote_dir)
 
     if key in _syncers:
