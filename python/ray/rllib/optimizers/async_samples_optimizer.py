@@ -47,7 +47,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                  num_aggregation_workers=0,
                  _fake_gpus=False):
         PolicyOptimizer.__init__(self, workers)
-        print(old_worker)
 
         self._stats_start_time = time.time()
         self._last_stats_time = {}
