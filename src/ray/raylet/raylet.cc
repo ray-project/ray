@@ -106,12 +106,12 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   // Add resource information.
-  DynamicResourceTable::DataMap resources;
+  std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> resources;
   for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-    RayResource resource;
-    resource.set_resource_name(resource_pair.first());
-    resource.set_resource_capacity(resource_pair.second);
-    resources.empalce_back(resource_pair.first, resource);
+    auto resource = std::make_shared<gcs::RayResource>();
+    resource->set_resource_name(resource_pair.first);
+    resource->set_resource_capacity(resource_pair.second);
+    resources.emplace(resource_pair.first, resource);
   }
   RAY_RETURN_NOT_OK(gcs_client_->resource_table().Update(
       DriverID::Nil(), gcs_client_->client_table().GetLocalClientId(), resources,

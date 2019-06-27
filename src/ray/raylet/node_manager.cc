@@ -192,17 +192,18 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to resource changes.
   const auto &resources_changed =
       [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const GcsChangeMode change_mode,
-             const std::unordered_map<std::string, std::shared_ptr<RayResource>> &data) {
-        if (change_mode == GcsChangeMode::APPEND_OR_ADD) {
+             const gcs::GcsChangeMode change_mode,
+             const std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>>
+                 &data) {
+        if (change_mode == gcs::GcsChangeMode::APPEND_OR_ADD) {
           ResourceSet resource_set;
           for (auto &entry : data) {
             resource_set.AddOrUpdateResource(entry.first,
-                                             entry.second->resource_capacity);
+                                             entry.second->resource_capacity());
           }
           ResourceCreateUpdated(id, resource_set);
         }
-        if (change_mode == GcsChangeMode::REMOVE) {
+        if (change_mode == gcs::GcsChangeMode::REMOVE) {
           std::vector<std::string> resource_names;
           for (auto &entry : data) {
             resource_names.push_back(entry.first);
@@ -378,20 +379,20 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
     io_service_.post([this]() {
       // Fetch resource info for all clients and update cluster resource map.
       for (auto &client_entry : gcs_client_->client_table().GetAllClients()) {
-        auto &client_id = client_entry.first();
+        auto &client_id = client_entry.first;
         RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
             DriverID::Nil(), client_id,
-            [this](AsyncGcsClient *client, const ClientId &client_id,
-                   const std::unordered_map<std::string, RayResource> &pairs) {
+            [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
+                   const std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> &pairs) {
               ResourceSet resource_set;
               for (auto &resource_entry : pairs) {
-                resource_set.AddOrUpdateResource(resource_entry.first,
-                                                 resource_entry.second.capacity);
+                resource_set.AddOrUpdateResource(
+                    resource_entry.first, resource_entry.second->resource_capacity());
               }
               ResourceCreateUpdated(client_id, resource_set);
             }));
       }
-    }
+    });
     return;
   }
 
@@ -1274,15 +1275,15 @@ void NodeManager::ProcessSetResourceRequest(
   // Submit to the client table. This calls the ResourceCreateUpdated or ResourceDeleted
   // callback, which updates cluster_resource_map_.
   if (is_deletion) {
-    gcs_client_->resource_table().RemoveEntries(DriverID::Nil(), client_id,
-                                                {resource_name}, nullptr);
+    RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(DriverID::Nil(), client_id,
+                                                {resource_name}, nullptr));
   } else {
-    DynamicResourceTable::DataMap data_map;
-    auto resource = std::make_shared<RayResourceT>();
-    resource->resource_name = resource_name;
-    resource->resource_capacity = capacity;
-    data_map.emplace(resource_name, resource);
-    gcs_client_->resource_table().Update(DriverID::Nil(), client_id, data_map, nullptr);
+    std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> data_map;
+    auto ray_resource = std::make_shared<gcs::RayResource>();
+    ray_resource->set_resource_name(resource_name);
+    ray_resource->set_resource_capacity(capacity);
+    data_map.emplace(resource_name, ray_resource);
+    RAY_CHECK_OK(gcs_client_->resource_table().Update(DriverID::Nil(), client_id, data_map, nullptr));
   }
 }
 

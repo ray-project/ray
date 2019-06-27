@@ -61,17 +61,18 @@ void Monitor::Tick() {
           if (!marked) {
             RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(client_id));
             // Remove all resources of this client from GCS
-            gcs_client_.resource_table().Lookup(
+            RAY_CHECK_OK(gcs_client_.resource_table().Lookup(
                 DriverID::Nil(), client_id,
-                [](AsyncGcsClient *client, const ClientId &client_id,
-                   const std::unordered_map<std::string, RayResource> &pairs) {
+                [](gcs::AsyncGcsClient *client, const ClientID &client_id,
+                   const std::unordered_map<std::string,
+                                            std::shared_ptr<gcs::RayResource>> &pairs) {
                   std::vector<std::string> resource_names;
                   for (auto &entry : pairs) {
                     resource_names.push_back(entry.first);
                   }
-                  client->resource_table().RemoveEntries(DriverID::Nil(), client_id,
-                                                         resource_names, nullptr);
-                });
+                  RAY_CHECK_OK(client->resource_table().RemoveEntries(
+                      DriverID::Nil(), client_id, resource_names, nullptr));
+                }));
             // Broadcast a warning to all of the drivers indicating that the node
             // has been marked as dead.
             // TODO(rkn): Define this constant somewhere else.

@@ -59,6 +59,13 @@ public class RedisClient {
 
   }
 
+  public Map<byte[], byte[]> hgetAll(byte[] key) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.hgetAll(key);
+    }
+
+  }
+
   public String get(final String key, final String field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {

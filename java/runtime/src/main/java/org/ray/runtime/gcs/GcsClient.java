@@ -3,6 +3,7 @@ package org.ray.runtime.gcs;
 import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.ray.api.id.BaseId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import org.ray.runtime.generated.Gcs.ClientTableData;
 import org.ray.runtime.generated.Gcs.ClientTableData.EntryType;
@@ -74,38 +76,43 @@ public class GcsClient {
 
       if (data.getEntryType() == EntryType.INSERTION) {
         //Code path of node insertion.
-        Map<String, Double> resources = new HashMap<>();
-        // Compute resources.
-        Preconditions.checkState(
-            data.getResourcesTotalLabelCount() == data.getResourcesTotalCapacityCount());
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          resources.put(data.getResourcesTotalLabel(i), data.getResourcesTotalCapacity(i));
-        }
         NodeInfo nodeInfo = new NodeInfo(
-            clientId, data.getNodeManagerAddress(), true, resources);
+            clientId, data.getNodeManagerAddress(), true, new HashMap<>());
         clients.put(clientId, nodeInfo);
-      } else if (data.getEntryType() == EntryType.RES_CREATEUPDATE) {
-        Preconditions.checkState(clients.containsKey(clientId));
-        NodeInfo nodeInfo = clients.get(clientId);
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          nodeInfo.resources.put(data.getResourcesTotalLabel(i), data.getResourcesTotalCapacity(i));
-        }
-      } else if (data.getEntryType() == EntryType.RES_DELETE) {
-        Preconditions.checkState(clients.containsKey(clientId));
-        NodeInfo nodeInfo = clients.get(clientId);
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          nodeInfo.resources.remove(data.getResourcesTotalLabel(i));
-        }
       } else {
         // Code path of node deletion.
         Preconditions.checkState(data.getEntryType() == EntryType.DELETION);
         NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
-            false, clients.get(clientId).resources);
+            false, new HashMap<>());
         clients.put(clientId, nodeInfo);
       }
     }
 
+    // Fill resources.
+    for (Map.Entry<UniqueId, NodeInfo> client : clients.entrySet()) {
+      if (client.getValue().isAlive) {
+        client.getValue().resources.putAll(getResourcesForClient(client.getKey()));
+      }
+    }
+
     return new ArrayList<>(clients.values());
+  }
+
+  private Map<String, Double> getResourcesForClient(UniqueId clientId) {
+    final String prefix = TablePrefix.NODE_RESOURCE.toString();
+    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
+    Map<byte[], byte[]> results = primary.hgetAll(key);
+    Map<String, Double> resources = new HashMap<>();
+    for (byte[] value : results.values()) {
+      Gcs.RayResource rayResource;
+      try {
+        rayResource = Gcs.RayResource.parseFrom(value);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RuntimeException("Received invalid protobuf data from GCS.");
+      }
+      resources.put(rayResource.getResourceName(), rayResource.getResourceCapacity());
+    }
+    return resources;
   }
 
   /**

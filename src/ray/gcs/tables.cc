@@ -517,8 +517,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   } else {
     // If the entry is in the cache, then the notification is new if the client
     // was alive and is now dead or resources have been updated.
-    bool was_not_deleted = (entry->second.entry_type != ClientTableData::DELETION);
-    bool is_deleted = (data.entry_type == ClientTableData::DELETION);
+    bool was_not_deleted = (entry->second.entry_type() != ClientTableData::DELETION);
+    bool is_deleted = (data.entry_type() == ClientTableData::DELETION);
     is_notif_new = was_not_deleted && is_deleted;
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check

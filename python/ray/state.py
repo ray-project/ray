@@ -50,10 +50,6 @@ def _parse_client_table(redis_client):
     for entry in gcs_entry.entries:
         client = gcs_utils.ClientTableData.FromString(entry)
 
-        resources = {
-            client.resources_total_label[i]: client.resources_total_capacity[i]
-            for i in range(len(client.resources_total_label))
-        }
         client_id = ray.utils.binary_to_hex(client.client_id)
 
         if client.entry_type == gcs_utils.ClientTableData.INSERTION:
@@ -65,11 +61,10 @@ def _parse_client_table(redis_client):
                 "NodeManagerPort": client.node_manager_port,
                 "ObjectManagerPort": client.object_manager_port,
                 "ObjectStoreSocketName": client.object_store_socket_name,
-                "RayletSocketName": client.raylet_socket_name,
-                "Resources": resources
+                "RayletSocketName": client.raylet_socket_name
             }
 
-        # If this client is being updated, then it must
+        # If this client is being removed, then it must
         # have previously been inserted, and
         # it cannot have previously been removed.
         else:
@@ -77,20 +72,11 @@ def _parse_client_table(redis_client):
             is_deletion = (node_info[client_id]["EntryType"] !=
                            gcs_utils.ClientTableData.DELETION)
             assert is_deletion, "Unexpected updation of deleted client."
-            res_map = node_info[client_id]["Resources"]
-            if client.entry_type == gcs_utils.ClientTableData.RES_CREATEUPDATE:
-                for res in resources:
-                    res_map[res] = resources[res]
-            elif client.entry_type == gcs_utils.ClientTableData.RES_DELETE:
-                for res in resources:
-                    res_map.pop(res, None)
-            elif client.entry_type == gcs_utils.ClientTableData.DELETION:
-                pass  # Do nothing with the resmap if client deletion
-            else:
-                raise RuntimeError("Unexpected EntryType {}".format(
-                    client.entry_type))
-            node_info[client_id]["Resources"] = res_map
             node_info[client_id]["EntryType"] = client.entry_type
+    # Fill resource info.
+    for client_id in ordered_client_ids:
+        node_info[client_id]["Resources"] = _parse_resource_table(
+            redis_client, ray.utils.hex_to_binary(client_id))
     # NOTE: We return the list comprehension below instead of simply doing
     # 'list(node_info.values())' in order to have the nodes appear in the order
     # that they joined the cluster. Python dictionaries do not preserve
@@ -98,6 +84,37 @@ def _parse_client_table(redis_client):
     # sure to only insert a given node a single time (clients that die appear
     # twice in the GCS log).
     return [node_info[client_id] for client_id in ordered_client_ids]
+
+
+def _parse_resource_table(redis_client, client_id):
+    """Read the resource table with given client id.
+
+    Args:
+        redis_client: A client to the primary Redis shard.
+        client_id: The client ID of the node.
+
+    Returns:
+        A dict of resources about this node.
+    """
+    message = redis_client.execute_command(
+        "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("NODE_RESOURCE"), "",
+        client_id)
+
+    if message is None:
+        return {}
+
+    resources = {}
+    gcs_entry = gcs_utils.GcsEntry.FromString(message)
+    entries_len = len(gcs_entry.entries)
+    if entries_len % 2 != 0:
+        raise Exception(
+            "Invalid entry size for resource lookup: " + str(entries_len))
+
+    for i in range(0, entries_len, 2):
+        ray_resource = gcs_utils.RayResource.FromString(
+            gcs_entry.entries[i + 1])
+        resources[ray_resource.resource_name] = ray_resource.resource_capacity
+    return resources
 
 
 class GlobalState(object):
