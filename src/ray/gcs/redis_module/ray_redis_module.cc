@@ -2,14 +2,19 @@
 #include <sstream>
 
 #include "ray/common/common_protocol.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/format/gcs_generated.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
 #include "redis_string.h"
 #include "redismodule.h"
 
 using ray::Status;
+using ray::rpc::GcsChangeMode;
+using ray::rpc::GcsEntry;
+using ray::rpc::TablePrefix;
+using ray::rpc::TablePubsub;
 
 #if RAY_USE_NEW_GCS
 // Under this flag, ray-project/credis will be loaded.  Specifically, via
@@ -64,8 +69,8 @@ Status ParseTablePubsub(TablePubsub *out, const RedisModuleString *pubsub_channe
       REDISMODULE_OK) {
     return Status::RedisError("Pubsub channel must be a valid integer.");
   }
-  if (pubsub_channel_long > static_cast<long long>(TablePubsub::MAX) ||
-      pubsub_channel_long < static_cast<long long>(TablePubsub::MIN)) {
+  if (pubsub_channel_long >= static_cast<long long>(TablePubsub::TABLE_PUBSUB_MAX) ||
+      pubsub_channel_long <= static_cast<long long>(TablePubsub::TABLE_PUBSUB_MIN)) {
     return Status::RedisError("Pubsub channel must be in the TablePubsub range.");
   } else {
     *out = static_cast<TablePubsub>(pubsub_channel_long);
@@ -80,7 +85,7 @@ Status FormatPubsubChannel(RedisModuleString **out, RedisModuleCtx *ctx,
                            const RedisModuleString *id) {
   // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
   // than enough digits, but add 1 just in case for the null terminator.
-  char pubsub_channel[static_cast<int>(TablePubsub::MAX) + 1];
+  char pubsub_channel[static_cast<int>(TablePubsub::TABLE_PUBSUB_MAX) + 1];
   TablePubsub table_pubsub;
   RAY_RETURN_NOT_OK(ParseTablePubsub(&table_pubsub, pubsub_channel_str));
   sprintf(pubsub_channel, "%d", static_cast<int>(table_pubsub));
@@ -95,8 +100,8 @@ Status ParseTablePrefix(const RedisModuleString *table_prefix_str, TablePrefix *
       REDISMODULE_OK) {
     return Status::RedisError("Prefix must be a valid TablePrefix integer");
   }
-  if (table_prefix_long > static_cast<long long>(TablePrefix::MAX) ||
-      table_prefix_long < static_cast<long long>(TablePrefix::MIN)) {
+  if (table_prefix_long >= static_cast<long long>(TablePrefix::TABLE_PREFIX_MAX) ||
+      table_prefix_long <= static_cast<long long>(TablePrefix::TABLE_PREFIX_MIN)) {
     return Status::RedisError("Prefix must be in the TablePrefix range");
   } else {
     *out = static_cast<TablePrefix>(table_prefix_long);
@@ -113,7 +118,7 @@ RedisModuleString *PrefixedKeyString(RedisModuleCtx *ctx, RedisModuleString *pre
   if (!ParseTablePrefix(prefix_enum, &prefix).ok()) {
     return nullptr;
   }
-  return RedisString_Format(ctx, "%s%S", EnumNameTablePrefix(prefix), keyname);
+  return RedisString_Format(ctx, "%s%S", TablePrefix_Name(prefix).c_str(), keyname);
 }
 
 // TODO(swang): This helper function should be deprecated by the version below,
@@ -136,8 +141,8 @@ Status OpenPrefixedKey(RedisModuleKey **out, RedisModuleCtx *ctx,
                        int mode, RedisModuleString **mutated_key_str) {
   TablePrefix prefix;
   RAY_RETURN_NOT_OK(ParseTablePrefix(prefix_enum, &prefix));
-  *out =
-      OpenPrefixedKey(ctx, EnumNameTablePrefix(prefix), keyname, mode, mutated_key_str);
+  *out = OpenPrefixedKey(ctx, TablePrefix_Name(prefix).c_str(), keyname, mode,
+                         mutated_key_str);
   return Status::OK();
 }
 
@@ -165,46 +170,40 @@ Status GetBroadcastKey(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
   return Status::OK();
 }
 
-/// This is a helper method to convert a redis module string to a flatbuffer
-/// string.
+/// A helper function that creates `GcsEntry` protobuf object.
 ///
-/// \param fbb The flatbuffer builder.
-/// \param redis_string The redis string.
-/// \return The flatbuffer string.
-flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, RedisModuleString *redis_string) {
-  size_t redis_string_size;
-  const char *redis_string_str =
-      RedisModule_StringPtrLen(redis_string, &redis_string_size);
-  return fbb.CreateString(redis_string_str, redis_string_size);
+/// \param[in] id Id of the entry.
+/// \param[in] change_mode Change mode of the entry.
+/// \param[in] entries Vector of entries.
+/// \param[out] result The created `GcsEntry` object.
+inline void CreateGcsEntry(RedisModuleString *id, GcsChangeMode change_mode,
+                           const std::vector<RedisModuleString *> &entries,
+                           GcsEntry *result) {
+  const char *data;
+  size_t size;
+  data = RedisModule_StringPtrLen(id, &size);
+  result->set_id(data, size);
+  result->set_change_mode(change_mode);
+  for (const auto &entry : entries) {
+    data = RedisModule_StringPtrLen(entry, &size);
+    result->add_entries(data, size);
+  }
 }
 
-/// Publish a notification for an entry update at a key. This publishes a
-/// notification to all subscribers of the table, as well as every client that
-/// has requested notifications for this key.
+/// Helper method to publish formatted data to target channel.
 ///
 /// \param pubsub_channel_str The pubsub channel name that notifications for
 /// this key should be published to. When publishing to a specific client, the
 /// channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key that the notification is about.
-/// \param mode the update mode, such as append or remove.
-/// \param data The appended/removed data.
+/// \param data_buffer The data to publish, which is a GcsEntry buffer.
 /// \return OK if there is no error during a publish.
-int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
-                       RedisModuleString *id, GcsTableNotificationMode notification_mode,
-                       RedisModuleString *data) {
-  // Serialize the notification to send.
-  flatbuffers::FlatBufferBuilder fbb;
-  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
-  auto message =
-      CreateGcsTableEntry(fbb, notification_mode, RedisStringToFlatbuf(fbb, id),
-                          fbb.CreateVector(&data_flatbuf, 1));
-  fbb.Finish(message);
-
+int PublishDataHelper(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
+                      RedisModuleString *id, RedisModuleString *data_buffer) {
   // Write the data back to any subscribers that are listening to all table
   // notifications.
-  RedisModuleCallReply *reply = RedisModule_Call(ctx, "PUBLISH", "sb", pubsub_channel_str,
-                                                 fbb.GetBufferPointer(), fbb.GetSize());
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, data_buffer);
   if (reply == NULL) {
     return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
   }
@@ -221,14 +220,36 @@ int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_st
       // will be garbage collected by redis.
       auto channel =
           RedisModule_CreateString(ctx, client_channel.data(), client_channel.size());
-      RedisModuleCallReply *reply = RedisModule_Call(
-          ctx, "PUBLISH", "sb", channel, fbb.GetBufferPointer(), fbb.GetSize());
+      RedisModuleCallReply *reply =
+          RedisModule_Call(ctx, "PUBLISH", "ss", channel, data_buffer);
       if (reply == NULL) {
         return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
       }
     }
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
+/// Publish a notification for an entry update at a key. This publishes a
+/// notification to all subscribers of the table, as well as every client that
+/// has requested notifications for this key.
+///
+/// \param pubsub_channel_str The pubsub channel name that notifications for
+/// this key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key that the notification is about.
+/// \param mode the update mode, such as append or remove.
+/// \param data The appended/removed data.
+/// \return OK if there is no error during a publish.
+int PublishTableUpdate(RedisModuleCtx *ctx, RedisModuleString *pubsub_channel_str,
+                       RedisModuleString *id, GcsChangeMode change_mode,
+                       RedisModuleString *data) {
+  // Serialize the notification to send.
+  GcsEntry gcs_entry;
+  CreateGcsEntry(id, change_mode, {data}, &gcs_entry);
+  std::string str = gcs_entry.SerializeAsString();
+  auto data_buffer = RedisModule_CreateString(ctx, str.data(), str.size());
+  return PublishDataHelper(ctx, pubsub_channel_str, id, data_buffer);
 }
 
 // RAY.TABLE_ADD:
@@ -266,8 +287,8 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
-    return PublishTableUpdate(ctx, pubsub_channel_str, id,
-                              GcsTableNotificationMode::APPEND_OR_ADD, data);
+    return PublishTableUpdate(ctx, pubsub_channel_str, id, GcsChangeMode::APPEND_OR_ADD,
+                              data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
@@ -351,7 +372,7 @@ int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
     static const char *reply = "ERR entry exists";
-    RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
+    RedisModule_ReplyWithSimpleString(ctx, reply);
     return REDISMODULE_ERR;
   }
 }
@@ -366,8 +387,8 @@ int TableAppend_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, int /*a
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the
     // channel.
-    return PublishTableUpdate(ctx, pubsub_channel_str, id,
-                              GcsTableNotificationMode::APPEND_OR_ADD, data);
+    return PublishTableUpdate(ctx, pubsub_channel_str, id, GcsChangeMode::APPEND_OR_ADD,
+                              data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
@@ -419,10 +440,9 @@ int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the
     // channel.
-    return PublishTableUpdate(ctx, pubsub_channel_str, id,
-                              is_add ? GcsTableNotificationMode::APPEND_OR_ADD
-                                     : GcsTableNotificationMode::REMOVE,
-                              data);
+    return PublishTableUpdate(
+        ctx, pubsub_channel_str, id,
+        is_add ? GcsChangeMode::APPEND_OR_ADD : GcsChangeMode::REMOVE, data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
   }
@@ -518,7 +538,124 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-/// A helper function to create and finish a GcsTableEntry, based on the
+int Hash_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv) {
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+  // Publish a message on the requested pubsub channel if necessary.
+  TablePubsub pubsub_channel;
+  REPLY_AND_RETURN_IF_NOT_OK(ParseTablePubsub(&pubsub_channel, pubsub_channel_str));
+  if (pubsub_channel != TablePubsub::NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the
+    // channel.
+    return PublishDataHelper(ctx, pubsub_channel_str, id, data);
+  } else {
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  }
+}
+
+/// Do the hash table write operation. This is called from by HashUpdate_RedisCommand.
+///
+/// \param change_mode Output the mode of the operation: APPEND_OR_ADD or REMOVE.
+/// \param deleted_data Output data if the deleted data is not the same as required.
+int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
+                       GcsChangeMode *change_mode, RedisModuleString **changed_data) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *update_data = argv[4];
+
+  RedisModuleKey *key;
+  REPLY_AND_RETURN_IF_NOT_OK(OpenPrefixedKey(
+      &key, ctx, prefix_str, id, REDISMODULE_READ | REDISMODULE_WRITE, nullptr));
+  int type = RedisModule_KeyType(key);
+  REPLY_AND_RETURN_IF_FALSE(
+      type == REDISMODULE_KEYTYPE_HASH || type == REDISMODULE_KEYTYPE_EMPTY,
+      "HashUpdate_DoWrite: entries must be a hash or an empty hash");
+
+  size_t update_data_len = 0;
+  const char *update_data_buf = RedisModule_StringPtrLen(update_data, &update_data_len);
+
+  GcsEntry gcs_entry;
+  gcs_entry.ParseFromArray(update_data_buf, update_data_len);
+  *change_mode = gcs_entry.change_mode();
+
+  if (*change_mode == GcsChangeMode::APPEND_OR_ADD) {
+    // This code path means they are updating command.
+    size_t total_size = gcs_entry.entries_size();
+    REPLY_AND_RETURN_IF_FALSE(total_size % 2 == 0, "Invalid Hash Update data vector.");
+    for (int i = 0; i < total_size; i += 2) {
+      // Reconstruct a key-value pair from a flattened list.
+      RedisModuleString *entry_key = RedisModule_CreateString(
+          ctx, gcs_entry.entries(i).data(), gcs_entry.entries(i).size());
+      RedisModuleString *entry_value = RedisModule_CreateString(
+          ctx, gcs_entry.entries(i + 1).data(), gcs_entry.entries(i + 1).size());
+      // Returning 0 if key exists(still updated), 1 if the key is created.
+      RAY_IGNORE_EXPR(
+          RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key, entry_value, NULL));
+    }
+    *changed_data = update_data;
+  } else {
+    // This code path means the command wants to remove the entries.
+    GcsEntry updated;
+    updated.set_id(gcs_entry.id());
+    updated.set_change_mode(gcs_entry.change_mode());
+
+    size_t total_size = gcs_entry.entries_size();
+    for (int i = 0; i < total_size; i++) {
+      RedisModuleString *entry_key = RedisModule_CreateString(
+          ctx, gcs_entry.entries(i).data(), gcs_entry.entries(i).size());
+      int deleted_num = RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key,
+                                            REDISMODULE_HASH_DELETE, NULL);
+      if (deleted_num != 0) {
+        // The corresponding key is removed.
+        updated.add_entries(gcs_entry.entries(i));
+      }
+    }
+
+    // Serialize updated data.
+    std::string str = updated.SerializeAsString();
+    *changed_data = RedisModule_CreateString(ctx, str.data(), str.size());
+    auto size = RedisModule_ValueLength(key);
+    if (size == 0) {
+      REPLY_AND_RETURN_IF_FALSE(RedisModule_DeleteKey(key) == REDISMODULE_OK,
+                                "ERR Failed to delete empty hash.");
+    }
+  }
+  return REDISMODULE_OK;
+}
+
+/// Update entries for a hash table.
+///
+/// This is called from a client with the command:
+//
+///    RAY.HASH_UPDATE <table_prefix> <pubsub_channel> <id> <data>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for this
+/// key should be published to. When publishing to a specific client, the
+/// channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to remove from.
+/// \param data The GcsEntry protobuf data used to update this hash table.
+///     1). For deletion, this is a list of keys.
+///     2). For updating, this is a list of pairs with each key followed by the value.
+/// \return OK if the remove succeeds, or an error message string if the remove
+/// fails.
+int HashUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  GcsChangeMode mode;
+  RedisModuleString *changed_data = nullptr;
+  if (HashUpdate_DoWrite(ctx, argv, argc, &mode, &changed_data) != REDISMODULE_OK) {
+    return REDISMODULE_ERR;
+  }
+  // Replace the data with the changed data to do the publish.
+  std::vector<RedisModuleString *> new_argv(argv, argv + argc);
+  new_argv[4] = changed_data;
+  return Hash_DoPublish(ctx, new_argv.data());
+}
+
+/// A helper function to create a GcsEntry protobuf, based on the
 /// current value or values at the given key.
 ///
 /// \param ctx The Redis module context.
@@ -528,23 +665,21 @@ int SetRemove_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 /// \param prefix_str The string prefix associated with the open Redis key.
 /// When parsed, this is expected to be a TablePrefix.
 /// \param entry_id The UniqueID associated with the open Redis key.
-/// \param fbb A flatbuffer builder used to build the GcsTableEntry.
-Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
-                           RedisModuleString *prefix_str, RedisModuleString *entry_id,
-                           flatbuffers::FlatBufferBuilder &fbb) {
+/// \param[out] gcs_entry The created GcsEntry.
+Status TableEntryToProtobuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
+                            RedisModuleString *prefix_str, RedisModuleString *entry_id,
+                            GcsEntry *gcs_entry) {
   auto key_type = RedisModule_KeyType(table_key);
   switch (key_type) {
   case REDISMODULE_KEYTYPE_STRING: {
-    // Build the flatbuffer from the string data.
+    // Build the GcsEntry from the string data.
+    CreateGcsEntry(entry_id, GcsChangeMode::APPEND_OR_ADD, {}, gcs_entry);
     size_t data_len = 0;
     char *data_buf = RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
-    auto data = fbb.CreateString(data_buf, data_len);
-    auto message = CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
-                                       RedisStringToFlatbuf(fbb, entry_id),
-                                       fbb.CreateVector(&data, 1));
-    fbb.Finish(message);
+    gcs_entry->add_entries(data_buf, data_len);
   } break;
   case REDISMODULE_KEYTYPE_LIST:
+  case REDISMODULE_KEYTYPE_HASH:
   case REDISMODULE_KEYTYPE_SET: {
     RedisModule_CloseKey(table_key);
     // Close the key before executing the command. NOTE(swang): According to
@@ -561,28 +696,24 @@ Status TableEntryToFlatbuf(RedisModuleCtx *ctx, RedisModuleKey *table_key,
     case REDISMODULE_KEYTYPE_SET:
       reply = RedisModule_Call(ctx, "SMEMBERS", "s", table_key_str);
       break;
+    case REDISMODULE_KEYTYPE_HASH:
+      reply = RedisModule_Call(ctx, "HGETALL", "s", table_key_str);
+      break;
     }
-    // Build the flatbuffer from the set of log entries.
+    // Build the GcsEntry from the set of log entries.
     if (reply == nullptr || RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_ARRAY) {
-      return Status::RedisError("Empty list or wrong type");
+      return Status::RedisError("Empty list/set/hash or wrong type");
     }
-    std::vector<flatbuffers::Offset<flatbuffers::String>> data;
+    CreateGcsEntry(entry_id, GcsChangeMode::APPEND_OR_ADD, {}, gcs_entry);
     for (size_t i = 0; i < RedisModule_CallReplyLength(reply); i++) {
       RedisModuleCallReply *element = RedisModule_CallReplyArrayElement(reply, i);
       size_t len;
       const char *element_str = RedisModule_CallReplyStringPtr(element, &len);
-      data.push_back(fbb.CreateString(element_str, len));
+      gcs_entry->add_entries(element_str, len);
     }
-    auto message =
-        CreateGcsTableEntry(fbb, GcsTableNotificationMode::APPEND_OR_ADD,
-                            RedisStringToFlatbuf(fbb, entry_id), fbb.CreateVector(data));
-    fbb.Finish(message);
   } break;
   case REDISMODULE_KEYTYPE_EMPTY: {
-    auto message = CreateGcsTableEntry(
-        fbb, GcsTableNotificationMode::APPEND_OR_ADD, RedisStringToFlatbuf(fbb, entry_id),
-        fbb.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>()));
-    fbb.Finish(message);
+    CreateGcsEntry(entry_id, GcsChangeMode::APPEND_OR_ADD, {}, gcs_entry);
   } break;
   default:
     return Status::RedisError("Invalid Redis type during lookup.");
@@ -618,11 +749,12 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   if (table_key == nullptr) {
     RedisModule_ReplyWithNull(ctx);
   } else {
-    // Serialize the data to a flatbuffer to return to the client.
-    flatbuffers::FlatBufferBuilder fbb;
-    REPLY_AND_RETURN_IF_NOT_OK(TableEntryToFlatbuf(ctx, table_key, prefix_str, id, fbb));
-    RedisModule_ReplyWithStringBuffer(
-        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()), fbb.GetSize());
+    // Serialize the data to a GcsEntry to return to the client.
+    GcsEntry gcs_entry;
+    REPLY_AND_RETURN_IF_NOT_OK(
+        TableEntryToProtobuf(ctx, table_key, prefix_str, id, &gcs_entry));
+    std::string str = gcs_entry.SerializeAsString();
+    RedisModule_ReplyWithStringBuffer(ctx, str.data(), str.size());
   }
   return REDISMODULE_OK;
 }
@@ -637,6 +769,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
     return Status::RedisError("Key does not exist.");
   }
   auto key_type = RedisModule_KeyType(delete_key);
+  // Set/Hash will delete itself when the length is 0.
   if (key_type == REDISMODULE_KEYTYPE_STRING || key_type == REDISMODULE_KEYTYPE_LIST) {
     // Current Table or Log only has this two types of entries.
     RAY_RETURN_NOT_OK(
@@ -648,7 +781,7 @@ static Status DeleteKeyHelper(RedisModuleCtx *ctx, RedisModuleString *prefix_str
     const char *redis_string_str = RedisModule_StringPtrLen(id_data, &redis_string_size);
     auto id_binary = std::string(redis_string_str, redis_string_size);
     ostream << "Undesired type for RAY.TableDelete: " << key_type
-            << " id:" << ray::UniqueID::from_binary(id_binary);
+            << " id:" << ray::UniqueID::FromBinary(id_binary);
     RAY_LOG(ERROR) << ostream.str();
     return Status::RedisError(ostream.str());
   }
@@ -735,10 +868,11 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleStrin
   // Publish the current value at the key to the client that is requesting
   // notifications. An empty notification will be published if the key is
   // empty.
-  flatbuffers::FlatBufferBuilder fbb;
-  REPLY_AND_RETURN_IF_NOT_OK(TableEntryToFlatbuf(ctx, table_key, prefix_str, id, fbb));
-  RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
-                   reinterpret_cast<const char *>(fbb.GetBufferPointer()), fbb.GetSize());
+  GcsEntry gcs_entry;
+  REPLY_AND_RETURN_IF_NOT_OK(
+      TableEntryToProtobuf(ctx, table_key, prefix_str, id, &gcs_entry));
+  std::string str = gcs_entry.SerializeAsString();
+  RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, str.data(), str.size());
 
   return RedisModule_ReplyWithNull(ctx);
 }
@@ -791,7 +925,7 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx, RedisModuleString
   return REDISMODULE_OK;
 }
 
-Status is_nil(bool *out, const std::string &data) {
+Status IsNil(bool *out, const std::string &data) {
   if (data.size() != kUniqueIDSize) {
     return Status::RedisError("Size of data doesn't match size of UniqueID");
   }
@@ -803,53 +937,6 @@ Status is_nil(bool *out, const std::string &data) {
   }
   *out = true;
   return Status::OK();
-}
-
-// This is a temporary redis command that will be removed once
-// the GCS uses https://github.com/pcmoritz/credis.
-// Be careful, this only supports Task Table payloads.
-int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
-                                    int argc) {
-  if (argc != 5) {
-    return RedisModule_WrongArity(ctx);
-  }
-  RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *update_data = argv[4];
-
-  RedisModuleKey *key;
-  REPLY_AND_RETURN_IF_NOT_OK(
-      OpenPrefixedKey(&key, ctx, prefix_str, id, REDISMODULE_READ | REDISMODULE_WRITE));
-
-  size_t value_len = 0;
-  char *value_buf = RedisModule_StringDMA(key, &value_len, REDISMODULE_READ);
-
-  size_t update_len = 0;
-  const char *update_buf = RedisModule_StringPtrLen(update_data, &update_len);
-
-  auto data =
-      flatbuffers::GetMutableRoot<TaskTableData>(reinterpret_cast<void *>(value_buf));
-
-  auto update = flatbuffers::GetRoot<TaskTableTestAndUpdate>(update_buf);
-
-  bool do_update = static_cast<int>(data->scheduling_state()) &
-                   static_cast<int>(update->test_state_bitmask());
-
-  bool is_nil_result;
-  REPLY_AND_RETURN_IF_NOT_OK(is_nil(&is_nil_result, update->test_raylet_id()->str()));
-  if (!is_nil_result) {
-    do_update = do_update && update->test_raylet_id()->str() == data->raylet_id()->str();
-  }
-
-  if (do_update) {
-    REPLY_AND_RETURN_IF_FALSE(data->mutate_scheduling_state(update->update_state()),
-                              "mutate_scheduling_state failed");
-  }
-  REPLY_AND_RETURN_IF_FALSE(data->mutate_updated(do_update), "mutate_updated failed");
-
-  int result = RedisModule_ReplyWithStringBuffer(ctx, value_buf, value_len);
-
-  return result;
 }
 
 std::string DebugString() {
@@ -869,10 +956,11 @@ int DebugString_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   std::string debug_string = DebugString();
   return RedisModule_ReplyWithStringBuffer(ctx, debug_string.data(), debug_string.size());
 }
-};
+};  // namespace internal_redis_commands
 
 // Wrap all Redis commands with Redis' auto memory management.
 AUTO_MEMORY(TableAdd_RedisCommand);
+AUTO_MEMORY(HashUpdate_RedisCommand);
 AUTO_MEMORY(TableAppend_RedisCommand);
 AUTO_MEMORY(SetAdd_RedisCommand);
 AUTO_MEMORY(SetRemove_RedisCommand);
@@ -880,7 +968,6 @@ AUTO_MEMORY(TableLookup_RedisCommand);
 AUTO_MEMORY(TableRequestNotifications_RedisCommand);
 AUTO_MEMORY(TableDelete_RedisCommand);
 AUTO_MEMORY(TableCancelNotifications_RedisCommand);
-AUTO_MEMORY(TableTestAndUpdate_RedisCommand);
 AUTO_MEMORY(DebugString_RedisCommand);
 #if RAY_USE_NEW_GCS
 AUTO_MEMORY(ChainTableAdd_RedisCommand);
@@ -929,6 +1016,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     return REDISMODULE_ERR;
   }
 
+  if (RedisModule_CreateCommand(ctx, "ray.hash_update", HashUpdate_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
   if (RedisModule_CreateCommand(ctx, "ray.table_request_notifications",
                                 TableRequestNotifications_RedisCommand, "write pubsub", 0,
                                 0, 0) == REDISMODULE_ERR) {
@@ -938,12 +1030,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   if (RedisModule_CreateCommand(ctx, "ray.table_cancel_notifications",
                                 TableCancelNotifications_RedisCommand, "write pubsub", 0,
                                 0, 0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-
-  if (RedisModule_CreateCommand(ctx, "ray.table_test_and_update",
-                                TableTestAndUpdate_RedisCommand, "write", 0, 0,
-                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

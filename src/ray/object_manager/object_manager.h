@@ -16,8 +16,8 @@
 #include "plasma/client.h"
 
 #include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -180,7 +180,7 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \return All profiling information that has accumulated since the last call
   /// to this method.
-  ProfileTableDataT GetAndResetProfilingInfo();
+  rpc::ProfileTableData GetAndResetProfilingInfo();
 
   /// Returns debug string for class.
   ///
@@ -394,7 +394,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
   /// subscribe multiple times to the same object during Pull.
-  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+  UniqueID object_directory_pull_callback_id_ = UniqueID::FromRandom();
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
@@ -412,7 +412,7 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
-  std::vector<ProfileEventT> profile_events_;
+  std::vector<rpc::ProfileTableData::ProfileEvent> profile_events_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

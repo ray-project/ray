@@ -21,7 +21,7 @@ class BaseEnv(object):
     can be sent back via send_actions().
 
     All other env types can be adapted to BaseEnv. RLlib handles these
-    conversions internally in PolicyEvaluator, for example:
+    conversions internally in RolloutWorker, for example:
 
         gym.Env => rllib.VectorEnv => rllib.BaseEnv
         rllib.MultiAgentEnv => rllib.BaseEnv

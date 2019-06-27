@@ -46,7 +46,7 @@ def on_train_result(info):
 
 def on_postprocess_traj(info):
     episode = info["episode"]
-    batch = info["batch"]
+    batch = info["post_batch"]
     print("postprocessed {} steps".format(batch.count))
     if "num_batches" not in episode.custom_metrics:
         episode.custom_metrics["num_batches"] = 0

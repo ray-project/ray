@@ -35,6 +35,7 @@ import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
 import org.ray.runtime.util.IdUtil;
+import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,10 +74,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
-    functionManager = new FunctionManager(rayConfig.driverResourcePath);
+    functionManager = new FunctionManager(rayConfig.jobResourcePath);
     worker = new Worker(this);
     workerContext = new WorkerContext(rayConfig.workerMode,
-        rayConfig.driverId, rayConfig.runMode);
+        rayConfig.jobId, rayConfig.runMode);
     runtimeContext = new RuntimeContextImpl(this);
   }
 
@@ -345,7 +346,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       boolean isActorCreationTask, BaseTaskOptions taskOptions) {
     Preconditions.checkArgument((func == null) != (pyFunctionDescriptor == null));
 
-    TaskId taskId = rayletClient.generateTaskId(workerContext.getCurrentDriverId(),
+    TaskId taskId = rayletClient.generateTaskId(workerContext.getCurrentJobId(),
         workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
     int numReturns = actor.getId().isNil() ? 1 : 2;
     ObjectId[] returnIds = IdUtil.genReturnIds(taskId, numReturns);
@@ -363,15 +364,20 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     int maxActorReconstruction = 0;
+    List<String> dynamicWorkerOptions = ImmutableList.of();
     if (taskOptions instanceof ActorCreationOptions) {
       maxActorReconstruction = ((ActorCreationOptions) taskOptions).maxReconstructions;
+      String jvmOptions = ((ActorCreationOptions) taskOptions).jvmOptions;
+      if (!StringUtil.isNullOrEmpty(jvmOptions)) {
+        dynamicWorkerOptions = ImmutableList.of(((ActorCreationOptions) taskOptions).jvmOptions);
+      }
     }
 
     TaskLanguage language;
     FunctionDescriptor functionDescriptor;
     if (func != null) {
       language = TaskLanguage.JAVA;
-      functionDescriptor = functionManager.getFunction(workerContext.getCurrentDriverId(), func)
+      functionDescriptor = functionManager.getFunction(workerContext.getCurrentJobId(), func)
           .getFunctionDescriptor();
     } else {
       language = TaskLanguage.PYTHON;
@@ -379,7 +385,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
 
     return new TaskSpec(
-        workerContext.getCurrentDriverId(),
+        workerContext.getCurrentJobId(),
         taskId,
         workerContext.getCurrentTaskId(),
         -1,
@@ -390,10 +396,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.increaseTaskCounter(),
         actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
-        returnIds,
+        numReturns,
         resources,
         language,
-        functionDescriptor
+        functionDescriptor,
+        dynamicWorkerOptions
     );
   }
 

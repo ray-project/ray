@@ -3,12 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import logging
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
 except ImportError:
     byo = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+logger = logging.getLogger(__name__)
 
 
 class BayesOptSearch(SuggestionAlgorithm):
@@ -22,8 +25,9 @@ class BayesOptSearch(SuggestionAlgorithm):
             this space which will be used to run trials.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
         utility_kwargs (dict): Parameters to define the utility function. Must
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.
@@ -35,13 +39,15 @@ class BayesOptSearch(SuggestionAlgorithm):
         >>>     'height': (-100, 100),
         >>> }
         >>> algo = BayesOptSearch(
-        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss")
+        >>>     space, max_concurrent=4, metric="mean_loss", mode="min")
     """
 
     def __init__(self,
                  space,
                  max_concurrent=10,
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  utility_kwargs=None,
                  random_state=1,
                  verbose=0,
@@ -52,8 +58,22 @@ class BayesOptSearch(SuggestionAlgorithm):
         assert type(max_concurrent) is int and max_concurrent > 0
         assert utility_kwargs is not None, (
             "Must define arguments for the utiliy function!")
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+
         self._max_concurrent = max_concurrent
-        self._reward_attr = reward_attr
+        self._metric = metric
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
         self._live_trial_mapping = {}
 
         self.optimizer = byo.BayesianOptimization(
@@ -85,7 +105,7 @@ class BayesOptSearch(SuggestionAlgorithm):
         if result:
             self.optimizer.register(
                 params=self._live_trial_mapping[trial_id],
-                target=result[self._reward_attr])
+                target=self._metric_op * result[self._metric])
 
         del self._live_trial_mapping[trial_id]
 

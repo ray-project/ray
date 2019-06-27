@@ -12,7 +12,7 @@
 
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include <assert.h>
 

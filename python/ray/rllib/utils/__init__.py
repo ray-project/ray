@@ -27,6 +27,21 @@ def renamed_class(cls, old_name):
     return DeprecationWrapper
 
 
+def add_mixins(base, mixins):
+    """Returns a new class with mixins applied in priority order."""
+
+    mixins = list(mixins or [])
+
+    while mixins:
+
+        class new_base(mixins.pop(), base):
+            pass
+
+        base = new_base
+
+    return base
+
+
 def renamed_agent(cls):
     """Helper class for renaming Agent => Trainer with a warning."""
 

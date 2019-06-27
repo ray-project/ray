@@ -6,13 +6,14 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
-    CDriverID,
+    CJobID,
+    CWorkerID,
     CObjectID,
     CTaskID,
 )
 
 
-cdef extern from "ray/status.h" namespace "ray" nogil:
+cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef cppclass StatusCode:
         pass
 
@@ -68,7 +69,7 @@ cdef extern from "ray/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
 
 
-cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
+cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
     cdef StatusCode StatusCode_OK "OK"
     cdef StatusCode StatusCode_OutOfMemory "OutOfMemory"
     cdef StatusCode StatusCode_KeyError "KeyError"
@@ -80,8 +81,8 @@ cdef extern from "ray/status.h" namespace "ray::StatusCode" nogil:
     cdef StatusCode StatusCode_RedisError "RedisError"
 
 
-cdef extern from "ray/id.h" namespace "ray" nogil:
-    const CTaskID GenerateTaskId(const CDriverID &driver_id,
+cdef extern from "ray/common/id.h" namespace "ray" nogil:
+    const CTaskID GenerateTaskId(const CJobID &job_id,
                                  const CTaskID &parent_task_id,
                                  int parent_task_counter)
 

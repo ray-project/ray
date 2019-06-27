@@ -25,11 +25,13 @@ cc_library(
     name = "arrow",
     srcs = [
         "cpp/src/arrow/buffer.cc",
+        "cpp/src/arrow/io/interfaces.cc",
         "cpp/src/arrow/memory_pool.cc",
         "cpp/src/arrow/status.cc",
         "cpp/src/arrow/util/io-util.cc",
         "cpp/src/arrow/util/logging.cc",
         "cpp/src/arrow/util/memory.cc",
+        "cpp/src/arrow/util/string_builder.cc",
         "cpp/src/arrow/util/thread-pool.cc",
     ],
     hdrs = [
@@ -42,6 +44,7 @@ cc_library(
         "cpp/src/arrow/util/logging.h",
         "cpp/src/arrow/util/macros.h",
         "cpp/src/arrow/util/memory.h",
+        "cpp/src/arrow/util/stl.h",
         "cpp/src/arrow/util/string_builder.h",
         "cpp/src/arrow/util/string_view.h",
         "cpp/src/arrow/util/thread-pool.h",
@@ -53,6 +56,9 @@ cc_library(
         "cpp/src/arrow/vendored/xxhash/xxhash.h",
     ],
     strip_include_prefix = "cpp/src",
+    deps = [
+        "@boost//:filesystem",
+    ],
 )
 
 cc_library(

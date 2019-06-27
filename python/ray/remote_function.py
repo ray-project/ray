@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import logging
+from functools import wraps
 
 from ray.function_manager import FunctionDescriptor
 import ray.signature
@@ -43,9 +44,12 @@ class RemoteFunction(object):
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_export_session: The index of the last session in which the remote
-            function was exported. This is used to determine if we need to
-            export the remote function again.
+        _last_job_id_exported_for: The ID of the job ID of the last Ray
+            session during which this remote function definition was exported.
+            This is an imperfect mechanism used to determine if we need to
+            export the remote function again. It is imperfect in the sense that
+            the actor class definition could be exported multiple times by
+            different workers.
     """
 
     def __init__(self, function, num_cpus, num_gpus, resources,
@@ -69,19 +73,19 @@ class RemoteFunction(object):
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
-        # Export the function.
-        worker = ray.worker.get_global_worker()
-        self._last_export_session = worker._session_index
-        worker.function_actor_manager.export(self)
+        self._last_job_id_exported_for = None
+
+        # Override task.remote's signature and docstring
+        @wraps(function)
+        def _remote_proxy(*args, **kwargs):
+            return self._remote(args=args, kwargs=kwargs)
+
+        self.remote = _remote_proxy
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
                             self._function_name, self._function_name))
-
-    def remote(self, *args, **kwargs):
-        """This runs immediately when a remote function is called."""
-        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
                 args=None,
@@ -111,10 +115,11 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if self._last_export_session < worker._session_index:
+        if (self._last_job_id_exported_for is None
+                or self._last_job_id_exported_for != worker.current_job_id):
             # If this function was exported in a previous session, we need to
             # export this function again, because current GCS doesn't have it.
-            self._last_export_session = worker._session_index
+            self._last_job_id_exported_for = worker.current_job_id
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class LocalMultiGPUOptimizer(PolicyOptimizer):
     """A synchronous optimizer that uses multiple local GPUs.
 
-    Samples are pulled synchronously from multiple remote evaluators,
+    Samples are pulled synchronously from multiple remote workers,
     concatenated, and then split across the memory of multiple local GPUs.
     A number of SGD passes are then taken over the in-memory data. For more
     details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
@@ -42,8 +42,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     """
 
     def __init__(self,
-                 local_evaluator,
-                 remote_evaluators,
+                 workers,
                  sgd_batch_size=128,
                  num_sgd_iter=10,
                  sample_batch_size=200,
@@ -52,7 +51,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                  num_gpus=0,
                  standardize_fields=[],
                  straggler_mitigation=False):
-        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+        PolicyOptimizer.__init__(self, workers)
 
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
@@ -79,8 +78,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         logger.info("LocalMultiGPUOptimizer devices {}".format(self.devices))
 
-        self.policies = dict(
-            self.local_evaluator.foreach_trainable_policy(lambda p, i: (i, p)))
+        self.policies = dict(self.workers.local_worker()
+                             .foreach_trainable_policy(lambda p, i: (i, p)))
         logger.debug("Policies to train: {}".format(self.policies))
         for policy_id, policy in self.policies.items():
             if not isinstance(policy, TFPolicy):
@@ -92,8 +91,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.optimizers = {}
-        with self.local_evaluator.tf_sess.graph.as_default():
-            with self.local_evaluator.tf_sess.as_default():
+        with self.workers.local_worker().tf_sess.graph.as_default():
+            with self.workers.local_worker().tf_sess.as_default():
                 for policy_id, policy in self.policies.items():
                     with tf.variable_scope(policy_id, reuse=tf.AUTO_REUSE):
                         if policy._state_inputs:
@@ -109,25 +108,25 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                                  for _, v in policy._loss_inputs], rnn_inputs,
                                 self.per_device_batch_size, policy.copy))
 
-                self.sess = self.local_evaluator.tf_sess
+                self.sess = self.workers.local_worker().tf_sess
                 self.sess.run(tf.global_variables_initializer())
 
     @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
-            if self.remote_evaluators:
-                weights = ray.put(self.local_evaluator.get_weights())
-                for e in self.remote_evaluators:
+            if self.workers.remote_workers():
+                weights = ray.put(self.workers.local_worker().get_weights())
+                for e in self.workers.remote_workers():
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            if self.remote_evaluators:
+            if self.workers.remote_workers():
                 if self.straggler_mitigation:
                     samples = collect_samples_straggler_mitigation(
-                        self.remote_evaluators, self.train_batch_size)
+                        self.workers.remote_workers(), self.train_batch_size)
                 else:
                     samples = collect_samples(
-                        self.remote_evaluators, self.sample_batch_size,
+                        self.workers.remote_workers(), self.sample_batch_size,
                         self.num_envs_per_worker, self.train_batch_size)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(
@@ -139,7 +138,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             else:
                 samples = []
                 while sum(s.count for s in samples) < self.train_batch_size:
-                    samples.append(self.local_evaluator.sample())
+                    samples.append(self.workers.local_worker().sample())
                 samples = SampleBatch.concat_samples(samples)
 
             # Handle everything as if multiagent

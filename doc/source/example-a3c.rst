@@ -127,7 +127,7 @@ global model parameters. The main training script looks like the following.
       obs = 0
 
       # Start simulations on actors
-      agents = [Runner(env_name, i) for i in range(num_workers)]
+      agents = [Runner.remote(env_name, i) for i in range(num_workers)]
 
       # Start gradient calculation tasks on each actor
       parameters = policy.get_weights()

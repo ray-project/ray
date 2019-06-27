@@ -165,9 +165,10 @@ class NodeUpdater(object):
                 logger.debug("NodeUpdater: "
                              "{}: Waiting for SSH...".format(self.node_id))
 
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "uptime", connect_timeout=5, redirect=redirect)
+                # Setting redirect=False allows the user to see errors like
+                # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
+                # for Unix domain socket.
+                self.ssh_cmd("uptime", connect_timeout=5, redirect=False)
 
                 return True
 

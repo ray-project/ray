@@ -1,7 +1,7 @@
 #include "ray/raylet/monitor.h"
 
-#include "ray/ray_config.h"
-#include "ray/status.h"
+#include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -24,18 +24,18 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
 }
 
 void Monitor::HandleHeartbeat(const ClientID &client_id,
-                              const HeartbeatTableDataT &heartbeat_data) {
+                              const HeartbeatTableData &heartbeat_data) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
   heartbeat_buffer_[client_id] = heartbeat_data;
 }
 
 void Monitor::Start() {
   const auto heartbeat_callback = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                         const HeartbeatTableDataT &heartbeat_data) {
+                                         const HeartbeatTableData &heartbeat_data) {
     HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
-      DriverID::nil(), ClientID::nil(), heartbeat_callback, nullptr, nullptr));
+      JobID::Nil(), ClientID::Nil(), heartbeat_callback, nullptr, nullptr));
   Tick();
 }
 
@@ -48,12 +48,12 @@ void Monitor::Tick() {
         auto client_id = it->first;
         RAY_LOG(WARNING) << "Client timed out: " << client_id;
         auto lookup_callback = [this, client_id](
-            gcs::AsyncGcsClient *client, const ClientID &id,
-            const std::vector<ClientTableDataT> &all_data) {
+                                   gcs::AsyncGcsClient *client, const ClientID &id,
+                                   const std::vector<ClientTableData> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
-            if (client_id.binary() == data.client_id &&
-                data.entry_type == EntryType::DELETION) {
+            if (client_id.Binary() == data.client_id() &&
+                data.entry_type() == ClientTableData::DELETION) {
               // The node has been marked dead by itself.
               marked = true;
             }
@@ -68,9 +68,9 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << client_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            // We use the nil DriverID to broadcast the message to all drivers.
+            // We use the nil JobID to broadcast the message to all drivers.
             RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-                DriverID::nil(), type, error_message.str(), current_time_ms()));
+                JobID::Nil(), type, error_message.str(), current_time_ms()));
           }
         };
         RAY_CHECK_OK(gcs_client_.client_table().Lookup(lookup_callback));
@@ -84,12 +84,11 @@ void Monitor::Tick() {
 
   // Send any buffered heartbeats as a single publish.
   if (!heartbeat_buffer_.empty()) {
-    auto batch = std::make_shared<HeartbeatBatchTableDataT>();
+    auto batch = std::make_shared<HeartbeatBatchTableData>();
     for (const auto &heartbeat : heartbeat_buffer_) {
-      batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
-          new HeartbeatTableDataT(heartbeat.second)));
+      batch->add_batch()->CopyFrom(heartbeat.second);
     }
-    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(DriverID::nil(), ClientID::nil(),
+    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(JobID::Nil(), ClientID::Nil(),
                                                          batch, nullptr));
     heartbeat_buffer_.clear();
   }

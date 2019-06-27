@@ -13,6 +13,7 @@ import gym
 import ray
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
@@ -220,10 +221,8 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(
         policy.model.outputs, output_hidden_shape, axis=1)
-    prev_dist_inputs = unpacked_behaviour_logits if is_multidiscrete else \
-        behaviour_logits
     action_dist = policy.action_dist
-    prev_action_dist = policy.dist_class(prev_dist_inputs)
+    prev_action_dist = policy.dist_class(behaviour_logits)
     values = policy.value_function
 
     if policy.model.state_in:
@@ -257,7 +256,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
-            dist_class=policy.dist_class,
+            dist_class=Categorical if is_multidiscrete else policy.dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.config["entropy_coeff"],
@@ -366,12 +365,15 @@ class ValueNetworkMixin(object):
                                           tf.get_variable_scope().name)
 
     def value(self, ob, *args):
-        feed_dict = {self._obs_input: [ob], self.model.seq_lens: [1]}
+        feed_dict = {
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.model.seq_lens: [1]
+        }
         assert len(args) == len(self.model.state_in), \
             (args, self.model.state_in)
         for k, v in zip(self.model.state_in, args):
             feed_dict[k] = v
-        vf = self._sess.run(self.value_function, feed_dict)
+        vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
 
 

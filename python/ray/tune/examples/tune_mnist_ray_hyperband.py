@@ -233,7 +233,10 @@ if __name__ == "__main__":
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
+        time_attr="training_iteration",
+        metric="mean_accuracy",
+        mode="max",
+        max_t=10)
 
     tune.run(
         TrainMNIST,
