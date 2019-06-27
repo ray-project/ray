@@ -10,13 +10,13 @@ public class RayConfigTest {
   @Test
   public void testCreateRayConfig() {
     try {
-      System.setProperty("ray.driver.resource-path", "path/to/ray/driver/resource/path");
+      System.setProperty("ray.job.resource-path", "path/to/ray/job/resource/path");
       RayConfig rayConfig = RayConfig.create();
       Assert.assertEquals(WorkerMode.DRIVER, rayConfig.workerMode);
-      Assert.assertEquals("path/to/ray/driver/resource/path", rayConfig.driverResourcePath);
+      Assert.assertEquals("path/to/ray/job/resource/path", rayConfig.jobResourcePath);
     } finally {
       // Unset system properties.
-      System.clearProperty("ray.driver.resource-path");
+      System.clearProperty("ray.job.resource-path");
     }
 
   }

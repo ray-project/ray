@@ -114,13 +114,13 @@ class ImportThread(object):
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (driver_id, serialized_function,
+        (job_id, serialized_function,
          run_on_other_drivers) = self.redis_client.hmget(
-             key, ["driver_id", "function", "run_on_other_drivers"])
+             key, ["job_id", "function", "run_on_other_drivers"])
 
         if (utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
-                and driver_id != self.worker.task_driver_id.binary()):
+                and job_id != self.worker.current_job_id.binary()):
             return
 
         try:
@@ -140,4 +140,4 @@ class ImportThread(object):
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
-                driver_id=ray.DriverID(driver_id))
+                job_id=ray.JobID(job_id))

@@ -12,7 +12,7 @@ from ray.includes.common cimport (
 from ray.includes.unique_ids cimport (
     CActorHandleID,
     CActorID,
-    CDriverID,
+    CJobID,
     CObjectID,
     CTaskID,
 )
@@ -46,7 +46,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
 
     cdef cppclass CTaskSpecification "ray::raylet::TaskSpecification":
         CTaskSpecification(
-            const CDriverID &driver_id, const CTaskID &parent_task_id,
+            const CJobID &job_id, const CTaskID &parent_task_id,
             int64_t parent_counter,
             const c_vector[shared_ptr[CTaskArgument]] &task_arguments,
             int64_t num_returns,
@@ -54,7 +54,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
             const CLanguage &language,
             const c_vector[c_string] &function_descriptor)
         CTaskSpecification(
-            const CDriverID &driver_id, const CTaskID &parent_task_id,
+            const CJobID &job_id, const CTaskID &parent_task_id,
             int64_t parent_counter, const CActorID &actor_creation_id,
             const CObjectID &actor_creation_dummy_object_id,
             int64_t max_actor_reconstructions, const CActorID &actor_id,
@@ -70,7 +70,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
         c_string SerializeAsString() const
 
         CTaskID TaskId() const
-        CDriverID DriverId() const
+        CJobID JobId() const
         CTaskID ParentTaskId() const
         int64_t ParentCounter() const
         c_vector[c_string] FunctionDescriptor() const

@@ -164,7 +164,7 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public TaskId generateTaskId(UniqueId driverId, TaskId parentTaskId, int taskIndex) {
+  public TaskId generateTaskId(UniqueId jobId, TaskId parentTaskId, int taskIndex) {
     return TaskId.randomId();
   }
 

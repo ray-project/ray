@@ -86,7 +86,7 @@ class TaskSpecification {
   /// Create a task specification from the raw fields. This constructor omits
   /// some values and sets them to sensible defaults.
   ///
-  /// \param driver_id The driver ID, representing the job that this task is a
+  /// \param job_id The driver ID, representing the job that this task is a
   /// part of.
   /// \param parent_task_id The task ID of the task that spawned this task.
   /// \param parent_counter The number of tasks that this task's parent spawned
@@ -96,7 +96,7 @@ class TaskSpecification {
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
   /// \param language The language of the worker that must execute the function.
-  TaskSpecification(const DriverID &driver_id, const TaskID &parent_task_id,
+  TaskSpecification(const JobID &job_id, const TaskID &parent_task_id,
                     int64_t parent_counter,
                     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
                     int64_t num_returns,
@@ -107,7 +107,7 @@ class TaskSpecification {
   // TODO(swang): Define an actor task constructor.
   /// Create a task specification from the raw fields.
   ///
-  /// \param driver_id The driver ID, representing the job that this task is a
+  /// \param job_id The driver ID, representing the job that this task is a
   /// part of.
   /// \param parent_task_id The task ID of the task that spawned this task.
   /// \param parent_counter The number of tasks that this task's parent spawned
@@ -130,7 +130,7 @@ class TaskSpecification {
   /// \param function_descriptor The function descriptor.
   /// \param dynamic_worker_options The dynamic options for starting an actor worker.
   TaskSpecification(
-      const DriverID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+      const JobID &job_id, const TaskID &parent_task_id, int64_t parent_counter,
       const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
       int64_t max_actor_reconstructions, const ActorID &actor_id,
       const ActorHandleID &actor_handle_id, int64_t actor_counter,
@@ -171,7 +171,7 @@ class TaskSpecification {
 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
-  DriverID DriverId() const;
+  JobID JobId() const;
   TaskID ParentTaskId() const;
   int64_t ParentCounter() const;
   std::vector<std::string> FunctionDescriptor() const;
