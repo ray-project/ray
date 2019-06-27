@@ -113,9 +113,8 @@ class VTracePostprocessing(object):
     @override(TFPolicy)
     def extra_compute_action_fetches(self):
         return dict(
-            TFPolicy.extra_compute_action_fetches(self), **{
-                BEHAVIOUR_LOGITS: self.model.outputs
-            })
+            TFPolicy.extra_compute_action_fetches(self),
+            **{BEHAVIOUR_LOGITS: self.model.outputs})
 
     @override(Policy)
     def postprocess_trajectory(self,

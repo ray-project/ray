@@ -562,6 +562,6 @@ class EntropyCoeffSchedule(object):
         if self._entropy_schedule is not None:
             self.entropy_coeff.load(
                 self.entropy_coeff.eval(session=self._sess) *
-                (1 - global_vars['timestep'] / self.
-                 config['entropy_coeff_schedule']),
+                (1 - global_vars["timestep"] /
+                 self.config["entropy_coeff_schedule"]),
                 session=self._sess)
