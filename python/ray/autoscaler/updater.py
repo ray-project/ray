@@ -54,7 +54,7 @@ class NodeUpdater(object):
                  setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 verbose=False,
+                 verbose=True,
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
