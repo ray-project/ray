@@ -70,11 +70,9 @@ class Model(object):
         self.input_dict = input_dict
         if seq_lens is not None:
             self.seq_lens = seq_lens
-        elif state_in:
+        else:
             self.seq_lens = tf.placeholder(
                 dtype=tf.int32, shape=[None], name="seq_lens")
-        else:
-            self.seq_lens = None
 
         self._num_outputs = num_outputs
         if options.get("free_log_std"):
