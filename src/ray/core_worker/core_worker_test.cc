@@ -306,30 +306,30 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 
   auto forkedHandle1 = handle1.Fork();
   ASSERT_EQ(1, handle1.NumForks());
-  ASSERT_EQ(handle1.ActorID(), forkedHandle1->ActorID());
-  ASSERT_NE(handle1.ActorHandleID(), forkedHandle1->ActorHandleID());
-  ASSERT_EQ(handle1.ActorLanguage(), forkedHandle1->ActorLanguage());
+  ASSERT_EQ(handle1.ActorID(), forkedHandle1.ActorID());
+  ASSERT_NE(handle1.ActorHandleID(), forkedHandle1.ActorHandleID());
+  ASSERT_EQ(handle1.ActorLanguage(), forkedHandle1.ActorLanguage());
   ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
-            forkedHandle1->ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(handle1.ActorCursor(), forkedHandle1->ActorCursor());
-  ASSERT_EQ(0, forkedHandle1->TaskCounter());
-  ASSERT_EQ(0, forkedHandle1->NumForks());
+            forkedHandle1.ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(handle1.ActorCursor(), forkedHandle1.ActorCursor());
+  ASSERT_EQ(0, forkedHandle1.TaskCounter());
+  ASSERT_EQ(0, forkedHandle1.NumForks());
   auto forkedHandle2 = handle1.Fork();
   ASSERT_EQ(2, handle1.NumForks());
-  ASSERT_EQ(0, forkedHandle2->TaskCounter());
-  ASSERT_EQ(0, forkedHandle2->NumForks());
+  ASSERT_EQ(0, forkedHandle2.TaskCounter());
+  ASSERT_EQ(0, forkedHandle2.NumForks());
 
   std::string buffer;
   handle1.Serialize(&buffer);
   auto handle2 = ActorHandle::Deserialize(buffer);
-  ASSERT_EQ(handle1.ActorID(), handle2->ActorID());
-  ASSERT_EQ(handle1.ActorHandleID(), handle2->ActorHandleID());
-  ASSERT_EQ(handle1.ActorLanguage(), handle2->ActorLanguage());
+  ASSERT_EQ(handle1.ActorID(), handle2.ActorID());
+  ASSERT_EQ(handle1.ActorHandleID(), handle2.ActorHandleID());
+  ASSERT_EQ(handle1.ActorLanguage(), handle2.ActorLanguage());
   ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
-            handle2->ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(handle1.ActorCursor(), handle2->ActorCursor());
-  ASSERT_EQ(handle1.TaskCounter(), handle2->TaskCounter());
-  ASSERT_EQ(handle1.NumForks(), handle2->NumForks());
+            handle2.ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(handle1.ActorCursor(), handle2.ActorCursor());
+  ASSERT_EQ(handle1.TaskCounter(), handle2.TaskCounter());
+  ASSERT_EQ(handle1.NumForks(), handle2.NumForks());
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {

@@ -55,6 +55,11 @@ class ActorHandle {
     inner_.set_actor_cursor(actor_id.Data(), actor_id.Size());
   }
 
+  ActorHandle(const ActorHandle &other) {
+    inner_ = other.inner_;
+    new_actor_handles_ = other.new_actor_handles_;
+  }
+
   /// ID of the actor.
   const ray::ActorID ActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
@@ -85,23 +90,20 @@ class ActorHandle {
   /// It's used to make sure ids of actor handles are unique.
   const int64_t NumForks() const { return inner_.num_forks(); };
 
-  std::unique_ptr<ActorHandle> Fork() {
-    auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle());
+  ActorHandle Fork() {
+    ActorHandle new_handle;
     std::unique_lock<std::mutex> guard(mutex_);
-
-    new_handle->inner_.set_actor_id(inner_.actor_id());
+    new_handle.inner_ = inner_;
     inner_.set_num_forks(inner_.num_forks() + 1);
     auto next_actor_handle_id = ComputeNextActorHandleId(
         ActorHandleID::FromBinary(inner_.actor_handle_id()), inner_.num_forks());
-    new_handle->inner_.set_actor_handle_id(next_actor_handle_id.Data(),
-                                           next_actor_handle_id.Size());
-    new_handle->inner_.set_actor_language(inner_.actor_language());
-    auto &original = inner_.actor_creation_task_function_descriptor();
-    *new_handle->inner_.mutable_actor_creation_task_function_descriptor() = {
-        original.begin(), original.end()};
-    new_handle->inner_.set_actor_cursor(inner_.actor_cursor());
-
+    new_handle.inner_.set_actor_handle_id(next_actor_handle_id.Data(),
+                                          next_actor_handle_id.Size());
     new_actor_handles_.push_back(next_actor_handle_id);
+    guard.unlock();
+
+    new_handle.inner_.set_task_counter(0);
+    new_handle.inner_.set_num_forks(0);
     return new_handle;
   }
 
@@ -110,9 +112,9 @@ class ActorHandle {
     inner_.SerializeToString(output);
   }
 
-  static std::unique_ptr<ActorHandle> Deserialize(const std::string &data) {
-    auto ret = std::unique_ptr<ActorHandle>(new ActorHandle());
-    ret->inner_.ParseFromString(data);
+  static ActorHandle Deserialize(const std::string &data) {
+    ActorHandle ret;
+    ret.inner_.ParseFromString(data);
     return ret;
   }
 
