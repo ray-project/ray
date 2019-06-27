@@ -10,6 +10,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.tf_ops import scope_vars
 
 tf = try_import_tf()
 
@@ -100,7 +101,7 @@ def make_v1_wrapper(legacy_model_cls):
 
         @override(ModelV2)
         def variables(self):
-            return super(ModelV1Wrapper, self).variables() + _scope_vars(
+            return super(ModelV1Wrapper, self).variables() + scope_vars(
                 self.variable_scope)
 
         @override(ModelV2)
@@ -118,27 +119,3 @@ def make_v1_wrapper(legacy_model_cls):
                                     self.cur_instance.input_dict)
 
     return ModelV1Wrapper
-
-
-def _scope_vars(scope, trainable_only=False):
-    """
-    Get variables inside a scope
-    The scope can be specified as a string
-
-    Parameters
-    ----------
-    scope: str or VariableScope
-      scope in which the variables reside.
-    trainable_only: bool
-      whether or not to return only the variables that were marked as
-      trainable.
-
-    Returns
-    -------
-    vars: [tf.Variable]
-      list of variables in `scope`.
-    """
-    return tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf.GraphKeys.VARIABLES,
-        scope=scope if isinstance(scope, str) else scope.name)
