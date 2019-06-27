@@ -111,7 +111,7 @@ inline ::Language ToTaskLanguage(ray::rpc::Language language) {
     return ::Language::CPP;
     break;
   default:
-    RAY_LOG(FATAL) << "invalid language specified: " << static_cast<int>(language);
+    RAY_LOG(FATAL) << "Invalid language specified: " << static_cast<int>(language);
     break;
   }
 }
@@ -132,7 +132,7 @@ inline ray::rpc::Language ToTaskLanguage(::Language language) {
     return ray::rpc::Language::CPP;
     break;
   default:
-    RAY_LOG(FATAL) << "invalid language specified: " << static_cast<int>(language);
+    RAY_LOG(FATAL) << "Invalid language specified: " << static_cast<int>(language);
     break;
   }
 }

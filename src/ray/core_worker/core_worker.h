@@ -30,7 +30,7 @@ class CoreWorker {
   enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  enum ray::rpc::Language Language() const { return language_; }
+  ray::rpc::Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -49,7 +49,7 @@ class CoreWorker {
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const enum ray::rpc::Language language_;
+  const ray::rpc::Language language_;
 
   /// Plasma store socket name.
   const std::string store_socket_;

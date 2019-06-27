@@ -8,6 +8,7 @@
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/task.h"
+#include "ray/rpc/util.h"
 
 namespace ray {
 
@@ -68,8 +69,7 @@ class ActorHandle {
   };
   // Function descriptor of actor creation task.
   const std::vector<std::string> ActorCreationTaskFunctionDescriptor() const {
-    return {inner_.actor_creation_task_function_descriptor().begin(),
-            inner_.actor_creation_task_function_descriptor().end()};
+    return ray::rpc::VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
   };
 
   /// The unique id of the last return of the last task.
@@ -90,19 +90,15 @@ class ActorHandle {
     std::unique_lock<std::mutex> guard(mutex_);
 
     new_handle->inner_.set_actor_id(inner_.actor_id());
-
     inner_.set_num_forks(inner_.num_forks() + 1);
     auto next_actor_handle_id = ComputeNextActorHandleId(
         ActorHandleID::FromBinary(inner_.actor_handle_id()), inner_.num_forks());
     new_handle->inner_.set_actor_handle_id(next_actor_handle_id.Data(),
                                            next_actor_handle_id.Size());
-
     new_handle->inner_.set_actor_language(inner_.actor_language());
-
     auto &original = inner_.actor_creation_task_function_descriptor();
     *new_handle->inner_.mutable_actor_creation_task_function_descriptor() = {
         original.begin(), original.end()};
-
     new_handle->inner_.set_actor_cursor(inner_.actor_cursor());
 
     new_actor_handles_.push_back(next_actor_handle_id);

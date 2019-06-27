@@ -309,8 +309,6 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ASSERT_EQ(handle1.ActorID(), forkedHandle1->ActorID());
   ASSERT_NE(handle1.ActorHandleID(), forkedHandle1->ActorHandleID());
   ASSERT_EQ(handle1.ActorLanguage(), forkedHandle1->ActorLanguage());
-  RAY_LOG(INFO) << handle1.ActorCreationTaskFunctionDescriptor().size();
-  RAY_LOG(INFO) << forkedHandle1->ActorCreationTaskFunctionDescriptor().size();
   ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
             forkedHandle1->ActorCreationTaskFunctionDescriptor());
   ASSERT_EQ(handle1.ActorCursor(), forkedHandle1->ActorCursor());
