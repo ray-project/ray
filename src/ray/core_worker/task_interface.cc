@@ -6,6 +6,94 @@
 
 namespace ray {
 
+ActorHandle::ActorHandle(
+    const class ActorID &actor_id, const class ActorHandleID &actor_handle_id,
+    const ray::rpc::Language actor_language,
+    const std::vector<std::string> &actor_creation_task_function_descriptor) {
+  inner_.set_actor_id(actor_id.Data(), actor_id.Size());
+  inner_.set_actor_handle_id(actor_handle_id.Data(), actor_handle_id.Size());
+  inner_.set_actor_language((int)actor_language);
+  *inner_.mutable_actor_creation_task_function_descriptor() = {
+      actor_creation_task_function_descriptor.begin(),
+      actor_creation_task_function_descriptor.end()};
+  inner_.set_actor_cursor(actor_id.Data(), actor_id.Size());
+}
+
+ActorHandle::ActorHandle(const ActorHandle &other) {
+  inner_ = other.inner_;
+  new_actor_handles_ = other.new_actor_handles_;
+}
+
+const ray::ActorID ActorHandle::ActorID() const {
+  return ActorID::FromBinary(inner_.actor_id());
+};
+
+const ray::ActorHandleID ActorHandle::ActorHandleID() const {
+  return ActorHandleID::FromBinary(inner_.actor_handle_id());
+};
+
+const ray::rpc::Language ActorHandle::ActorLanguage() const {
+  return (ray::rpc::Language)inner_.actor_language();
+};
+
+const std::vector<std::string> ActorHandle::ActorCreationTaskFunctionDescriptor() const {
+  return ray::rpc::VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
+};
+
+const ObjectID ActorHandle::ActorCursor() const {
+  return ObjectID::FromBinary(inner_.actor_cursor());
+};
+
+const int64_t ActorHandle::TaskCounter() const { return inner_.task_counter(); };
+
+const int64_t ActorHandle::NumForks() const { return inner_.num_forks(); };
+
+ActorHandle ActorHandle::Fork() {
+  ActorHandle new_handle;
+  std::unique_lock<std::mutex> guard(mutex_);
+  new_handle.inner_ = inner_;
+  inner_.set_num_forks(inner_.num_forks() + 1);
+  auto next_actor_handle_id = ComputeNextActorHandleId(
+      ActorHandleID::FromBinary(inner_.actor_handle_id()), inner_.num_forks());
+  new_handle.inner_.set_actor_handle_id(next_actor_handle_id.Data(),
+                                        next_actor_handle_id.Size());
+  new_actor_handles_.push_back(next_actor_handle_id);
+  guard.unlock();
+
+  new_handle.inner_.set_task_counter(0);
+  new_handle.inner_.set_num_forks(0);
+  return new_handle;
+}
+
+void ActorHandle::Serialize(std::string *output) {
+  std::unique_lock<std::mutex> guard(mutex_);
+  inner_.SerializeToString(output);
+}
+
+ActorHandle ActorHandle::Deserialize(const std::string &data) {
+  ActorHandle ret;
+  ret.inner_.ParseFromString(data);
+  return ret;
+}
+
+ActorHandle::ActorHandle() {}
+
+void ActorHandle::SetActorCursor(const ObjectID &actor_cursor) {
+  inner_.set_actor_cursor(actor_cursor.Binary());
+};
+
+int64_t ActorHandle::IncreaseTaskCounter() {
+  int64_t old = inner_.task_counter();
+  inner_.set_task_counter(old + 1);
+  return old;
+}
+
+std::vector<ray::ActorHandleID> ActorHandle::GetNewActorHandles() {
+  return new_actor_handles_;
+}
+
+void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
+
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
     : core_worker_(core_worker) {
   task_submitters_.emplace(

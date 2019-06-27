@@ -45,97 +45,51 @@ class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
               const ray::rpc::Language actor_language,
-              const std::vector<std::string> &actor_creation_task_function_descriptor) {
-    inner_.set_actor_id(actor_id.Data(), actor_id.Size());
-    inner_.set_actor_handle_id(actor_handle_id.Data(), actor_handle_id.Size());
-    inner_.set_actor_language((int)actor_language);
-    *inner_.mutable_actor_creation_task_function_descriptor() = {
-        actor_creation_task_function_descriptor.begin(),
-        actor_creation_task_function_descriptor.end()};
-    inner_.set_actor_cursor(actor_id.Data(), actor_id.Size());
-  }
+              const std::vector<std::string> &actor_creation_task_function_descriptor);
 
-  ActorHandle(const ActorHandle &other) {
-    inner_ = other.inner_;
-    new_actor_handles_ = other.new_actor_handles_;
-  }
+  ActorHandle(const ActorHandle &other);
 
   /// ID of the actor.
-  const ray::ActorID ActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
+  const ray::ActorID ActorID() const;
 
   /// ID of this actor handle.
-  const ray::ActorHandleID ActorHandleID() const {
-    return ActorHandleID::FromBinary(inner_.actor_handle_id());
-  };
+  const ray::ActorHandleID ActorHandleID() const;
 
   /// Language of the actor.
-  const ray::rpc::Language ActorLanguage() const {
-    return (ray::rpc::Language)inner_.actor_language();
-  };
+  const ray::rpc::Language ActorLanguage() const;
+
   // Function descriptor of actor creation task.
-  const std::vector<std::string> ActorCreationTaskFunctionDescriptor() const {
-    return ray::rpc::VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
-  };
+  const std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
 
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
-  const ObjectID ActorCursor() const {
-    return ObjectID::FromBinary(inner_.actor_cursor());
-  };
+  const ObjectID ActorCursor() const;
 
   /// The number of tasks that have been invoked on this actor.
-  const int64_t TaskCounter() const { return inner_.task_counter(); };
+  const int64_t TaskCounter() const;
 
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
-  const int64_t NumForks() const { return inner_.num_forks(); };
+  const int64_t NumForks() const;
 
-  ActorHandle Fork() {
-    ActorHandle new_handle;
-    std::unique_lock<std::mutex> guard(mutex_);
-    new_handle.inner_ = inner_;
-    inner_.set_num_forks(inner_.num_forks() + 1);
-    auto next_actor_handle_id = ComputeNextActorHandleId(
-        ActorHandleID::FromBinary(inner_.actor_handle_id()), inner_.num_forks());
-    new_handle.inner_.set_actor_handle_id(next_actor_handle_id.Data(),
-                                          next_actor_handle_id.Size());
-    new_actor_handles_.push_back(next_actor_handle_id);
-    guard.unlock();
+  ActorHandle Fork();
 
-    new_handle.inner_.set_task_counter(0);
-    new_handle.inner_.set_num_forks(0);
-    return new_handle;
-  }
+  void Serialize(std::string *output);
 
-  void Serialize(std::string *output) {
-    std::unique_lock<std::mutex> guard(mutex_);
-    inner_.SerializeToString(output);
-  }
-
-  static ActorHandle Deserialize(const std::string &data) {
-    ActorHandle ret;
-    ret.inner_.ParseFromString(data);
-    return ret;
-  }
+  static ActorHandle Deserialize(const std::string &data);
 
  private:
-  ActorHandle() {}
+  ActorHandle();
 
   /// Set actor cursor.
-  void SetActorCursor(const ObjectID &actor_cursor) {
-    inner_.set_actor_cursor(actor_cursor.Binary());
-  };
+  void SetActorCursor(const ObjectID &actor_cursor);
 
   /// Increase task counter.
-  int64_t IncreaseTaskCounter() {
-    int64_t old = inner_.task_counter();
-    inner_.set_task_counter(old + 1);
-    return old;
-  }
+  int64_t IncreaseTaskCounter();
 
-  std::vector<ray::ActorHandleID> GetNewActorHandles() { return new_actor_handles_; }
+  std::vector<ray::ActorHandleID> GetNewActorHandles();
 
-  void ClearNewActorHandles() { new_actor_handles_.clear(); }
+  void ClearNewActorHandles();
 
  private:
   /// Protobuf defined ActorHandle.
