@@ -159,12 +159,6 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
                             int parent_task_counter);
 
-/// A helper function to compute a driver id from the given job id.
-const WorkerID ComputeDriverId(const JobID &job_id);
-
-/// A helper function to compute a job id from the given driver id.
-const JobID ComputeJobId(const WorkerID &driver_id);
-
 template <typename T>
 BaseID<T>::BaseID() {
   // Using const_cast to directly change data is dangerous. The cached
