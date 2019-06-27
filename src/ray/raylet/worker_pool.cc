@@ -48,8 +48,8 @@ WorkerPool::WorkerPool(
     : num_workers_per_process_(num_workers_per_process),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)),
-      last_warning_multiple_(0) {
+      last_warning_multiple_(0),
+      gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will

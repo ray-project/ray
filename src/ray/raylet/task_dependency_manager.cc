@@ -261,10 +261,10 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                      << (it->second.expires_at - now_ms) << "ms";
   }
 
-  auto task_lease_data = std::make_shared<TaskLeaseDataT>();
-  task_lease_data->node_manager_id = client_id_.Hex();
-  task_lease_data->acquired_at = current_sys_time_ms();
-  task_lease_data->timeout = it->second.lease_period;
+  auto task_lease_data = std::make_shared<TaskLeaseData>();
+  task_lease_data->set_node_manager_id(client_id_.Hex());
+  task_lease_data->set_acquired_at(current_sys_time_ms());
+  task_lease_data->set_timeout(it->second.lease_period);
   RAY_CHECK_OK(task_lease_table_.Add(DriverID::Nil(), task_id, task_lease_data, nullptr));
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);

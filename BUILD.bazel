@@ -1,22 +1,55 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@com_github_grpc_grpc//bazel:grpc_build_system.bzl", "grpc_proto_library")
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
-# Node manager gRPC lib.
-grpc_proto_library(
-    name = "node_manager_grpc_lib",
+# === Begin of protobuf definitions ===
+
+proto_library(
+    name = "gcs_proto",
+    srcs = ["src/ray/protobuf/gcs.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "gcs_cc_proto",
+    deps = [":gcs_proto"],
+)
+
+python_proto_compile(
+    name = "gcs_py_proto",
+    deps = [":gcs_proto"],
+)
+
+proto_library(
+    name = "node_manager_proto",
     srcs = ["src/ray/protobuf/node_manager.proto"],
+)
+
+cc_proto_library(
+    name = "node_manager_cc_proto",
+    deps = ["node_manager_proto"],
+)
+
+# === End of protobuf definitions ===
+
+# Node manager gRPC lib.
+cc_grpc_library(
+    name = "node_manager_cc_grpc",
+    srcs = [":node_manager_proto"],
+    grpc_only = True,
+    deps = [":node_manager_cc_proto"],
 )
 
 # Node manager server and client.
 cc_library(
-    name = "node_manager_rpc_lib",
+    name = "node_manager_rpc",
     srcs = glob([
         "src/ray/rpc/*.cc",
     ]),
@@ -25,7 +58,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":node_manager_grpc_lib",
+        ":node_manager_cc_grpc",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -114,7 +147,7 @@ cc_library(
         ":gcs",
         ":gcs_fbs",
         ":node_manager_fbs",
-        ":node_manager_rpc_lib",
+        ":node_manager_rpc",
         ":object_manager",
         ":ray_common",
         ":ray_util",
@@ -422,9 +455,11 @@ cc_library(
         "src/ray/gcs/format",
     ],
     deps = [
+        ":gcs_cc_proto",
         ":gcs_fbs",
         ":hiredis",
         ":node_manager_fbs",
+        ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
@@ -556,46 +591,6 @@ filegroup(
 )
 
 flatbuffer_py_library(
-    name = "python_gcs_fbs",
-    srcs = [
-        ":gcs_fbs_file",
-    ],
-    outs = [
-        "ActorCheckpointIdData.py",
-        "ActorState.py",
-        "ActorTableData.py",
-        "Arg.py",
-        "ClassTableData.py",
-        "ClientTableData.py",
-        "ConfigTableData.py",
-        "CustomSerializerData.py",
-        "DriverTableData.py",
-        "EntryType.py",
-        "ErrorTableData.py",
-        "ErrorType.py",
-        "FunctionTableData.py",
-        "GcsEntry.py",
-        "HeartbeatBatchTableData.py",
-        "HeartbeatTableData.py",
-        "Language.py",
-        "ObjectTableData.py",
-        "ProfileEvent.py",
-        "ProfileTableData.py",
-        "RayResource.py",
-        "ResourcePair.py",
-        "SchedulingState.py",
-        "TablePrefix.py",
-        "TablePubsub.py",
-        "TaskInfo.py",
-        "TaskLeaseData.py",
-        "TaskReconstructionData.py",
-        "TaskTableData.py",
-        "TaskTableTestAndUpdate.py",
-    ],
-    out_prefix = "python/ray/core/generated/",
-)
-
-flatbuffer_py_library(
     name = "python_node_manager_fbs",
     srcs = [
         "src/ray/raylet/format/node_manager.fbs",
@@ -679,6 +674,7 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
+        ":gcs_cc_proto",
         ":ray_common",
     ],
 )
@@ -688,7 +684,7 @@ genrule(
     srcs = [
         "python/ray/_raylet.so",
         "//:python_sources",
-        "//:python_gcs_fbs",
+        "//:gcs_py_proto",
         "//:python_node_manager_fbs",
         "//:redis-server",
         "//:redis-cli",
@@ -710,10 +706,12 @@ genrule(
         cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        for f in $(locations //:python_gcs_fbs); do cp -f $$f $$WORK_DIR/python/ray/core/generated/; done &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
         for f in $(locations //:python_node_manager_fbs); do
             cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
+        done &&
+        for f in $(locations //:gcs_py_proto); do
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/;
         done &&
         echo $$WORK_DIR > $@
     """,

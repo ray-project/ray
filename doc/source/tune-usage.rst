@@ -355,6 +355,12 @@ Then, after you run a experiment, you can visualize your experiment with TensorB
 
     $ tensorboard --logdir=~/ray_results/my_experiment
 
+If you are running Ray on a remote multi-user cluster where you do not have sudo access, you can run the following commands to make sure tensorboard is able to write to the tmp directory:
+
+.. code-block:: bash
+
+    $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
+
 .. image:: ray-tune-tensorboard.png
 
 To use rllab's VisKit (you may have to install some dependencies), run:
