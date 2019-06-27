@@ -58,6 +58,8 @@ class ServerCall {
 
   /// Get the factory that created this `ServerCall`.
   virtual const ServerCallFactory &GetFactory() const = 0;
+
+  virtual ~ServerCall() = default;
 };
 
 /// The factory that creates a particular kind of `ServerCall` objects.
