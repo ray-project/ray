@@ -87,7 +87,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/mnist_pytorch.py --smoke-test --no-cuda
+    python /ray/python/ray/tune/examples/mnist_pytorch.py --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/mnist_pytorch_trainable.py \

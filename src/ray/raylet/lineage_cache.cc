@@ -245,8 +245,8 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   }
 }
 
-Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
-                                                 const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
+                                            const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
@@ -256,8 +256,9 @@ Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
   // already explicitly forwarded to this node before.
   if (uncommitted_lineage.GetEntries().empty()) {
     auto entry = lineage_.GetEntry(task_id);
-    RAY_CHECK(entry);
-    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+    if (entry) {
+      RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+    }
   }
   return uncommitted_lineage;
 }
