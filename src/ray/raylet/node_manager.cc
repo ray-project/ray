@@ -383,7 +383,8 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
         RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
             DriverID::Nil(), client_id,
             [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
-                   const std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> &pairs) {
+                   const std::unordered_map<std::string,
+                                            std::shared_ptr<gcs::RayResource>> &pairs) {
               ResourceSet resource_set;
               for (auto &resource_entry : pairs) {
                 resource_set.AddOrUpdateResource(
@@ -1276,14 +1277,15 @@ void NodeManager::ProcessSetResourceRequest(
   // callback, which updates cluster_resource_map_.
   if (is_deletion) {
     RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(DriverID::Nil(), client_id,
-                                                {resource_name}, nullptr));
+                                                             {resource_name}, nullptr));
   } else {
     std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> data_map;
     auto ray_resource = std::make_shared<gcs::RayResource>();
     ray_resource->set_resource_name(resource_name);
     ray_resource->set_resource_capacity(capacity);
     data_map.emplace(resource_name, ray_resource);
-    RAY_CHECK_OK(gcs_client_->resource_table().Update(DriverID::Nil(), client_id, data_map, nullptr));
+    RAY_CHECK_OK(gcs_client_->resource_table().Update(DriverID::Nil(), client_id,
+                                                      data_map, nullptr));
   }
 }
 

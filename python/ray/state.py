@@ -107,8 +107,8 @@ def _parse_resource_table(redis_client, client_id):
     gcs_entry = gcs_utils.GcsEntry.FromString(message)
     entries_len = len(gcs_entry.entries)
     if entries_len % 2 != 0:
-        raise Exception(
-            "Invalid entry size for resource lookup: " + str(entries_len))
+        raise Exception("Invalid entry size for resource lookup: " +
+                        str(entries_len))
 
     for i in range(0, entries_len, 2):
         ray_resource = gcs_utils.RayResource.FromString(
