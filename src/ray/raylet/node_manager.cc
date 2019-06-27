@@ -375,7 +375,9 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
 
-    // Delay execution to ensure client cache is up to date.
+    // Delay execution to make sure,
+    // 1) Client cache is up to date.
+    // 2) Lookup resource table after subscribe.
     io_service_.post([this]() {
       // Fetch resource info for all clients and update cluster resource map.
       for (auto &client_entry : gcs_client_->client_table().GetAllClients()) {
