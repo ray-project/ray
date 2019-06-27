@@ -290,7 +290,7 @@ class Monitor(object):
 
         self.gcs_flush_policy.record_flush()
 
-    def run(self):
+    def _run(self):
         """Run the monitor.
 
         This function loops forever, checking for messages about dead database
@@ -322,9 +322,13 @@ class Monitor(object):
             # messages.
             time.sleep(ray._config.heartbeat_timeout_milliseconds() * 1e-3)
 
-        # TODO(rkn): This infinite loop should be inside of a try/except block,
-        # and if an exception is thrown we should push an error message to all
-        # drivers.
+    def run(self):
+        try:
+            self._run()
+        except Exception:
+            if self.autoscaler:
+                self.autoscaler.kill_workers()
+            raise
 
 
 if __name__ == "__main__":

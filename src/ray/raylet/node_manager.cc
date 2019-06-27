@@ -2217,22 +2217,17 @@ void NodeManager::ForwardTask(
     return;
   }
 
-  // Get and serialize the task's unforwarded, uncommitted lineage.
-  Lineage uncommitted_lineage;
-  if (lineage_cache_.ContainsTask(task_id)) {
-    uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(task_id, node_id);
-  } else {
-    // TODO: We expected the lineage to be in cache, but it was evicted (#3813).
-    // This is a bug but is not fatal to the application.
-    RAY_DCHECK(false) << "No lineage cache entry found for task " << task_id;
+  // Get the task's unforwarded, uncommitted lineage.
+  Lineage uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
+  if (uncommitted_lineage.GetEntries().empty()) {
+    // There is no uncommitted lineage. This can happen if the lineage was
+    // already evicted before we forwarded the task.
     uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
   }
   auto entry = uncommitted_lineage.GetEntryMutable(task_id);
   Task &lineage_cache_entry_task = entry->TaskDataMutable();
-
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.IncrementNumForwards();
-
   RAY_LOG(DEBUG) << "Forwarding task " << task_id << " from "
                  << gcs_client_->client_table().GetLocalClientId() << " to " << node_id
                  << " spillback="
