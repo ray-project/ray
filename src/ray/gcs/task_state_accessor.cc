@@ -75,25 +75,25 @@ Status TaskStateAccessor::AsyncSubscribe(
   return task_table.Subscribe(driver_id, client_id, on_subscribe, nullptr, nullptr);
 }
 
-Status TaskStateAccessor::AsyncRequestNotifications(const DriverID &driver_id,
-                                                     const TaskID &task_id,
-                                                     const ClientID &client_id) {
+Status TaskStateAccessor::RequestNotifications(const DriverID &driver_id,
+                                               const TaskID &task_id,
+                                               const ClientID &client_id) {
   raylet::TaskTable &task_table = client_impl_.AsyncClient().raylet_task_table();
   task_table.RequestNotifications(driver_id, task_id, client_id);
   return Status::OK();
 }
 
-Status TaskStateAccessor::AsyncCancelNotifications(const DriverID &driver_id,
-                                                    const TaskID &task_id,
-                                                    const ClientID &client_id) {
+Status TaskStateAccessor::CancelNotifications(const DriverID &driver_id,
+                                              const TaskID &task_id,
+                                              const ClientID &client_id) {
   raylet::TaskTable &task_table = client_impl_.AsyncClient().raylet_task_table();
   task_table.CancelNotifications(driver_id, task_id, client_id);
   return Status::OK();
 }
 
 
-Status TaskStateAccessor::AsyncDelete(const DriverID &driver_id,
-                                      const std::vector<TaskID> &task_ids) {
+Status TaskStateAccessor::Delete(const DriverID &driver_id,
+                                 const std::vector<TaskID> &task_ids) {
   raylet::TaskTable &task_table = client_impl_.AsyncClient().raylet_task_table();
   task_table.Delete(driver_id, task_ids);
   return Status::OK();

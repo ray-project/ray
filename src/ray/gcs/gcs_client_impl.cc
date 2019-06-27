@@ -58,8 +58,6 @@ void GcsClientImpl::Disconnect() {
       thread.join();
     }
   }
-
-  // TODO(micafan) AsyncGcsClient disconnect
 }
 
 }  // namespace gcs

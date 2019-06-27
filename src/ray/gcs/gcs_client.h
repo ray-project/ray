@@ -26,7 +26,7 @@ class ClientOption {
 
   // Password of GCS server.
   std::string password_;
-  // GCS command type.  If CommandType::kChain, chain-replicated versions of the tables
+  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
   CommandType command_type_ = CommandType::kChain;
 

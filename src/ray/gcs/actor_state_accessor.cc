@@ -41,7 +41,7 @@ Status ActorStateAccessor::AsyncAdd(const DriverID &driver_id, const ActorID &ac
 
     auto on_failure = [callback, data_ptr](AsyncGcsClient *client, const ActorID &actor_id,
                                            const ActorTableData &data) {
-      callback(Status::Invalid("GCS return error, maybe exceed max reconstruction"));
+      callback(Status::Invalid("Add failed, maybe exceeds max reconstruct number."));
     };
 
     return actor_table.AppendAt(driver_id, actor_id, data_ptr, on_success, on_failure,
@@ -72,17 +72,17 @@ Status ActorStateAccessor::AsyncSubscribe(
   return actor_table.Subscribe(driver_id, client_id, on_subscribe, on_done);
 }
 
-Status ActorStateAccessor::AsyncRequestNotifications(const DriverID &driver_id,
-                                                     const ActorID &actor_id,
-                                                     const ClientID &client_id) {
+Status ActorStateAccessor::RequestNotifications(const DriverID &driver_id,
+                                                const ActorID &actor_id,
+                                                const ClientID &client_id) {
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
   actor_table.RequestNotifications(driver_id, actor_id, client_id);
   return Status::OK();
 }
 
-Status ActorStateAccessor::AsyncCancelNotifications(const DriverID &driver_id,
-                                                    const ActorID &actor_id,
-                                                    const ClientID &client_id) {
+Status ActorStateAccessor::CancelNotifications(const DriverID &driver_id,
+                                               const ActorID &actor_id,
+                                               const ClientID &client_id) {
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
   actor_table.CancelNotifications(driver_id, actor_id, client_id);
   return Status::OK();

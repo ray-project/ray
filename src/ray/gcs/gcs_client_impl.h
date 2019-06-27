@@ -36,8 +36,6 @@ class GcsClientImpl {
     return *async_gcs_client_;
   }
 
-  const ClientInfo &GetClientInfo() { return info_; }
-
  private:
   ClientOption option_;
   ClientInfo info_;
