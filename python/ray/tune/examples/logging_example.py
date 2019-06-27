@@ -60,12 +60,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(redis_address="localhost:6379")
 
     trials = run(
         MyTrainableClass,
         name="hyperband_test",
-        num_samples=10,
+        num_samples=5,
         trial_name_creator=tune.function(trial_str_creator),
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
@@ -73,5 +72,4 @@ if __name__ == "__main__":
             "width": tune.sample_from(
                 lambda spec: 10 + int(90 * random.random())),
             "height": tune.sample_from(lambda spec: int(100 * random.random()))
-        },
-        upload_dir="s3://sac-real-nvp/ray-testing/")
+        })
