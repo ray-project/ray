@@ -24,14 +24,14 @@ Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_a
 }
 
 void Monitor::HandleHeartbeat(const ClientID &client_id,
-                              const HeartbeatTableDataT &heartbeat_data) {
+                              const HeartbeatTableData &heartbeat_data) {
   heartbeats_[client_id] = num_heartbeats_timeout_;
   heartbeat_buffer_[client_id] = heartbeat_data;
 }
 
 void Monitor::Start() {
   const auto heartbeat_callback = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                         const HeartbeatTableDataT &heartbeat_data) {
+                                         const HeartbeatTableData &heartbeat_data) {
     HandleHeartbeat(id, heartbeat_data);
   };
   RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
@@ -49,11 +49,11 @@ void Monitor::Tick() {
         RAY_LOG(WARNING) << "Client timed out: " << client_id;
         auto lookup_callback = [this, client_id](
                                    gcs::AsyncGcsClient *client, const ClientID &id,
-                                   const std::vector<ClientTableDataT> &all_data) {
+                                   const std::vector<ClientTableData> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
-            if (client_id.Binary() == data.client_id &&
-                data.entry_type == EntryType::DELETION) {
+            if (client_id.Binary() == data.client_id() &&
+                data.entry_type() == ClientTableData::DELETION) {
               // The node has been marked dead by itself.
               marked = true;
             }
@@ -84,10 +84,9 @@ void Monitor::Tick() {
 
   // Send any buffered heartbeats as a single publish.
   if (!heartbeat_buffer_.empty()) {
-    auto batch = std::make_shared<HeartbeatBatchTableDataT>();
+    auto batch = std::make_shared<HeartbeatBatchTableData>();
     for (const auto &heartbeat : heartbeat_buffer_) {
-      batch->batch.push_back(std::unique_ptr<HeartbeatTableDataT>(
-          new HeartbeatTableDataT(heartbeat.second)));
+      batch->add_batch()->CopyFrom(heartbeat.second);
     }
     RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(DriverID::Nil(), ClientID::Nil(),
                                                          batch, nullptr));
