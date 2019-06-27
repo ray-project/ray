@@ -96,12 +96,6 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   client_info.set_object_store_socket_name(object_store_socket_name);
   client_info.set_object_manager_port(object_manager_acceptor_.local_endpoint().port());
   client_info.set_node_manager_port(node_manager_.GetServerPort());
-  // TODO (kfstorm): init dynamic resource
-  // // Add resource information.
-  // for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-  //   client_info.add_resources_total_label(resource_pair.first);
-  //   client_info.add_resources_total_capacity(resource_pair.second);
-  // }
 
   RAY_LOG(DEBUG) << "Node manager " << gcs_client_->client_table().GetLocalClientId()
                  << " started on " << client_info.node_manager_address() << ":"
@@ -110,6 +104,18 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                  << client_info.object_manager_port();
   ;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
+
+  // Add resource information.
+  DynamicResourceTable::DataMap resources;
+  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
+    RayResource resource;
+    resource.set_resource_name(resource_pair.first());
+    resource.set_resource_capacity(resource_pair.second);
+    resources.empalce_back(resource_pair.first, resource);
+  }
+  RAY_RETURN_NOT_OK(gcs_client_->resource_table().Update(
+      DriverID::Nil(), gcs_client_->client_table().GetLocalClientId(), resources,
+      nullptr));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 

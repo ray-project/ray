@@ -373,8 +373,25 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
   RAY_LOG(DEBUG) << "[ClientAdded] Received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
-    // Save this NodeManager's resource information in the cluster resource map.
-    cluster_resource_map_[client_id] = initial_config_.resource_config;
+
+    // Delay execution to ensure client cache is up to date.
+    io_service_.post([this]() {
+      // Fetch resource info for all clients and update cluster resource map.
+      for (auto &client_entry : gcs_client_->client_table().GetAllClients()) {
+        auto &client_id = client_entry.first();
+        RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
+            DriverID::Nil(), client_id,
+            [this](AsyncGcsClient *client, const ClientId &client_id,
+                   const std::unordered_map<std::string, RayResource> &pairs) {
+              ResourceSet resource_set;
+              for (auto &resource_entry : pairs) {
+                resource_set.AddOrUpdateResource(resource_entry.first,
+                                                 resource_entry.second.capacity);
+              }
+              ResourceCreateUpdated(client_id, resource_set);
+            }));
+      }
+    }
     return;
   }
 
@@ -390,12 +407,6 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
       new rpc::NodeManagerClient(client_data.node_manager_address(),
                                  client_data.node_manager_port(), client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
-
-  // TODO (kfstorm): Fetch resource table
-  // ResourceSet resources_total(
-  //     rpc::VectorFromProtobuf(client_data.resources_total_label()),
-  //     rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
-  // cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 }
 
 void NodeManager::ClientRemoved(const ClientTableData &client_data) {
@@ -482,7 +493,7 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
   std::ostringstream oss;
-  for (auto &resource_name: resource_names) {
+  for (auto &resource_name : resource_names) {
     oss << resource_name << ", ";
   }
   RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
