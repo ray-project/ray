@@ -49,6 +49,10 @@ define_java_module(
 
 define_java_module(
     name = "runtime",
+    additional_srcs = [
+        ":generate_java_gcs_fbs",
+        ":gcs_java_proto",
+    ],
     additional_resources = [
         ":java_native_deps",
     ],
@@ -63,7 +67,6 @@ define_java_module(
     ],
     deps = [
         ":org_ray_ray_api",
-        ":copy_auto_generated_files",
         "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:com_github_davidmoten_flatbuffers_java",
         "@maven//:com_google_guava_guava",
@@ -167,6 +170,22 @@ flatbuffer_java_library(
     out_prefix = "",
 )
 
+genrule(
+    name = "generate_java_gcs_fbs",
+    srcs = [":java_gcs_fbs"],
+    outs = [
+        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generated_files
+    ],
+    cmd = """
+        for f in $(locations //java:java_gcs_fbs); do
+            chmod +w $$f
+            mv -f $$f $(@D)/runtime/src/main/java/org/ray/runtime/generated
+        done
+        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $(@D)/..
+    """,
+    local = 1,
+)
+
 filegroup(
     name = "java_native_deps",
     srcs = [
@@ -179,43 +198,14 @@ filegroup(
     ],
 )
 
-genrule(
-    name = "copy_auto_generated_files",
-    srcs = [
-        ":gcs_java_proto",
-        ":java_gcs_fbs",
-    ],
-    outs = ["copy_auto_generated_files.out"],
-    cmd = """
-        set -x
-        WORK_DIR=$$(pwd)
-        # Copy protobuf-generated files.
-        GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        # TODO(hchen): Only copy files needed by Java.
-        for f in $(locations //java:gcs_java_proto); do
-            unzip $$f
-            mv org/ray/runtime/generated/* $$GENERATED_DIR
-        done
-        # Copy flatbuffers-generated files
-        for f in $(locations //java:java_gcs_fbs); do
-            chmod +w $$f
-            cp $$f $$GENERATED_DIR
-        done
-        python $$WORK_DIR/java/modify_generated_java_flatbuffers_files.py $$WORK_DIR
-        echo $$(date) > $@
-    """,
-    local = 1,
-    tags = ["no-cache"],
-)
-
 # Generates the depedencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":copy_auto_generated_files",
+        ":gcs_java_proto",
+        ":generate_java_gcs_fbs",
         ":java_native_deps",
+        ":copy_pom_file",
         "@plasma//:org_apache_arrow_arrow_plasma",
     ],
     outs = ["gen_maven_deps.out"],
@@ -229,6 +219,18 @@ genrule(
         for f in $(locations //java:java_native_deps); do
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
+        done
+        # Copy protobuf-generated files.
+        GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        rm -rf $$GENERATED_DIR
+        mkdir -p $$GENERATED_DIR
+        for f in $(locations //java:gcs_java_proto); do
+            unzip $$f
+            mv org/ray/runtime/generated/* $$GENERATED_DIR
+        done
+        # Copy flatbuffers-generated files
+        for f in $(locations //java:generate_java_gcs_fbs); do
+            cp $$f $$GENERATED_DIR
         done
         # Install plasma jar to local maven repo.
         mvn install:install-file -Dfile=$(locations @plasma//:org_apache_arrow_arrow_plasma) -Dpackaging=jar \
