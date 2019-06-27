@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
-
+#Classic PPO Loss, no changes made to loss function
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
 
@@ -53,7 +53,9 @@ class PPOSurrogateLoss(object):
                  value_targets,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
-                 clip_param=0.3):
+                 clip_param=0.3,
+                 cur_kl_coeff=None,
+                 use_kl_loss=False):
 
         logp_ratio = tf.exp(actions_logp - prev_actions_logp)
 
@@ -78,7 +80,11 @@ class PPOSurrogateLoss(object):
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
+        # Optional additional KL Loss (helps with stability in continuous control environments)
+        if use_kl_loss:
+            self.total_loss+=cur_kl_coeff*self.mean_kl
 
+#APPO Loss, with IS modifications and V-trace for Advantage Estimation
 class VTraceSurrogateLoss(object):
     def __init__(self,
                  actions,
@@ -102,6 +108,7 @@ class VTraceSurrogateLoss(object):
                  clip_rho_threshold=1.0,
                  clip_pg_rho_threshold=1.0,
                  clip_param=0.3,
+                 cur_kl_coeff=None,
                  use_kl_loss=False):
         """PPO surrogate loss with vtrace importance weighting.
 
@@ -165,6 +172,10 @@ class VTraceSurrogateLoss(object):
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
+
+        # Optional additional KL Loss (helps with stability in continuous control environments)
+        if use_kl_loss:
+            self.total_loss+=cur_kl_coeff*self.mean_kl
 
 
 def _make_time_major(policy, tensor, drop_last=False):
@@ -278,7 +289,9 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=policy.config[
                 "vtrace_clip_pg_rho_threshold"],
-            clip_param=policy.config["clip_param"])
+            clip_param=policy.config["clip_param"],
+            cur_kl_coeff=policy.kl_coeff,
+            use_kl_loss=policy.config["use_kl_loss"])
     else:
         logger.info("Using PPO surrogate loss (vtrace=False)")
         policy.loss = PPOSurrogateLoss(
@@ -294,7 +307,9 @@ def build_appo_surrogate_loss(policy, batch_tensors):
                 batch_tensors[Postprocessing.VALUE_TARGETS]),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"])
+            clip_param=policy.config["clip_param"],
+            cur_kl_coeff=policy.kl_coeff,
+            use_kl_loss=policy.config["use_kl_loss"])
 
     return policy.loss.total_loss
 
@@ -314,10 +329,14 @@ def stats(policy, batch_tensors):
             tf.reshape(values_batched, [-1])),
     }
 
-    if(policy.config["vtrace"]):
+    if policy.config["vtrace"]:
         is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0,1])
         stats_dict.update({"mean_IS": is_stat_mean})
         stats_dict.update({"var_IS": is_stat_var})
+
+    if policy.config["use_kl_loss"]:
+        stats_dict.update({"KL": policy.loss.mean_kl})
+        stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict
 
@@ -379,6 +398,25 @@ def clip_gradients(policy, optimizer, loss):
     clipped_grads = list(zip(policy.grads, policy.var_list))
     return clipped_grads
 
+class KLCoeffMixin(object):
+    def __init__(self, config):
+        # KL Coefficient
+        self.kl_coeff_val = config["kl_coeff"]
+        self.kl_target = config["kl_target"]
+        self.kl_coeff = tf.get_variable(
+            initializer=tf.constant_initializer(self.kl_coeff_val),
+            name="kl_coeff",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+
+    def update_kl(self, sampled_kl):
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff_val *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff_val *= 0.5
+        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
+        return self.kl_coeff_val
 
 class ValueNetworkMixin(object):
     def __init__(self):
@@ -401,6 +439,8 @@ class ValueNetworkMixin(object):
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    if config["use_kl_loss"]:
+        KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy)
 
 
@@ -416,5 +456,5 @@ AsyncPPOTFPolicy = build_tf_policy(
     extra_action_fetches_fn=add_values_and_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, ValueNetworkMixin],
+    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin],
     get_batch_divisibility_req=lambda p: p.config["sample_batch_size"])

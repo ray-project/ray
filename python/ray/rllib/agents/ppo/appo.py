@@ -26,7 +26,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "clip_param": 0.4,
 
     # == PPO KL Loss options ==
-    "use_kl_loss": False,
+    "use_kl_loss": True,
     "kl_coeff": 1.0,
     "kl_target": 0.01,
 
