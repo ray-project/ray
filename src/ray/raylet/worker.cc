@@ -50,11 +50,9 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignDriverId(const DriverID &driver_id) {
-  assigned_driver_id_ = driver_id;
-}
+void Worker::AssignJobId(const JobID &job_id) { assigned_job_id_ = job_id; }
 
-const DriverID &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
+const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
   RAY_CHECK(actor_id_.IsNil())
