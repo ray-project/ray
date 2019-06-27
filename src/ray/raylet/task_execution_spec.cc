@@ -30,20 +30,20 @@ std::vector<ObjectID> TaskExecutionSpecification::ExecutionDependencies() const 
   return dependencies;
 }
 
-void TaskExecutionSpecification::SetTaskVersion(int64_t version) {
-  execution_spec_.task_version = version;
-}
-
-int64_t TaskExecutionSpecification::TaskVersion() const {
-  return execution_spec_.task_version;
-}
-
 void TaskExecutionSpecification::SetExecutionDependencies(
     const std::vector<ObjectID> &dependencies) {
   execution_spec_.dependencies.clear();
   for (const auto &dependency : dependencies) {
     execution_spec_.dependencies.push_back(dependency.Binary());
   }
+}
+
+void TaskExecutionSpecification::SetActorVersion(int64_t version) {
+  execution_spec_.actor_version = version;
+}
+
+int64_t TaskExecutionSpecification::ActorVersion() const {
+  return execution_spec_.actor_version;
 }
 
 int TaskExecutionSpecification::NumForwards() const {
