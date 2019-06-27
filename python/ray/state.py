@@ -75,8 +75,12 @@ def _parse_client_table(redis_client):
             node_info[client_id]["EntryType"] = client.entry_type
     # Fill resource info.
     for client_id in ordered_client_ids:
-        node_info[client_id]["Resources"] = _parse_resource_table(
-            redis_client, ray.utils.hex_to_binary(client_id))
+        if node_info[client_id]["EntryType"] == gcs_utils.ClientTableData.INSERTION:
+            resources = _parse_resource_table(
+                redis_client, ray.utils.hex_to_binary(client_id))
+        else:
+            resoruces = {}
+        node_info[client_id]["Resources"] = resources
     # NOTE: We return the list comprehension below instead of simply doing
     # 'list(node_info.values())' in order to have the nodes appear in the order
     # that they joined the cluster. Python dictionaries do not preserve
