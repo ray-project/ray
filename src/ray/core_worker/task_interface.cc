@@ -118,7 +118,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   }
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = ToTaskLanguage(function.language);
+  auto language = ToRayletTaskLanguage(function.language);
 
   ray::raylet::TaskSpecification spec(context.GetCurrentDriverID(),
                                       context.GetCurrentTaskID(), next_task_index,
@@ -149,7 +149,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = ToTaskLanguage(function.language);
+  auto language = ToRayletTaskLanguage(function.language);
 
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
@@ -186,7 +186,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = ToTaskLanguage(function.language);
+  auto language = ToRayletTaskLanguage(function.language);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
 

@@ -99,7 +99,7 @@ enum class TaskTransportType { RAYLET };
 ///
 /// \param[in] language Language for a task.
 /// \return Translated task language.
-inline ::Language ToTaskLanguage(ray::rpc::Language language) {
+inline ::Language ToRayletTaskLanguage(ray::rpc::Language language) {
   switch (language) {
   case ray::rpc::Language::JAVA:
     return ::Language::JAVA;
@@ -120,7 +120,7 @@ inline ::Language ToTaskLanguage(ray::rpc::Language language) {
 ///
 /// \param[in] language Language for a task.
 /// \return Translated task language.
-inline ray::rpc::Language ToTaskLanguage(::Language language) {
+inline ray::rpc::Language ToRpcTaskLanguage(::Language language) {
   switch (language) {
   case Language::JAVA:
     return ray::rpc::Language::JAVA;

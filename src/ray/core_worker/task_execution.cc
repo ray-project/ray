@@ -29,7 +29,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       const auto &spec = task.GetTaskSpecification();
       core_worker_.worker_context_.SetCurrentTask(spec);
 
-      ray::rpc::Language language = ToTaskLanguage(spec.GetLanguage());
+      ray::rpc::Language language = ToRpcTaskLanguage(spec.GetLanguage());
       RayFunction func{language, spec.FunctionDescriptor()};
 
       std::vector<std::shared_ptr<Buffer>> args;
