@@ -75,7 +75,8 @@ def _parse_client_table(redis_client):
             node_info[client_id]["EntryType"] = client.entry_type
     # Fill resource info.
     for client_id in ordered_client_ids:
-        if node_info[client_id]["EntryType"] == gcs_utils.ClientTableData.INSERTION:
+        if node_info[client_id][
+                "EntryType"] == gcs_utils.ClientTableData.INSERTION:
             resources = _parse_resource_table(
                 redis_client, ray.utils.hex_to_binary(client_id))
         else:
