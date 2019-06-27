@@ -18,8 +18,8 @@ import org.ray.runtime.util.IdUtil;
  */
 public class TaskSpec {
 
-  // ID of the driver that created this task.
-  public final UniqueId driverId;
+  // ID of the job that created this task.
+  public final UniqueId jobId;
 
   // Task ID of the task.
   public final TaskId taskId;
@@ -81,7 +81,7 @@ public class TaskSpec {
   }
 
   public TaskSpec(
-      UniqueId driverId,
+      UniqueId jobId,
       TaskId taskId,
       TaskId parentTaskId,
       int parentCounter,
@@ -97,7 +97,7 @@ public class TaskSpec {
       TaskLanguage language,
       FunctionDescriptor functionDescriptor,
       List<String> dynamicWorkerOptions) {
-    this.driverId = driverId;
+    this.jobId = jobId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
     this.parentCounter = parentCounter;
@@ -147,7 +147,7 @@ public class TaskSpec {
   @Override
   public String toString() {
     return "TaskSpec{" +
-        "driverId=" + driverId +
+        "jobId=" + jobId +
         ", taskId=" + taskId +
         ", parentTaskId=" + parentTaskId +
         ", parentCounter=" + parentCounter +

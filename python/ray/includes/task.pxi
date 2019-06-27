@@ -18,7 +18,7 @@ cdef class Task:
         unique_ptr[CTaskSpecification] task_spec
         unique_ptr[c_vector[CObjectID]] execution_dependencies
 
-    def __init__(self, DriverID driver_id, function_descriptor, arguments,
+    def __init__(self, JobID job_id, function_descriptor, arguments,
                  int num_returns, TaskID parent_task_id, int parent_counter,
                  ActorID actor_creation_id,
                  ObjectID actor_creation_dummy_object_id,
@@ -72,7 +72,7 @@ cdef class Task:
                 (<ActorHandleID?>new_actor_handle).native())
 
         self.task_spec.reset(new CTaskSpecification(
-            driver_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
+            job_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
             actor_creation_dummy_object_id.native(), max_actor_reconstructions, actor_id.native(),
             actor_handle_id.native(), actor_counter, task_new_actor_handles, task_args, num_returns,
             required_resources, required_placement_resources, LANGUAGE_PYTHON,
@@ -122,9 +122,9 @@ cdef class Task:
         return SerializeTaskAsString(
             self.execution_dependencies.get(), self.task_spec.get())
 
-    def driver_id(self):
-        """Return the driver ID for this task."""
-        return DriverID(self.task_spec.get().DriverId().Binary())
+    def job_id(self):
+        """Return the job ID for this task."""
+        return JobID(self.task_spec.get().JobId().Binary())
 
     def task_id(self):
         """Return the task ID for this task."""

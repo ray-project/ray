@@ -14,7 +14,8 @@ from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorID,
     CClientID,
-    CDriverID,
+    CJobID,
+    CWorkerID,
     CObjectID,
     CTaskID,
 )
@@ -46,7 +47,7 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
     cdef cppclass CRayletClient "RayletClient":
         CRayletClient(const c_string &raylet_socket,
                       const CClientID &client_id,
-                      c_bool is_worker, const CDriverID &driver_id,
+                      c_bool is_worker, const CJobID &job_id,
                       const CLanguage &language)
         CRayStatus Disconnect()
         CRayStatus SubmitTask(
@@ -62,7 +63,7 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
                         int num_returns, int64_t timeout_milliseconds,
                         c_bool wait_local, const CTaskID &current_task_id,
                         WaitResultPair *result)
-        CRayStatus PushError(const CDriverID &driver_id, const c_string &type,
+        CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
         CRayStatus PushProfileEvents(
             const GCSProfileTableDataT &profile_events)
@@ -75,6 +76,6 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayStatus SetResource(const c_string &resource_name, const double capacity, const CClientID &client_Id)
         CLanguage GetLanguage() const
         CClientID GetClientID() const
-        CDriverID GetDriverID() const
+        CJobID GetJobID() const
         c_bool IsWorker() const
         const ResourceMappingType &GetResourceIDs() const

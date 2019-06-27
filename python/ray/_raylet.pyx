@@ -221,13 +221,13 @@ cdef class RayletClient:
     def __cinit__(self, raylet_socket,
                   ClientID client_id,
                   c_bool is_worker,
-                  DriverID driver_id):
+                  JobID job_id):
         # We know that we are using Python, so just skip the language
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(
             raylet_socket.encode("ascii"), client_id.native(), is_worker,
-            driver_id.native(), LANGUAGE_PYTHON))
+            job_id.native(), LANGUAGE_PYTHON))
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())
@@ -293,9 +293,9 @@ cdef class RayletClient:
             postincrement(iterator)
         return resources_dict
 
-    def push_error(self, DriverID driver_id, error_type, error_message,
+    def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
-        check_status(self.client.get().PushError(driver_id.native(),
+        check_status(self.client.get().PushError(job_id.native(),
                                                  error_type.encode("ascii"),
                                                  error_message.encode("ascii"),
                                                  timestamp))
@@ -381,8 +381,8 @@ cdef class RayletClient:
         return ClientID(self.client.get().GetClientID().Binary())
 
     @property
-    def driver_id(self):
-        return DriverID(self.client.get().GetDriverID().Binary())
+    def job_id(self):
+        return JobID(self.client.get().GetJobID().Binary())
 
     @property
     def is_worker(self):

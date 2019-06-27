@@ -27,10 +27,10 @@ namespace raylet {
 
 using rpc::ActorTableData;
 using rpc::ClientTableData;
-using rpc::DriverTableData;
 using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
+using rpc::JobTableData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -326,12 +326,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const ActorID &actor_id, const ActorTableData &data,
       const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
-  /// When a driver dies, loop over all of the queued tasks for that driver and
+  /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
   ///
-  /// \param driver_id The driver that died.
+  /// \param job_id The job that exited.
   /// \return Void.
-  void CleanUpTasksForDeadDriver(const DriverID &driver_id);
+  void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
@@ -346,13 +346,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
-  /// Handles updates to driver table.
+  /// Handles updates to job table.
   ///
   /// \param id An unused value. TODO(rkn): Should this be removed?
-  /// \param driver_data Data associated with a driver table event.
+  /// \param job_data Data associated with a job table event.
   /// \return Void.
-  void HandleDriverTableUpdate(const DriverID &id,
-                               const std::vector<DriverTableData> &driver_data);
+  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
