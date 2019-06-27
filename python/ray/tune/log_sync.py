@@ -18,7 +18,7 @@ _log_sync_warned = False
 
 
 def log_sync_template():
-    """Syncs the local_dir on driver to worker if possible.
+    """Syncs the local_dir between driver and worker if possible.
 
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.

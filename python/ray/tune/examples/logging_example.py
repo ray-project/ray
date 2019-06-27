@@ -11,7 +11,6 @@ import random
 
 import numpy as np
 
-import ray
 from ray import tune
 from ray.tune import Trainable, run
 

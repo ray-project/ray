@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
+SYNC_PERIOD = 300
 
 _syncers = {}
 
@@ -84,12 +85,11 @@ class BaseSyncer(object):
             logger.exception("Sync function failed.")
 
     def sync_up_if_needed(self):
-        if time.time() - self.last_sync_up_time > 300:
+        if time.time() - self.last_sync_up_time > SYNC_PERIOD:
             self.sync_up()
 
     def sync_down_if_needed(self):
-        if time.time(
-        ) - self.last_sync_down_time > 300:  # Maybe change in future
+        if time.time() - self.last_sync_down_time > SYNC_PERIOD:
             self.sync_down()
 
     def sync_down(self, *args, **kwargs):

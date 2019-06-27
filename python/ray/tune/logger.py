@@ -211,7 +211,7 @@ class UnifiedLogger(Logger):
         self._sync_function = sync_function
         self._log_syncer = None
 
-        Logger.__init__(self, config, logdir)
+        super(UnifiedLogger, self).__init__(config, logdir)
 
     def _init(self):
         self._loggers = []
