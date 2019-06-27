@@ -53,9 +53,7 @@ class ConstMessageWrapper {
   const Message &GetMessage() const { return *message_; }
 
   const std::string Serialize() const {
-    std::string ret;
-    message_->SerializeToString(&ret);
-    return ret;
+    return message_->SerializeAsString();
   }
 
  protected:

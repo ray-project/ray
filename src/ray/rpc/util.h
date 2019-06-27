@@ -45,7 +45,7 @@ template <class ID>
 inline std::vector<ID> IdVectorFromProtobuf(
     const ::google::protobuf::RepeatedPtrField<::std::string> &pb_repeated) {
   auto str_vec = VectorFromProtobuf(pb_repeated);
-  std::vector<ID> ret(str_vec.size());
+  std::vector<ID> ret;
   std::transform(str_vec.begin(), str_vec.end(), std::back_inserter(ret),
                  &ID::FromBinary);
   return ret;

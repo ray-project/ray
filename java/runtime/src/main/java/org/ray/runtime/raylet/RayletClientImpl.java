@@ -19,6 +19,7 @@ import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Common;
+import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
@@ -149,23 +150,25 @@ public class RayletClientImpl implements RayletClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Invalid protobuf data.");
     }
+
+    // Parse common fields.
     UniqueId jobId = UniqueId.fromByteBuffer(taskSpec.getJobId().asReadOnlyByteBuffer());
     TaskId taskId = TaskId.fromByteBuffer(taskSpec.getTaskId().asReadOnlyByteBuffer());
     TaskId parentTaskId = TaskId.fromByteBuffer(taskSpec.getParentTaskId().asReadOnlyByteBuffer());
     int parentCounter = (int) taskSpec.getParentCounter();
     int numReturns = (int) taskSpec.getNumReturns();
+    Map<String, Double> resources = taskSpec.getRequiredResourcesMap();
 
-    // Deserialize args
+    // Parse args.
     FunctionArg[] args = new FunctionArg[taskSpec.getArgsCount()];
     for (int i = 0; i < args.length; i++) {
       Common.TaskArg arg = taskSpec.getArgs(i);
-
       int objectIdsLength = arg.getObjectIdsCount();
       if (objectIdsLength > 0) {
         Preconditions.checkArgument(objectIdsLength == 1,
             "This arg has more than one id: {}", objectIdsLength);
         args[i] = FunctionArg
-            .passByReference(ObjectId.fromByteBuffer(arg.getObjectIds(i).asReadOnlyByteBuffer()));
+            .passByReference(ObjectId.fromByteBuffer(arg.getObjectIds(0).asReadOnlyByteBuffer()));
       } else {
         ByteBuffer lbb = arg.getData().asReadOnlyByteBuffer();
         Preconditions.checkState(lbb != null && lbb.remaining() > 0);
@@ -175,9 +178,7 @@ public class RayletClientImpl implements RayletClient {
       }
     }
 
-    // Deserialize required resources;
-    Map<String, Double> resources = taskSpec.getRequiredResourcesMap();
-    // Deserialize function descriptor
+    // Parse function descriptor
     Preconditions.checkArgument(taskSpec.getLanguage() == Common.Language.JAVA);
     Preconditions.checkArgument(taskSpec.getFunctionDescriptorCount() == 3);
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
@@ -185,7 +186,7 @@ public class RayletClientImpl implements RayletClient {
         taskSpec.getFunctionDescriptor(2)
     );
 
-    // Deserialize ActorCreationTaskSpec.
+    // Parse ActorCreationTaskSpec.
     UniqueId actorCreationId = UniqueId.NIL;
     int maxActorReconstructions = 0;
     UniqueId[] newActorHandles = new UniqueId[0];
@@ -199,7 +200,7 @@ public class RayletClientImpl implements RayletClient {
           .copyOf(actorCreationTaskSpec.getDynamicWorkerOptionsList());
     }
 
-    // Deserialize ActorTaskSpec.
+    // Parse ActorTaskSpec.
     UniqueId actorId = UniqueId.NIL;
     UniqueId actorHandleId = UniqueId.NIL;
     int actorCounter = 0;
@@ -209,8 +210,9 @@ public class RayletClientImpl implements RayletClient {
       actorHandleId = UniqueId
           .fromByteBuffer(actorTaskSpec.getActorHandleId().asReadOnlyByteBuffer());
       actorCounter = (int) actorTaskSpec.getActorCounter();
-      newActorHandles = (UniqueId[]) actorTaskSpec.getNewActorHandlesList().stream()
-          .map(bytes -> UniqueId.fromByteBuffer(bytes.asReadOnlyByteBuffer())).toArray();
+      newActorHandles = actorTaskSpec.getNewActorHandlesList().stream()
+          .map(bytes -> UniqueId.fromByteBuffer(bytes.asReadOnlyByteBuffer()))
+          .toArray(UniqueId[]::new);
     }
 
     return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
@@ -219,17 +221,16 @@ public class RayletClientImpl implements RayletClient {
   }
 
   private static ByteBuffer convertTaskSpecToProtobuf(TaskSpec task) {
-    ByteBuffer bb = taskSpecBuffer.get();
-    bb.clear();
-
+    // Set common fields.
     Common.TaskSpec.Builder builder = Common.TaskSpec.newBuilder()
         .setJobId(ByteString.copyFrom(task.jobId.getBytes()))
         .setTaskId(ByteString.copyFrom(task.taskId.getBytes()))
+        .setParentTaskId(ByteString.copyFrom(task.parentTaskId.getBytes()))
         .setParentCounter(task.parentCounter)
-        .setNumReturns(0)
+        .setNumReturns(task.numReturns)
         .putAllRequiredResources(task.resources);
 
-    // Serialize args
+    // Set args
     builder.addAllArgs(
         Arrays.stream(task.args).map(arg -> {
           Common.TaskArg.Builder argBuilder = Common.TaskArg.newBuilder();
@@ -242,9 +243,8 @@ public class RayletClientImpl implements RayletClient {
         }).collect(Collectors.toList())
     );
 
-    // Serialize function descriptor.
+    // Set function descriptor and language.
     if (task.language == TaskLanguage.JAVA) {
-      // This is a Java task.
       builder.setLanguage(Common.Language.JAVA);
       builder.addAllFunctionDescriptor(ImmutableList.of(
           task.getJavaFunctionDescriptor().className,
@@ -252,7 +252,6 @@ public class RayletClientImpl implements RayletClient {
           task.getJavaFunctionDescriptor().typeDescriptor
       ));
     } else {
-      // This is a Python task.
       builder.setLanguage(Common.Language.PYTHON);
       builder.addAllFunctionDescriptor(ImmutableList.of(
           task.getPyFunctionDescriptor().moduleName,
@@ -263,16 +262,17 @@ public class RayletClientImpl implements RayletClient {
     }
 
     if (!task.actorCreationId.isNil()) {
-      // Construct ActorCreationTaskSpec.
+      // Actor creation task.
+      builder.setType(TaskType.ACTOR_CREATION_TASK);
       builder.setActorCreationTaskSpec(
           Common.ActorCreationTaskSpec.newBuilder()
               .setActorId(ByteString.copyFrom(task.actorCreationId.getBytes()))
               .setMaxActorReconstructions(task.maxActorReconstructions)
               .addAllDynamicWorkerOptions(task.dynamicWorkerOptions)
       );
-    }
-    if (!task.actorId.isNil()) {
-      // Construct ActorTaskSpec.
+    } else if (!task.actorId.isNil()) {
+      // Actor task.
+      builder.setType(TaskType.ACTOR_TASK);
       List<ByteString> newHandles = Arrays.stream(task.newActorHandles)
           .map(id -> ByteString.copyFrom(id.getBytes())).collect(Collectors.toList());
       builder.setActorTaskSpec(
@@ -282,36 +282,15 @@ public class RayletClientImpl implements RayletClient {
               .setActorCounter(task.actorCounter)
               .addAllNewActorHandles(newHandles)
       );
+    } else {
+      // Normal task.
+      builder.setType(TaskType.NORMAL_TASK);
     }
-<<<<<<< HEAD
-    int dynamicWorkerOptionsOffset = fbb.createVectorOfTables(dynamicWorkerOptionsOffsets);
 
-    int root = TaskInfo.createTaskInfo(
-        fbb,
-        jobIdOffset,
-        taskIdOffset,
-        parentTaskIdOffset,
-        parentCounter,
-        actorCreateIdOffset,
-        actorCreateDummyIdOffset,
-        maxActorReconstructions,
-        actorIdOffset,
-        actorHandleIdOffset,
-        actorCounter,
-        newActorHandlesOffset,
-        argsOffset,
-        numReturnsOffset,
-        requiredResourcesOffset,
-        requiredPlacementResourcesOffset,
-        language,
-        functionDescriptorOffset,
-        dynamicWorkerOptionsOffset);
-    fbb.finish(root);
-    ByteBuffer buffer = fbb.dataBuffer();
-=======
-
-    ByteBuffer buffer = builder.build().toByteString().asReadOnlyByteBuffer();
->>>>>>> java compilable
+    ByteBuffer buffer = taskSpecBuffer.get();
+    buffer.clear();
+    Common.TaskSpec spec = builder.build();
+    spec.toByteString().copyTo(buffer);
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
       LOGGER.error(

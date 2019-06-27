@@ -66,10 +66,11 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
     UniqueIdFromJByteArray<ObjectID> cursor_id(env, cursorId);
+    std::cout << "jni " << cursor_id.GetId();
     execution_dependencies.push_back(cursor_id.GetId());
   }
 
-  auto data = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(taskBuff)) + pos;
+  auto data = static_cast<const char *>(env->GetDirectBufferAddress(taskBuff));
   std::unique_ptr<ray::rpc::TaskSpec> task_spec_message(new ray::rpc::TaskSpec);
   task_spec_message->ParseFromArray(data, taskSize);
   ray::raylet::TaskSpecification task_spec(std::move(task_spec_message));
@@ -106,7 +107,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
   // move from task spec structure to the java structure
   env->SetByteArrayRegion(
       result, 0, task_message.size(),
-      reinterpret_cast<jbyte *>(const_cast<char *>(task_message.data())));
+      reinterpret_cast<const jbyte *>(task_message.data()));
 
   return result;
 }

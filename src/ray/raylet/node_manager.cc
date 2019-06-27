@@ -836,8 +836,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
   Language language = static_cast<Language>(message->language());
-  auto worker =
-      std::make_shared<Worker>(message->worker_pid(), language, client);
+  auto worker = std::make_shared<Worker>(message->worker_pid(), language, client);
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
@@ -1035,10 +1034,10 @@ void NodeManager::ProcessDisconnectClientMessage(
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  std::unique_ptr<rpc::Task> task_message;
-  for (const auto &depdency :
+  std::unique_ptr<rpc::Task> task_message(new rpc::Task);
+  for (const auto &dependency :
        string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
-    task_message->mutable_task_execution_spec()->add_dependencies(depdency);
+    task_message->mutable_task_execution_spec()->add_dependencies(dependency);
   }
   task_message->mutable_task_spec()->ParseFromArray(fbs_message->task_spec()->data(),
                                                     fbs_message->task_spec()->size());
@@ -1756,7 +1755,6 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-
   auto message = protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
@@ -2014,8 +2012,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
         std::unique_ptr<rpc::Task> task_message(new rpc::Task);
-        task_message->ParseFromString(task_data.task().data());
-        const Task task(std::move(task_message));
+        task_message->ParseFromString(task_data.task());
+        Task task(std::move(task_message));
         ResubmitTask(task);
       },
       /*failure_callback=*/
