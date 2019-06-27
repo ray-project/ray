@@ -29,8 +29,7 @@ class TaskStateAccessor {
   /// \param callback Callback that is called once the data has been written to the GCS.
   /// \return Status
   Status AsyncAdd(const DriverID &driver_id, const TaskID &task_id,
-                  std::shared_ptr<TaskTableData> data,
-                  const StatusCallback &callback);
+                  std::shared_ptr<TaskTableData> data, const StatusCallback &callback);
 
   /// Read task from GCS asynchronously.
   ///

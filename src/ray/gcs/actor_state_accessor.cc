@@ -35,12 +35,12 @@ Status ActorStateAccessor::AsyncAdd(const DriverID &driver_id, const ActorID &ac
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
   if (callback != nullptr) {
     auto on_success = [callback, data_ptr](
-      AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
+        AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
       callback(Status::OK());
     };
 
-    auto on_failure = [callback, data_ptr](AsyncGcsClient *client, const ActorID &actor_id,
-                                           const ActorTableData &data) {
+    auto on_failure = [callback, data_ptr](
+        AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
       callback(Status::Invalid("Add failed, maybe exceeds max reconstruct number."));
     };
 

@@ -12,8 +12,8 @@ namespace gcs {
 using StatusCallback = std::function<void(Status status)>;
 
 template <typename Data>
-using OptionalItemCallback
-  = std::function<void(Status status, boost::optional<Data> datum)>;
+using OptionalItemCallback =
+    std::function<void(Status status, boost::optional<Data> datum)>;
 
 template <typename Data>
 using MultiItemCallback = std::function<void(Status status, std::vector<Data> datums)>;

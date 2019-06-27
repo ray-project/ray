@@ -17,9 +17,7 @@ Status TaskStateAccessor::AsyncAdd(const DriverID &driver_id, const TaskID &task
   raylet::TaskTable &task_table = client_impl_.AsyncClient().raylet_task_table();
   if (callback != nullptr) {
     auto on_done = [callback](AsyncGcsClient *client, const TaskID &task_id,
-                              const TaskTableData &data) {
-      callback(Status::OK());
-    };
+                              const TaskTableData &data) { callback(Status::OK()); };
 
     return task_table.Add(driver_id, task_id, data, on_done);
   }
@@ -27,9 +25,8 @@ Status TaskStateAccessor::AsyncAdd(const DriverID &driver_id, const TaskID &task
   return task_table.Add(driver_id, task_id, data, nullptr);
 }
 
-Status TaskStateAccessor::AsyncGet(
-    const DriverID &driver_id, const TaskID &task_id,
-    const OptionalItemCallback<TaskTableData> &callback) {
+Status TaskStateAccessor::AsyncGet(const DriverID &driver_id, const TaskID &task_id,
+                                   const OptionalItemCallback<TaskTableData> &callback) {
   RAY_DCHECK(callback != nullptr);
   auto on_success = [callback](AsyncGcsClient *client, const TaskID &task_id,
                                const TaskTableData &data) {
@@ -64,9 +61,7 @@ Status TaskStateAccessor::AsyncSubscribe(
       done(Status::RedisError("GCS error."));
     };
 
-    auto on_success = [done](AsyncGcsClient *client) {
-      done(Status::OK());
-    };
+    auto on_success = [done](AsyncGcsClient *client) { done(Status::OK()); };
 
     return task_table.Subscribe(driver_id, client_id, on_subscribe, on_failure,
                                 on_success);
@@ -90,7 +85,6 @@ Status TaskStateAccessor::CancelNotifications(const DriverID &driver_id,
   task_table.CancelNotifications(driver_id, task_id, client_id);
   return Status::OK();
 }
-
 
 Status TaskStateAccessor::Delete(const DriverID &driver_id,
                                  const std::vector<TaskID> &task_ids) {

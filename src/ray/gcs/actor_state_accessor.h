@@ -40,7 +40,6 @@ class ActorStateAccessor {
                   std::shared_ptr<ActorTableData> data_ptr, size_t log_length,
                   const StatusCallback &callback);
 
-
   /// Subscribe to any add operations of actor. The caller may choose
   /// to subscribe to all add, or to subscribe only to actors that it
   /// requests notifications for. This may only be called once per update.
