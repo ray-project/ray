@@ -117,6 +117,7 @@ class DynamicTFPolicy(TFPolicy):
         else:
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
+            self.logit_dim = logit_dim
             if existing_inputs:
                 existing_state_in = [
                     v for k, v in existing_inputs.items()
@@ -296,7 +297,12 @@ class DynamicTFPolicy(TFPolicy):
             loss_inputs = [
                 (SampleBatch.CUR_OBS, self._obs_input),
             ]
-
+        # Only APPO agent has use_kl_loss in config. A bit hacky
+        if "use_kl_loss" in self.config:
+            batch_tensors = UsageTrackingDict({
+                "old_policy_behaviour_logits":tf.placeholder(tf.float32, shape=[None] +  [self.logit_dim], name="old_policy_behaviour_logits")
+            })
+            
         for k, v in postprocessed_batch.items():
             if k in batch_tensors:
                 continue

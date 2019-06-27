@@ -63,15 +63,15 @@ class PPOSurrogateLoss(object):
                                           1 + clip_param))
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = -tf.reduce_sum(surrogate_loss)
+        self.pi_loss = -tf.reduce_mean(surrogate_loss)
 
         # The baseline loss
         delta = tf.boolean_mask(values - value_targets, valid_mask)
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(
+        self.entropy = tf.reduce_mean(
             tf.boolean_mask(actions_entropy, valid_mask))
 
         # The summed weighted loss
@@ -84,10 +84,12 @@ class VTraceSurrogateLoss(object):
                  actions,
                  prev_actions_logp,
                  actions_logp,
+                 old_policy_actions_logp,
                  action_kl,
                  actions_entropy,
                  dones,
                  behaviour_logits,
+                 old_policy_behaviour_logits,
                  target_logits,
                  discount,
                  rewards,
@@ -99,7 +101,8 @@ class VTraceSurrogateLoss(object):
                  entropy_coeff=0.01,
                  clip_rho_threshold=1.0,
                  clip_pg_rho_threshold=1.0,
-                 clip_param=0.3):
+                 clip_param=0.3,
+                 use_kl_loss=False):
         """PPO surrogate loss with vtrace importance weighting.
 
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
@@ -127,7 +130,7 @@ class VTraceSurrogateLoss(object):
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=behaviour_logits,
-                target_policy_logits=target_logits,
+                target_policy_logits=old_policy_behaviour_logits,
                 actions=tf.unstack(actions, axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
@@ -138,7 +141,8 @@ class VTraceSurrogateLoss(object):
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
 
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
+        self.is_ratio = tf.clip_by_value(tf.exp(prev_actions_logp-old_policy_actions_logp), 0.0, 2.0)
+        logp_ratio = self.is_ratio*tf.exp(actions_logp - prev_actions_logp)
 
         advantages = self.vtrace_returns.pg_advantages
         surrogate_loss = tf.minimum(
@@ -147,15 +151,15 @@ class VTraceSurrogateLoss(object):
                                           1 + clip_param))
 
         self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = -tf.reduce_sum(surrogate_loss)
+        self.pi_loss = -tf.reduce_mean(surrogate_loss)
 
         # The baseline loss
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_sum(
+        self.entropy = tf.reduce_mean(
             tf.boolean_mask(actions_entropy, valid_mask))
 
         # The summed weighted loss
@@ -216,15 +220,22 @@ def build_appo_surrogate_loss(policy, batch_tensors):
     actions = batch_tensors[SampleBatch.ACTIONS]
     dones = batch_tensors[SampleBatch.DONES]
     rewards = batch_tensors[SampleBatch.REWARDS]
+    
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
+    old_policy_behaviour_logits = batch_tensors["old_policy_behaviour_logits"]
+    
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
+    unpacked_old_policy_behaviour_logits = tf.split(
+            old_policy_behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(
         policy.model.outputs, output_hidden_shape, axis=1)
+    
     action_dist = policy.action_dist
+    old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits)
     prev_action_dist = policy.dist_class(behaviour_logits)
+    
     values = policy.value_function
-
     if policy.model.state_in:
         max_seq_len = tf.reduce_max(policy.model.seq_lens) - 1
         mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
@@ -245,12 +256,16 @@ def build_appo_surrogate_loss(policy, batch_tensors):
                 prev_action_dist.logp(actions), drop_last=True),
             actions_logp=make_time_major(
                 action_dist.logp(actions), drop_last=True),
-            action_kl=prev_action_dist.kl(action_dist),
+            old_policy_actions_logp=make_time_major(
+                old_policy_action_dist.logp(actions), drop_last=True),
+            action_kl=old_policy_action_dist.kl(action_dist),
             actions_entropy=make_time_major(
                 action_dist.entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
             behaviour_logits=make_time_major(
                 unpacked_behaviour_logits, drop_last=True),
+            old_policy_behaviour_logits=make_time_major(
+                unpacked_old_policy_behaviour_logits, drop_last=True),
             target_logits=make_time_major(unpacked_outputs, drop_last=True),
             discount=policy.config["gamma"],
             rewards=make_time_major(rewards, drop_last=True),
@@ -288,7 +303,7 @@ def stats(policy, batch_tensors):
     values_batched = _make_time_major(
         policy, policy.value_function, drop_last=policy.config["vtrace"])
 
-    return {
+    stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
@@ -298,6 +313,13 @@ def stats(policy, batch_tensors):
             tf.reshape(policy.loss.value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
     }
+
+    if(policy.config["vtrace"]):
+        is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0,1])
+        stats_dict.update({"mean_IS": is_stat_mean})
+        stats_dict.update({"var_IS": is_stat_var})
+
+    return stats_dict
 
 
 def grad_stats(policy, grads):

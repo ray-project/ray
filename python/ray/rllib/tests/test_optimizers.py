@@ -125,14 +125,14 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
     def testMultiGPU(self):
         local, remotes = self._make_evs()
         workers = WorkerSet._from_existing(local, remotes)
-        optimizer = AsyncSamplesOptimizer(workers, num_gpus=1, _fake_gpus=True)
+        optimizer = AsyncSamplesOptimizer(workers, num_gpus=2, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPUParallelLoad(self):
         local, remotes = self._make_evs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
-            workers, num_gpus=1, num_data_loader_buffers=1, _fake_gpus=True)
+            workers, num_gpus=2, num_data_loader_buffers=2, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiplePasses(self):
@@ -211,21 +211,21 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                 num_data_loader_buffers=2, minibatch_buffer_size=4))
         optimizer = AsyncSamplesOptimizer(
             workers,
-            num_gpus=1,
+            num_gpus=2,
             train_batch_size=100,
             sample_batch_size=50,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
             workers,
-            num_gpus=1,
+            num_gpus=2,
             train_batch_size=100,
             sample_batch_size=25,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
             workers,
-            num_gpus=1,
+            num_gpus=2,
             train_batch_size=100,
             sample_batch_size=74,
             _fake_gpus=True)
