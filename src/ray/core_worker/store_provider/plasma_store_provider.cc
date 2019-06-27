@@ -97,13 +97,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
             std::make_shared<PlasmaBuffer>(object_buffers[i].data),
             std::make_shared<PlasmaBuffer>(object_buffers[i].metadata));
         unready.erase(object_id);
-        // TODO (kfstorm): metadata should be structured.
-        std::string metadata = object_buffers[i].metadata->ToString();
-        for (auto &error_type : EnumValuesErrorType()) {
-          if (metadata == std::to_string(static_cast<int>(error_type))) {
-            should_break = true;
-          }
-        }
       }
     }
 
