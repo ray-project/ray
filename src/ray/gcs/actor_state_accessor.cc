@@ -11,18 +11,12 @@ namespace gcs {
 ActorStateAccessor::ActorStateAccessor(GcsClientImpl &client_impl)
     : client_impl_(client_impl) {}
 
-Status ActorStateAccessor::AsyncGet(
-    const DriverID &driver_id, const ActorID &actor_id,
-    const OptionalItemCallback<ActorTableData> &callback) {
+Status ActorStateAccessor::AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
+                                    const MultiItemCallback<ActorTableData> &callback) {
   RAY_DCHECK(callback != nullptr);
   auto on_done = [callback](AsyncGcsClient *client, const ActorID &actor_id,
                             const std::vector<ActorTableData> &data) {
-    boost::optional<ActorTableData> result;
-    if (!data.empty()) {
-      RAY_CHECK(data.size() == 1);
-      result = data[0];
-    }
-    callback(Status::OK(), std::move(result));
+    callback(Status::OK(), data);
   };
 
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();

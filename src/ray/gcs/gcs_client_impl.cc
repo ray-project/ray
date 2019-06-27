@@ -8,13 +8,7 @@ GcsClientImpl::GcsClientImpl(ClientOption option, ClientInfo info,
                              boost::asio::io_service *io_service)
     : option_(std::move(option)), info_(std::move(info)), io_service_(io_service) {}
 
-GcsClientImpl::~GcsClientImpl() {
-  if (!thread_pool_.empty()) {
-    RAY_CHECK(io_service_->stopped());
-    delete io_service_;
-    io_service_ = nullptr;
-  }
-}
+GcsClientImpl::~GcsClientImpl() { RAY_CHECK(!is_connected_); }
 
 Status GcsClientImpl::Connect() {
   if (is_connected_) {
@@ -34,30 +28,41 @@ Status GcsClientImpl::Connect() {
                                              option_.password_));
 
   if (io_service_ == nullptr) {
-    // init thread pool
+    // Create event pool if necessary
     io_service_ = new boost::asio::io_service;
     thread_pool_.emplace_back([this] {
-      boost::asio::io_service::work *worker =
-          new boost::asio::io_service::work(*io_service_);
+      std::auto_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(*io_service_));
       io_service_->run();
-      delete worker;
     });
   }
 
   Status status = async_gcs_client_->Attach(*io_service_);
   is_connected_ = status.ok() ? true : false;
-  RAY_LOG(INFO) << "Connect status=" << status;
+  RAY_LOG(INFO) << "GCS Client Connect status=" << status;
   return status;
 }
 
 void GcsClientImpl::Disconnect() {
+  if (!is_connected_) {
+    return;
+  }
+
   if (!thread_pool_.empty()) {
     io_service_->stop();
 
     for (auto &thread : thread_pool_) {
       thread.join();
     }
+
+    RAY_CHECK(io_service_->stopped());
+    delete io_service_;
+    io_service_ = nullptr;
+
+    thread_pool_.clear();
   }
+  is_connected_ = false;
+  RAY_LOG(INFO) << "GCS Client Disconnect";
 }
 
 }  // namespace gcs

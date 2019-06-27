@@ -28,7 +28,7 @@ class ActorStateAccessor {
   /// \param call_back Callback that is called after read data done.
   /// \return Status
   Status AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
-                  const OptionalItemCallback<ActorTableData> &callback);
+                  const MultiItemCallback<ActorTableData> &callback);
 
   /// Add a actor to gcs asynchronously.
   ///
