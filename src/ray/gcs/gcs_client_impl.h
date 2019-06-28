@@ -7,6 +7,7 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/client.h"
+#include "ray/gcs/client_def.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/util/logging.h"
 

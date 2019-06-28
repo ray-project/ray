@@ -51,8 +51,8 @@ class GcsClientTest : public ::testing::Test {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       ActorID actor_id = ActorID::FromRandom();
       actor->set_actor_id(actor_id.Binary());
-      DriverID driver_id = DriverID::FromRandom();
-      actor->set_driver_id(driver_id.Binary());
+      JobID job_id = JobID::FromRandom();
+      actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
       actor_datas_[actor_id] = actor;
     }
@@ -108,13 +108,12 @@ TEST_F(GcsClientTest, ActorAccessorTest) {
   // add
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
-    DriverID driver_id = DriverID::FromBinary(actor->driver_id());
+    JobID job_id = JobID::FromBinary(actor->job_id());
     ++pending_count_;
-    actor_accessor.AsyncAdd(driver_id, elem.first, actor, log_length,
-                            [this](Status status) {
-                              RAY_CHECK_OK(status);
-                              --pending_count_;
-                            });
+    actor_accessor.AsyncAdd(job_id, elem.first, actor, log_length, [this](Status status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    });
   }
 
   std::chrono::milliseconds timeout(10000);
@@ -123,9 +122,9 @@ TEST_F(GcsClientTest, ActorAccessorTest) {
   // get
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
-    DriverID driver_id = DriverID::FromBinary(actor->driver_id());
+    JobID job_id = JobID::FromBinary(actor->job_id());
     ++pending_count_;
-    actor_accessor.AsyncGet(driver_id, elem.first,
+    actor_accessor.AsyncGet(job_id, elem.first,
                             [this](Status status, std::vector<ActorTableData> datas) {
                               ASSERT_EQ(datas.size(), 1U);
                               ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
@@ -144,9 +143,9 @@ TEST_F(GcsClientTest, DISABLED_TaskAccessorTest) {
   // add
   for (const auto &elem : task_datas_) {
     const auto &task = elem.second;
-    DriverID driver_id = DriverID::FromRandom();
+    JobID job_id = JobID::FromRandom();
     ++pending_count_;
-    task_accessor.AsyncAdd(driver_id, elem.first, task, [this](Status status) {
+    task_accessor.AsyncAdd(job_id, elem.first, task, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     });

@@ -8,6 +8,8 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/client_def.h"
+#include "ray/gcs/gcs_client_impl.h"
 #include "ray/gcs/node_state_accessor.h"
 #include "ray/gcs/tables.h"
 #include "ray/gcs/task_state_accessor.h"
@@ -16,37 +18,6 @@
 namespace ray {
 
 namespace gcs {
-
-class GcsClientImpl;
-
-class ClientOption {
- public:
-  // GCS server list: <ip, port>
-  std::vector<std::pair<std::string, int>> server_list_;
-
-  // Password of GCS server.
-  std::string password_;
-  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
-  // might be used, if available.
-  CommandType command_type_ = CommandType::kChain;
-
-  // If it's test client.
-  bool test_mode_{false};
-};
-
-class ClientInfo {
- public:
-  enum class ClientType {
-    kClientTypeRaylet,
-    kClientTypeRayletMonitor,
-    kClientTypeWorker,
-  };
-
-  ClientType type_;
-  ClientID id_;
-  // This field is required when the client type is raylet.
-  boost::optional<ClientTableData> node_info_;
-};
 
 /// \class GcsClient
 /// Interface layer of GCS client. To read and write from the GCS,
@@ -68,7 +39,7 @@ class GcsClient {
   /// \param info Information of this client, such as client type, client id and so on.
   GcsClient(ClientOption option, ClientInfo info);
 
-  ~GcsClient();
+  ~GcsClient() {}
 
   /// Connect to GCS Service. Non-thread safe.
   ///
@@ -97,7 +68,7 @@ class GcsClient {
   }
 
  private:
-  GcsClientImpl *client_impl_{nullptr};
+  std::unique_ptr<GcsClientImpl> client_impl_;
 
   std::unique_ptr<NodeStateAccessor> node_accessor_;
   std::unique_ptr<ActorStateAccessor> actor_accessor_;

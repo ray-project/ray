@@ -11,7 +11,7 @@ namespace gcs {
 ActorStateAccessor::ActorStateAccessor(GcsClientImpl &client_impl)
     : client_impl_(client_impl) {}
 
-Status ActorStateAccessor::AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
+Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id,
                                     const MultiItemCallback<ActorTableData> &callback) {
   RAY_DCHECK(callback != nullptr);
   auto on_done = [callback](AsyncGcsClient *client, const ActorID &actor_id,
@@ -20,10 +20,10 @@ Status ActorStateAccessor::AsyncGet(const DriverID &driver_id, const ActorID &ac
   };
 
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
-  return actor_table.Lookup(driver_id, actor_id, on_done);
+  return actor_table.Lookup(job_id, actor_id, on_done);
 }
 
-Status ActorStateAccessor::AsyncAdd(const DriverID &driver_id, const ActorID &actor_id,
+Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id,
                                     std::shared_ptr<ActorTableData> data_ptr,
                                     size_t log_length, const StatusCallback &callback) {
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
@@ -38,16 +38,15 @@ Status ActorStateAccessor::AsyncAdd(const DriverID &driver_id, const ActorID &ac
       callback(Status::Invalid("Add failed, maybe exceeds max reconstruct number."));
     };
 
-    return actor_table.AppendAt(driver_id, actor_id, data_ptr, on_success, on_failure,
+    return actor_table.AppendAt(job_id, actor_id, data_ptr, on_success, on_failure,
                                 log_length);
   }
 
-  return actor_table.AppendAt(driver_id, actor_id, data_ptr, nullptr, nullptr,
-                              log_length);
+  return actor_table.AppendAt(job_id, actor_id, data_ptr, nullptr, nullptr, log_length);
 }
 
 Status ActorStateAccessor::AsyncSubscribe(
-    const DriverID &driver_id, const ClientID &client_id,
+    const JobID &job_id, const ClientID &client_id,
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_DCHECK(subscribe != nullptr);
@@ -63,27 +62,27 @@ Status ActorStateAccessor::AsyncSubscribe(
   };
 
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
-  return actor_table.Subscribe(driver_id, client_id, on_subscribe, on_done);
+  return actor_table.Subscribe(job_id, client_id, on_subscribe, on_done);
 }
 
-Status ActorStateAccessor::RequestNotifications(const DriverID &driver_id,
+Status ActorStateAccessor::RequestNotifications(const JobID &job_id,
                                                 const ActorID &actor_id,
                                                 const ClientID &client_id) {
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
-  actor_table.RequestNotifications(driver_id, actor_id, client_id);
+  actor_table.RequestNotifications(job_id, actor_id, client_id);
   return Status::OK();
 }
 
-Status ActorStateAccessor::CancelNotifications(const DriverID &driver_id,
+Status ActorStateAccessor::CancelNotifications(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ClientID &client_id) {
   ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
-  actor_table.CancelNotifications(driver_id, actor_id, client_id);
+  actor_table.CancelNotifications(job_id, actor_id, client_id);
   return Status::OK();
 }
 
 Status ActorStateAccessor::AsyncGetCheckpointIds(
-    const DriverID &driver_id, const ActorID &actor_id,
+    const JobID &job_id, const ActorID &actor_id,
     const OptionalItemCallback<ActorCheckpointIdData> &callback) {
   RAY_DCHECK(callback != nullptr);
   auto on_success = [callback](AsyncGcsClient *client, const ActorID &actor_id,
@@ -94,12 +93,12 @@ Status ActorStateAccessor::AsyncGetCheckpointIds(
 
   auto on_failure = [callback](AsyncGcsClient *client, const ActorID &actor_id) {
     boost::optional<ActorCheckpointIdData> result;
-    callback(Status::KeyError("DriverID or ActorID not exist."), std::move(result));
+    callback(Status::KeyError("JobID or ActorID not exist."), std::move(result));
   };
 
   ActorCheckpointIdTable &checkpoint_id_table =
       client_impl_.AsyncClient().actor_checkpoint_id_table();
-  return checkpoint_id_table.Lookup(driver_id, actor_id, on_success, on_failure);
+  return checkpoint_id_table.Lookup(job_id, actor_id, on_success, on_failure);
 }
 
 }  // namespace gcs

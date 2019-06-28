@@ -23,28 +23,28 @@ class TaskStateAccessor {
 
   /// Add a task to GCS asynchronously.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param task_id The ID of the task that is added to GCS.
   /// \param data Task data that is added to GCS.
   /// \param callback Callback that is called once the data has been written to the GCS.
   /// \return Status
-  Status AsyncAdd(const DriverID &driver_id, const TaskID &task_id,
+  Status AsyncAdd(const JobID &job_id, const TaskID &task_id,
                   std::shared_ptr<TaskTableData> data, const StatusCallback &callback);
 
   /// Read task from GCS asynchronously.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param task_id The ID of the task that is read from GCS.
   /// \param callback Callback that is called after read done.
   /// \return Status
-  Status AsyncGet(const DriverID &driver_id, const TaskID &task_id,
+  Status AsyncGet(const JobID &job_id, const TaskID &task_id,
                   const OptionalItemCallback<TaskTableData> &callback);
 
   /// Subscribe to any Add operations to GCS. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to tasks that it requests
   /// notifications for. This may only be called once per update.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
   /// messages for the given client will be received. In the latter
@@ -54,7 +54,7 @@ class TaskStateAccessor {
   /// callback is called with an empty vector, then there was no data of tasks.
   /// \param done Callback that is called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const DriverID &driver_id, const ClientID &client_id,
+  Status AsyncSubscribe(const JobID &job_id, const ClientID &client_id,
                         const SubscribeCallback<TaskID, TaskTableData> &subscribe,
                         const StatusCallback &done);
 
@@ -67,7 +67,7 @@ class TaskStateAccessor {
   /// notifications can be requested, the caller must first call `AsyncSubscribe`
   /// with the same `client_id`.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param client_id The client who is requesting notifications. Before
   /// notifications can be requested, a call to `AsyncSubscribe` to GCS
   /// with the same `client_id` must complete successfully.
@@ -75,24 +75,24 @@ class TaskStateAccessor {
   /// notifications can be requested, a call to `AsyncSubscribe`
   /// must complete successfully.
   /// \return Status
-  Status RequestNotifications(const DriverID &driver_id, const TaskID &task_id,
+  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
                               const ClientID &client_id);
 
   /// Cancel notifications about a task in GCS.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param task_id The ID of the task to request notifications for.
   /// \param client_id The client who originally requested notifications.
   /// \return Status
-  Status CancelNotifications(const DriverID &driver_id, const TaskID &task_id,
+  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
                              const ClientID &client_id);
 
   /// Delete tasks from GCS.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param task_ids The ids of tasks to delete from GCS.
   /// \return Status
-  Status Delete(const DriverID &driver_id, const std::vector<TaskID> &task_ids);
+  Status Delete(const JobID &job_id, const std::vector<TaskID> &task_ids);
 
  private:
   GcsClientImpl &client_impl_;

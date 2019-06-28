@@ -23,20 +23,20 @@ class ActorStateAccessor {
 
   /// Get actor specification from gcs asynchronously.
   ///
-  /// \param driver_id The ID of the job (driver or app).
+  /// \param job_id The ID of the job (driver or app).
   /// \param actor_id The ID of actor that is looked up in the GCS.
   /// \param call_back Callback that is called after read data done.
   /// \return Status
-  Status AsyncGet(const DriverID &driver_id, const ActorID &actor_id,
+  Status AsyncGet(const JobID &job_id, const ActorID &actor_id,
                   const MultiItemCallback<ActorTableData> &callback);
 
   /// Add a actor to gcs asynchronously.
   ///
-  /// \param driver_id The ID of the job (driver or app).
+  /// \param job_id The ID of the job (driver or app).
   /// \param actor_id The ID of actor that is add to the GCS.
   /// \param call_back Callback that is called after the data has been written to the GCS.
   /// \return Status
-  Status AsyncAdd(const DriverID &driver_id, const ActorID &actor_id,
+  Status AsyncAdd(const JobID &job_id, const ActorID &actor_id,
                   std::shared_ptr<ActorTableData> data_ptr, size_t log_length,
                   const StatusCallback &callback);
 
@@ -44,7 +44,7 @@ class ActorStateAccessor {
   /// to subscribe to all add, or to subscribe only to actors that it
   /// requests notifications for. This may only be called once per update.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
   /// messages for the given client will be received. In the latter
@@ -55,7 +55,7 @@ class ActorStateAccessor {
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status AsyncSubscribe(const DriverID &driver_id, const ClientID &client_id,
+  Status AsyncSubscribe(const JobID &job_id, const ClientID &client_id,
                         const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
 
@@ -68,7 +68,7 @@ class ActorStateAccessor {
   /// notifications can be requested, the caller must first call `AsyncSubscribe`
   /// with the same `client_id`.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param client_id The client who is requesting notifications. Before
   /// notifications can be requested, a call to `AsyncSubscribe` to GCS
   /// with the same `client_id` must complete successfully.
@@ -76,24 +76,24 @@ class ActorStateAccessor {
   /// notifications can be requested, a call to `AsyncSubscribe`
   /// must complete successfully.
   /// \return Status
-  Status RequestNotifications(const DriverID &driver_id, const ActorID &actor_id,
+  Status RequestNotifications(const JobID &job_id, const ActorID &actor_id,
                               const ClientID &client_id);
 
   /// Cancel notifications about a actor in GCS.
   ///
-  /// \param driver_id The ID of the job (= driver).
+  /// \param job_id The ID of the job (= driver).
   /// \param actor_id The ID of the actor to request notifications for.
   /// \return Status
-  Status CancelNotifications(const DriverID &driver_id, const ActorID &actor_id,
+  Status CancelNotifications(const JobID &job_id, const ActorID &actor_id,
                              const ClientID &client_id);
 
   /// Get actor's checkpoint ids asynchronously.
   ///
-  /// \param driver_id The ID of the job (driver or app).
+  /// \param job_id The ID of the job (driver or app).
   /// \param actor_id The ID of actor who's checkpoint ids is lookup.
   /// \param callback  Callback that is called when read is complete.
   Status AsyncGetCheckpointIds(
-      const DriverID &driver_id, const ActorID &actor_id,
+      const JobID &job_id, const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback);
 
  private:
