@@ -29,10 +29,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       const auto &spec = task.GetTaskSpecification();
       core_worker_.worker_context_.SetCurrentTask(spec);
 
-      WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
-                                    ? WorkerLanguage::JAVA
-                                    : WorkerLanguage::PYTHON;
-      RayFunction func{language, spec.FunctionDescriptor()};
+      RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
 
       std::vector<std::shared_ptr<RayObject>> args;
       RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
