@@ -107,7 +107,7 @@ class TaskSpec {
 
 enum class StoreProviderType { PLASMA };
 
-enum class TaskTransportType { RAYLET };
+enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 
 }  // namespace ray
 

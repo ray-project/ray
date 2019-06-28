@@ -2,6 +2,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
 
@@ -13,7 +14,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(main_service_, worker_server_)));
+          new CoreWorkerRayletTaskReceiver(
+          main_service_, worker_server_)));
+  task_receivers_.emplace(
+      static_cast<int>(TaskTransportType::DIRECT_ACTOR),
+      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+          new CoreWorkerDirectActorTaskReceiver(
+          main_service_, worker_server_)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
@@ -43,6 +50,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
     if (spec.IsActorCreationTask() || spec.IsActorTask()) {
       RAY_CHECK(num_returns > 0);
       // Decrease to account for the dummy object id.
+      // TODO (zhijunfu): note this logic only applies to task submitted via raylet.
       num_returns--;
     }
 

@@ -181,7 +181,8 @@ class CoreWorkerTest : public ::testing::Test {
     }
   }
 
-  void TestActorTask(const std::unordered_map<std::string, double> &resources) {
+  void TestActorTask(const std::unordered_map<std::string, double> &resources,
+                     bool use_direct_call) {
     CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
                       JobID::FromRandom());
@@ -197,7 +198,7 @@ class CoreWorkerTest : public ::testing::Test {
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer));
 
-      ActorCreationOptions actor_options{0, resources};
+      ActorCreationOptions actor_options{0, use_direct_call, resources};
 
       // Create an actor.
       RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -434,15 +435,26 @@ TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
-  TestActorTask(resources);
+  TestActorTask(resources, false);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorTask(resources);
+  TestActorTask(resources, false);
+}
+/*
+TEST_F(SingleNodeTest, TestDirectActorTaskLocal) {
+  std::unordered_map<std::string, double> resources;
+  TestActorTask(resources, true);
 }
 
+TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
+  std::unordered_map<std::string, double> resources;
+  resources.emplace("resource1", 1);
+  TestActorTask(resources, true);
+}
+*/
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
     CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON, "",

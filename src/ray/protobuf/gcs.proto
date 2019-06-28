@@ -112,6 +112,10 @@ message ActorTableData {
   uint64 max_reconstructions = 6;
   // Remaining number of reconstructions.
   uint64 remaining_reconstructions = 7;
+  // The IP address of the node that the actor is running on.
+  string ip_address = 8;
+  // The port that the actor is listening on.
+  int32 port = 9;
 }
 
 message ErrorTableData {

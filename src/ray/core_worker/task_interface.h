@@ -29,13 +29,18 @@ struct TaskOptions {
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions,
+  ActorCreationOptions(uint64_t max_reconstructions, bool use_direct_call,
                        const std::unordered_map<std::string, double> &resources)
-      : max_reconstructions(max_reconstructions), resources(resources) {}
+      : max_reconstructions(max_reconstructions),
+        use_direct_call(use_direct_call),
+        resources(resources) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
+  /// Whether to use direct actor call. If this is set to true, callers will submit
+  /// tasks directly to the created actor without going through raylet.
+  const bool use_direct_call = false;  
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
 };
@@ -43,9 +48,11 @@ struct ActorCreationOptions {
 /// A handle to an actor.
 class ActorHandle {
  public:
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
+  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+      bool use_direct_call)
       : actor_id_(actor_id),
         actor_handle_id_(actor_handle_id),
+        use_direct_call_(use_direct_call),
         actor_cursor_(ObjectID::FromBinary(actor_id.Binary())),
         task_counter_(0) {}
 
@@ -78,6 +85,9 @@ class ActorHandle {
   const ray::ActorID actor_id_;
   /// ID of this actor handle.
   const ray::ActorHandleID actor_handle_id_;
+  /// Whether to use direct actor call. If this is set to true, callers will submit
+  /// tasks directly to the created actor without going through raylet.
+  const bool use_direct_call_;
   /// ID of this actor cursor.
   ObjectID actor_cursor_;
   /// Counter for tasks from this handle.

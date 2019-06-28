@@ -26,6 +26,8 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id = JobID::Nil());
 
+  ~CoreWorker();
+
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
 
@@ -57,6 +59,9 @@ class CoreWorker {
   /// \return void.
   void InitializeRayletClient(int server_port);
 
+  /// Run IO service.
+  void RunIOService();
+
   /// Type of this worker.
   const enum WorkerType worker_type_;
 
@@ -77,6 +82,15 @@ class CoreWorker {
 
   /// Mutex to protect store_client_.
   std::mutex store_client_mutex_;
+
+  /// event loop where the IO events are handled. e.g. async GCS operations.
+  boost::asio::io_service io_service_;
+
+  /// keeps io_service_ alive.
+  boost::asio::io_service::work io_work_;
+
+  /// The thread to handle IO events.
+  std::thread io_thread_;
 
   /// Raylet client.
   std::unique_ptr<RayletClient> raylet_client_;

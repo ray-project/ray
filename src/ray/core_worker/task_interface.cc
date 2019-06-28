@@ -3,6 +3,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
 
@@ -12,6 +13,10 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
           new CoreWorkerRayletTaskSubmitter(core_worker_.raylet_client_)));
+  task_submitters_.emplace(
+      static_cast<int>(TaskTransportType::DIRECT_ACTOR),
+      std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
+          new CoreWorkerDirectActorTaskSubmitter(core_worker_.io_service_)));          
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
@@ -39,6 +44,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
+  // Normal tasks are always submitted to raylet.
   return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
@@ -56,7 +62,8 @@ Status CoreWorkerTaskInterface::CreateActor(
   ActorID actor_creation_id = ActorID::FromBinary(return_ids[0].Binary());
 
   *actor_handle = std::unique_ptr<ActorHandle>(
-      new ActorHandle(actor_creation_id, ActorHandleID::Nil()));
+      new ActorHandle(actor_creation_id, ActorHandleID::Nil(),
+      actor_creation_options.use_direct_call));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
@@ -87,15 +94,18 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
 
-  // add one for actor cursor object id.
-  auto num_returns = task_options.num_returns + 1;
+  bool use_direct_call = actor_handle.use_direct_call_;
+  // add one for actor cursor object id for tasks going through raylet.
+  auto num_returns = use_direct_call ? task_options.num_returns
+    : (task_options.num_returns + 1);
+
   (*return_ids).resize(num_returns);
   for (int i = 0; i < num_returns; i++) {
     (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
   }
 
-  auto actor_creation_dummy_object_id =
-      ObjectID::FromBinary(actor_handle.ActorID().Binary());
+  auto actor_creation_dummy_object_id = use_direct_call ?
+      ObjectID::Nil() : ObjectID::FromBinary(actor_handle.ActorID().Binary());
 
   auto task_arguments = BuildTaskArguments(args);
   auto language = core_worker_.ToTaskLanguage(function.language);
@@ -109,18 +119,23 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
-  execution_dependencies.push_back(actor_handle.ActorCursor());
+  if (!use_direct_call) {
+    execution_dependencies.push_back(actor_handle.ActorCursor());
 
-  auto actor_cursor = (*return_ids).back();
-  actor_handle.SetActorCursor(actor_cursor);
-  actor_handle.ClearNewActorHandles();
+    auto actor_cursor = (*return_ids).back();
+    actor_handle.SetActorCursor(actor_cursor);
+    actor_handle.ClearNewActorHandles();
+  }
 
   TaskSpec task(std::move(spec), execution_dependencies);
-  auto status =
-      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  TaskTransportType trasnport_type = use_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
+  auto status = task_submitters_[static_cast<int>(trasnport_type)]->SubmitTask(task);
 
-  // remove cursor from return ids.
-  (*return_ids).pop_back();
+  if (!use_direct_call) {
+    // remove cursor from return ids.
+    (*return_ids).pop_back();
+  }
+
   return status;
 }
 

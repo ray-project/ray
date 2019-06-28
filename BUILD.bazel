@@ -57,6 +57,16 @@ cc_proto_library(
     deps = ["worker_proto"],
 )
 
+proto_library(
+    name = "direct_actor_proto",
+    srcs = ["src/ray/protobuf/direct_actor.proto"],
+)
+
+cc_proto_library(
+    name = "direct_actor_cc_proto",
+    deps = ["direct_actor_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -135,7 +145,15 @@ cc_grpc_library(
     deps = [":worker_cc_proto"],
 )
 
-# worker server and client.
+# direct actor gRPC lib.
+cc_grpc_library(
+    name = "direct_actor_cc_grpc",
+    srcs = [":direct_actor_proto"],
+    grpc_only = True,
+    deps = [":direct_actor_cc_proto"],
+)
+
+# worker server and client (which includes direct actor call).
 cc_library(
     name = "worker_rpc",
     hdrs = glob([
@@ -145,6 +163,7 @@ cc_library(
     deps = [
         ":grpc_common_lib",
         ":worker_cc_grpc",
+        ":direct_actor_cc_grpc",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",

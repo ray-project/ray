@@ -12,6 +12,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
+      io_work_(io_service_),
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
@@ -30,7 +31,16 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
   if (worker_type_ == WorkerType::DRIVER) {
     InitializeRayletClient(0);
   }
+
+  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 }
+
+ CoreWorker::~CoreWorker() {
+  io_service_.stop();
+  io_thread_.join();  
+}
+
+void CoreWorker::RunIOService() { io_service_.run(); }
 
 void CoreWorker::InitializeRayletClient(int server_port) {
   if (raylet_client_ == nullptr) {
