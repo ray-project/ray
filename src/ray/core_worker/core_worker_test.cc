@@ -145,12 +145,13 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::Buffer>> results;
+      std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->Data(), buffer1->Data(), buffer1->Size()), 0);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
     }
 
     // Test pass by reference.
@@ -159,7 +160,7 @@ class CoreWorkerTest : public ::testing::Test {
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(*buffer1, &object_id));
+      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
 
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByReference(object_id));
@@ -172,12 +173,13 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::Buffer>> results;
+      std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->Data(), buffer1->Data(), buffer1->Size()), 0);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
     }
   }
 
@@ -212,7 +214,7 @@ class CoreWorkerTest : public ::testing::Test {
       auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(*buffer1, &object_id));
+      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
@@ -226,15 +228,16 @@ class CoreWorkerTest : public ::testing::Test {
                                                   &return_ids));
       RAY_CHECK(return_ids.size() == 1);
 
-      std::vector<std::shared_ptr<ray::Buffer>> results;
+      std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->Size(), buffer1->Size() + buffer2->Size());
-      ASSERT_EQ(memcmp(results[0]->Data(), buffer1->Data(), buffer1->Size()), 0);
-      ASSERT_EQ(
-          memcmp(results[0]->Data() + buffer1->Size(), buffer2->Data(), buffer2->Size()),
-          0);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+                       buffer2->Size()),
+                0);
     }
   }
 
@@ -307,9 +310,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
-  std::vector<LocalMemoryBuffer> buffers;
-  buffers.emplace_back(array1, sizeof(array1));
-  buffers.emplace_back(array2, sizeof(array2));
+  std::vector<RayObject> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -317,13 +322,19 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   }
 
   // Test Get().
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->Size(), buffers[i].Size());
-    ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
+    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].GetData()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].GetData()->Data(),
+                     buffers[i].GetData()->Size()),
+              0);
+    ASSERT_EQ(results[i]->GetMetadata()->Size(), buffers[i].GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), buffers[i].GetMetadata()->Data(),
+                     buffers[i].GetMetadata()->Size()),
+              0);
   }
 
   // Test Wait().
@@ -373,17 +384,19 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Objects().Put(buffers[i], &ids[i]));
+    RAY_CHECK_OK(worker1.Objects().Put(
+        RayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(worker2.Objects().Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->Size(), buffers[i].Size());
-    ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
+    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].Size());
+    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].Data(), buffers[i].Size()),
+              0);
   }
 
   // Test Wait() from remote node.
