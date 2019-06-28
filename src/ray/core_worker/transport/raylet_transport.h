@@ -5,7 +5,6 @@
 
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker_server.h"
 
 namespace ray {
 
@@ -28,30 +27,16 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unique_ptr<RayletClient> &raylet_client_;
 };
 
-class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
-                                     public rpc::WorkerTaskHandler {
+class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver {
  public:
-  CoreWorkerRayletTaskReceiver(boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server);
+  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client);
 
-  /// Handle a `AssignTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
-  void HandleAssignTask(const rpc::AssignTaskRequest &request,
-                        rpc::AssignTaskReply *reply,
-                        rpc::RequestDoneCallback done_callback) override;
-
-  Status SetTaskHandler(const TaskHandler &callback) override;
+  // Get tasks for execution from raylet.
+  virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
 
  private:
-  /// The callback function to process a task.
-  TaskHandler task_handler_;
-  /// The rpc service for `WorkerTaskService`.
-  rpc::WorkerTaskGrpcService task_service_;
+  /// Raylet client.
+  std::unique_ptr<RayletClient> &raylet_client_;
 };
 
 }  // namespace ray
