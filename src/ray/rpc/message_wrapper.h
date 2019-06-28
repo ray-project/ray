@@ -19,6 +19,12 @@ class MessageWrapper {
     RAY_CHECK(message_ != nullptr);
   }
 
+  explicit MessageWrapper(const std::string &serialized_binary) {
+    message_unique_ptr->reset(new Message);
+    message_ = message_unique_ptr.get();
+    message_->ParseFromString(serialized_binary);
+  }
+
   MessageWrapper(const MessageWrapper<Message> &from)
       : MessageWrapper(std::unique_ptr<Message>(new Message(from.GetMessage()))) {}
 
@@ -45,6 +51,13 @@ class ConstMessageWrapper {
   explicit ConstMessageWrapper(std::unique_ptr<const Message> message)
   : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {
     RAY_CHECK(message_ != nullptr);
+  }
+
+  explicit ConstMessageWrapper(const std::string &serialized_binary) {
+    auto message = new Message();
+    message->ParseFromString(serialized_binary);
+    message_unique_ptr.reset(message);
+    message_ = message_unique_ptr.get();
   }
 
   ConstMessageWrapper(const ConstMessageWrapper<Message> &from)

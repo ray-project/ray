@@ -262,9 +262,7 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  std::unique_ptr<ray::rpc::TaskSpec> task_spec_message(new ray::rpc::TaskSpec());
-  task_spec_message->ParseFromString(string_from_flatbuf(*reply_message->task_spec()));
-  task_spec->reset(new ray::raylet::TaskSpecification(std::move(task_spec_message)));
+  task_spec->reset(new ray::raylet::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 

@@ -28,9 +28,7 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
-JobID TaskSpecification::JobId() const {
-  return JobID::FromBinary(message_->job_id());
-}
+JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
 
 TaskID TaskSpecification::ParentTaskId() const {
   return TaskID::FromBinary(message_->parent_task_id());
@@ -151,6 +149,61 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
   return rpc::VectorFromProtobuf(
       message_->actor_creation_task_spec().dynamic_worker_options());
+}
+
+TaskSpecification *CreateTaskSpecification(
+    const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
+    const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
+    uint64_t max_actor_reconstructions, const ActorID &actor_id,
+    const ActorHandleID &actor_handle_id, uint64_t actor_counter,
+    const std::vector<ActorHandleID> &new_actor_handles,
+    const std::vector<std::shared_ptr<rpc::TaskArg>> &task_arguments, int64_t num_returns,
+    const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_placement_resources,
+    const Language &language, const std::vector<std::string> &function_descriptor,
+    const std::vector<std::string> &dynamic_worker_options) {
+  std::unique_ptr<rpc::TaskSpec> message(new rpc::TaskSpec());
+
+  // Set common fields.
+  message->set_language(language);
+  for(const auto &fd : function_descriptor) {
+    message->add_function_descriptor(fd);
+  }
+  message->set_job_id(job_id.Binary());
+  message->set_task_id(GenerateTaskId(job_id, parent_task_id, parent_counter).Binary());
+  message->set_parent_task_id(parent_task_id.Binary());
+  message->set_parent_counter(parent_counter);
+  for (const auto &arg : task_arguments) {
+    *message->add_args() = *arg;
+  }
+  message->set_num_returns(num_returns);
+  message->mutable_required_resources()->insert(required_resources.begin(),
+                                                required_resources.end());
+  message->mutable_required_placement_resources()->insert(
+      required_placement_resources.begin(), required_placement_resources.end());
+
+  if (!actor_creation_id.IsNil()) {
+    message->set_type(rpc::TaskType::ACTOR_CREATION_TASK);
+    auto creation_spec = message->mutable_actor_creation_task_spec();
+    creation_spec->set_actor_id(actor_creation_id.Binary());
+    creation_spec->set_max_actor_reconstructions(max_actor_reconstructions);
+    for(const auto &option : dynamic_worker_options) {
+      creation_spec->add_dynamic_worker_options(option);
+    }
+  } else if (!actor_id.IsNil()) {
+    message->set_type(rpc::TaskType::ACTOR_TASK);
+    auto actor_spec = message->mutable_actor_task_spec();
+    actor_spec->set_actor_id(actor_id.Binary());
+    actor_spec->set_actor_handle_id(actor_handle_id.Binary());
+    actor_spec->set_actor_counter(actor_counter);
+    for (const auto &new_handle : new_actor_handles) {
+      actor_spec->add_new_actor_handles(new_handle.Binary());
+    }
+  } else {
+    message->set_type(rpc::TaskType::NORMAL_TASK);
+  }
+
+  return new TaskSpecification(std::move(message));
 }
 
 }  // namespace raylet

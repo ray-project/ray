@@ -5,10 +5,9 @@ from libcpp.memory cimport (
     static_pointer_cast,
 )
 from ray.includes.task cimport (
-    CTaskArgument,
-    CTaskArgumentByReference,
-    CTaskArgumentByValue,
+    CTaskArg,
     CTaskSpecification,
+    CreateTaskSpecification,
     SerializeTaskAsString,
 )
 
@@ -29,7 +28,8 @@ cdef class Task:
         cdef:
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
-            c_vector[shared_ptr[CTaskArgument]] task_args
+            shared_ptr[CTaskArg] c_arg
+            c_vector[shared_ptr[CTaskArg]] task_args
             c_vector[CActorHandleID] task_new_actor_handles
             c_vector[c_string] c_function_descriptor
             c_string pickled_str
@@ -50,33 +50,25 @@ cdef class Task:
 
         # Parse the arguments from the list.
         for arg in arguments:
+            c_arg = make_shared[CTaskArg]()
             if isinstance(arg, ObjectID):
-                references = c_vector[CObjectID]()
-                references.push_back((<ObjectID>arg).native())
-                task_args.push_back(
-                    static_pointer_cast[CTaskArgument,
-                                        CTaskArgumentByReference](
-                        make_shared[CTaskArgumentByReference](references)))
+                c_arg.get().add_object_ids((<ObjectID>arg).native().Binary())
             else:
                 pickled_str = pickle.dumps(
                     arg, protocol=pickle.HIGHEST_PROTOCOL)
-                task_args.push_back(
-                    static_pointer_cast[CTaskArgument,
-                                        CTaskArgumentByValue](
-                        make_shared[CTaskArgumentByValue](
-                            <uint8_t *>pickled_str.c_str(),
-                            pickled_str.size())))
+                c_arg.get().set_data(pickled_str)
+            task_args.push_back(c_arg)
 
         for new_actor_handle in new_actor_handles:
             task_new_actor_handles.push_back(
                 (<ActorHandleID?>new_actor_handle).native())
 
-        self.task_spec.reset(new CTaskSpecification(
+        self.task_spec.reset(CreateTaskSpecification(
             job_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
             actor_creation_dummy_object_id.native(), max_actor_reconstructions, actor_id.native(),
             actor_handle_id.native(), actor_counter, task_new_actor_handles, task_args, num_returns,
             required_resources, required_placement_resources, LANGUAGE_PYTHON,
-            c_function_descriptor))
+            c_function_descriptor, []))
 
         # Set the task's execution dependencies.
         self.execution_dependencies.reset(new c_vector[CObjectID]())
@@ -116,7 +108,7 @@ cdef class Task:
         Returns:
             String representing the task specification.
         """
-        return self.task_spec.get().SerializeAsString()
+        return self.task_spec.get().Serialize()
 
     def _serialized_raylet_task(self):
         return SerializeTaskAsString(

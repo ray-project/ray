@@ -19,8 +19,8 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::Language;
 using rpc::ConstMessageWrapper;
+using rpc::Language;
 
 /// \class TaskSpecification
 ///
@@ -39,6 +39,11 @@ class TaskSpecification : public ConstMessageWrapper<rpc::TaskSpec> {
 
   explicit TaskSpecification(std::unique_ptr<const rpc::TaskSpec> message)
       : ConstMessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
+
+  explicit TaskSpecification(const std::string &serialized_binary)
+      : ConstMessageWrapper(serialized_binary) {
     ComputeResources();
   }
 
@@ -124,6 +129,18 @@ class TaskSpecification : public ConstMessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initalized in constructor.
   ResourceSet required_placement_resources_;
 };
+
+TaskSpecification *CreateTaskSpecification(
+    const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
+    const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
+    uint64_t max_actor_reconstructions, const ActorID &actor_id,
+    const ActorHandleID &actor_handle_id, uint64_t actor_counter,
+    const std::vector<ActorHandleID> &new_actor_handles,
+    const std::vector<std::shared_ptr<rpc::TaskArg>> &task_arguments, int64_t num_returns,
+    const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_placement_resources,
+    const Language &language, const std::vector<std::string> &function_descriptor,
+    const std::vector<std::string> &dynamic_worker_options);
 
 }  // namespace raylet
 

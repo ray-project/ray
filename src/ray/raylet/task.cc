@@ -22,6 +22,16 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_.Reset(*message_->mutable_task_execution_spec());
 }
 
+std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+                                  const TaskSpecification *task_spec) {
+  rpc::Task task_message;
+  task_message.mutable_task_spec()->CopyFrom(task_spec->GetMessage());
+  for (const auto &dependency : *dependencies) {
+    task_message.mutable_task_execution_spec()->add_dependencies(dependency.Binary());
+  }
+return task_message.SerializeAsString();
+}
+
 }  // namespace raylet
 
 }  // namespace ray
