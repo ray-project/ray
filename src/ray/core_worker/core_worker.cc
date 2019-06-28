@@ -22,7 +22,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
     throw std::runtime_error(status.message());
   }
 
-  // TODO(zhijunfu): For non-driver worker, the initialization of
+  // NOTE(zhijunfu): For non-driver worker, the initialization of
   // raylet client is delayed to when `TaskExecutionInterface::Run()`
   // is called, as it is until that time the port for the worker
   // rpc server can be determined, and this information needs to be
@@ -34,6 +34,10 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
 
 void CoreWorker::InitializeRayletClient(int server_port) {
   if (raylet_client_ == nullptr) {
+    // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+    // connect to Raylet after a number of retries, this can be changed later
+    // so that the worker (java/python .etc) can retrieve and handle the error
+    // instead of crashing.    
     raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
         raylet_socket_, worker_context_.GetWorkerID(),
         (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentDriverID(),
