@@ -42,75 +42,75 @@ public class RayObjectConverter {
     return Stream.concat(Arrays.stream(fixedConverters), Arrays.stream(fstConverters));
   }
 
-  public RayObjectProxy toValue(Object object) {
+  public RayObjectProxy toRayObject(Object javaObject) {
     Optional<RayObjectProxy> value =
-        getConverters().map(converter -> converter.toValue(object)).filter(Objects::nonNull).findFirst();
+        getConverters().map(converter -> converter.toRayObject(javaObject)).filter(Objects::nonNull).findFirst();
     if (value.isPresent()) {
       byte[] metadata = value.get().metadata;
       Preconditions.checkState(metadata != null && metadata.length > 0);
       Preconditions.checkState(value.get().data != null);
       return value.get();
     }
-    throw new IllegalArgumentException("Cannot convert the object to object value: " + object);
+    throw new IllegalArgumentException("Cannot convert the Java object to ray object: " + javaObject);
   }
 
-  public Object fromValue(RayObjectProxy objectValue) {
-    Preconditions.checkState(objectValue != null);
+  public Object fromRayObject(RayObjectProxy rayObject) {
+    Preconditions.checkState(rayObject != null);
     Optional<WrappedObject> obj = getConverters()
-        .map(converter -> converter.fromValue(objectValue))
+        .map(converter -> converter.fromRayObject(rayObject))
         .filter(Objects::nonNull)
         .findFirst();
     if (obj.isPresent()) {
-      return obj.get().getObject();
+      return obj.get().getJavaObject();
     }
-    throw new IllegalArgumentException("Cannot convert the object value back to an object");
+    throw new IllegalArgumentException("Cannot convert the ray object to Java object.");
   }
 
   static class WrappedObject {
-    private Object object;
+    private Object javaObject;
 
-    WrappedObject(Object object) {
-      this.object = object;
+    WrappedObject(Object javaObject) {
+      this.javaObject = javaObject;
     }
 
-    public Object getObject() {
-      return object;
+    public Object getJavaObject() {
+      return javaObject;
     }
   }
 
   /**
-   * For convert to and from object value for a specific object type.
+   * For conversion between Java object and ray object for a specific object type.
    */
   interface Converter {
     /**
-     * @param object the object to convert from.
-     * @return converted object value. Null if this converter cannot process the input object.
+     * @param object the Java object to convert from.
+     * @return converted ray object. Null if this converter cannot process the input object.
      */
-    RayObjectProxy toValue(Object object);
+    RayObjectProxy toRayObject(Object javaObject);
 
     /**
-     * @param objectValue the object value to convert form.
+     * @param rayObject the ray object to convert form.
      * @return the original object wrapped by {@link WrappedObject}. Null if cannot process the
-     *     input object value.
+     *     input ray object.
      */
-    WrappedObject fromValue(RayObjectProxy objectValue);
+    WrappedObject fromRayObject(RayObjectProxy rayObject);
   }
 
   static class RawTypeConverter implements Converter {
     private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
     @Override
-    public RayObjectProxy toValue(Object object) {
-      if (object instanceof byte[]) {
-        return new RayObjectProxy((byte[]) object, RAW_TYPE_META);
+    public RayObjectProxy toRayObject(Object javaObject) {
+      if (javaObject instanceof byte[]) {
+        return new RayObjectProxy((byte[]) javaObject, RAW_TYPE_META);
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectProxy objectValue) {
-      if (Arrays.equals(objectValue.metadata, RAW_TYPE_META)) {
-        return new WrappedObject(objectValue.data);
+    public WrappedObject fromRayObject(RayObjectProxy rayObject) {
+      if (Arrays.equals(rayObject.metadata, RAW_TYPE_META)) {
+        return new WrappedObject(rayObject.data);
       }
       return null;
     }
@@ -127,17 +127,17 @@ public class RayObjectConverter {
     }
 
     @Override
-    public RayObjectProxy toValue(Object object) {
-      if (this.instance.equals(object)) {
+    public RayObjectProxy toRayObject(Object javaObject) {
+      if (this.instance.equals(javaObject)) {
         return instanceValue;
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectProxy objectValue) {
-      if (Arrays.equals(this.instanceValue.metadata, objectValue.metadata)
-          && Arrays.equals(instanceValue.data, objectValue.data)) {
+    public WrappedObject fromRayObject(RayObjectProxy rayObject) {
+      if (Arrays.equals(this.instanceValue.metadata, rayObject.metadata)
+          && Arrays.equals(instanceValue.data, rayObject.data)) {
         return new WrappedObject(instance);
       }
       return null;
@@ -148,17 +148,17 @@ public class RayObjectConverter {
     private static final byte[] ACTOR_HANDLE_META = "ACTOR_HANDLE".getBytes();
 
     @Override
-    public RayObjectProxy toValue(Object object) {
-      if (object instanceof RayActorImpl) {
-        return new RayObjectProxy(((RayActorImpl) object).fork().Binary(), ACTOR_HANDLE_META);
+    public RayObjectProxy toRayObject(Object javaObject) {
+      if (javaObject instanceof RayActorImpl) {
+        return new RayObjectProxy(((RayActorImpl) javaObject).fork().Binary(), ACTOR_HANDLE_META);
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectProxy objectValue) {
-      if (Arrays.equals(objectValue.metadata, ACTOR_HANDLE_META)) {
-        return new WrappedObject(RayActorImpl.fromBinary(objectValue.data));
+    public WrappedObject fromRayObject(RayObjectProxy rayObject) {
+      if (Arrays.equals(rayObject.metadata, ACTOR_HANDLE_META)) {
+        return new WrappedObject(RayActorImpl.fromBinary(rayObject.data));
       }
       return null;
     }
@@ -176,19 +176,19 @@ public class RayObjectConverter {
     }
 
     @Override
-    public RayObjectProxy toValue(Object object) {
-      if (canConvert.apply(object)) {
-        return new RayObjectProxy(Serializer.encode(object, classLoader), expectedMetadata);
+    public RayObjectProxy toRayObject(Object javaObject) {
+      if (canConvert.apply(javaObject)) {
+        return new RayObjectProxy(Serializer.encode(javaObject, classLoader), expectedMetadata);
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectProxy objectValue) {
+    public WrappedObject fromRayObject(RayObjectProxy rayObject) {
       if (((expectedMetadata == null || expectedMetadata.length == 0) &&
-          (objectValue.metadata == null || objectValue.metadata.length == 0)) ||
-          Arrays.equals(objectValue.metadata, expectedMetadata)) {
-        return new WrappedObject(Serializer.decode(objectValue.data, classLoader));
+          (rayObject.metadata == null || rayObject.metadata.length == 0)) ||
+          Arrays.equals(rayObject.metadata, expectedMetadata)) {
+        return new WrappedObject(Serializer.decode(rayObject.data, classLoader));
       }
       return null;
     }

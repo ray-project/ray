@@ -28,7 +28,7 @@ public class ObjectInterface {
    * @return Id of the object.
    */
   public ObjectId put(Object obj) {
-    return putInternal(workerContext.getRayObjectConverter().toValue(obj));
+    return putInternal(workerContext.getRayObjectConverter().toRayObject(obj));
   }
 
   /**
@@ -48,7 +48,7 @@ public class ObjectInterface {
    * @param obj      The object to put.
    */
   public void put(ObjectId objectId, Object obj) {
-    putInternal(objectId, workerContext.getRayObjectConverter().toValue(obj));
+    putInternal(objectId, workerContext.getRayObjectConverter().toRayObject(obj));
   }
 
   private ObjectId putInternal(RayObjectProxy value) {
@@ -73,7 +73,7 @@ public class ObjectInterface {
       GetResult<T> result;
       if (getResult != null) {
         Object object =
-            workerContext.getRayObjectConverter().fromValue(getResult);
+            workerContext.getRayObjectConverter().fromRayObject(getResult);
         if (object instanceof RayException) {
           // If the object is a `RayException`, it means that an error occurred during task
           // execution.

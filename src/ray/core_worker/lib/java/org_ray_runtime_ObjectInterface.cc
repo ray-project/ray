@@ -25,10 +25,10 @@ Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObject
   ray::Status status;
   ray::ObjectID object_id = ReadJavaRayObjectProxy<ray::ObjectID>(
       env, rayObjectProxy,
-      [nativeCoreWorker, &status](const std::shared_ptr<ray::RayObject> &value) {
-        RAY_CHECK(value != nullptr);
+      [nativeCoreWorker, &status](const std::shared_ptr<ray::RayObject> &rayObject) {
+        RAY_CHECK(rayObject != nullptr);
         ray::ObjectID object_id;
-        status = GetObjectInterface(nativeCoreWorker).Put(*value, &object_id);
+        status = GetObjectInterface(nativeCoreWorker).Put(*rayObject, &object_id);
         return object_id;
       });
   ThrowRayExceptionIfNotOK(env, status);
@@ -47,9 +47,9 @@ Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObj
   auto object_id = UniqueIdFromJByteArray<ray::ObjectID>(env, objectId).GetId();
   auto status = ReadJavaRayObjectProxy<ray::Status>(
       env, rayObjectProxy,
-      [nativeCoreWorker, &object_id](const std::shared_ptr<ray::RayObject> &value) {
-        RAY_CHECK(value != nullptr);
-        return GetObjectInterface(nativeCoreWorker).Put(*value, object_id);
+      [nativeCoreWorker, &object_id](const std::shared_ptr<ray::RayObject> &rayObject) {
+        RAY_CHECK(rayObject != nullptr);
+        return GetObjectInterface(nativeCoreWorker).Put(*rayObject, object_id);
       });
   ThrowRayExceptionIfNotOK(env, status);
 }

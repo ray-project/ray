@@ -45,7 +45,7 @@ public class ArgumentsBuilder {
         }
       } else {
         RayObjectProxy rayObjectProxy =
-            worker.getWorkerContext().getRayObjectConverter().toValue(arg);
+            worker.getWorkerContext().getRayObjectConverter().toRayObject(arg);
         if (Arrays.equals(rayObjectProxy.metadata, RayObjectConverter.JAVA_OBJECT_META)
             && rayObjectProxy.data.length <= LARGEST_SIZE_PASS_BY_VALUE) {
           data = rayObjectProxy.data;
@@ -66,6 +66,6 @@ public class ArgumentsBuilder {
    * Convert list of byte array to real function arguments.
    */
   public static Object[] unwrap(Worker worker, List<RayObjectProxy> args) {
-    return args.stream().map(arg -> worker.getWorkerContext().getRayObjectConverter().fromValue(arg)).toArray();
+    return args.stream().map(arg -> worker.getWorkerContext().getRayObjectConverter().fromRayObject(arg)).toArray();
   }
 }

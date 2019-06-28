@@ -214,12 +214,12 @@ inline ReturnT ReadJavaRayObjectProxy(
 }
 
 inline jobject ToJavaRayObjectProxy(JNIEnv *env,
-                                    const std::shared_ptr<ray::RayObject> &value) {
-  if (!value) {
+                                    const std::shared_ptr<ray::RayObject> &rayObject) {
+  if (!rayObject) {
     return nullptr;
   }
-  auto java_data = NativeBufferToJavaByteArray(env, value->GetData());
-  auto java_metadata = NativeBufferToJavaByteArray(env, value->GetMetadata());
+  auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
+  auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   auto java_obj = env->NewObject(java_ray_object_proxy_class, java_ray_object_proxy_init,
                                  java_data, java_metadata);
   return java_obj;
