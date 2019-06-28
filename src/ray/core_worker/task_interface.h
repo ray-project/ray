@@ -8,6 +8,7 @@
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/task.h"
+#include "ray/rpc/util.h"
 
 namespace ray {
 
@@ -49,130 +50,63 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const WorkerLanguage actor_language,
-              const ActorDefinitionDescriptor &actor_definition_descriptor)
-      : actor_id_(actor_id),
-        actor_handle_id_(actor_handle_id),
-        actor_language_(actor_language),
-        actor_definition_descriptor_(actor_definition_descriptor),
-        actor_cursor_(ObjectID::FromBinary(actor_id.Binary())),
-        task_counter_(0),
-        num_forks_(0) {}
+              const ray::rpc::Language actor_language,
+              const std::vector<std::string> &actor_creation_task_function_descriptor);
 
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const WorkerLanguage actor_language,
-              const ActorDefinitionDescriptor &actor_definition_descriptor,
-              const ObjectID &actor_cursor, int task_counter, int num_forks)
-      : actor_id_(actor_id),
-        actor_handle_id_(actor_handle_id),
-        actor_language_(actor_language),
-        actor_definition_descriptor_(actor_definition_descriptor),
-        actor_cursor_(actor_cursor),
-        task_counter_(task_counter),
-        num_forks_(num_forks) {}
+  ActorHandle(const ActorHandle &other);
 
   /// ID of the actor.
-  const ray::ActorID &ActorID() const { return actor_id_; };
+  const ray::ActorID ActorID() const;
 
   /// ID of this actor handle.
-  const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
+  const ray::ActorHandleID ActorHandleID() const;
 
   /// Language of the actor.
-  const ray::WorkerLanguage ActorLanguage() const { return actor_language_; };
-  /// Descriptor of actor definition.
-  /// e.g. class info for Java actor. module and class info for Python actor.
-  const ray::ActorDefinitionDescriptor &ActorDefinitionDescriptor() const {
-    return actor_definition_descriptor_;
-  };
+  const ray::rpc::Language ActorLanguage() const;
+
+  // Function descriptor of actor creation task.
+  const std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
 
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
-  const ObjectID &ActorCursor() const { return actor_cursor_; };
+  const ObjectID ActorCursor() const;
 
   /// The number of tasks that have been invoked on this actor.
-  const int TaskCounter() const { return task_counter_; };
+  const int64_t TaskCounter() const;
 
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
-  const int NumForks() const { return num_forks_; };
+  const int64_t NumForks() const;
 
-  std::unique_ptr<ActorHandle> Fork() {
-    std::unique_lock<std::mutex> guard(mutex_);
-    auto new_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-        actor_id_, ComputeNextActorHandleId(actor_handle_id_, ++num_forks_),
-        actor_language_, actor_definition_descriptor_));
-    new_handle->actor_cursor_ = actor_cursor_;
-    new_actor_handles_.push_back(new_handle->actor_handle_id_);
-    return new_handle;
-  }
+  ActorHandle Fork();
 
-  void Serialize(std::string *output) {
-    std::unique_lock<std::mutex> guard(mutex_);
+  void Serialize(std::string *output);
 
-    ray::rpc::ActorHandle temp;
-    temp.set_actor_id(actor_id_.Binary());
-    temp.set_actor_handle_id(actor_handle_id_.Binary());
-    temp.set_actor_language((int)actor_language_);
-    for (auto &item : actor_definition_descriptor_) {
-      temp.add_actor_definition_descriptor(item);
-    }
-    temp.set_actor_handle_id(actor_handle_id_.Binary());
-    temp.set_actor_cursor(actor_cursor_.Binary());
-    temp.set_task_counter(task_counter_);
-    temp.set_num_forks(num_forks_);
-    temp.SerializeToString(output);
-  }
-
-  static std::unique_ptr<ActorHandle> Deserialize(const std::string &data) {
-    ray::rpc::ActorHandle temp;
-    temp.ParseFromString(data);
-    ray::ActorDefinitionDescriptor actor_definition_descriptor;
-    for (auto &item : temp.actor_definition_descriptor()) {
-      actor_definition_descriptor.push_back(item);
-    }
-    return std::unique_ptr<ActorHandle>(new ActorHandle(
-        ray::ActorID::FromBinary(temp.actor_id()),
-        ray::ActorHandleID::FromBinary(temp.actor_handle_id()),
-        (WorkerLanguage)temp.actor_language(), actor_definition_descriptor,
-        ray::ObjectID::FromBinary(temp.actor_cursor()), temp.task_counter(),
-        temp.num_forks()));
-  }
+  static ActorHandle Deserialize(const std::string &data);
 
  private:
+  ActorHandle();
+
   /// Set actor cursor.
-  void SetActorCursor(const ObjectID &actor_cursor) { actor_cursor_ = actor_cursor; };
+  void SetActorCursor(const ObjectID &actor_cursor);
 
   /// Increase task counter.
-  int IncreaseTaskCounter() { return task_counter_++; }
+  int64_t IncreaseTaskCounter();
 
-  std::vector<ray::ActorHandleID> GetNewActorHandles() { return new_actor_handles_; }
+  std::vector<ray::ActorHandleID> GetNewActorHandles();
 
-  void ClearNewActorHandles() { new_actor_handles_.clear(); }
+  void ClearNewActorHandles();
 
  private:
-  /// ID of the actor.
-  const ray::ActorID actor_id_;
-  /// ID of this actor handle.
-  const ray::ActorHandleID actor_handle_id_;
-  /// Language of the actor.
-  enum WorkerLanguage actor_language_;
-  /// Descriptor of actor definition.
-  /// e.g. class info for Java actor. module and class info for Python actor.
-  const ray::ActorDefinitionDescriptor actor_definition_descriptor_;
-  /// The unique id of the last return of the last task.
-  /// It's used as a dependency for the next task.
-  ObjectID actor_cursor_;
-  /// The number of tasks that have been invoked on this actor.
-  int task_counter_;
-  /// The number of times that this actor handle has been forked.
-  /// It's used to make sure ids of actor handles are unique.
-  int num_forks_;
+  /// Protobuf defined ActorHandle.
+  ray::rpc::ActorHandle inner_;
   /// The new actor handles that were created from this handle
   /// since the last task on this handle was submitted. This is
   /// used to garbage-collect dummy objects that are no longer
   /// necessary in the backend.
   std::vector<ray::ActorHandleID> new_actor_handles_;
-  /// Mutex to protect ActorHandle.
+
+  /// Mutex to protect mutable fields.
   std::mutex mutex_;
 
   friend class CoreWorkerTaskInterface;
