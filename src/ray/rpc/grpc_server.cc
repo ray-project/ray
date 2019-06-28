@@ -8,7 +8,7 @@ namespace rpc {
 void GrpcServer::Run() {
   std::string server_address;
   // Set unix domain socket or tcp address
-  if (!unix_socket_path_.empy()) {
+  if (!unix_socket_path_.empty()) {
     server_address = "unix:" + unix_socket_path_;
   } else {
     server_address = "0.0.0.0:" + std::to_string(port_);

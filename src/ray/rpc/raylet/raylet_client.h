@@ -1,5 +1,5 @@
-#ifndef RAY_RPC_OBJECT_MANAGER_CLIENT_H
-#define RAY_RPC_OBJECT_MANAGER_CLIENT_H
+#ifndef RAY_RPC_RAYLET_CLIENT_H
+#define RAY_RPC_RAYLET_CLIENT_H
 
 #include <thread>
 
@@ -7,8 +7,8 @@
 
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/object_manager.grpc.pb.h"
-#include "src/ray/protobuf/object_manager.pb.h"
+#include "src/ray/protobuf/raylet.grpc.pb.h"
+#include "src/ray/protobuf/raylet.pb.h"
 #include "src/ray/rpc/client_call.h"
 
 namespace ray {
@@ -25,11 +25,11 @@ class RayletClient {
   /// \param[in] raylet_socket Unix domain socket of the raylet server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-               bool is_worker, const DriverID &driver_id, const Language &language,
+               bool is_worker, const JobID &job_id, const Language &language,
                ClientCallManager &client_call_manager)
       : client_id_(client_id),
         is_worker_(is_worker),
-        driver_id_(driver_id),
+        job_id_(job_id),
         language_(language),
         main_service_(),
         work_(main_service_),
@@ -67,26 +67,6 @@ class RayletClient {
         *stub_, &RayletService::Stub::PrepareAsyncSubmitTask, request, callback);
   }
 
-  /// Notify local raylet that a task has finished
-  ///
-  /// \param request The request message
-  /// \param callback The callback function that handles reply from server
-  void TaskDone(const TaskDoneRequest &request,
-                const ClientCallback<TaskDoneReply> &callback) {
-    client_call_manager_.CreateCall<RayletService, TaskDoneRequest, TaskDoneReply>(
-        *stub_, &RayletService::Stub::PrepareAsyncTaskDone, request, callback);
-  }
-
-  /// Get a new task from local raylet
-  ///
-  /// \param request The request message
-  /// \param callback  The callback function that handles reply
-  void EventLog(const EventLogRequest &request,
-                const ClientCallback<GetTaskReply> &callback) {
-    client_call_manager_.CreateCall<RayletService, EventLogRequest, EventLogReply>(
-        *stub_, &RayletService::Stub::PrepareAsyncEventLog, request, callback);
-  }
-
   /// Get a new task from local raylet
   ///
   /// \param request The request message
@@ -101,17 +81,20 @@ class RayletClient {
 
   ClientID GetClientID() const { return client_id_; }
 
-  DriverID GetDriverID() const { return driver_id_; }
+  JobID GetJobID() const { return job_id_; }
 
   bool IsWorker() const { return is_worker_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const ClientID client_id_;
+  /// Id of the worker to which this raylet client belongs.
+  const WorkerID worker_id_;
+  /// Indicates whether this worker is a driver worker.
+  /// Driver is treated as a special worker.
   const bool is_worker_;
-  const DriverID driver_id_;
-  const Language language_;
+  const JobID job_id_;
+  const rpc::Language language_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
@@ -137,4 +120,4 @@ class RayletClient {
 }  // namespace rpc
 }  // namespace ray
 
-#endif  // RAY_RPC_OBJECT_MANAGER_CLIENT_H
+#endif  // RAY_RPC_RAYLET_CLIENT_H

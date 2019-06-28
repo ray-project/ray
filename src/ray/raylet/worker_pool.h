@@ -53,23 +53,21 @@ class WorkerPool {
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const DriverID &driver_id, const std::shared_ptr<Worker> &worker);
+  void RegisterDriver(const WorkerID &driver_id, const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
   /// \param The client connection owned by a registered worker.
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
-  std::shared_ptr<Worker> GetRegisteredWorker(
-      const std::shared_ptr<LocalClientConnection> &connection) const;
+  std::shared_ptr<Worker> GetRegisteredWorker(const WorkerID &worker_id) const;
 
   /// Get the client connection's registered driver.
   ///
   /// \param The client connection owned by a registered driver.
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a driver.
-  std::shared_ptr<Worker> GetRegisteredDriver(
-      const std::shared_ptr<LocalClientConnection> &connection) const;
+  std::shared_ptr<Worker> GetRegisteredDriver(const WorkerID &driver_id) const;
 
   /// Disconnect a registered worker.
   ///
@@ -102,12 +100,12 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
-  /// Get all the workers which are running tasks for a given driver.
+  /// Get all the workers which are running tasks for a given job.
   ///
-  /// \param driver_id The driver ID.
-  /// \return A list containing all the workers which are running tasks for the driver.
-  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
-      const DriverID &driver_id) const;
+  /// \param job_id The job ID.
+  /// \return A list containing all the workers which are running tasks for the job.
+  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
+      const JobID &job_id) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
@@ -165,7 +163,7 @@ class WorkerPool {
     /// idle and executing.
     std::unordered_map<WorkerID, std::shared_ptr<Worker>> registered_workers;
     /// All drivers that have registered and are still connected.
-    std::unordered_map<DriverID, std::shared_ptr<Worker>> registered_drivers;
+    std::unordered_map<WorkerID, std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;

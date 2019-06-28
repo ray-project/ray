@@ -29,7 +29,7 @@ public class WorkerContext {
 
   private ThreadLocal<TaskSpec> currentTask;
 
-  private UniqueId currentDriverId;
+  private UniqueId currentJobId;
 
   private ClassLoader currentClassLoader;
 
@@ -43,7 +43,7 @@ public class WorkerContext {
    */
   private RunMode runMode;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId driverId, RunMode runMode) {
+  public WorkerContext(WorkerMode workerMode, UniqueId jobId, RunMode runMode) {
     mainThreadId = Thread.currentThread().getId();
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
@@ -52,13 +52,15 @@ public class WorkerContext {
     currentTask = ThreadLocal.withInitial(() -> null);
     currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
-      workerId = driverId;
+      // TODO(qwang): Assign the driver id to worker id
+      // once we treat driver id as a special worker id.
+      workerId = jobId;
       currentTaskId.set(TaskId.randomId());
-      currentDriverId = driverId;
+      currentJobId = jobId;
     } else {
       workerId = UniqueId.randomId();
       this.currentTaskId.set(TaskId.NIL);
-      this.currentDriverId = UniqueId.NIL;
+      this.currentJobId = UniqueId.NIL;
     }
   }
 
@@ -84,7 +86,7 @@ public class WorkerContext {
 
     Preconditions.checkNotNull(task);
     this.currentTaskId.set(task.taskId);
-    this.currentDriverId = task.driverId;
+    this.currentJobId = task.jobId;
     taskIndex.set(0);
     putIndex.set(0);
     this.currentTask.set(task);
@@ -115,15 +117,14 @@ public class WorkerContext {
   }
 
   /**
-   * @return If this worker is a driver, this method returns the driver ID; Otherwise, it returns
-   *     the driver ID of the current running task.
+   * The ID of the current job.
    */
-  public UniqueId getCurrentDriverId() {
-    return currentDriverId;
+  public UniqueId getCurrentJobId() {
+    return currentJobId;
   }
 
   /**
-   * @return The class loader which is associated with the current driver.
+   * @return The class loader which is associated with the current job.
    */
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;

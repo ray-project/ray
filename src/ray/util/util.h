@@ -50,6 +50,29 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   }
 }
 
+template <typename T>
+inline T StringToID(const std::string &string) {
+  return T::from_binary(string);
+}
+
+template <typename T>
+inline std::vector<T> StringsToIdVector(const std::vector<std::string> &strings) {
+  std::vector<T> ids;
+  for (const auto &e : strings) {
+    ids.emplace_back(T::FromBinary(e));
+  }
+  return ids;
+}
+
+template <typename T>
+inline std::vector<std::string> IdVectorToStrings(const std::vector<T> &ids) {
+  std::vector<std::string> strings;
+  for (const auto &e : ids) {
+    strings.emplace_back(e.Binary());
+  }
+  return strings;
+}
+
 class InitShutdownRAII {
  public:
   /// Type of the Shutdown function.

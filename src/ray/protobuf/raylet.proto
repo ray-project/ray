@@ -1,9 +1,8 @@
 syntax = "proto3";
 
-import "gcs.proto";
-
 package ray.rpc;
 
+import "src/ray/protobuf/gcs.proto";
 
 // Data structure.
 message ResourceIdSetInfo {
@@ -18,78 +17,110 @@ message ResourceIdSetInfo {
 }
 
 // Service request message.
+message RegisterClientRequest {
+  // Indicates the client is a worker or a driver.
+  bool is_worker = 1;
+  // The worker id.
+  bytes worker_id = 2;
+  // The process ID of this worker.
+  uint32 worker_pid = 3;
+  // The job ID.
+  bytes job_id = 4;
+  // Language of this worker.
+  Language language = 5;
+}
+
 message SubmitTaskRequest {
   repeated bytes execution_dependencies = 1;
   bytes task_spec = 2;
 }
 
-message TaskDoneRequest {
-}
-
-message EventLogRequest {
-}
-
-message RegisterClientRequest {
-  // True if the client is a worker and false if the client is a driver.
-  bool is_worker = 1;
-  // The ID of this raylet client.
-  // Worker id is same as client id if the client is a worker.
-  bytes client_id = 2;
-  // The process ID of this worker.
-  uint32 worker_pid = 3;
-  // The driver ID. This is non-nil if the client is a driver.
-  bytes driver_id = 4;
-  // Language of this worker.
-  Language language = 5;
-}
-
 message DisconnectClientRequest {
-}
-
-message IntentionalDisconnectClientRequest {
+  bytes worker_id = 1;
+  bool intentional = 2;
 }
 
 message GetTaskRequest {
+  bytes worker_id = 1;
 }
 
 message ExecuteTaskRequest {
 }
 message FetchOrReconstructRequest {
+  // List of object IDs of the objects that we want to reconstruct or fetch.
+  repeated bytes object_ids = 1;
+  // Do we only want to fetch the objects or also reconstruct them?
+  bool fetch_only = 2;
+  // The current task ID. If fetch_only is false, then this task is blocked.
+  bytes task_id = 3;
 }
+
 message NotifyUnblockedRequest {
-}
-message GetActorFrontierRequest {
-}
-message SetActorFrontierRequest {
+  bytes worker_id = 1;
+  // The current task ID. This task is no longer blocked.
+  bytes task_id = 2;
 }
 message WaitRequest{
+  // List of object ids we'll be waiting on.
+  repeated bytes object_ids = 1;
+  // Number of objects expected to be returned, if available.
+  uint64 num_ready_objects = 2;
+  // timeout
+  int64 timeout = 3;
+  // Whether to wait until objects appear locally.
+  bool wait_local = 4;
+  // The current task ID. If there are less than num_ready_objects local, then
+  // this task is blocked.
+  bytes task_id = 5;
 }
 message PushErrorRequest {
+  // The ID of the job that the error is for.
+  bytes job_id = 1;
+  // The type of the error.
+  bytes type = 2;
+  // The error message.
+  bytes error_message = 3;
+  // The timestamp of the error message.
+  double timestamp = 4;
 }
 message PushProfileEventsRequest {
+  ProfileTableData profile_table_data = 1;
 }
 message FreeObjectsInObjectStoreRequest {
+  // Whether keep this request with local object store
+  // or send it to all the object stores.
+  bool local_only = 1;
+  // Whether also delete objects' creating tasks from GCS.
+  bool delete_creating_tasks = 2;
+  // List of object ids we'll delete from object store.
+  repeated bytes object_ids = 3;
 }
 message PrepareActorCheckpointRequest {
+  bytes actor_id = 1;
 }
 message NotifyActorResumedFromCheckpointRequest {
+  // ID of the actor.
+  bytes actor_id = 1;
+  // ID of the checkpoint from which the actor was resumed.
+  bytes checkpoint_id = 2;
 }
 message SetResourceRequest {
+  // Name of the resource to be set
+  bytes resource_name = 1;
+  // Capacity of the resource to be set
+  double capacity = 2;
+  // Client ID where this resource will be set
+  bytes client_id = 3;
 }
 
 // Service reply.
-message SubmitTaskReply {
-}
-message TaskDoneReply {
-}
-message EventLogReply {
-}
 message RegisterClientReply {
   repeated int32 gpu_ids = 1;
 }
-message DisconnectClientReply {
+message SubmitTaskReply {
 }
-message IntentionalDisconnectClientReply {
+
+message DisconnectClientReply {
 }
 message GetTaskReply {
   // A string of bytes representing the task specification.
@@ -103,11 +134,11 @@ message FetchOrReconstructReply {
 }
 message NotifyUnblockedReply {
 }
-message GetActorFrontierReply {
-}
-message SetActorFrontierReply {
-}
 message WaitReply{
+  // List of object ids found.
+  repeated bytes found = 1;
+  // List of object ids not found.
+  repeated bytes remaining = 2;
 }
 message PushErrorReply {
 }
@@ -116,6 +147,7 @@ message PushProfileEventsReply {
 message FreeObjectsInObjectStoreReply {
 }
 message PrepareActorCheckpointReply {
+  bytes checkpoint_id = 1;
 }
 message NotifyActorResumedFromCheckpointReply {
 }
@@ -130,17 +162,10 @@ service RayletService {
   // Task is submitted to the raylet. This is sent from a worker to a
   // raylet.
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
-  // Notify the raylet that a task has finished. This is sent from a
-  // worker to a raylet.
-  rpc TaskDone(TaskDoneRequest) returns (TaskDoneReply);
-  // Log a message to the event table. This is sent from a worker to a raylet.
-  rpc EventLog(EventLogRequest) returns (EventLogReply);
   // Notify the raylet that this client is disconnecting unexpectedly.
+  // Notify the raylet that this client is disconnecting gracefully if intentional is true.
   // This is sent from a worker to a raylet.
   rpc DisconnectClient(DisconnectClientRequest) returns (DisconnectClientReply);
-  // Notify the raylet that this client is disconnecting gracefully.
-  // This is sent from a worker to a raylet.
-  rpc IntentionalDisconnectClient(IntentionalDisconnectClientRequest) returns (IntentionalDisconnectClientReply);
   // Get a new task from the raylet. This is sent from a worker to a
   // raylet.
   rpc GetTask(GetTaskRequest) returns (GetTaskReply);
@@ -153,19 +178,6 @@ service RayletService {
   // For a worker that was blocked on some object(s), tell the raylet
   // that the worker is now unblocked. This is sent from a worker to a raylet.
   rpc NotifyUnblocked(NotifyUnblockedRequest) returns (NotifyUnblockedReply);
-  // A request to get the task frontier for an actor, called by the actor when
-  // saving a checkpoint.
-  // The ActorFrontier response to a GetActorFrontierRequest. The raylet
-  // returns the actor's per-handle task counts and execution dependencies,
-  // which can later be used as the argument to SetActorFrontier
-  // when resuming from the checkpoint.
-  rpc GetActorFrontier(GetActorFrontierRequest) returns (GetActorFrontierReply);
-  // A request to set the task frontier for an actor, called when resuming from
-  // a checkpoint. The raylet will update the actor's per-handle task
-  // counts and execution dependencies, discard any tasks that already executed
-  // before the checkpoint, and make any tasks on the frontier runnable by
-  // making their execution dependencies available.
-  rpc SetActorFrontier(SetActorFrontierRequest) returns (SetActorFrontierReply);
   // Wait for objects to be ready either from local or remote Plasma stores.
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.

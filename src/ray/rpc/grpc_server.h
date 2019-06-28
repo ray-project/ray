@@ -36,7 +36,9 @@ class GrpcServer {
       : name_(name), port_(port), is_closed_(false) {}
 
   GrpcServer(const std::string &name, const std::string &unix_socket_path)
-      : GrpcServer(name, 0), unix_socket_path_(unix_socket_path) {}
+      : GrpcServer(name, 0) {
+    unix_socket_path_ = unix_socket_path;
+  }
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }

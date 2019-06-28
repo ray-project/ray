@@ -3,9 +3,9 @@
 
 #include <memory>
 
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/raylet/scheduling_resources.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -33,8 +33,8 @@ class Worker {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  void AssignDriverId(const DriverID &driver_id);
-  const DriverID &GetAssignedDriverId() const;
+  void AssignJobId(const JobID &job_id);
+  const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
 
@@ -55,8 +55,8 @@ class Worker {
   Language language_;
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
-  /// Driver ID for the worker's current assigned task.
-  DriverID assigned_driver_id_;
+  /// Job ID for the worker's current assigned task.
+  JobID assigned_job_id_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// Whether the worker is dead.

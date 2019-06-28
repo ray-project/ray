@@ -22,7 +22,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
     notification_callback_ = notification_callback;
   }
 
-  Status Add(const DriverID &driver_id, const TaskID &task_id,
+  Status Add(const JobID &job_id, const TaskID &task_id,
              std::shared_ptr<TaskTableData> &task_data,
              const gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &done) {
     task_table_[task_id] = task_data;
@@ -57,10 +57,10 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
         notification_callback_(client, task_id, data);
       }
     };
-    return Add(DriverID::Nil(), task_id, task_data, callback);
+    return Add(JobID::Nil(), task_id, task_data, callback);
   }
 
-  Status RequestNotifications(const DriverID &driver_id, const TaskID &task_id,
+  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
                               const ClientID &client_id) {
     subscribed_tasks_.insert(task_id);
     if (task_table_.count(task_id) == 1) {
@@ -70,7 +70,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
     return ray::Status::OK();
   }
 
-  Status CancelNotifications(const DriverID &driver_id, const TaskID &task_id,
+  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
                              const ClientID &client_id) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
@@ -133,7 +133,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
   std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(DriverID::Nil(), TaskID::FromRandom(), 0, task_arguments,
+  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
                                 num_returns, required_resources, Language::PYTHON,
                                 function_descriptor);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());

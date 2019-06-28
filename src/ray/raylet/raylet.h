@@ -75,6 +75,7 @@ class Raylet {
   NodeManager node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
+
   /// The gPRC server, listen for local raylet client through unix domain socket.
   rpc::GrpcServer raylet_server_;
 };

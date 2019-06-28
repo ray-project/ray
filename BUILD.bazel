@@ -9,24 +9,6 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
-# grpc common lib
-cc_library(
-    name = "grpc_common_lib",
-    srcs = glob([
-        "src/ray/rpc/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/*.h",
-    ]),
-    copts = COPTS,
-    deps = [
-        ":ray_common",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_protobuf//:protobuf",
-    ],
-)
-
 # === Begin of protobuf definitions ===
 
 proto_library(
@@ -78,8 +60,26 @@ cc_proto_library(
 
 # === End of protobuf definitions ===
 
-
 # === Begin of rpc definitions ===
+
+# grpc common lib
+cc_library(
+    name = "grpc_common_lib",
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 # Node manager gRPC lib.
 cc_grpc_library(
     name = "node_manager_cc_grpc",
@@ -104,7 +104,8 @@ cc_library(
     ],
 )
 
-# Object manger grpc lib.
+
+# Object manager gRPC lib.
 cc_grpc_library(
     name = "object_manager_cc_grpc",
     srcs = [":object_manager_proto"],

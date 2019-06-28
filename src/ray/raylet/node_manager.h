@@ -28,10 +28,10 @@ namespace raylet {
 
 using rpc::ActorTableData;
 using rpc::ClientTableData;
-using rpc::DriverTableData;
 using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
+using rpc::JobTableData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -100,23 +100,65 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Implementation of raylet grpc service.
 
-  void HandleRegisterClientRequest(const RegisterClientRequest &request,
-                                   RegisterClientReply *reply,
-                                   RequestDoneCallback done_callback);
+  void HandleRegisterClientRequest(const rpc::RegisterClientRequest &request,
+                                   rpc::RegisterClientReply *reply,
+                                   rpc::RequestDoneCallback done_callback);
+  void HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
+                               rpc::SubmitTaskReply *reply,
+                               rpc::RequestDoneCallback done_callback);
 
-  void HandleSubmitTaskRequest(const SubmitTaskRequest &request, SubmitTaskReply *reply,
-                               RequestDoneCallback done_callback);
-  /// Handle a `TaskDone` request.
-  void HandleTaskDoneRequest(const TaskDoneRequest &request, TaskDoneReply *reply,
-                             RequestDoneCallback done_callback);
-  /// Handle a `EventLog` request.
-  void HandleEventLogRequest(const EventLogRequest &request, EventLogReply *reply,
-                             RequestDoneCallback done_callback);
+  /// Handle a `DisconnectClient` request.
+  void HandleDisconnectClientRequest(const rpc::HandleDisconnectClientRequest &request,
+                                     rpc::HandleDisconnectClientReply *reply,
+                                     rpc::RequestDoneCallback done_callback);
+  /// Handle a `IntentionalDisconnectClient` request.
+  void HandleIntentionalDisconnectClientRequest(
+      const rpc::GetTaskRequest &request,
+      rpc::HandleIntentionalDisconnectClientReply *reply,
+      rpc::RequestDoneCallback done_callback);
   /// Handle a `GetTask` request.
-  void HandleGetTaskRequest(const GetTaskRequest &request, GetTaskReply *reply,
-                            RequestDoneCallback done_callback);
+  void HandleGetTaskRequest(const rpc::GetTaskRequest &request, rpc::GetTaskReply *reply,
+                            rpc::RequestDoneCallback done_callback);
+
+  /// Handle a `HandleFetchOrReconstruct` request.
+  void HandleFetchOrReconstructRequest(const rpc::FetchOrReconstructRequest &request,
+                                       rpc::FetchOrReconstructReply *reply,
+                                       rpc::RequestDoneCallback done_callback);
+  /// Handle a `HandleNotifyUnblocked` request.
+  void HandleNotifyUnblockedRequest(const rpc::NotifyUnblockedRequest &request,
+                                    rpc::NotifyUnblockedReply *reply,
+                                    rpc::RequestDoneCallback done_callback);
+  /// Handle a `Wait` request.
+  void HandleWaitRequest(const rpc::WaitRequest &request, rpc::WaitReply *reply,
+                         rpc::RequestDoneCallback done_callback);
+  /// Handle a `PushError` request.
+  void HandlePushErrorRequest(const rpc::PushErrorRequest &request,
+                              rpc::PushErrorReply *reply,
+                              rpc::RequestDoneCallback done_callback);
+  /// Handle a `PushProfileEvents` request.
+  void HandlePushProfileEventsRequest(const rpc::PushProfileEventsRequest &request,
+                                      rpc::PushProfileEventsReply *reply,
+                                      rpc::RequestDoneCallback done_callback);
+  /// Handle a `FreeObjectsInObjectStore` request.
+  void HandleFreeObjectsInObjectStoreRequest(
+      const rpc::FreeObjectsInObjectStoreRequest &request,
+      rpc::FreeObjectsInObjectStoreReply *reply, rpc::RequestDoneCallback done_callback);
+  /// Handle a `PrepareActorCheckpoint` request.
+  void HandlePrepareActorCheckpointRequest(
+      const rpc::PrepareActorCheckpointRequest &request,
+      rpc::PrepareActorCheckpointReply *reply, rpc::RequestDoneCallback done_callback);
+  /// Handle a `NotifyActorResumedFromCheckpointReply` request.
+  void HandleNotifyActorResumedFromCheckpointRequest(
+      const rpc::NotifyActorResumedFromCheckpointRequest &request,
+      rpc::NotifyActorResumedFromCheckpointReply *reply,
+      rpc::RequestDoneCallback done_callback);
+  /// Handle a `SetResourceReply` request.
+  void HandleSetResourceRequest(const rpc::SetResourceRequest &request,
+                                rpc::SetResourceReply *reply,
+                                rpc::RequestDoneCallback done_callback);
 
  private:
+  bool WorkerIsDead(const std::string &worker_id);
   /// Methods for handling clients.
 
   /// Handler for the addition of a new GCS client.
@@ -331,12 +373,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const ActorID &actor_id, const ActorTableData &data,
       const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
-  /// When a driver dies, loop over all of the queued tasks for that driver and
+  /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
   ///
-  /// \param driver_id The driver that died.
+  /// \param job_id The job that exited.
   /// \return Void.
-  void CleanUpTasksForDeadDriver(const DriverID &driver_id);
+  void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
@@ -351,13 +393,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
-  /// Handles updates to driver table.
+  /// Handles updates to job table.
   ///
   /// \param id An unused value. TODO(rkn): Should this be removed?
-  /// \param driver_data Data associated with a driver table event.
+  /// \param job_data Data associated with a job table event.
   /// \return Void.
-  void HandleDriverTableUpdate(const DriverID &id,
-                               const std::vector<DriverTableData> &driver_data);
+  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
