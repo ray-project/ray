@@ -382,8 +382,12 @@ class GlobalState(object):
             Information about the Ray clients in the cluster.
         """
         self._check_connected()
+        client_table = _parse_client_table(self.redis_client)
 
-        return _parse_client_table(self.redis_client)
+        for client in client_table:
+            client["alive"] = (
+                client["EntryType"] != gcs_utils.ClientTableData.DELETION)
+        return client_table
 
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.

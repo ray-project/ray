@@ -559,6 +559,10 @@ class Trial(object):
     def is_finished(self):
         return self.status in [Trial.TERMINATED, Trial.ERROR]
 
+    @property
+    def node_ip(self):
+        return self.last_result.get("node_ip")
+
     def __repr__(self):
         return str(self)
 

@@ -495,15 +495,21 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     default=False,
     help="Don't ask for confirmation.")
 @click.option(
+    "--hard",
+    is_flag=True,
+    default=False,
+    help="Terminates the node via node provider (defaults to a 'soft kill'"
+        " which terminates Ray but does not actually delete the instances).")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def kill_random_node(cluster_config_file, yes, cluster_name):
+def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     """Kills a random Ray node. For testing purposes only."""
     click.echo("Killed node with IP " +
-               kill_node(cluster_config_file, yes, cluster_name))
+               kill_node(cluster_config_file, yes, hard, cluster_name))
 
 
 @cli.command()
