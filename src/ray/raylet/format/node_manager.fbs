@@ -136,8 +136,6 @@ table RegisterClientRequest {
   worker_pid: long;
   // The job ID.
   job_id: string;
-  //
-  driver_task_id: string;
   // Language of this worker.
   language: Language;
 }

@@ -856,7 +856,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // message is actually the ID of the driver task, while client_id represents the
     // real driver ID, which can associate all the tasks/actors for a given driver,
     // which is set to the worker ID.
-    const TaskID driver_task_id = from_flatbuf<TaskID>(*message->driver_task_id());
+    const ClientID driver_id = from_flatbuf<ClientID>(*message->client_id());
+    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(from_flatbuf<JobID>(*message->job_id()));
     worker_pool_.RegisterDriver(std::move(worker));
