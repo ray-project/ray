@@ -206,11 +206,12 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
     : client_id_(client_id), is_worker_(is_worker), job_id_(job_id), language_(language) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
+  const auto driver_task_id = TaskID::ComputeDriverTaskID(client_id);
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
-      language);
+      to_flatbuf(fbb, driver_task_id), language);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.

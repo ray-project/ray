@@ -17,7 +17,7 @@
 
 namespace ray {
 
-class WorkerID;
+class ClientID;
 class UniqueID;
 
 // Declaration.
@@ -72,7 +72,7 @@ class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
-  static TaskID GetDriverTaskID(const WorkerID &driver_id);
+  static TaskID ComputeDriverTaskID(const ClientID &driver_id);
 
  private:
   uint8_t id_[kTaskIDSize];
