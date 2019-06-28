@@ -6,7 +6,8 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
-    CDriverID,
+    CJobID,
+    CWorkerID,
     CObjectID,
     CTaskID,
 )
@@ -81,7 +82,7 @@ cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
 
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
-    const CTaskID GenerateTaskId(const CDriverID &driver_id,
+    const CTaskID GenerateTaskId(const CJobID &job_id,
                                  const CTaskID &parent_task_id,
                                  int parent_task_counter)
 

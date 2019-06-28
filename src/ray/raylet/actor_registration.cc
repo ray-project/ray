@@ -43,8 +43,8 @@ const ObjectID ActorRegistration::GetExecutionDependency() const {
   return execution_dependency_;
 }
 
-const DriverID ActorRegistration::GetDriverId() const {
-  return DriverID::FromBinary(actor_table_data_.driver_id());
+const JobID ActorRegistration::GetJobId() const {
+  return JobID::FromBinary(actor_table_data_.job_id());
 }
 
 const int64_t ActorRegistration::GetMaxReconstructions() const {

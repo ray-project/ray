@@ -275,9 +275,8 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   // TODO(swang): Make this better...
   auto task_data = std::make_shared<TaskTableData>();
   task_data->set_task(task->TaskData().Serialize());
-  RAY_CHECK_OK(
-      task_storage_.Add(DriverID(task->TaskData().GetTaskSpecification().DriverId()),
-                        task_id, task_data, task_callback));
+  RAY_CHECK_OK(task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
+                                 task_id, task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
@@ -290,7 +289,7 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
   if (unsubscribed) {
     // Request notifications for the task if we haven't already requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.RequestNotifications(DriverID::Nil(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::Nil(), task_id, client_id_));
   }
   // Return whether we were previously unsubscribed to this task and are now
   // subscribed.
@@ -303,7 +302,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   if (subscribed) {
     // Cancel notifications for the task if we previously requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.CancelNotifications(DriverID::Nil(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::Nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now

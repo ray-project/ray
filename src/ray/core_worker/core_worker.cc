@@ -6,12 +6,12 @@ namespace ray {
 CoreWorker::CoreWorker(const enum WorkerType worker_type,
                        const enum WorkerLanguage language,
                        const std::string &store_socket, const std::string &raylet_socket,
-                       DriverID driver_id)
+                       const JobID &job_id)
     : worker_type_(worker_type),
       language_(language),
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
-      worker_context_(worker_type, driver_id),
+      worker_context_(worker_type, job_id),
       task_interface_(*this),
       object_interface_(*this),
       task_execution_interface_(*this) {
@@ -39,8 +39,8 @@ void CoreWorker::InitializeRayletClient(int server_port) {
     // so that the worker (java/python .etc) can retrieve and handle the error
     // instead of crashing.
     raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-        raylet_socket_, worker_context_.GetWorkerID(),
-        (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentDriverID(),
+        raylet_socket_, ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
+        (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
         ToTaskLanguage(language_), server_port));
   }
 }

@@ -64,7 +64,7 @@ TEST(TaskSpecTest, TaskInfoSize) {
     }
     // General task.
     auto spec = CreateTaskInfo(
-        fbb, to_flatbuf(fbb, DriverID::FromRandom()), to_flatbuf(fbb, task_id),
+        fbb, to_flatbuf(fbb, JobID::FromRandom()), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, TaskID::FromRandom()), 0, to_flatbuf(fbb, ActorID::Nil()),
         to_flatbuf(fbb, ObjectID::Nil()), 0, to_flatbuf(fbb, ActorID::Nil()),
         to_flatbuf(fbb, ActorHandleID::Nil()), 0,
@@ -83,7 +83,7 @@ TEST(TaskSpecTest, TaskInfoSize) {
     }
     // General task.
     auto spec = CreateTaskInfo(
-        fbb, to_flatbuf(fbb, DriverID::FromRandom()), to_flatbuf(fbb, task_id),
+        fbb, to_flatbuf(fbb, JobID::FromRandom()), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, TaskID::FromRandom()), 10, to_flatbuf(fbb, ActorID::FromRandom()),
         to_flatbuf(fbb, ObjectID::FromRandom()), 10000000,
         to_flatbuf(fbb, ActorID::FromRandom()),

@@ -29,7 +29,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskLeaseData> {
  public:
   MOCK_METHOD4(
       Add,
-      ray::Status(const DriverID &driver_id, const TaskID &task_id,
+      ray::Status(const JobID &job_id, const TaskID &task_id,
                   std::shared_ptr<TaskLeaseData> &task_data,
                   const gcs::TableInterface<TaskID, TaskLeaseData>::WriteCallback &done));
 };
@@ -75,7 +75,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
   std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(DriverID::Nil(), TaskID::FromRandom(), 0, task_arguments,
+  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
                                 num_returns, required_resources, Language::PYTHON,
                                 function_descriptor);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());

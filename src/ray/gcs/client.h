@@ -54,7 +54,7 @@ class RAY_EXPORT AsyncGcsClient {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
-  DriverTable &driver_table();
+  JobTable &job_table();
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
@@ -64,8 +64,8 @@ class RAY_EXPORT AsyncGcsClient {
   // driver (to set the PYTHONPATH)
 
   using GetExportCallback = std::function<void(const std::string &data)>;
-  Status AddExport(const std::string &driver_id, std::string &export_data);
-  Status GetExport(const std::string &driver_id, int64_t export_index,
+  Status AddExport(const std::string &job_id, std::string &export_data);
+  Status GetExport(const std::string &job_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
@@ -96,7 +96,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_subscribe_clients_;
   // The following context writes everything to the primary shard
   std::shared_ptr<RedisContext> primary_context_;
-  std::unique_ptr<DriverTable> driver_table_;
+  std::unique_ptr<JobTable> job_table_;
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
@@ -105,14 +105,14 @@ class RAY_EXPORT AsyncGcsClient {
 class SyncGcsClient {
   Status LogEvent(const std::string &key, const std::string &value, double timestamp);
   Status NotifyError(const std::map<std::string, std::string> &error_info);
-  Status RegisterFunction(const DriverID &driver_id, const FunctionID &function_id,
+  Status RegisterFunction(const JobID &job_id, const FunctionID &function_id,
                           const std::string &language, const std::string &name,
                           const std::string &data);
-  Status RetrieveFunction(const DriverID &driver_id, const FunctionID &function_id,
+  Status RetrieveFunction(const JobID &job_id, const FunctionID &function_id,
                           std::string *name, std::string *data);
 
-  Status AddExport(const std::string &driver_id, std::string &export_data);
-  Status GetExport(const std::string &driver_id, int64_t export_index, std::string *data);
+  Status AddExport(const std::string &job_id, std::string &export_data);
+  Status GetExport(const std::string &job_id, int64_t export_index, std::string *data);
 };
 
 }  // namespace gcs

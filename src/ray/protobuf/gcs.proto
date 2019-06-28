@@ -25,7 +25,7 @@ enum TablePrefix {
   HEARTBEAT = 9;
   HEARTBEAT_BATCH = 10;
   ERROR_INFO = 11;
-  DRIVER = 12;
+  JOB = 12;
   PROFILE = 13;
   TASK_LEASE = 14;
   ACTOR_CHECKPOINT = 15;
@@ -47,7 +47,7 @@ enum TablePubsub {
   HEARTBEAT_BATCH_PUBSUB = 8;
   ERROR_INFO_PUBSUB = 9;
   TASK_LEASE_PUBSUB = 10;
-  DRIVER_PUBSUB = 11;
+  JOB_PUBSUB = 11;
   NODE_RESOURCE_PUBSUB = 12;
   TABLE_PUBSUB_MAX = 13;
 }
@@ -102,8 +102,8 @@ message ActorTableData {
   // dies, then this is the object that should be reconstructed for the actor
   // to be recreated.
   bytes actor_creation_dummy_object_id = 2;
-  // The ID of the driver that created the actor.
-  bytes driver_id = 3;
+  // The ID of the job that created the actor.
+  bytes job_id = 3;
   // The ID of the node manager that created the actor.
   bytes node_manager_id = 4;
   // Current state of this actor.
@@ -115,8 +115,8 @@ message ActorTableData {
 }
 
 message ErrorTableData {
-  // The ID of the driver that the error is for.
-  bytes driver_id = 1;
+  // The ID of the job that the error is for.
+  bytes job_id = 1;
   // The type of the error.
   string type = 2;
   // The error message.
@@ -222,9 +222,9 @@ message TaskLeaseData {
   uint64 timeout = 3;
 }
 
-message DriverTableData {
-  // The driver ID.
-  bytes driver_id = 1;
+message JobTableData {
+  // The job ID.
+  bytes job_id = 1;
   // Whether it's dead.
   bool is_dead = 2;
 }

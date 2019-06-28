@@ -126,7 +126,7 @@ class CoreWorkerTest : public ::testing::Test {
   void TestNormalTask(const std::unordered_map<std::string, double> &resources) {
     CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
-                      DriverID::FromRandom());
+                      JobID::FromRandom());
 
     // Test pass by value.
     {
@@ -184,7 +184,7 @@ class CoreWorkerTest : public ::testing::Test {
   void TestActorTask(const std::unordered_map<std::string, double> &resources) {
     CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
-                      DriverID::FromRandom());
+                      JobID::FromRandom());
 
     std::unique_ptr<ActorHandle> actor_handle;
 
@@ -275,9 +275,9 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {
-  auto driver_id = DriverID::FromRandom();
+  auto job_id = JobID::FromRandom();
 
-  WorkerContext context(WorkerType::WORKER, driver_id);
+  WorkerContext context(WorkerType::WORKER, job_id);
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
@@ -302,7 +302,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         DriverID::FromRandom());
+                         JobID::FromRandom());
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -358,11 +358,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                      raylet_store_socket_names_[0], raylet_socket_names_[0],
-                     DriverID::FromRandom());
+                     JobID::FromRandom());
 
   CoreWorker worker2(WorkerType::DRIVER, WorkerLanguage::PYTHON,
                      raylet_store_socket_names_[1], raylet_socket_names_[1],
-                     DriverID::FromRandom());
+                     JobID::FromRandom());
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -446,7 +446,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
     CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON, "",
-                           raylet_socket_names_[0], DriverID::FromRandom());
+                           raylet_socket_names_[0], JobID::FromRandom());
   } catch (const std::exception &e) {
     std::cout << "Caught exception when constructing core worker: " << e.what();
   }
