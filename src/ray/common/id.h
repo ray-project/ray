@@ -17,7 +17,7 @@
 
 namespace ray {
 
-class ClientID;
+class WorkerID;
 class UniqueID;
 
 // Declaration.
