@@ -97,7 +97,7 @@ class GcsClient {
   }
 
  private:
-  GcsClientImpl* client_impl_{nullptr};
+  GcsClientImpl *client_impl_{nullptr};
 
   std::unique_ptr<NodeStateAccessor> node_accessor_;
   std::unique_ptr<ActorStateAccessor> actor_accessor_;
