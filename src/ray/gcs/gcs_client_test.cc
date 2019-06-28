@@ -81,12 +81,17 @@ class GcsClientTest : public ::testing::Test {
   }
 
   void WaitPendingDone(std::chrono::milliseconds timeout) {
-    while (pending_count_ != 0 && timeout.count() > 0) {
+    WaitPendingDone(pending_count_, timeout);
+  }
+
+  void WaitPendingDone(std::atomic<int> &pending_count,
+                       std::chrono::milliseconds timeout) {
+    while (pending_count != 0 && timeout.count() > 0) {
       std::chrono::milliseconds interval(10);
       std::this_thread::sleep_for(interval);
       timeout -= interval;
     }
-    EXPECT_EQ(pending_count_, 0);
+    EXPECT_EQ(pending_count, 0);
   }
 
  protected:
@@ -174,6 +179,49 @@ TEST_F(GcsClientTest, NodeAccessorTest) {
       RAY_LOG(ERROR) << "GCS response timeout!";
     }
   }
+}
+
+TEST_F(GcsClientTest, ActorAccessorTest_Subscribe) {
+  ActorStateAccessor &actor_accessor = gcs_client_->Actors();
+  std::chrono::milliseconds timeout(10000);
+  // sub
+  std::atomic<int> sub_pending_count(0);
+  std::atomic<int> do_sub_pending_count(0);
+  auto subscribe = [this, &sub_pending_count](const ActorID &actor_id,
+                                              std::vector<ActorTableData> datas) {
+    const auto it = actor_datas_.find(actor_id);
+    ASSERT_TRUE(it != actor_datas_.end());
+    --sub_pending_count;
+  };
+  auto done = [&do_sub_pending_count](Status status) {
+    RAY_CHECK_OK(status);
+    --do_sub_pending_count;
+  };
+
+  ++do_sub_pending_count;
+  actor_accessor.AsyncSubscribe(JobID::Nil(), ClientID::Nil(), subscribe, done);
+  // wait do sub done
+  WaitPendingDone(do_sub_pending_count, timeout);
+
+  // add
+  std::atomic<int> add_pending_count(0);
+  size_t log_length = 0;
+  for (const auto &elem : actor_datas_) {
+    const auto &actor = elem.second;
+    JobID job_id = JobID::FromBinary(actor->job_id());
+    ++sub_pending_count;
+    ++add_pending_count;
+    actor_accessor.AsyncAdd(job_id, elem.first, actor, log_length,
+                            [&add_pending_count](Status status) {
+                              RAY_CHECK_OK(status);
+                              --add_pending_count;
+                            });
+  }
+  // wait add done
+  WaitPendingDone(add_pending_count, timeout);
+
+  // wait all sub notify
+  WaitPendingDone(sub_pending_count, timeout);
 }
 
 }  // namespace gcs
