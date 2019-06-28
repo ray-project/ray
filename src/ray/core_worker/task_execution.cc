@@ -20,31 +20,31 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   auto callback = [this, executor](const raylet::TaskSpecification &spec) {
     core_worker_.worker_context_.SetCurrentTask(spec);
 
-      WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
-                                    ? WorkerLanguage::JAVA
-                                    : WorkerLanguage::PYTHON;
-      RayFunction func{language, spec.FunctionDescriptor()};
+    WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
+                                  ? WorkerLanguage::JAVA
+                                  : WorkerLanguage::PYTHON;
+    RayFunction func{language, spec.FunctionDescriptor()};
 
-      std::vector<std::shared_ptr<Buffer>> args;
-      RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+    std::vector<std::shared_ptr<Buffer>> args;
+    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
 
-      TaskType task_type;
-      if (spec.IsActorCreationTask()) {
-        task_type = TaskType::ACTOR_CREATION_TASK;
-      } else if (spec.IsActorTask()) {
-        task_type = TaskType::ACTOR_TASK;
-      } else {
-        task_type = TaskType::NORMAL_TASK;
-      }
+    TaskType task_type;
+    if (spec.IsActorCreationTask()) {
+      task_type = TaskType::ACTOR_CREATION_TASK;
+    } else if (spec.IsActorTask()) {
+      task_type = TaskType::ACTOR_TASK;
+    } else {
+      task_type = TaskType::NORMAL_TASK;
+    }
 
-      TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
+    TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
 
-      auto num_returns = spec.NumReturns();
-      if (spec.IsActorCreationTask() || spec.IsActorTask()) {
-        RAY_CHECK(num_returns > 0);
-        // Decrease to account for the dummy object id.
-        num_returns--;
-      }
+    auto num_returns = spec.NumReturns();
+    if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+      RAY_CHECK(num_returns > 0);
+      // Decrease to account for the dummy object id.
+      num_returns--;
+    }
 
     auto status = executor(func, args, task_info, num_returns);
     // TODO(zhijunfu):

@@ -1816,13 +1816,13 @@ bool NodeManager::AssignTask(const Task &task) {
           actor_entry->second.AddHandle(new_handle_id, execution_dependency);
         }
 
-            // TODO(swang): For actors with multiple actor handles, to
-            // guarantee that tasks are replayed in the same order after a
-            // failure, we must update the task's execution dependency to be
-            // the actor's current execution dependency.
-          } else {
-            RAY_CHECK(spec.NewActorHandles().empty());
-          }
+        // TODO(swang): For actors with multiple actor handles, to
+        // guarantee that tasks are replayed in the same order after a
+        // failure, we must update the task's execution dependency to be
+        // the actor's current execution dependency.
+      } else {
+        RAY_CHECK(spec.NewActorHandles().empty());
+      }
 
       // Mark the task as running.
       // (See design_docs/task_states.rst for the state transition diagram.)
