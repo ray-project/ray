@@ -27,7 +27,7 @@ class CoreWorkerTaskExecutionInterface {
   /// \return Status.
   using TaskExecutor =
       std::function<Status(const RayFunction &ray_function,
-                           const std::vector<std::shared_ptr<RayObjectValue>> &args,
+                           const std::vector<std::shared_ptr<RayObject>> &args,
                            const TaskInfo &task_info, int num_returns)>;
 
   /// Start receving and executes tasks in a infinite loop.
@@ -44,7 +44,7 @@ class CoreWorkerTaskExecutionInterface {
   /// \param args[out] The arguments for passing to task executor.
   ///
   Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
-                              std::vector<std::shared_ptr<RayObjectValue>> *args);
+                              std::vector<std::shared_ptr<RayObject>> *args);
 
   /// Reference to the parent CoreWorker instance.
   CoreWorker &core_worker_;

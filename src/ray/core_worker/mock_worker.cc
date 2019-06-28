@@ -22,7 +22,7 @@ class MockWorker {
 
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,
-                                const std::vector<std::shared_ptr<RayObjectValue>> &args,
+                                const std::vector<std::shared_ptr<RayObject>> &args,
                                 const TaskInfo &task_info, int num_returns) {
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
@@ -34,7 +34,7 @@ class MockWorker {
         buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
       }
 
-      auto return_value = RayObjectValue(
+      auto return_value = RayObject(
           std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
 
       // Write the merged content to each of return ids.
