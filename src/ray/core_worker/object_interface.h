@@ -16,7 +16,8 @@ class CoreWorkerStoreProvider;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(CoreWorker &core_worker);
+  CoreWorkerObjectInterface(CoreWorker &core_worker,
+          const std::string &store_socket);
 
   /// Put an object into object store.
   ///

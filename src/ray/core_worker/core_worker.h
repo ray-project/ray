@@ -57,17 +57,11 @@ class CoreWorker {
   /// Language of this worker.
   const enum WorkerLanguage language_;
 
-  /// Plasma store socket name.
-  const std::string store_socket_;
-
   /// raylet socket name.
   const std::string raylet_socket_;
 
   /// Worker context.
   WorkerContext worker_context_;
-
-  /// Plasma store client.
-  plasma::PlasmaClient store_client_;
 
   /// Raylet client.
   RayletClient raylet_client_;
