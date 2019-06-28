@@ -80,7 +80,7 @@ def _parse_client_table(redis_client):
             resources = _parse_resource_table(
                 redis_client, ray.utils.hex_to_binary(client_id))
         else:
-            resoruces = {}
+            resources = {}
         node_info[client_id]["Resources"] = resources
     # NOTE: We return the list comprehension below instead of simply doing
     # 'list(node_info.values())' in order to have the nodes appear in the order
