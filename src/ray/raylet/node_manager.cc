@@ -853,7 +853,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
     // Register the new driver.
-    const ClientID driver_id = from_flatbuf<ClientID>(*message->client_id());
+    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->worker_id());
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
     worker->AssignTaskId(driver_task_id);

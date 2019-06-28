@@ -131,7 +131,7 @@ table RegisterClientRequest {
   // True if the client is a worker and false if the client is a driver.
   is_worker: bool;
   // The ID of the worker or driver.
-  client_id: string;
+  worker_id: string;
   // The process ID of this worker.
   worker_pid: long;
   // The job ID.
