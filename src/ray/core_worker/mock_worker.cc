@@ -22,7 +22,7 @@ class MockWorker {
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,
                                 const std::vector<std::shared_ptr<Buffer>> &args,
-                                const TaskID &task_id, int num_returns) {
+                                const TaskInfo &task_info, int num_returns) {
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
 
@@ -36,7 +36,7 @@ class MockWorker {
 
       // Write the merged content to each of return ids.
       for (int i = 0; i < num_returns; i++) {
-        ObjectID id = ObjectID::ForTaskReturn(task_id, i + 1);
+        ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
         RAY_CHECK_OK(worker_.Objects().Put(memory_buffer, id));
       }
       return Status::OK();
