@@ -15,8 +15,7 @@ class RayObject {
   ///
   /// \param[in] data Data of the object value.
   /// \param[in] metadata Metadata of the object value.
-  RayObject(const std::shared_ptr<Buffer> &data,
-                 const std::shared_ptr<Buffer> &metadata)
+  RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata)
       : data_(data), metadata_(metadata) {}
 
   /// Return the data of the object value.
