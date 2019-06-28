@@ -19,6 +19,7 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskInfo;
+import org.ray.runtime.task.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,11 +77,12 @@ public class Worker {
 
   // This method is required by JNI
   private void runTaskCallback(List<String> rayFunctionInfo, List<RayObjectValueProxy> argsBytes,
-                               byte[] taskIdBytes, byte[] jobIdBytes,
-                               boolean isActorCreationTask, boolean isActorTask, int numReturns) {
+                               byte[] taskIdBytes, byte[] jobIdBytes, int jniTaskType,
+                               int numReturns) {
     TaskId taskId = new TaskId(taskIdBytes);
     UniqueId jobId = new UniqueId(jobIdBytes);
-    workerContext.setCurrentTask(new TaskInfo(taskId, jobId, isActorCreationTask, isActorTask));
+    TaskType taskType = TaskType.fromInteger(jniTaskType);
+    workerContext.setCurrentTask(new TaskInfo(taskId, jobId, taskType));
     String taskInfo = taskId + " " + String.join(".", rayFunctionInfo);
     LOGGER.debug("Executing task {}", taskInfo);
 //    Preconditions.checkState(numReturns == 1);
@@ -96,7 +98,7 @@ public class Worker {
 
       // Get local actor object and arguments.
       Object actor = null;
-      if (isActorTask) {
+      if (taskType == TaskType.ACTOR_TASK) {
         if (actorCreationException != null) {
           throw actorCreationException;
         }
@@ -112,8 +114,8 @@ public class Worker {
         result = rayFunction.getConstructor().newInstance(args);
       }
       // Set result
-      if (!isActorCreationTask) {
-        if (isActorTask) {
+      if (taskType != TaskType.ACTOR_CREATION_TASK) {
+        if (taskType == TaskType.ACTOR_TASK) {
           maybeSaveCheckpoint(actor, workerContext.getCurrentActorId());
         }
         objectInterface.put(returnId, result);
@@ -124,7 +126,7 @@ public class Worker {
       LOGGER.debug("Finished executing task {}", taskInfo);
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskInfo, e);
-      if (!isActorCreationTask) {
+      if (taskType != TaskType.ACTOR_CREATION_TASK) {
         objectInterface.put(returnId, new RayTaskException("Error executing task " + taskInfo, e));
       } else {
         actorCreationException = e;

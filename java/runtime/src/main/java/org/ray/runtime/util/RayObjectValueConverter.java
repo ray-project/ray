@@ -11,7 +11,7 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.generated.ErrorType;
+import org.ray.runtime.generated.Gcs.ErrorType;
 import org.ray.runtime.proxyTypes.RayObjectValueProxy;
 
 public class RayObjectValueConverter {
@@ -30,7 +30,7 @@ public class RayObjectValueConverter {
 
   public RayObjectValueConverter(ClassLoader classLoader) {
     this.fstConverters = new FSTConverter[] {
-        new FSTConverter(String.valueOf(ErrorType.TASK_EXCEPTION).getBytes(),
+        new FSTConverter(String.valueOf(ErrorType.TASK_EXCEPTION.getNumber()).getBytes(),
             obj -> obj instanceof RayTaskException, classLoader),
         new FSTConverter(JAVA_OBJECT_META, obj -> true, classLoader),
         // TODO (kfstorm): remove this fallback behavior after support pass by value with metadata
@@ -120,9 +120,10 @@ public class RayObjectValueConverter {
     private final Object instance;
     private final RayObjectValueProxy instanceValue;
 
-    ErrorTypeConverter(Object instance, int errorType) {
+    ErrorTypeConverter(Object instance, ErrorType errorType) {
       this.instance = instance;
-      this.instanceValue = new RayObjectValueProxy(new byte[0], String.valueOf(errorType).getBytes());
+      this.instanceValue = new RayObjectValueProxy(new byte[0],
+          String.valueOf(errorType.getNumber()).getBytes());
     }
 
     @Override

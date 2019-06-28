@@ -107,7 +107,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       "Lorg/ray/runtime/proxyTypes/ResourcesProxy;");
   java_actor_creation_options_proxy_dynamic_worker_options =
       env->GetFieldID(java_actor_creation_options_proxy_class, "dynamicWorkerOptions",
-                      "Lorg/ray/runtime/proxyTypes/ResourcesProxy;");
+                      "Ljava/util/List;");
 
   LOAD_CLASS(java_ray_object_value_proxy_class,
              "org/ray/runtime/proxyTypes/RayObjectValueProxy");

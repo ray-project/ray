@@ -3,6 +3,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/protobuf/gcs.pb.h"
 
 // Print a warning every this number of attempts.
 #define WARN_PER_NUM_ATTEMPTS 50
@@ -104,8 +105,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         unready.erase(object_id);
         // TODO (kfstorm): metadata should be structured.
         std::string metadata = object_buffers[i].metadata->ToString();
-        for (auto &error_type : EnumValuesErrorType()) {
-          if (metadata == std::to_string(static_cast<int>(error_type))) {
+        auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
+        for (int i = 0; i < error_type_descriptor->value_count(); i++) {
+          auto error_type_number = error_type_descriptor->value(i)->number();
+          if (metadata == std::to_string(error_type_number)) {
             should_break = true;
           }
         }

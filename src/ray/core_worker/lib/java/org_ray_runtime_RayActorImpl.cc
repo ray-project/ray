@@ -104,7 +104,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *en
  * Method:    free
  * Signature: (J)V
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_free(JNIEnv *env, jclass o,
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayActorImpl_free(JNIEnv *env, jclass o,
                                                                jlong nativeActorHandle) {
   delete &GetActorHandle(nativeActorHandle);
 }

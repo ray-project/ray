@@ -47,6 +47,16 @@ cc_proto_library(
     deps = ["object_manager_proto"],
 )
 
+proto_library(
+    name = "core_worker_proto",
+    srcs = ["src/ray/protobuf/core_worker.proto"],
+)
+
+cc_proto_library(
+    name = "core_worker_cc_proto",
+    deps = ["core_worker_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -239,7 +249,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":core_worker_grpc_lib",
+        ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
         ":raylet_lib",
@@ -636,12 +646,6 @@ filegroup(
         "@bazel_tools//src/conditions:darwin": [":libcore_worker_library_java.dylib"],
         "//conditions:default": [":libcore_worker_library_java.so"],
     }),
-    visibility = ["//java:__subpackages__"],
-)
-
-filegroup(
-    name = "gcs_fbs_file",
-    srcs = ["src/ray/gcs/format/gcs.fbs"],
     visibility = ["//java:__subpackages__"],
 )
 

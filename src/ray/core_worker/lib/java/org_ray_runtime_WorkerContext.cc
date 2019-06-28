@@ -31,7 +31,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentJobId(
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentWorkerId(
     JNIEnv *env, jclass o, jlong nativeCoreWorker) {
-  return JByteArrayFromUniqueId<ray::ClientID>(env,
+  return JByteArrayFromUniqueId<ray::WorkerID>(env,
                                                GetContext(nativeCoreWorker).GetWorkerID())
       .GetJByteArray();
 }

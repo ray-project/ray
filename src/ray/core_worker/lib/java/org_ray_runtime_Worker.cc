@@ -14,9 +14,11 @@ extern "C" {
  * Method:    createCoreWorker
  * Signature: (Ljava/lang/String;Ljava/lang/String;[B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(
-    JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
-    jbyteArray jobId) {
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(JNIEnv *env, jclass,
+                                                                     jint workerMode,
+                                                                     jstring storeSocket,
+                                                                     jstring rayletSocket,
+                                                                     jbyteArray jobId) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
   UniqueIdFromJByteArray<ray::JobID> job_id(env, jobId);
@@ -42,7 +44,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
                                                                  jlong nativeCoreWorker,
                                                                  jobject javaCoreWorker) {
   jmethodID run_task_method = env->GetMethodID(
-      o, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;[B[BZZI)V");
+      o, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;[B[BII)V");
   auto executor_func = [env, javaCoreWorker, run_task_method](
                            const ray::RayFunction &ray_function,
                            const std::vector<std::shared_ptr<ray::RayObjectValue>> &args,
@@ -64,8 +66,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
     // invoke Java method
     env->CallVoidMethod(javaCoreWorker, run_task_method, ray_function_array_list,
                         args_array_list, task_id_byte_array, job_id_byte_array,
-                        (jboolean)task_info.is_actor_creation_task,
-                        (jboolean)task_info.is_actor_task, (jint)num_returns);
+                        (jint)task_info.task_type, (jint)num_returns);
     return ray::Status::OK();
   };
 

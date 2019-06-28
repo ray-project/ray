@@ -68,7 +68,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *, 
  * Method:    free
  * Signature: (J)V
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_free(JNIEnv *, jclass, jlong);
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayActorImpl_free(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

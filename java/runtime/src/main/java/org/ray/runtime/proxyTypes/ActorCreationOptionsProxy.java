@@ -16,9 +16,8 @@ public class ActorCreationOptionsProxy {
         options.maxReconstructions;
     this.resources = new ResourcesProxy(options == null ? null : options.resources);
     this.dynamicWorkerOptions = ImmutableList.of();
-    String jvmOptions = options.jvmOptions;
-    if (!StringUtil.isNullOrEmpty(jvmOptions)) {
-      this.dynamicWorkerOptions = ImmutableList.of(jvmOptions);
+    if (options != null && !StringUtil.isNullOrEmpty(options.jvmOptions)) {
+      this.dynamicWorkerOptions = ImmutableList.of(options.jvmOptions);
     }
   }
 }

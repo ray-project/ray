@@ -39,7 +39,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
-    functionManager = new FunctionManager(rayConfig.driverResourcePath);
+    functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
   }
 
@@ -202,7 +202,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       , Object[] args, ActorCreationOptions options) {
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
         language != WorkerLanguage.JAVA);
-    if (language != WorkerLanguage.JAVA) {
+    if (language != WorkerLanguage.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
     RayActorImpl actor = worker.getTaskInterface().createActor(functionDescriptor, functionArgs, options);
