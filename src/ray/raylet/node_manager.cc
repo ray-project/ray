@@ -852,11 +852,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker_pool_.RegisterWorker(std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
-    // Register the new driver. Note that here the driver_id in RegisterClientRequest
-    // message is actually the ID of the driver task, while client_id represents the
-    // real driver ID, which can associate all the tasks/actors for a given driver,
-    // which is set to the worker ID.
+    // Register the new driver.
     const ClientID driver_id = from_flatbuf<ClientID>(*message->client_id());
+    // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(from_flatbuf<JobID>(*message->job_id()));
