@@ -37,7 +37,7 @@ cc_proto_library(
     deps = ["node_manager_proto"],
 )
 
-proto_library(    
+proto_library(
     name = "object_manager_proto",
     srcs = ["src/ray/protobuf/object_manager.proto"],
 )
