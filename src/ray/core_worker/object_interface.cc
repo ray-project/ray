@@ -15,16 +15,17 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(CoreWorker &core_worker)
           core_worker_.raylet_client_)));
 }
 
-Status CoreWorkerObjectInterface::Put(const RayObject &value, ObjectID *object_id) {
+Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
   ObjectID put_id = ObjectID::ForPut(core_worker_.worker_context_.GetCurrentTaskID(),
                                      core_worker_.worker_context_.GetNextPutIndex());
   *object_id = put_id;
-  return Put(value, put_id);
+  return Put(object, put_id);
 }
 
-Status CoreWorkerObjectInterface::Put(const RayObject &value, const ObjectID &object_id) {
+Status CoreWorkerObjectInterface::Put(const RayObject &object,
+                                      const ObjectID &object_id) {
   auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Put(value, object_id);
+  return store_providers_[type]->Put(object, object_id);
 }
 
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,

@@ -8,26 +8,26 @@
 
 namespace ray {
 
-/// Object value in ray system.
+/// Binary representation of ray object.
 class RayObject {
  public:
-  /// Create a ray object value instance.
+  /// Create a ray object instance.
   ///
-  /// \param[in] data Data of the object value.
-  /// \param[in] metadata Metadata of the object value.
+  /// \param[in] data Data of the ray object.
+  /// \param[in] metadata Metadata of the ray object.
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata)
       : data_(data), metadata_(metadata) {}
 
-  /// Return the data of the object value.
+  /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; };
 
-  /// Return the metadata of the object value.
+  /// Return the metadata of the ray object.
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; };
 
  private:
-  /// Data of the object value.
+  /// Data of the ray object.
   const std::shared_ptr<Buffer> data_;
-  /// Metadata of the object value.
+  /// Metadata of the ray object.
   const std::shared_ptr<Buffer> metadata_;
 };
 
@@ -43,10 +43,10 @@ class CoreWorkerStoreProvider {
 
   /// Put an object with specified ID into object store.
   ///
-  /// \param[in] value The object value.
+  /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  virtual Status Put(const RayObject &value, const ObjectID &object_id) = 0;
+  virtual Status Put(const RayObject &object, const ObjectID &object_id) = 0;
 
   /// Get a list of objects from the object store.
   ///

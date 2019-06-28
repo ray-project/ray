@@ -23,10 +23,10 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
 
   /// Put an object with specified ID into object store.
   ///
-  /// \param[in] value The object value.
+  /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  Status Put(const RayObject &value, const ObjectID &object_id) override;
+  Status Put(const RayObject &object, const ObjectID &object_id) override;
 
   /// Get a list of objects from the object store.
   ///

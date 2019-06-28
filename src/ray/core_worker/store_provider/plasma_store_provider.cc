@@ -19,11 +19,11 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
       store_client_mutex_(store_client_mutex),
       raylet_client_(raylet_client) {}
 
-Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &value,
+Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
-  auto data = value.GetData();
-  auto metadata = value.GetMetadata();
+  auto data = object.GetData();
+  auto metadata = object.GetMetadata();
   std::shared_ptr<arrow::Buffer> out_buffer;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
