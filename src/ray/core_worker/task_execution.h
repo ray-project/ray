@@ -28,7 +28,7 @@ class CoreWorkerTaskExecutionInterface {
   using TaskExecutor =
       std::function<Status(const RayFunction &ray_function,
                            const std::vector<std::shared_ptr<RayObjectValue>> &args,
-                           const TaskID &task_id, int num_returns)>;
+                           const TaskInfo &task_info, int num_returns)>;
 
   /// Start receving and executes tasks in a infinite loop.
   /// \return Status.

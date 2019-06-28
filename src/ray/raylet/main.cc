@@ -146,14 +146,13 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-  object_manager_config.max_sends = std::max(1, num_cpus / 4);
-  object_manager_config.max_receives = std::max(1, num_cpus / 4);
+  object_manager_config.rpc_service_threads_number = std::max(2, num_cpus / 2);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                 << "max_sends = " << object_manager_config.max_sends << "\n"
-                 << "max_receives = " << object_manager_config.max_receives << "\n"
+                 << "rpc_service_threads_number = "
+                 << object_manager_config.rpc_service_threads_number
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.

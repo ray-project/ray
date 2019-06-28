@@ -1,4 +1,5 @@
-#include "ray/rpc/grpc_server.h"
+
+#include "src/ray/rpc/grpc_server.h"
 #include <grpcpp/impl/service_type.h>
 
 namespace ray {
@@ -11,6 +12,9 @@ void GrpcServer::Run() {
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
+  if (services_.size() == 0) {
+    RAY_LOG(WARNING) << "No service is found when start grpc server.";
+  }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
   }
@@ -19,7 +23,7 @@ void GrpcServer::Run() {
   cq_ = builder.AddCompletionQueue();
   // Build and start server.
   server_ = builder.BuildAndStart();
-  RAY_LOG(DEBUG) << name_ << " server started, listening on port " << port_ << ".";
+  RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_and_concurrencies_) {
@@ -29,8 +33,7 @@ void GrpcServer::Run() {
     }
   }
   // Start a thread that polls incoming requests.
-  std::thread polling_thread(&GrpcServer::PollEventsFromCompletionQueue, this);
-  polling_thread.detach();
+  polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {
@@ -59,7 +62,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         break;
       case ServerCallState::SENDING_REPLY:
         // The reply has been sent, this call can be deleted now.
-        // This event is triggered by `ServerCallImpl::SendReply`.
+        // This event is triggered by `ServerCallImpl::Finish`.
         delete_call = true;
         break;
       default:

@@ -277,9 +277,9 @@ class FunctionActorManager(object):
             the worker gets connected.
         _actors_to_export: The actors to export when the worker gets
             connected.
-        _function_execution_info: The map from driver_id to finction_id
+        _function_execution_info: The map from job_id to function_id
             and execution_info.
-        _num_task_executions: The map from driver_id to function
+        _num_task_executions: The map from job_id to function
             execution times.
         imported_actor_classes: The set of actor classes keys (format:
             ActorClass:function_id) that are already in GCS.
@@ -303,17 +303,17 @@ class FunctionActorManager(object):
         self._loaded_actor_classes = {}
         self.lock = threading.Lock()
 
-    def increase_task_counter(self, driver_id, function_descriptor):
+    def increase_task_counter(self, job_id, function_descriptor):
         function_id = function_descriptor.function_id
         if self._worker.load_code_from_local:
-            driver_id = ray.DriverID.nil()
-        self._num_task_executions[driver_id][function_id] += 1
+            job_id = ray.JobID.nil()
+        self._num_task_executions[job_id][function_id] += 1
 
-    def get_task_counter(self, driver_id, function_descriptor):
+    def get_task_counter(self, job_id, function_descriptor):
         function_id = function_descriptor.function_id
         if self._worker.load_code_from_local:
-            driver_id = ray.DriverID.nil()
-        return self._num_task_executions[driver_id][function_id]
+            job_id = ray.JobID.nil()
+        return self._num_task_executions[job_id][function_id]
 
     def export_cached(self):
         """Export cached remote functions
@@ -376,11 +376,11 @@ class FunctionActorManager(object):
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
                                "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.task_driver_id.binary() + b":"
+        key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hmset(
             key, {
-                "driver_id": self._worker.task_driver_id.binary(),
+                "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
                 "name": remote_function._function_name,
@@ -392,14 +392,14 @@ class FunctionActorManager(object):
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        (driver_id_str, function_id_str, function_name, serialized_function,
+        (job_id_str, function_id_str, function_name, serialized_function,
          num_return_vals, module, resources,
          max_calls) = self._worker.redis_client.hmget(key, [
-             "driver_id", "function_id", "name", "function", "num_return_vals",
+             "job_id", "function_id", "name", "function", "num_return_vals",
              "module", "resources", "max_calls"
          ])
         function_id = ray.FunctionID(function_id_str)
-        driver_id = ray.DriverID(driver_id_str)
+        job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
         max_calls = int(max_calls)
         module = decode(module)
@@ -413,12 +413,12 @@ class FunctionActorManager(object):
         # atomic. Otherwise, there is race condition. Another thread may use
         # the temporary function above before the real function is ready.
         with self.lock:
-            self._function_execution_info[driver_id][function_id] = (
+            self._function_execution_info[job_id][function_id] = (
                 FunctionExecutionInfo(
                     function=f,
                     function_name=function_name,
                     max_calls=max_calls))
-            self._num_task_executions[driver_id][function_id] = 0
+            self._num_task_executions[job_id][function_id] = 0
 
             try:
                 function = pickle.loads(serialized_function)
@@ -434,7 +434,7 @@ class FunctionActorManager(object):
                     "Failed to unpickle the remote function '{}' with "
                     "function ID {}. Traceback:\n{}".format(
                         function_name, function_id.hex(), traceback_str),
-                    driver_id=driver_id)
+                    job_id=job_id)
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python
@@ -442,7 +442,7 @@ class FunctionActorManager(object):
                 # However in the worker process, the `__main__` module is a
                 # different module, which is `default_worker.py`
                 function.__module__ = module
-                self._function_execution_info[driver_id][function_id] = (
+                self._function_execution_info[job_id][function_id] = (
                     FunctionExecutionInfo(
                         function=function,
                         function_name=function_name,
@@ -452,11 +452,11 @@ class FunctionActorManager(object):
                     b"FunctionTable:" + function_id.binary(),
                     self._worker.worker_id)
 
-    def get_execution_info(self, driver_id, function_descriptor):
+    def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
 
         Args:
-            driver_id: ID of the driver that the function belongs to.
+            job_id: ID of the job that the function belongs to.
             function_descriptor: The FunctionDescriptor of the function to get.
 
         Returns:
@@ -464,11 +464,11 @@ class FunctionActorManager(object):
         """
         if self._worker.load_code_from_local:
             # Load function from local code.
-            # Currently, we don't support isolating code by drivers,
-            # thus always set driver ID to NIL here.
-            driver_id = ray.DriverID.nil()
+            # Currently, we don't support isolating code by jobs,
+            # thus always set job ID to NIL here.
+            job_id = ray.JobID.nil()
             if not function_descriptor.is_actor_method():
-                self._load_function_from_local(driver_id, function_descriptor)
+                self._load_function_from_local(job_id, function_descriptor)
         else:
             # Load function from GCS.
             # Wait until the function to be executed has actually been
@@ -477,21 +477,21 @@ class FunctionActorManager(object):
             # The driver function may not be found in sys.path. Try to load
             # the function from GCS.
             with profiling.profile("wait_for_function"):
-                self._wait_for_function(function_descriptor, driver_id)
+                self._wait_for_function(function_descriptor, job_id)
         try:
             function_id = function_descriptor.function_id
-            info = self._function_execution_info[driver_id][function_id]
+            info = self._function_execution_info[job_id][function_id]
         except KeyError as e:
             message = ("Error occurs in get_execution_info: "
-                       "driver_id: %s, function_descriptor: %s. Message: %s" %
-                       (driver_id, function_descriptor, e))
+                       "job_id: %s, function_descriptor: %s. Message: %s" %
+                       (job_id, function_descriptor, e))
             raise KeyError(message)
         return info
 
-    def _load_function_from_local(self, driver_id, function_descriptor):
+    def _load_function_from_local(self, job_id, function_descriptor):
         assert not function_descriptor.is_actor_method()
         function_id = function_descriptor.function_id
-        if (driver_id in self._function_execution_info
+        if (job_id in self._function_execution_info
                 and function_id in self._function_execution_info[function_id]):
             return
         module_name, function_name = (
@@ -501,13 +501,13 @@ class FunctionActorManager(object):
         try:
             module = importlib.import_module(module_name)
             function = getattr(module, function_name)._function
-            self._function_execution_info[driver_id][function_id] = (
+            self._function_execution_info[job_id][function_id] = (
                 FunctionExecutionInfo(
                     function=function,
                     function_name=function_name,
                     max_calls=0,
                 ))
-            self._num_task_executions[driver_id][function_id] = 0
+            self._num_task_executions[job_id][function_id] = 0
         except Exception:
             logger.exception(
                 "Failed to load function %s.".format(function_name))
@@ -515,7 +515,7 @@ class FunctionActorManager(object):
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
 
-    def _wait_for_function(self, function_descriptor, driver_id, timeout=10):
+    def _wait_for_function(self, function_descriptor, job_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
         This method will simply loop until the import thread has imported the
@@ -528,7 +528,7 @@ class FunctionActorManager(object):
         Args:
             function_descriptor : The FunctionDescriptor of the function that
                 we want to execute.
-            driver_id (str): The ID of the driver to push the error message to
+            job_id (str): The ID of the job to push the error message to
                 if this times out.
         """
         start_time = time.time()
@@ -538,7 +538,7 @@ class FunctionActorManager(object):
             with self.lock:
                 if (self._worker.actor_id.is_nil()
                         and (function_descriptor.function_id in
-                             self._function_execution_info[driver_id])):
+                             self._function_execution_info[job_id])):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
@@ -553,7 +553,7 @@ class FunctionActorManager(object):
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,
-                        driver_id=driver_id)
+                        job_id=job_id)
                 warning_sent = True
             time.sleep(0.001)
 
@@ -577,22 +577,22 @@ class FunctionActorManager(object):
         if self._worker.load_code_from_local:
             return
         function_descriptor = FunctionDescriptor.from_class(Class)
-        # `task_driver_id` shouldn't be NIL, unless:
+        # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
         # 2) And a previous task started a background thread, which didn't
         #    finish before the task finished, and still uses Ray API
         #    after that.
-        assert not self._worker.task_driver_id.is_nil(), (
+        assert not self._worker.current_job_id.is_nil(), (
             "You might have started a background thread in a non-actor task, "
             "please make sure the thread finishes before the task finishes.")
-        driver_id = self._worker.task_driver_id
-        key = (b"ActorClass:" + driver_id.binary() + b":" +
+        job_id = self._worker.current_job_id
+        key = (b"ActorClass:" + job_id.binary() + b":" +
                function_descriptor.function_id.binary())
         actor_class_info = {
             "class_name": Class.__name__,
             "module": Class.__module__,
             "class": pickle.dumps(Class),
-            "driver_id": driver_id.binary(),
+            "job_id": job_id.binary(),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
@@ -616,11 +616,11 @@ class FunctionActorManager(object):
             # within tasks. I tried to disable this, but it may be necessary
             # because of https://github.com/ray-project/ray/issues/1146.
 
-    def load_actor_class(self, driver_id, function_descriptor):
+    def load_actor_class(self, job_id, function_descriptor):
         """Load the actor class.
 
         Args:
-            driver_id: Driver ID of the actor.
+            job_id: job ID of the actor.
             function_descriptor: Function descriptor of the actor constructor.
 
         Returns:
@@ -632,14 +632,14 @@ class FunctionActorManager(object):
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
-                driver_id = ray.DriverID.nil()
+                job_id = ray.JobID.nil()
                 # Load actor class from local code.
                 actor_class = self._load_actor_from_local(
-                    driver_id, function_descriptor)
+                    job_id, function_descriptor)
             else:
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
-                    driver_id, function_descriptor)
+                    job_id, function_descriptor)
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -657,18 +657,19 @@ class FunctionActorManager(object):
                     actor_method,
                     actor_imported=True,
                 )
-                self._function_execution_info[driver_id][method_id] = (
+                self._function_execution_info[job_id][method_id] = (
                     FunctionExecutionInfo(
                         function=executor,
                         function_name=actor_method_name,
                         max_calls=0,
                     ))
-                self._num_task_executions[driver_id][method_id] = 0
-            self._num_task_executions[driver_id][function_id] = 0
+                self._num_task_executions[job_id][method_id] = 0
+            self._num_task_executions[job_id][function_id] = 0
         return actor_class
 
-    def _load_actor_from_local(self, driver_id, function_descriptor):
+    def _load_actor_from_local(self, job_id, function_descriptor):
         """Load actor class from local code."""
+        assert isinstance(job_id, ray.JobID)
         module_name, class_name = (function_descriptor.module_name,
                                    function_descriptor.class_name)
         try:
@@ -699,9 +700,9 @@ class FunctionActorManager(object):
 
         return TemporaryActor
 
-    def _load_actor_class_from_gcs(self, driver_id, function_descriptor):
+    def _load_actor_class_from_gcs(self, job_id, function_descriptor):
         """Load actor class from GCS."""
-        key = (b"ActorClass:" + driver_id.binary() + b":" +
+        key = (b"ActorClass:" + job_id.binary() + b":" +
                function_descriptor.function_id.binary())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
@@ -711,16 +712,14 @@ class FunctionActorManager(object):
             time.sleep(0.001)
 
         # Fetch raw data from GCS.
-        (driver_id_str, class_name, module, pickled_class,
+        (job_id_str, class_name, module, pickled_class,
          actor_method_names) = self._worker.redis_client.hmget(
-             key, [
-                 "driver_id", "class_name", "module", "class",
-                 "actor_method_names"
-             ])
+             key,
+             ["job_id", "class_name", "module", "class", "actor_method_names"])
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)
-        driver_id = ray.DriverID(driver_id_str)
+        job_id = ray.JobID(job_id_str)
         actor_method_names = json.loads(ensure_str(actor_method_names))
 
         actor_class = None
@@ -741,11 +740,12 @@ class FunctionActorManager(object):
                 traceback.format_exc())
             # Log the error message.
             push_error_to_driver(
-                self._worker, ray_constants.REGISTER_ACTOR_PUSH_ERROR,
+                self._worker,
+                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
                 "Failed to unpickle actor class '{}' for actor ID {}. "
-                "Traceback:\n{}".format(class_name,
-                                        self._worker.actor_id.hex(),
-                                        traceback_str), driver_id)
+                "Traceback:\n{}".format(
+                    class_name, self._worker.actor_id.hex(), traceback_str),
+                job_id=job_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
             # someone calls ray.get on a method invoked on the actor.
@@ -859,7 +859,7 @@ class FunctionActorManager(object):
                     self._worker,
                     ray_constants.CHECKPOINT_PUSH_ERROR,
                     traceback_str,
-                    driver_id=self._worker.task_driver_id)
+                    job_id=self._worker.current_job_id)
 
     def _restore_and_log_checkpoint(self, actor):
         """Restore an actor from a checkpoint if available and log any errors.
@@ -898,4 +898,4 @@ class FunctionActorManager(object):
                 self._worker,
                 ray_constants.CHECKPOINT_PUSH_ERROR,
                 traceback_str,
-                driver_id=self._worker.task_driver_id)
+                job_id=self._worker.current_job_id)

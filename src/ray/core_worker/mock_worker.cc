@@ -18,12 +18,12 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
       : worker_(WorkerType::WORKER, WorkerLanguage::PYTHON, store_socket, raylet_socket,
-                DriverID::FromRandom()) {}
+                JobID::FromRandom()) {}
 
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,
                                 const std::vector<std::shared_ptr<RayObjectValue>> &args,
-                                const TaskID &task_id, int num_returns) {
+                                const TaskInfo &task_info, int num_returns) {
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
 
@@ -39,7 +39,7 @@ class MockWorker {
 
       // Write the merged content to each of return ids.
       for (int i = 0; i < num_returns; i++) {
-        ObjectID id = ObjectID::ForTaskReturn(task_id, i + 1);
+        ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
         RAY_CHECK_OK(worker_.Objects().Put(return_value, id));
       }
       return Status::OK();
