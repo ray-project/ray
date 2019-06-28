@@ -21,7 +21,7 @@ public interface RayletClient {
 
   void notifyUnblocked(TaskId currentTaskId);
 
-  TaskId generateTaskId(UniqueId driverId, TaskId parentTaskId, int taskIndex);
+  TaskId generateTaskId(UniqueId jobId, TaskId parentTaskId, int taskIndex);
 
   <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, TaskId currentTaskId);
