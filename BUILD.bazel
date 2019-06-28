@@ -37,7 +37,37 @@ cc_proto_library(
     deps = ["node_manager_proto"],
 )
 
+proto_library(
+    name = "object_manager_proto",
+    srcs = ["src/ray/protobuf/object_manager.proto"],
+)
+
+cc_proto_library(
+    name = "object_manager_cc_proto",
+    deps = ["object_manager_proto"],
+)
+
 # === End of protobuf definitions ===
+
+# === Begin of rpc definitions ===
+
+# grpc common lib
+cc_library(
+    name = "grpc_common_lib",
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
 
 # Node manager gRPC lib.
 cc_grpc_library(
@@ -50,20 +80,44 @@ cc_grpc_library(
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc",
-    srcs = glob([
-        "src/ray/rpc/*.cc",
-    ]),
     hdrs = glob([
-        "src/ray/rpc/*.h",
+        "src/ray/rpc/node_manager/*.h",
     ]),
     copts = COPTS,
     deps = [
+        ":grpc_common_lib",
         ":node_manager_cc_grpc",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
+
+# Object manager gRPC lib.
+cc_grpc_library(
+    name = "object_manager_cc_grpc",
+    srcs = [":object_manager_proto"],
+    grpc_only = True,
+    deps = [":object_manager_cc_proto"],
+)
+
+# Object manager server and client.
+cc_library(
+    name = "object_manager_rpc",
+    hdrs = glob([
+        "src/ray/rpc/object_manager/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":object_manager_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# === End of rpc definitions ===
 
 cc_binary(
     name = "raylet",
@@ -320,6 +374,7 @@ cc_library(
     deps = [
         ":gcs",
         ":object_manager_fbs",
+        ":object_manager_rpc",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
