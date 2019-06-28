@@ -91,8 +91,14 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   jobject java_resources = env->GetObjectField(
       actorCreationOptions, java_actor_creation_options_proxy_resources);
   auto resources = ToResources(env, java_resources);
+  jobject java_dynamic_worker_options = env->GetObjectField(
+      actorCreationOptions, java_actor_creation_options_proxy_dynamic_worker_options);
+  std::vector<std::string> dynamic_worker_options;
+  JavaStringListToNativeStringVector(env, java_dynamic_worker_options,
+                                     &dynamic_worker_options);
 
-  ray::ActorCreationOptions action_creation_options{max_reconstructions, resources};
+  ray::ActorCreationOptions action_creation_options{max_reconstructions, resources,
+                                                    dynamic_worker_options};
   return action_creation_options;
 }
 

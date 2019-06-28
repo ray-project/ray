@@ -83,7 +83,7 @@ Status CoreWorkerTaskInterface::CreateActor(
       actor_creation_id, ObjectID::Nil(), actor_creation_options.max_reconstructions,
       ActorID::Nil(), ActorHandleID::Nil(), 0, {}, task_arguments, 1,
       actor_creation_options.resources, actor_creation_options.resources, language,
-      function.function_descriptor);
+      function.function_descriptor, actor_creation_options.dynamic_worker_options);
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
@@ -121,7 +121,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(),
       actor_handle.GetNewActorHandles(), task_arguments, num_returns,
       task_options.resources, task_options.resources, language,
-      function.function_descriptor);
+      function.function_descriptor, {});
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());

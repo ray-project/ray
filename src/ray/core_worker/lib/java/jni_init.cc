@@ -34,6 +34,7 @@ jfieldID java_task_options_proxy_resources;
 jclass java_actor_creation_options_proxy_class;
 jfieldID java_actor_creation_options_proxy_max_reconstructions;
 jfieldID java_actor_creation_options_proxy_resources;
+jfieldID java_actor_creation_options_proxy_dynamic_worker_options;
 
 jclass java_ray_object_value_proxy_class;
 jmethodID java_ray_object_value_proxy_init;
@@ -103,6 +104,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_proxy_class, "maxReconstructions", "J");
   java_actor_creation_options_proxy_resources =
       env->GetFieldID(java_actor_creation_options_proxy_class, "resources",
+                      "Lorg/ray/runtime/proxyTypes/ResourcesProxy;");
+  java_actor_creation_options_proxy_dynamic_worker_options =
+      env->GetFieldID(java_actor_creation_options_proxy_class, "dynamicWorkerOptions",
                       "Lorg/ray/runtime/proxyTypes/ResourcesProxy;");
 
   LOAD_CLASS(java_ray_object_value_proxy_class,

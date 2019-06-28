@@ -202,12 +202,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       , Object[] args, ActorCreationOptions options) {
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
         language != WorkerLanguage.JAVA);
-    List<String> dynamicWorkerOptions = ImmutableList.of();
-    String jvmOptions = options.jvmOptions;
-    if (!StringUtil.isNullOrEmpty(jvmOptions)) {
-      dynamicWorkerOptions = ImmutableList.of(jvmOptions);
+    if (language != WorkerLanguage.JAVA) {
+      Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
-    // TODO (kfstorm): support dynamic worker options
     RayActorImpl actor = worker.getTaskInterface().createActor(functionDescriptor, functionArgs, options);
     Preconditions.checkState(actor.getLanguage() == language);
     return actor;

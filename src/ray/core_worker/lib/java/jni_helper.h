@@ -45,6 +45,7 @@ extern jfieldID java_task_options_proxy_resources;
 extern jclass java_actor_creation_options_proxy_class;
 extern jfieldID java_actor_creation_options_proxy_max_reconstructions;
 extern jfieldID java_actor_creation_options_proxy_resources;
+extern jfieldID java_actor_creation_options_proxy_dynamic_worker_options;
 
 extern jclass java_ray_object_value_proxy_class;
 extern jmethodID java_ray_object_value_proxy_init;

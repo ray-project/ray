@@ -37,6 +37,9 @@ struct ActorCreationOptions {
   const uint64_t max_reconstructions = 0;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
+  /// The dynamic options used in the worker command when starting the worker process for
+  /// an actor creation task.
+  const std::vector<std::string> dynamic_worker_options;
 };
 
 /// A handle to an actor.
