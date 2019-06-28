@@ -19,7 +19,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
       store_client_mutex_(store_client_mutex),
       raylet_client_(raylet_client) {}
 
-Status CoreWorkerPlasmaStoreProvider::Put(const RayObjectValue &value,
+Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &value,
                                           const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
   auto data = value.GetData();
@@ -44,7 +44,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObjectValue &value,
 
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-    std::vector<std::shared_ptr<RayObjectValue>> *results) {
+    std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
   bool was_blocked = false;
@@ -99,7 +99,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (size_t i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
         const auto &object_id = unready_ids[i];
-        (*results)[unready[object_id]] = std::make_shared<RayObjectValue>(
+        (*results)[unready[object_id]] = std::make_shared<RayObject>(
             std::make_shared<PlasmaBuffer>(object_buffers[i].data),
             std::make_shared<PlasmaBuffer>(object_buffers[i].metadata));
         unready.erase(object_id);

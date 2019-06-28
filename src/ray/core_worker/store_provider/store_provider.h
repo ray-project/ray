@@ -9,14 +9,13 @@
 namespace ray {
 
 /// Object value in ray system.
-class RayObjectValue {
+class RayObject {
  public:
-  /// Create an ray object value instance.
+  /// Create a ray object value instance.
   ///
   /// \param[in] data Data of the object value.
   /// \param[in] metadata Metadata of the object value.
-  RayObjectValue(const std::shared_ptr<Buffer> &data,
-                 const std::shared_ptr<Buffer> &metadata)
+  RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata)
       : data_(data), metadata_(metadata) {}
 
   /// Return the data of the object value.
@@ -47,7 +46,7 @@ class CoreWorkerStoreProvider {
   /// \param[in] value The object value.
   /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  virtual Status Put(const RayObjectValue &value, const ObjectID &object_id) = 0;
+  virtual Status Put(const RayObject &value, const ObjectID &object_id) = 0;
 
   /// Get a list of objects from the object store.
   ///
@@ -58,7 +57,7 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                      const TaskID &task_id,
-                     std::vector<std::shared_ptr<RayObjectValue>> *results) = 0;
+                     std::vector<std::shared_ptr<RayObject>> *results) = 0;
 
   /// Wait for a list of objects to appear in the object store.
   ///
