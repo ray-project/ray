@@ -104,8 +104,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
     resources.emplace(resource_pair.first, resource);
   }
   RAY_RETURN_NOT_OK(gcs_client_->resource_table().Update(
-      DriverID::Nil(), gcs_client_->client_table().GetLocalClientId(), resources,
-      nullptr));
+      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(), resources, nullptr));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 

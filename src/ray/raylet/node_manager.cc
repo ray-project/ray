@@ -212,7 +212,7 @@ ray::Status NodeManager::RegisterGcs() {
         }
       };
   RAY_RETURN_NOT_OK(
-      gcs_client_->resource_table().Subscribe(DriverID::Nil(), ClientID::Nil(),
+      gcs_client_->resource_table().Subscribe(JobID::Nil(), ClientID::Nil(),
                                               /*subscribe_callback=*/resources_changed,
                                               /*done_callback=*/nullptr));
 
@@ -382,7 +382,7 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
       for (auto &client_entry : gcs_client_->client_table().GetAllClients()) {
         auto &client_id = client_entry.first;
         RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
-            DriverID::Nil(), client_id,
+            JobID::Nil(), client_id,
             [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
                    const std::unordered_map<std::string,
                                             std::shared_ptr<gcs::RayResource>> &pairs) {
@@ -1277,7 +1277,7 @@ void NodeManager::ProcessSetResourceRequest(
   // Submit to the client table. This calls the ResourceCreateUpdated or ResourceDeleted
   // callback, which updates cluster_resource_map_.
   if (is_deletion) {
-    RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(DriverID::Nil(), client_id,
+    RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(JobID::Nil(), client_id,
                                                              {resource_name}, nullptr));
   } else {
     std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> data_map;
@@ -1285,8 +1285,8 @@ void NodeManager::ProcessSetResourceRequest(
     ray_resource->set_resource_name(resource_name);
     ray_resource->set_resource_capacity(capacity);
     data_map.emplace(resource_name, ray_resource);
-    RAY_CHECK_OK(gcs_client_->resource_table().Update(DriverID::Nil(), client_id,
-                                                      data_map, nullptr));
+    RAY_CHECK_OK(
+        gcs_client_->resource_table().Update(JobID::Nil(), client_id, data_map, nullptr));
   }
 }
 
