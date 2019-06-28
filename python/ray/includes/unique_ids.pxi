@@ -15,7 +15,7 @@ from ray.includes.unique_ids cimport (
     CActorID,
     CClientID,
     CConfigID,
-    CDriverID,
+    CJobID,
     CFunctionID,
     CObjectID,
     CTaskID,
@@ -212,15 +212,23 @@ cdef class ClientID(UniqueID):
         return <CClientID>self.data
 
 
-cdef class DriverID(UniqueID):
+cdef class JobID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CDriverID.FromBinary(<c_string>id)
+        self.data = CJobID.FromBinary(<c_string>id)
 
-    cdef CDriverID native(self):
-        return <CDriverID>self.data
+    cdef CJobID native(self):
+        return <CJobID>self.data
 
+cdef class WorkerID(UniqueID):
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CWorkerID.FromBinary(<c_string>id)
+
+    cdef CWorkerID native(self):
+        return <CWorkerID>self.data
 
 cdef class ActorID(UniqueID):
 
@@ -277,7 +285,8 @@ _ID_TYPES = [
     ActorHandleID,
     ActorID,
     ClientID,
-    DriverID,
+    JobID,
+    WorkerID,
     FunctionID,
     ObjectID,
     TaskID,

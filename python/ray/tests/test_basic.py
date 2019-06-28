@@ -2439,7 +2439,7 @@ def test_global_state_api(shutdown_only):
 
     assert ray.objects() == {}
 
-    driver_id = ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)
+    job_id = ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
@@ -2453,7 +2453,7 @@ def test_global_state_api(shutdown_only):
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == []
-    assert task_spec["DriverID"] == driver_id
+    assert task_spec["JobID"] == job_id
     assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
@@ -2481,7 +2481,7 @@ def test_global_state_api(shutdown_only):
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
-    assert task_spec["DriverID"] == driver_id
+    assert task_spec["JobID"] == job_id
     assert task_spec["ReturnObjectIDs"] == [result_id]
 
     assert task_table[task_id] == ray.tasks(task_id)
@@ -2613,9 +2613,9 @@ def test_workers(shutdown_only):
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
 
-def test_specific_driver_id():
-    dummy_driver_id = ray.DriverID(b"00112233445566778899")
-    ray.init(num_cpus=1, driver_id=dummy_driver_id)
+def test_specific_job_id():
+    dummy_driver_id = ray.JobID(b"00112233445566778899")
+    ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id
@@ -2727,7 +2727,7 @@ def test_ray_setproctitle(ray_start_2_cpus):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.DriverID.nil()
+    driver_id = ray.WorkerID.nil()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 

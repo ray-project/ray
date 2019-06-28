@@ -108,7 +108,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            std::vector<ObjectID> *return_ids) {
   auto &context = core_worker_.worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
-  const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
+  const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
 
   auto num_returns = task_options.num_returns;
@@ -120,7 +120,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   auto task_arguments = BuildTaskArguments(args);
   auto language = ToRayletTaskLanguage(function.language);
 
-  ray::raylet::TaskSpecification spec(context.GetCurrentDriverID(),
+  ray::raylet::TaskSpecification spec(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index,
                                       task_arguments, num_returns, task_options.resources,
                                       language, function.function_descriptor);
@@ -136,7 +136,7 @@ Status CoreWorkerTaskInterface::CreateActor(
     std::unique_ptr<ActorHandle> *actor_handle) {
   auto &context = core_worker_.worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
-  const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
+  const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
 
   std::vector<ObjectID> return_ids;
@@ -154,7 +154,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
   ray::raylet::TaskSpecification spec(
-      context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
+      context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
       actor_creation_id, ObjectID::Nil(), actor_creation_options.max_reconstructions,
       ActorID::Nil(), ActorHandleID::Nil(), 0, {}, task_arguments, 1,
       actor_creation_options.resources, actor_creation_options.resources, language,
@@ -172,7 +172,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 std::vector<ObjectID> *return_ids) {
   auto &context = core_worker_.worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
-  const auto task_id = GenerateTaskId(context.GetCurrentDriverID(),
+  const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
 
   // add one for actor cursor object id.
@@ -191,7 +191,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
 
   ray::raylet::TaskSpecification spec(
-      context.GetCurrentDriverID(), context.GetCurrentTaskID(), next_task_index,
+      context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(),
       actor_handle.GetNewActorHandles(), task_arguments, num_returns,

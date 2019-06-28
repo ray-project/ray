@@ -44,10 +44,11 @@ public class RayletClientImpl implements RayletClient {
    */
   private long client = 0;
 
+  // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
   public RayletClientImpl(String schedulerSockName, UniqueId clientId,
-      boolean isWorker, UniqueId driverId) {
+      boolean isWorker, UniqueId jobId) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
-        isWorker, driverId.getBytes());
+        isWorker, jobId.getBytes());
   }
 
   @Override
@@ -83,7 +84,7 @@ public class RayletClientImpl implements RayletClient {
   public void submitTask(TaskSpec spec) {
     LOGGER.debug("Submitting task: {}", spec);
     Preconditions.checkState(!spec.parentTaskId.isNil());
-    Preconditions.checkState(!spec.driverId.isNil());
+    Preconditions.checkState(!spec.jobId.isNil());
 
     ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
     byte[] cursorId = null;
@@ -114,8 +115,8 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public TaskId generateTaskId(UniqueId driverId, TaskId parentTaskId, int taskIndex) {
-    byte[] bytes = nativeGenerateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
+  public TaskId generateTaskId(UniqueId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
     return new TaskId(bytes);
   }
 
@@ -141,11 +142,10 @@ public class RayletClientImpl implements RayletClient {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
-
   private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
-    UniqueId driverId = UniqueId.fromByteBuffer(info.driverIdAsByteBuffer());
+    UniqueId jobId = UniqueId.fromByteBuffer(info.jobIdAsByteBuffer());
     TaskId taskId = TaskId.fromByteBuffer(info.taskIdAsByteBuffer());
     TaskId parentTaskId = TaskId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
@@ -197,7 +197,7 @@ public class RayletClientImpl implements RayletClient {
       dynamicWorkerOptions.add(info.dynamicWorkerOptions(i));
     }
 
-    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
+    return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
         args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
@@ -207,7 +207,7 @@ public class RayletClientImpl implements RayletClient {
     bb.clear();
 
     FlatBufferBuilder fbb = new FlatBufferBuilder(bb);
-    final int driverIdOffset = fbb.createString(task.driverId.toByteBuffer());
+    final int jobIdOffset = fbb.createString(task.jobId.toByteBuffer());
     final int taskIdOffset = fbb.createString(task.taskId.toByteBuffer());
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
@@ -290,7 +290,7 @@ public class RayletClientImpl implements RayletClient {
 
     int root = TaskInfo.createTaskInfo(
         fbb,
-        driverIdOffset,
+        jobIdOffset,
         taskIdOffset,
         parentTaskIdOffset,
         parentCounter,
@@ -363,7 +363,7 @@ public class RayletClientImpl implements RayletClient {
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
       int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;
 
-  private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
+  private static native byte[] nativeGenerateTaskId(byte[] jobId, byte[] parentTaskId,
       int taskIndex);
 
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,

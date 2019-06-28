@@ -73,8 +73,8 @@ class ActorRegistration {
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
 
-  /// Get actor's driver ID.
-  const DriverID GetDriverId() const;
+  /// Get actor's job ID.
+  const JobID GetJobId() const;
 
   /// Get the max number of times this actor should be reconstructed.
   const int64_t GetMaxReconstructions() const;

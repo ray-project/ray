@@ -316,7 +316,7 @@ class GlobalState(object):
             function_descriptor_list)
 
         task_spec_info = {
-            "DriverID": task.driver_id().hex(),
+            "JobID": task.job_id().hex(),
             "TaskID": task.task_id().hex(),
             "ParentTaskID": task.parent_task_id().hex(),
             "ParentCounter": task.parent_counter(),
@@ -817,19 +817,19 @@ class GlobalState(object):
 
         return dict(total_available_resources)
 
-    def _error_messages(self, driver_id):
+    def _error_messages(self, job_id):
         """Get the error messages for a specific driver.
 
         Args:
-            driver_id: The ID of the driver to get the errors for.
+            job_id: The ID of the job to get the errors for.
 
         Returns:
             A list of the error messages for this driver.
         """
-        assert isinstance(driver_id, ray.DriverID)
+        assert isinstance(job_id, ray.JobID)
         message = self.redis_client.execute_command(
             "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
-            driver_id.binary())
+            job_id.binary())
 
         # If there are no errors, return early.
         if message is None:
@@ -839,7 +839,7 @@ class GlobalState(object):
         error_messages = []
         for entry in gcs_entries.entries:
             error_data = gcs_utils.ErrorTableData.FromString(entry)
-            assert driver_id.binary() == error_data.driver_id
+            assert job_id.binary() == error_data.job_id
             error_message = {
                 "type": error_data.type,
                 "message": error_data.error_message,
@@ -848,12 +848,12 @@ class GlobalState(object):
             error_messages.append(error_message)
         return error_messages
 
-    def error_messages(self, driver_id=None):
+    def error_messages(self, job_id=None):
         """Get the error messages for all drivers or a specific driver.
 
         Args:
-            driver_id: The specific driver to get the errors for. If this is
-                None, then this method retrieves the errors for all drivers.
+            job_id: The specific job to get the errors for. If this is
+                None, then this method retrieves the errors for all jobs.
 
         Returns:
             A dictionary mapping driver ID to a list of the error messages for
@@ -861,21 +861,20 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        if driver_id is not None:
-            assert isinstance(driver_id, ray.DriverID)
-            return self._error_messages(driver_id)
+        if job_id is not None:
+            assert isinstance(job_id, ray.JobID)
+            return self._error_messages(job_id)
 
         error_table_keys = self.redis_client.keys(
             gcs_utils.TablePrefix_ERROR_INFO_string + "*")
-        driver_ids = [
+        job_ids = [
             key[len(gcs_utils.TablePrefix_ERROR_INFO_string):]
             for key in error_table_keys
         ]
 
         return {
-            binary_to_hex(driver_id): self._error_messages(
-                ray.DriverID(driver_id))
-            for driver_id in driver_ids
+            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
+            for job_id in job_ids
         }
 
     def actor_checkpoint_info(self, actor_id):
@@ -969,12 +968,12 @@ class DeprecatedGlobalState(object):
             "instead.")
         return ray.available_resources()
 
-    def error_messages(self, driver_id=None):
+    def error_messages(self, job_id=None):
         logger.warning(
             "ray.global_state.error_messages() is deprecated and will be "
             "removed in a subsequent release. Use ray.errors() "
             "instead.")
-        return ray.errors(driver_id=driver_id)
+        return ray.errors(job_id=job_id)
 
 
 state = GlobalState()
@@ -1095,7 +1094,7 @@ def errors(include_cluster_errors=True):
         Error messages pushed from the cluster.
     """
     worker = ray.worker.global_worker
-    error_messages = state.error_messages(driver_id=worker.task_driver_id)
+    error_messages = state.error_messages(job_id=worker.current_job_id)
     if include_cluster_errors:
-        error_messages += state.error_messages(driver_id=ray.DriverID.nil())
+        error_messages += state.error_messages(job_id=ray.JobID.nil())
     return error_messages
