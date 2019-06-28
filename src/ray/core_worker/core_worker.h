@@ -76,7 +76,6 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface task_execution_interface_;
 
   friend class CoreWorkerTaskInterface;
-  friend class CoreWorkerObjectInterface;
   friend class CoreWorkerTaskExecutionInterface;
 };
 

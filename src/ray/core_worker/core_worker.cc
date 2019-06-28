@@ -16,7 +16,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
                      (worker_type_ == ray::WorkerType::WORKER),
                      worker_context_.GetCurrentJobID(), ToTaskLanguage(language_)),
       task_interface_(*this),
-      object_interface_(*this, store_socket),
+      object_interface_(worker_context_, raylet_client_, store_socket),
       task_execution_interface_(*this) {
 }
 
