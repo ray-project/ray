@@ -134,7 +134,7 @@ table RegisterClientRequest {
   worker_id: string;
   // The process ID of this worker.
   worker_pid: long;
-  // The job ID.
+  // The job ID only if this request is from a driver.
   job_id: string;
   // Language of this worker.
   language: Language;
