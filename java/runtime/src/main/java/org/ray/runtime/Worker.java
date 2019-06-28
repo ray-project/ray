@@ -63,11 +63,11 @@ public class Worker {
   private long lastCheckpointTimestamp = 0;
 
   Worker(AbstractRayRuntime runtime, FunctionManager functionManager,
-         String storeSocket, String rayletSocket, UniqueId driverId) {
+         String storeSocket, String rayletSocket, UniqueId jobId) {
     this.runtime = runtime;
     this.functionManager = functionManager;
     nativeCoreWorker = createCoreWorker(runtime.getRayConfig().workerMode.value(), storeSocket, rayletSocket,
-        driverId.getBytes());
+        jobId.getBytes());
     workerContext = new WorkerContext(nativeCoreWorker);
     objectInterface = new ObjectInterface(nativeCoreWorker, workerContext);
     taskInterface = new TaskInterface(nativeCoreWorker);
@@ -76,11 +76,11 @@ public class Worker {
 
   // This method is required by JNI
   private void runTaskCallback(List<String> rayFunctionInfo, List<RayObjectValueProxy> argsBytes,
-                               byte[] taskIdBytes, byte[] driverIdBytes,
+                               byte[] taskIdBytes, byte[] jobIdBytes,
                                boolean isActorCreationTask, boolean isActorTask, int numReturns) {
     TaskId taskId = new TaskId(taskIdBytes);
-    UniqueId driverId = new UniqueId(driverIdBytes);
-    workerContext.setCurrentTask(new TaskInfo(taskId, driverId, isActorCreationTask, isActorTask));
+    UniqueId jobId = new UniqueId(jobIdBytes);
+    workerContext.setCurrentTask(new TaskInfo(taskId, jobId, isActorCreationTask, isActorTask));
     String taskInfo = taskId + " " + String.join(".", rayFunctionInfo);
     LOGGER.debug("Executing task {}", taskInfo);
 //    Preconditions.checkState(numReturns == 1);
@@ -220,7 +220,7 @@ public class Worker {
   }
 
   private static native long createCoreWorker(int workerMode, String storeSocket,
-                                              String rayletSocket, byte[] driverId);
+                                              String rayletSocket, byte[] jobId);
 
   private static native void runCoreWorker(long nativeCoreWorker, Worker worker);
 

@@ -12,6 +12,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
+      // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
       raylet_client_(raylet_socket_,
                      ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
                      (worker_type_ == ray::WorkerType::WORKER),

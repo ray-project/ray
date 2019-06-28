@@ -14,13 +14,13 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentDriverId
+ * Method:    getCurrentJobId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentDriverId(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentJobId(
     JNIEnv *env, jclass o, jlong nativeCoreWorker) {
-  return JByteArrayFromUniqueId<ray::DriverID>(
-             env, GetContext(nativeCoreWorker).GetCurrentDriverID())
+  return JByteArrayFromUniqueId<ray::JobID>(
+             env, GetContext(nativeCoreWorker).GetCurrentJobID())
       .GetJByteArray();
 }
 

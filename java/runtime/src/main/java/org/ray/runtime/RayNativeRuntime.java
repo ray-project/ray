@@ -95,7 +95,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     worker = new Worker(this, functionManager,
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
-        rayConfig.workerMode == WorkerMode.DRIVER ? rayConfig.driverId : UniqueId.NIL);
+        rayConfig.workerMode == WorkerMode.DRIVER ? rayConfig.jobId : UniqueId.NIL);
 
     // register
     registerWorker();

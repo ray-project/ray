@@ -9,11 +9,11 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentDriverId
+ * Method:    getCurrentJobId
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_WorkerContext_getCurrentDriverId(JNIEnv *, jclass, jlong);
+Java_org_ray_runtime_WorkerContext_getCurrentJobId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_WorkerContext

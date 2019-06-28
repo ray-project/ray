@@ -5,14 +5,14 @@ import org.ray.api.id.UniqueId;
 
 public class TaskInfo {
   private final TaskId taskId;
-  private final UniqueId driverId;
+  private final UniqueId jobId;
   private final boolean isActorCreationTask;
   private final boolean isActorTask;
 
-  public TaskInfo(TaskId taskId, UniqueId driverId, boolean isActorCreationTask,
+  public TaskInfo(TaskId taskId, UniqueId jobId, boolean isActorCreationTask,
                   boolean isActorTask) {
     this.taskId = taskId;
-    this.driverId = driverId;
+    this.jobId = jobId;
     this.isActorCreationTask = isActorCreationTask;
     this.isActorTask = isActorTask;
   }
@@ -21,8 +21,8 @@ public class TaskInfo {
     return taskId;
   }
 
-  public UniqueId getDriverId() {
-    return driverId;
+  public UniqueId getJobId() {
+    return jobId;
   }
 
   public boolean isActorCreationTask() {

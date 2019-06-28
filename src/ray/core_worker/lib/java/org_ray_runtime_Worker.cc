@@ -16,14 +16,14 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(
     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
-    jbyteArray driverId) {
+    jbyteArray jobId) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
-  UniqueIdFromJByteArray<ray::DriverID> driver_id(env, driverId);
+  UniqueIdFromJByteArray<ray::JobID> job_id(env, jobId);
   try {
     auto core_worker = new ray::CoreWorker(static_cast<ray::WorkerType>(workerMode),
                                            ray::WorkerLanguage::JAVA, native_store_socket,
-                                           native_raylet_socket, driver_id.GetId());
+                                           native_raylet_socket, job_id.GetId());
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;
@@ -57,13 +57,13 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
     // convert task id
     jbyteArray task_id_byte_array =
         JByteArrayFromUniqueId<ray::TaskID>(env, task_info.task_id).GetJByteArray();
-    // convert driver id
-    jbyteArray driver_id_byte_array =
-        JByteArrayFromUniqueId<ray::DriverID>(env, task_info.driver_id).GetJByteArray();
+    // convert job id
+    jbyteArray job_id_byte_array =
+        JByteArrayFromUniqueId<ray::JobID>(env, task_info.job_id).GetJByteArray();
 
     // invoke Java method
     env->CallVoidMethod(javaCoreWorker, run_task_method, ray_function_array_list,
-                        args_array_list, task_id_byte_array, driver_id_byte_array,
+                        args_array_list, task_id_byte_array, job_id_byte_array,
                         (jboolean)task_info.is_actor_creation_task,
                         (jboolean)task_info.is_actor_task, (jint)num_returns);
     return ray::Status::OK();

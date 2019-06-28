@@ -64,7 +64,7 @@ public class WorkerContext {
     this.currentTask = currentTask;
   }
 
-  private static native byte[] getCurrentDriverId(long nativeCoreWorker);
+  private static native byte[] getCurrentJobId(long nativeCoreWorker);
 
   private static native byte[] getCurrentWorkerId(long nativeCoreWorker);
 

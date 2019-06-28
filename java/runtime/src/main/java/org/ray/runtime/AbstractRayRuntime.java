@@ -120,7 +120,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentDriverId(), func).functionDescriptor;
+        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func).functionDescriptor;
     return call(functionDescriptor, args, options);
   }
 
@@ -129,7 +129,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     RayActorImpl actorImpl = (RayActorImpl) actor;
     Preconditions.checkState(actorImpl.getLanguage() == WorkerLanguage.JAVA);
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentDriverId(), func).functionDescriptor;
+        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func).functionDescriptor;
     return call(actorImpl, functionDescriptor, args);
   }
 
@@ -137,7 +137,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
                                      Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentDriverId(), actorFactoryFunc).functionDescriptor;
+        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), actorFactoryFunc).functionDescriptor;
     //noinspection unchecked
     return (RayActor<T>) createActor(WorkerLanguage.JAVA, functionDescriptor, args, options);
   }
