@@ -37,8 +37,16 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       std::vector<std::shared_ptr<RayObjectValue>> args;
       RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
 
-      TaskInfo task_info{spec.TaskId(), spec.DriverId(), spec.IsActorCreationTask(),
-                         spec.IsActorTask()};
+      TaskType task_type;
+      if (spec.IsActorCreationTask()) {
+        task_type = TaskType::ACTOR_CREATION_TASK;
+      } else if (spec.IsActorTask()) {
+        task_type = TaskType::ACTOR_TASK;
+      } else {
+        task_type = TaskType::NORMAL_TASK;
+      }
+
+      TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
 
       auto num_returns = spec.NumReturns();
       if (spec.IsActorCreationTask() || spec.IsActorTask()) {

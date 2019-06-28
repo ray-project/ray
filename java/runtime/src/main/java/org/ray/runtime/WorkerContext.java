@@ -17,6 +17,31 @@ public class WorkerContext {
     this.nativeCoreWorker = nativeCoreWorker;
   }
 
+  public RayObjectValueConverter getRayObjectValueConverter() {
+    return rayObjectValueConverter;
+  }
+
+  /**
+   * The ID of the current job.
+   */
+  public UniqueId getCurrentJobId() {
+    return new UniqueId(getCurrentJobId(nativeCoreWorker));
+  }
+
+  /**
+   * @return The ID of the current worker.
+   */
+  public UniqueId getCurrentActorId() {
+    return new UniqueId(getCurrentActorId(nativeCoreWorker));
+  }
+
+  public UniqueId getCurrentWorkerId() {
+    return new UniqueId(getCurrentWorkerId(nativeCoreWorker));
+  }
+
+  /**
+   * @return The class loader which is associated with the current job.
+   */
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;
   }
@@ -28,28 +53,15 @@ public class WorkerContext {
     }
   }
 
-  public RayObjectValueConverter getRayObjectValueConverter() {
-    return rayObjectValueConverter;
-  }
-
+  /**
+   * Get the current task.
+   */
   public TaskInfo getCurrentTask() {
     return currentTask;
   }
 
   public void setCurrentTask(TaskInfo currentTask) {
     this.currentTask = currentTask;
-  }
-
-  public UniqueId getCurrentActorId() {
-    return new UniqueId(getCurrentActorId(nativeCoreWorker));
-  }
-
-  public UniqueId getCurrentDriverId() {
-    return new UniqueId(getCurrentDriverId(nativeCoreWorker));
-  }
-
-  public UniqueId getCurrentWorkerId() {
-    return new UniqueId(getCurrentWorkerId(nativeCoreWorker));
   }
 
   private static native byte[] getCurrentDriverId(long nativeCoreWorker);

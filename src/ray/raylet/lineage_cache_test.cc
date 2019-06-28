@@ -13,7 +13,7 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
+class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
                 public gcs::PubsubInterface<TaskID> {
  public:
   MockGcs() {}
@@ -22,16 +22,16 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     notification_callback_ = notification_callback;
   }
 
-  Status Add(const DriverID &driver_id, const TaskID &task_id,
-             std::shared_ptr<protocol::TaskT> &task_data,
-             const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
+  Status Add(const JobID &job_id, const TaskID &task_id,
+             std::shared_ptr<TaskTableData> &task_data,
+             const gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     auto callback = done;
     // If we requested notifications for this task ID, send the notification as
     // part of the callback.
     if (subscribed_tasks_.count(task_id) == 1) {
       callback = [this, done](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                              const protocol::TaskT &data) {
+                              const TaskTableData &data) {
         done(client, task_id, data);
         // If we're subscribed to the task to be added, also send a
         // subscription notification.
@@ -45,22 +45,22 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     return ray::Status::OK();
   }
 
-  Status RemoteAdd(const TaskID &task_id, std::shared_ptr<protocol::TaskT> task_data) {
+  Status RemoteAdd(const TaskID &task_id, std::shared_ptr<TaskTableData> task_data) {
     task_table_[task_id] = task_data;
     // Send a notification after the add if the lineage cache requested
     // notifications for this key.
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
     auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
                                               const TaskID &task_id,
-                                              const protocol::TaskT &data) {
+                                              const TaskTableData &data) {
       if (send_notification) {
         notification_callback_(client, task_id, data);
       }
     };
-    return Add(DriverID::Nil(), task_id, task_data, callback);
+    return Add(JobID::Nil(), task_id, task_data, callback);
   }
 
-  Status RequestNotifications(const DriverID &driver_id, const TaskID &task_id,
+  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
                               const ClientID &client_id) {
     subscribed_tasks_.insert(task_id);
     if (task_table_.count(task_id) == 1) {
@@ -70,7 +70,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     return ray::Status::OK();
   }
 
-  Status CancelNotifications(const DriverID &driver_id, const TaskID &task_id,
+  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
                              const ClientID &client_id) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
@@ -84,7 +84,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     }
   }
 
-  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> &TaskTable() const {
+  const std::unordered_map<TaskID, std::shared_ptr<TaskTableData>> &TaskTable() const {
     return task_table_;
   }
 
@@ -95,7 +95,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   const int NumTaskAdds() const { return num_task_adds_; }
 
  private:
-  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> task_table_;
+  std::unordered_map<TaskID, std::shared_ptr<TaskTableData>> task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
   gcs::raylet::TaskTable::WriteCallback notification_callback_;
   std::unordered_set<TaskID> subscribed_tasks_;
@@ -111,7 +111,7 @@ class LineageCacheTest : public ::testing::Test {
         mock_gcs_(),
         lineage_cache_(ClientID::FromRandom(), mock_gcs_, mock_gcs_, max_lineage_size_) {
     mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                               const ray::protocol::TaskT &data) {
+                               const TaskTableData &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
       num_notifications_++;
     });
@@ -133,7 +133,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
   std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(DriverID::Nil(), TaskID::FromRandom(), 0, task_arguments,
+  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
                                 num_returns, required_resources, Language::PYTHON,
                                 function_descriptor);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
@@ -167,7 +167,7 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
   return arguments;
 }
 
-TEST_F(LineageCacheTest, TestGetUncommittedLineageOrDie) {
+TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
   // Insert two independent chains of tasks.
   std::vector<Task> tasks1;
   auto return_values1 =
@@ -187,7 +187,7 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineageOrDie) {
 
   // Get the uncommitted lineage for the last task (the leaf) of one of the chains.
   auto uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineageOrDie(task_ids1.back(), ClientID::Nil());
+      lineage_cache_.GetUncommittedLineage(task_ids1.back(), ClientID::Nil());
   // Check that the uncommitted lineage is exactly equal to the first chain of tasks.
   ASSERT_EQ(task_ids1.size(), uncommitted_lineage.GetEntries().size());
   for (auto &task_id : task_ids1) {
@@ -207,8 +207,8 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineageOrDie) {
   }
 
   // Get the uncommitted lineage for the inserted task.
-  uncommitted_lineage = lineage_cache_.GetUncommittedLineageOrDie(
-      combined_task_ids.back(), ClientID::Nil());
+  uncommitted_lineage =
+      lineage_cache_.GetUncommittedLineage(combined_task_ids.back(), ClientID::Nil());
   // Check that the uncommitted lineage is exactly equal to the entire set of
   // tasks inserted so far.
   ASSERT_EQ(combined_task_ids.size(), uncommitted_lineage.GetEntries().size());
@@ -262,9 +262,9 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   lineage_cache_.MarkTaskAsForwarded(forwarded_task_id, node_id);
 
   auto uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineageOrDie(remaining_task_id, node_id);
+      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id);
   auto uncommitted_lineage_all =
-      lineage_cache_.GetUncommittedLineageOrDie(remaining_task_id, node_id2);
+      lineage_cache_.GetUncommittedLineage(remaining_task_id, node_id2);
 
   ASSERT_EQ(1, uncommitted_lineage.GetEntries().size());
   ASSERT_EQ(4, uncommitted_lineage_all.GetEntries().size());
@@ -273,7 +273,7 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   // Check that lineage of requested task includes itself, regardless of whether
   // it has been forwarded before.
   auto uncommitted_lineage_forwarded =
-      lineage_cache_.GetUncommittedLineageOrDie(forwarded_task_id, node_id);
+      lineage_cache_.GetUncommittedLineage(forwarded_task_id, node_id);
   ASSERT_EQ(1, uncommitted_lineage_forwarded.GetEntries().size());
 }
 
@@ -333,21 +333,21 @@ TEST_F(LineageCacheTest, TestEvictChain) {
   // the flushed task, but its lineage should not be evicted yet.
   mock_gcs_.Flush();
   ASSERT_EQ(lineage_cache_
-                .GetUncommittedLineageOrDie(tasks.back().GetTaskSpecification().TaskId(),
-                                            ClientID::Nil())
+                .GetUncommittedLineage(tasks.back().GetTaskSpecification().TaskId(),
+                                       ClientID::Nil())
                 .GetEntries()
                 .size(),
             tasks.size());
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), tasks.size());
 
   // Simulate executing the task on a remote node and adding it to the GCS.
-  auto task_data = std::make_shared<protocol::TaskT>();
+  auto task_data = std::make_shared<TaskTableData>();
   RAY_CHECK_OK(
       mock_gcs_.RemoteAdd(tasks.at(1).GetTaskSpecification().TaskId(), task_data));
   mock_gcs_.Flush();
   ASSERT_EQ(lineage_cache_
-                .GetUncommittedLineageOrDie(tasks.back().GetTaskSpecification().TaskId(),
-                                            ClientID::Nil())
+                .GetUncommittedLineage(tasks.back().GetTaskSpecification().TaskId(),
+                                       ClientID::Nil())
                 .GetEntries()
                 .size(),
             tasks.size());
@@ -386,8 +386,8 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
   mock_gcs_.Flush();
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), total_tasks);
   ASSERT_EQ(lineage_cache_
-                .GetUncommittedLineageOrDie(child_task.GetTaskSpecification().TaskId(),
-                                            ClientID::Nil())
+                .GetUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                       ClientID::Nil())
                 .GetEntries()
                 .size(),
             total_tasks);
@@ -402,8 +402,8 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
       // since the parent tasks have no dependencies.
       ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), total_tasks);
       ASSERT_EQ(lineage_cache_
-                    .GetUncommittedLineageOrDie(
-                        child_task.GetTaskSpecification().TaskId(), ClientID::Nil())
+                    .GetUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                           ClientID::Nil())
                     .GetEntries()
                     .size(),
                 total_tasks);
@@ -427,12 +427,12 @@ TEST_F(LineageCacheTest, TestEviction) {
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
   auto uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineageOrDie(last_task_id, ClientID::Nil());
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::Nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
   // Simulate executing the first task on a remote node and adding it to the
   // GCS.
-  auto task_data = std::make_shared<protocol::TaskT>();
+  auto task_data = std::make_shared<TaskTableData>();
   auto it = tasks.begin();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
   it++;
@@ -461,7 +461,7 @@ TEST_F(LineageCacheTest, TestEviction) {
   // All tasks have now been flushed. Check that enough lineage has been
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineageOrDie(last_task_id, ClientID::Nil());
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::Nil());
   ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
   // The remaining task should have no uncommitted lineage.
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), 1);
@@ -481,7 +481,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
   auto uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineageOrDie(last_task_id, ClientID::Nil());
+      lineage_cache_.GetUncommittedLineage(last_task_id, ClientID::Nil());
   ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), lineage_size);
 
@@ -490,7 +490,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   auto last_task = tasks.front();
   tasks.erase(tasks.begin());
   for (auto it = tasks.rbegin(); it != tasks.rend(); it++) {
-    auto task_data = std::make_shared<protocol::TaskT>();
+    auto task_data = std::make_shared<TaskTableData>();
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     // Check that the remote task is flushed.
     num_tasks_flushed++;
@@ -500,7 +500,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   }
   // Flush the last task. The lineage should not get evicted until this task's
   // commit is received.
-  auto task_data = std::make_shared<protocol::TaskT>();
+  auto task_data = std::make_shared<TaskTableData>();
   RAY_CHECK_OK(mock_gcs_.RemoteAdd(last_task.GetTaskSpecification().TaskId(), task_data));
   num_tasks_flushed++;
   mock_gcs_.Flush();
@@ -536,7 +536,7 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // until after the final remote task is executed, since a task can only be
   // evicted once all of its ancestors have been committed.
   for (auto it = tasks.rbegin(); it != tasks.rend(); it++) {
-    auto task_data = std::make_shared<protocol::TaskT>();
+    auto task_data = std::make_shared<TaskTableData>();
     ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), lineage_size * 2);
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     num_tasks_flushed++;

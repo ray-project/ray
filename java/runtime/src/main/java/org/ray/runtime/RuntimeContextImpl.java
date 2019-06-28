@@ -17,8 +17,8 @@ public class RuntimeContextImpl implements RuntimeContext {
   }
 
   @Override
-  public UniqueId getCurrentDriverId() {
-    return runtime.getWorker().getWorkerContext().getCurrentDriverId();
+  public UniqueId getCurrentJobId() {
+    return runtime.getWorker().getWorkerContext().getCurrentJobId();
   }
 
   @Override

@@ -105,7 +105,14 @@ def ray_deps_setup():
     http_archive(
         name = "com_github_grpc_grpc",
         urls = [
-            "https://github.com/grpc/grpc/archive/7741e806a213cba63c96234f16d712a8aa101a49.tar.gz",
+            "https://github.com/grpc/grpc/archive/76a381869413834692b8ed305fbe923c0f9c4472.tar.gz",
         ],
-        strip_prefix = "grpc-7741e806a213cba63c96234f16d712a8aa101a49",
+        strip_prefix = "grpc-76a381869413834692b8ed305fbe923c0f9c4472",
+    )
+
+    http_archive(
+        name = "build_stack_rules_proto",
+        urls = ["https://github.com/stackb/rules_proto/archive/b93b544f851fdcd3fc5c3d47aee3b7ca158a8841.tar.gz"],
+        sha256 = "c62f0b442e82a6152fcd5b1c0b7c4028233a9e314078952b6b04253421d56d61",
+        strip_prefix = "rules_proto-b93b544f851fdcd3fc5c3d47aee3b7ca158a8841",
     )
