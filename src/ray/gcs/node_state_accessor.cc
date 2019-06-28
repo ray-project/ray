@@ -10,10 +10,15 @@ namespace gcs {
 NodeStateAccessor::NodeStateAccessor(GcsClientImpl &client_impl)
     : client_impl_(client_impl) {}
 
+Status NodeStateAccessor::Register(const ClientTableData &node) {
+  ClientTable &client_table = client_impl_.AsyncClient().client_table();
+  return client_table.Connect(node);
+}
+
 Status NodeStateAccessor::GetAll(std::unordered_map<ClientID, ClientTableData> *result) {
   RAY_CHECK(result != nullptr);
   ClientTable &client_table = client_impl_.AsyncClient().client_table();
-  *result = std::move(client_table.GetAllClients());
+  *result = client_table.GetAllClients();
   return Status::OK();
 }
 

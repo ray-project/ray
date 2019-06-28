@@ -23,7 +23,13 @@ class NodeStateAccessor {
 
   ~NodeStateAccessor() {}
 
-  /// Get the information of all nodes(all raylet) from gcs.
+  /// Register node(raylet) to GCS.
+  ///
+  /// \param node The node that is add to GCS
+  /// \return Status
+  Status Register(const ClientTableData &node);
+
+  /// Get the information of all nodes(all raylet) from GCS.
   ///
   /// \param result all nodes list
   /// \return Status

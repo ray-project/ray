@@ -18,6 +18,11 @@ GcsClient::GcsClient(ClientOption option, ClientInfo info)
       actor_accessor_(new ActorStateAccessor(*client_impl_)),
       task_accessor_(new TaskStateAccessor(*client_impl_)) {}
 
+GcsClient::~GcsClient() {
+  delete client_impl_;
+  client_impl_ = nullptr;
+}
+
 Status GcsClient::Connect() { return client_impl_->Connect(); }
 
 void GcsClient::Disconnect() { client_impl_->Disconnect(); }

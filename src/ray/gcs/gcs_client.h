@@ -68,6 +68,8 @@ class GcsClient {
   /// \param info Information of this client, such as client type, client id and so on.
   GcsClient(ClientOption option, ClientInfo info);
 
+  ~GcsClient();
+
   /// Connect to GCS Service. Non-thread safe.
   ///
   /// \return Status
@@ -95,7 +97,7 @@ class GcsClient {
   }
 
  private:
-  std::unique_ptr<GcsClientImpl> client_impl_;
+  GcsClientImpl* client_impl_{nullptr};
 
   std::unique_ptr<NodeStateAccessor> node_accessor_;
   std::unique_ptr<ActorStateAccessor> actor_accessor_;
