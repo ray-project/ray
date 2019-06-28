@@ -844,7 +844,7 @@ void NodeManager::ProcessClientMessage(
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  client->SetClientID(from_flatbuf<ClientID>(*message->client_id()));
+  client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
   auto worker =
       std::make_shared<Worker>(message->worker_pid(), message->language(), client);
   if (message->is_worker()) {
