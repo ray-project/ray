@@ -6,8 +6,8 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/worker_client.h"
-#include "ray/rpc/worker_server.h"
+#include "ray/rpc/worker/worker_client.h"
+#include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
@@ -29,7 +29,7 @@ class CoreWorkerTaskExecutionInterface {
   /// \return Status.
   using TaskExecutor = std::function<Status(
       const RayFunction &ray_function, const std::vector<std::shared_ptr<Buffer>> &args,
-      const TaskID &task_id, int num_returns)>;
+      const TaskInfo &task_info, int num_returns)>;
 
   /// Start receving and executes tasks in a infinite loop.
   /// \return Status.

@@ -51,8 +51,12 @@ using ClientCallback = std::function<void(const Status &status, const Reply &rep
 template <class Reply>
 class ClientCallImpl : public ClientCall {
  public:
-  void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
   Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
+  void OnReplyReceived() override {
+    if (callback_ != nullptr) {
+      callback_(GrpcStatusToRayStatus(status_), reply_);
+    }
+  }
 
  private:
   /// Constructor.

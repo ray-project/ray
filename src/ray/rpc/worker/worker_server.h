@@ -49,9 +49,9 @@ class WorkerTaskGrpcService : public GrpcService {
             service_, &WorkerTaskService::AsyncService::RequestAssignTask,
             service_handler_, &WorkerTaskHandler::HandleAssignTask, cq, main_service_));
 
-    // Set `AssignTask`'s accept concurrency to 100.
+    // Set `AssignTask`'s accept concurrency to 5.
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(push_task_call_Factory), 100);
+        std::move(push_task_call_Factory), 5);
   }
 
  private:

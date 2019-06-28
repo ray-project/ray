@@ -52,6 +52,9 @@ class CoreWorker {
   ::Language ToTaskLanguage(WorkerLanguage language);
 
   /// Initialize raylet client.
+  ///
+  /// \praam[in] rpc_server_port The port that the worker rpc server binds to.
+  /// \return void.
   void InitializeRayletClient(int server_port);
 
   /// Type of this worker.
