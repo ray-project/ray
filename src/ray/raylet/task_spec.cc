@@ -106,33 +106,27 @@ bool TaskSpecification::IsActorTask() const {
 }
 
 ActorID TaskSpecification::ActorCreationId() const {
-  RAY_CHECK(IsActorCreationTask());
   return ActorID::FromBinary(message_->actor_creation_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::MaxActorReconstructions() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().max_actor_reconstructions();
-}
-
-ActorID TaskSpecification::ActorId() const {
-  RAY_CHECK(IsActorTask());
-  return ActorID::FromBinary(message_->actor_task_spec().actor_id());
-}
-
-ActorHandleID TaskSpecification::ActorHandleId() const {
-  RAY_CHECK(IsActorTask());
-  return ActorHandleID::FromBinary(message_->actor_task_spec().actor_handle_id());
-}
-
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
-  RAY_CHECK(IsActorTask());
   return ObjectID::FromBinary(
       message_->actor_task_spec().actor_creation_dummy_object_id());
 }
 
+uint64_t TaskSpecification::MaxActorReconstructions() const {
+  return message_->actor_creation_task_spec().max_actor_reconstructions();
+}
+
+ActorID TaskSpecification::ActorId() const {
+  return ActorID::FromBinary(message_->actor_task_spec().actor_id());
+}
+
+ActorHandleID TaskSpecification::ActorHandleId() const {
+  return ActorHandleID::FromBinary(message_->actor_task_spec().actor_handle_id());
+}
+
 uint64_t TaskSpecification::ActorCounter() const {
-  RAY_CHECK(IsActorTask());
   return message_->actor_task_spec().actor_counter();
 }
 
