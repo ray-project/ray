@@ -16,7 +16,7 @@ jmethodID java_array_list_init;
 jmethodID java_array_list_init_with_capacity;
 
 jclass java_ray_function_proxy_class;
-jfieldID java_ray_function_proxy_worker_language;
+jfieldID java_ray_function_proxy_language;
 jfieldID java_ray_function_proxy_function_descriptor;
 
 jclass java_task_arg_proxy_class;
@@ -75,8 +75,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   LOAD_CLASS(java_ray_function_proxy_class,
              "org/ray/runtime/proxyTypes/RayFunctionProxy");
-  java_ray_function_proxy_worker_language =
-      env->GetFieldID(java_ray_function_proxy_class, "workerLanguage", "I");
+  java_ray_function_proxy_language =
+      env->GetFieldID(java_ray_function_proxy_class, "language", "I");
   java_ray_function_proxy_function_descriptor = env->GetFieldID(
       java_ray_function_proxy_class, "functionDescriptor", "Ljava/util/List;");
 

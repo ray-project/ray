@@ -22,8 +22,6 @@ struct RayFunction {
   const std::vector<std::string> function_descriptor;
 };
 
-typedef std::vector<std::string> ActorDefinitionDescriptor;
-
 /// Argument of a task.
 class TaskArg {
  public:

@@ -11,29 +11,29 @@ extern "C" {
 #define org_ray_runtime_Worker_NUM_ACTOR_CHECKPOINTS_TO_KEEP 20L
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    createCoreWorker
+ * Method:    nativeCreateCoreWorker
  * Signature: (ILjava/lang/String;Ljava/lang/String;[B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(JNIEnv *, jclass,
-                                                                     jint, jstring,
-                                                                     jstring, jbyteArray);
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeCreateCoreWorker(
+    JNIEnv *, jclass, jint, jstring, jstring, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    runCoreWorker
+ * Method:    nativeRunCoreWorker
  * Signature: (JLorg/ray/runtime/Worker;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *, jclass, jlong,
-                                                                 jobject);
+JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(JNIEnv *, jclass,
+                                                                       jlong, jobject);
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    getTaskReturnId
+ * Method:    nativeGetTaskReturnId
  * Signature: ([BJ)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_getTaskReturnId(JNIEnv *, jclass,
-                                                                         jbyteArray,
-                                                                         jlong);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_nativeGetTaskReturnId(JNIEnv *,
+                                                                               jclass,
+                                                                               jbyteArray,
+                                                                               jlong);
 
 #ifdef __cplusplus
 }

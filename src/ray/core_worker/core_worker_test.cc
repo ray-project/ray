@@ -199,7 +199,7 @@ class CoreWorkerTest : public ::testing::Test {
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer));
 
-      ActorCreationOptions actor_options{0, resources};
+      ActorCreationOptions actor_options{0, resources, {}};
 
       // Create an actor.
       RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));

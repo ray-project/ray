@@ -11,20 +11,18 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    createCoreWorker
+ * Method:    nativeCreateCoreWorker
  * Signature: (Ljava/lang/String;Ljava/lang/String;[B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(JNIEnv *env, jclass,
-                                                                     jint workerMode,
-                                                                     jstring storeSocket,
-                                                                     jstring rayletSocket,
-                                                                     jbyteArray jobId) {
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeCreateCoreWorker(
+    JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
+    jbyteArray jobId) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
   UniqueIdFromJByteArray<ray::JobID> job_id(env, jobId);
   try {
     auto core_worker = new ray::CoreWorker(static_cast<ray::WorkerType>(workerMode),
-                                           ray::WorkerLanguage::JAVA, native_store_socket,
+                                           ray::rpc::Language::JAVA, native_store_socket,
                                            native_raylet_socket, job_id.GetId());
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
@@ -37,12 +35,11 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_createCoreWorker(JNIEnv *env
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    runCoreWorker
+ * Method:    nativeRunCoreWorker
  * Signature: (JLorg/ray/runtime/CoreWorkerProxy;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jclass o,
-                                                                 jlong nativeCoreWorker,
-                                                                 jobject javaCoreWorker) {
+JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
+    JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject javaCoreWorker) {
   jmethodID run_task_method =
       env->GetMethodID(o, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;[B[BII)V");
   auto executor_func = [env, javaCoreWorker, run_task_method](
@@ -76,10 +73,10 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_runCoreWorker(JNIEnv *env, jc
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    getTaskReturnId
+ * Method:    nativeGetTaskReturnId
  * Signature: ([BJ)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_getTaskReturnId(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_nativeGetTaskReturnId(
     JNIEnv *env, jclass o, jbyteArray taskId, jlong returnIndex) {
   UniqueIdFromJByteArray<ray::TaskID> task_id(env, taskId);
   ray::ObjectID return_id =

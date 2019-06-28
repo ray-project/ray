@@ -32,16 +32,6 @@ public class ObjectInterface {
   }
 
   /**
-   * Put an already serialized object to the object store.
-   *
-   * @param serializedObject The serialized object to put.
-   * @return Id of the object.
-   */
-  public ObjectId putSerialized(RayObjectProxy serializedObject) {
-    return putInternal(serializedObject);
-  }
-
-  /**
    * Serialize and put an object to the object store.
    *
    * @param objectId Id of the object.
@@ -51,20 +41,30 @@ public class ObjectInterface {
     putInternal(objectId, workerContext.getRayObjectConverter().toRayObject(obj));
   }
 
+  /**
+   * Put an already serialized object to the object store.
+   *
+   * @param serializedObject The serialized object to put.
+   * @return Id of the object.
+   */
+  public ObjectId putSerialized(RayObjectProxy serializedObject) {
+    return putInternal(serializedObject);
+  }
+
   private ObjectId putInternal(RayObjectProxy value) {
-    return new ObjectId(put(nativeCoreWorker, value));
+    return new ObjectId(nativePut(nativeCoreWorker, value));
   }
 
   private void putInternal(ObjectId objectId, RayObjectProxy value) {
     try {
-      put(nativeCoreWorker, objectId.getBytes(), value);
+      nativePut(nativeCoreWorker, objectId.getBytes(), value);
     } catch (RayException e) {
       LOGGER.warn(e.getMessage());
     }
   }
 
   public <T> List<GetResult<T>> get(List<ObjectId> objectIds, long timeoutMs) {
-    List<RayObjectProxy> getResults = get(nativeCoreWorker, toBinaryList(objectIds),
+    List<RayObjectProxy> getResults = nativeGet(nativeCoreWorker, toBinaryList(objectIds),
         timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();
@@ -94,28 +94,29 @@ public class ObjectInterface {
   }
 
   public List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs) {
-    return wait(nativeCoreWorker, toBinaryList(objectIds), numObjects, timeoutMs);
+    return nativeWait(nativeCoreWorker, toBinaryList(objectIds), numObjects, timeoutMs);
   }
 
   public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    delete(nativeCoreWorker, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
+    nativeDelete(nativeCoreWorker, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] put(long nativeCoreWorker, RayObjectProxy value);
+  private static native byte[] nativePut(long nativeCoreWorker, RayObjectProxy value);
 
-  private static native void put(long nativeCoreWorker, byte[] objectId, RayObjectProxy value);
+  private static native void nativePut(long nativeCoreWorker, byte[] objectId,
+                                       RayObjectProxy value);
 
-  private static native List<RayObjectProxy> get(long nativeCoreWorker, List<byte[]> ids,
-                                                      long timeoutMs);
+  private static native List<RayObjectProxy> nativeGet(long nativeCoreWorker, List<byte[]> ids,
+                                                       long timeoutMs);
 
-  private static native List<Boolean> wait(long nativeCoreWorker, List<byte[]> objectIds,
-                                           int numObjects, long timeoutMs);
+  private static native List<Boolean> nativeWait(long nativeCoreWorker, List<byte[]> objectIds,
+                                                 int numObjects, long timeoutMs);
 
-  private static native void delete(long nativeCoreWorker, List<byte[]> objectIds, boolean localOnly,
-                                    boolean deleteCreatingTasks);
+  private static native void nativeDelete(long nativeCoreWorker, List<byte[]> objectIds,
+                                          boolean localOnly, boolean deleteCreatingTasks);
 
 }

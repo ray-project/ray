@@ -9,28 +9,27 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentJobId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentJobId(JNIEnv *,
-                                                                                jclass,
-                                                                                jlong);
-
-/*
- * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentWorkerId
+ * Method:    nativeGetCurrentJobId
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_WorkerContext_getCurrentWorkerId(JNIEnv *, jclass, jlong);
+Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentActorId
+ * Method:    nativeGetCurrentWorkerId
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_WorkerContext_getCurrentActorId(JNIEnv *, jclass, jlong);
+Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     org_ray_runtime_WorkerContext
+ * Method:    nativeGetCurrentActorId
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_WorkerContext_nativeGetCurrentActorId(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

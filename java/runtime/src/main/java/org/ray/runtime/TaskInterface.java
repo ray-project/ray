@@ -1,6 +1,5 @@
 package org.ray.runtime;
 
-import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,7 +26,7 @@ public class TaskInterface {
     List<TaskArgProxy> nativeArgs =
         Arrays.stream(args).map(TaskArgProxy::new).collect(Collectors.toList());
     TaskOptionsProxy taskOptionsProxy = new TaskOptionsProxy(numReturns, options);
-    List<byte[]> returnIds = submitTask(nativeCoreWorker, rayFunctionProxy, nativeArgs,
+    List<byte[]> returnIds = nativeSubmitTask(nativeCoreWorker, rayFunctionProxy, nativeArgs,
         taskOptionsProxy);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
@@ -38,7 +37,7 @@ public class TaskInterface {
     List<TaskArgProxy> nativeArgs =
         Arrays.stream(args).map(TaskArgProxy::new).collect(Collectors.toList());
     ActorCreationOptionsProxy actorCreationOptionsProxy = new ActorCreationOptionsProxy(options);
-    long nativeActorHandle = createActor(nativeCoreWorker,
+    long nativeActorHandle = nativeCreateActor(nativeCoreWorker,
         rayFunctionProxy, nativeArgs, actorCreationOptionsProxy);
     return new RayActorImpl(nativeActorHandle);
   }
@@ -49,24 +48,24 @@ public class TaskInterface {
     List<TaskArgProxy> nativeArgs =
         Arrays.stream(args).map(TaskArgProxy::new).collect(Collectors.toList());
     TaskOptionsProxy taskOptionsProxy = new TaskOptionsProxy(numReturns, options);
-    List<byte[]> returnIds = submitActorTask(nativeCoreWorker, actor.getNativeActorHandle(),
+    List<byte[]> returnIds = nativeSubmitActorTask(nativeCoreWorker, actor.getNativeActorHandle(),
         rayFunctionProxy, nativeArgs, taskOptionsProxy);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
-  private static native List<byte[]> submitTask(long nativeCoreWorker,
-                                                RayFunctionProxy rayFunction,
-                                                List<TaskArgProxy> args,
-                                                TaskOptionsProxy taskOptions);
+  private static native List<byte[]> nativeSubmitTask(long nativeCoreWorker,
+                                                      RayFunctionProxy rayFunction,
+                                                      List<TaskArgProxy> args,
+                                                      TaskOptionsProxy taskOptions);
 
-  private static native long createActor(long nativeCoreWorker,
-                                         RayFunctionProxy rayFunction,
-                                         List<TaskArgProxy> args,
-                                         ActorCreationOptionsProxy actorCreationOptions);
+  private static native long nativeCreateActor(long nativeCoreWorker,
+                                               RayFunctionProxy rayFunction,
+                                               List<TaskArgProxy> args,
+                                               ActorCreationOptionsProxy actorCreationOptions);
 
-  private static native List<byte[]> submitActorTask(long nativeCoreWorker,
-                                                     long nativeActorHandle,
-                                                     RayFunctionProxy rayFunction,
-                                                     List<TaskArgProxy> args,
-                                                     TaskOptionsProxy taskOptions);
+  private static native List<byte[]> nativeSubmitActorTask(long nativeCoreWorker,
+                                                           long nativeActorHandle,
+                                                           RayFunctionProxy rayFunction,
+                                                           List<TaskArgProxy> args,
+                                                           TaskOptionsProxy taskOptions);
 }

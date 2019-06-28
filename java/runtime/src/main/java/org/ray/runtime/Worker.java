@@ -67,7 +67,7 @@ public class Worker {
          String storeSocket, String rayletSocket, UniqueId jobId) {
     this.runtime = runtime;
     this.functionManager = functionManager;
-    nativeCoreWorker = createCoreWorker(runtime.getRayConfig().workerMode.value(), storeSocket, rayletSocket,
+    nativeCoreWorker = nativeCreateCoreWorker(runtime.getRayConfig().workerMode.value(), storeSocket, rayletSocket,
         jobId.getBytes());
     workerContext = new WorkerContext(nativeCoreWorker);
     objectInterface = new ObjectInterface(nativeCoreWorker, workerContext);
@@ -87,7 +87,7 @@ public class Worker {
     LOGGER.debug("Executing task {}", taskInfo);
 //    Preconditions.checkState(numReturns == 1);
 
-    ObjectId returnId = new ObjectId(getTaskReturnId(taskIdBytes, 1));
+    ObjectId returnId = new ObjectId(nativeGetTaskReturnId(taskIdBytes, 1));
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
@@ -202,7 +202,7 @@ public class Worker {
   }
 
   public void loop() {
-    runCoreWorker(nativeCoreWorker, this);
+    nativeRunCoreWorker(nativeCoreWorker, this);
   }
 
   public ObjectInterface getObjectInterface() {
@@ -221,10 +221,10 @@ public class Worker {
     return rayletClient;
   }
 
-  private static native long createCoreWorker(int workerMode, String storeSocket,
-                                              String rayletSocket, byte[] jobId);
+  private static native long nativeCreateCoreWorker(int workerMode, String storeSocket,
+                                                    String rayletSocket, byte[] jobId);
 
-  private static native void runCoreWorker(long nativeCoreWorker, Worker worker);
+  private static native void nativeRunCoreWorker(long nativeCoreWorker, Worker worker);
 
-  private static native byte[] getTaskReturnId(byte[] taskId, long returnIndex);
+  private static native byte[] nativeGetTaskReturnId(byte[] taskId, long returnIndex);
 }

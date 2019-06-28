@@ -9,47 +9,50 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    put
+ * Method:    nativePut
  * Signature: (JLorg/ray/runtime/proxyTypes/RayObjectProxy;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
+Java_org_ray_runtime_ObjectInterface_nativePut__JLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
     JNIEnv *, jclass, jlong, jobject);
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    put
+ * Method:    nativePut
  * Signature: (J[BLorg/ray/runtime/proxyTypes/RayObjectProxy;)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
+Java_org_ray_runtime_ObjectInterface_nativePut__J_3BLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
     JNIEnv *, jclass, jlong, jbyteArray, jobject);
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    get
+ * Method:    nativeGet
  * Signature: (JLjava/util/List;J)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_get(JNIEnv *, jclass,
-                                                                   jlong, jobject, jlong);
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_nativeGet(JNIEnv *, jclass,
+                                                                         jlong, jobject,
+                                                                         jlong);
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    wait
+ * Method:    nativeWait
  * Signature: (JLjava/util/List;IJ)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_wait(JNIEnv *, jclass,
-                                                                    jlong, jobject, jint,
-                                                                    jlong);
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_nativeWait(JNIEnv *,
+                                                                          jclass, jlong,
+                                                                          jobject, jint,
+                                                                          jlong);
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    delete
+ * Method:    nativeGelete
  * Signature: (JLjava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_ObjectInterface_delete(JNIEnv *, jclass,
-                                                                   jlong, jobject,
-                                                                   jboolean, jboolean);
+JNIEXPORT void JNICALL Java_org_ray_runtime_ObjectInterface_nativeDelete(JNIEnv *, jclass,
+                                                                         jlong, jobject,
+                                                                         jboolean,
+                                                                         jboolean);
 
 #ifdef __cplusplus
 }

@@ -5,12 +5,12 @@ import java.util.List;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 
 public class RayFunctionProxy {
-  public int workerLanguage;
+  public int language;
   public List<String> functionDescriptor;
 
   public RayFunctionProxy(FunctionDescriptor functionDescriptor) {
     Preconditions.checkNotNull(functionDescriptor);
-    workerLanguage = functionDescriptor.getLanguage().getValue();
+    language = functionDescriptor.getLanguage().getNumber();
     this.functionDescriptor = functionDescriptor.toList();
   }
 }

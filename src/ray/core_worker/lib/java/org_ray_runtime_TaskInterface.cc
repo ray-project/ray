@@ -15,10 +15,9 @@ inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject rayFunction) {
   JavaStringListToNativeStringVector(
       env, env->GetObjectField(rayFunction, java_ray_function_proxy_function_descriptor),
       &function_descriptor);
-  ray::RayFunction ray_function{
-      static_cast<ray::WorkerLanguage>(
-          (int)env->GetIntField(rayFunction, java_ray_function_proxy_worker_language)),
-      function_descriptor};
+  ray::RayFunction ray_function{static_cast<ray::rpc::Language>((int)env->GetIntField(
+                                    rayFunction, java_ray_function_proxy_language)),
+                                function_descriptor};
   return ray_function;
 }
 
@@ -108,11 +107,11 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_TaskInterface
- * Method:    submitTask
+ * Method:    nativeSubmitTask
  * Signature:
  * (JLorg/ray/runtime/proxyTypes/RayFunctionProxy;Ljava/util/List;Lorg/ray/runtime/proxyTypes/TaskOptionsProxy;)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitTask(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_nativeSubmitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jobject rayFunction, jobject taskArgs,
     jobject taskOptions) {
   auto ray_function = ToRayFunction(env, rayFunction);
@@ -134,11 +133,11 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitTask(
 
 /*
  * Class:     org_ray_runtime_TaskInterface
- * Method:    createActor
+ * Method:    nativeCreateActor
  * Signature:
  * (JLorg/ray/runtime/proxyTypes/RayFunctionProxy;Ljava/util/List;Lorg/ray/runtime/proxyTypes/ActorCreationOptionsProxy;)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jobject rayFunction, jobject taskArgs,
     jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, rayFunction);
@@ -160,11 +159,11 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_createActor(
 
 /*
  * Class:     org_ray_runtime_TaskInterface
- * Method:    submitActorTask
+ * Method:    nativeSubmitActorTask
  * Signature:
  * (JJLorg/ray/runtime/proxyTypes/RayFunctionProxy;Ljava/util/List;Lorg/ray/runtime/proxyTypes/TaskOptionsProxy;)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_submitActorTask(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorker, jlong nativeActorHandle,
     jobject rayFunction, jobject taskArgs, jobject taskOptions) {
   auto &actor_handle = *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));

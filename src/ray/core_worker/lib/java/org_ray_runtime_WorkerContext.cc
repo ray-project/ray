@@ -14,10 +14,10 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentJobId
+ * Method:    nativeGetCurrentJobId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentJobId(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(
     JNIEnv *env, jclass o, jlong nativeCoreWorker) {
   return JByteArrayFromUniqueId<ray::JobID>(
              env, GetContext(nativeCoreWorker).GetCurrentJobID())
@@ -26,10 +26,10 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentJobId(
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentWorkerId
+ * Method:    nativeGetCurrentWorkerId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentWorkerId(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(
     JNIEnv *env, jclass o, jlong nativeCoreWorker) {
   return JByteArrayFromUniqueId<ray::WorkerID>(env,
                                                GetContext(nativeCoreWorker).GetWorkerID())
@@ -38,10 +38,10 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentWorker
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    getCurrentActorId
+ * Method:    nativeGetCurrentActorId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentActorId(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentActorId(
     JNIEnv *env, jclass o, jlong nativeCoreWorker) {
   return JByteArrayFromUniqueId<ray::ActorID>(
              env, GetContext(nativeCoreWorker).GetCurrentActorID())

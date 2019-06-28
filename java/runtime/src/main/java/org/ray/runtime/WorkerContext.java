@@ -25,18 +25,18 @@ public class WorkerContext {
    * The ID of the current job.
    */
   public UniqueId getCurrentJobId() {
-    return new UniqueId(getCurrentJobId(nativeCoreWorker));
+    return new UniqueId(nativeGetCurrentJobId(nativeCoreWorker));
   }
 
   /**
    * @return The ID of the current worker.
    */
   public UniqueId getCurrentActorId() {
-    return new UniqueId(getCurrentActorId(nativeCoreWorker));
+    return new UniqueId(nativeGetCurrentActorId(nativeCoreWorker));
   }
 
   public UniqueId getCurrentWorkerId() {
-    return new UniqueId(getCurrentWorkerId(nativeCoreWorker));
+    return new UniqueId(nativeGetCurrentWorkerId(nativeCoreWorker));
   }
 
   /**
@@ -64,9 +64,9 @@ public class WorkerContext {
     this.currentTask = currentTask;
   }
 
-  private static native byte[] getCurrentJobId(long nativeCoreWorker);
+  private static native byte[] nativeGetCurrentJobId(long nativeCoreWorker);
 
-  private static native byte[] getCurrentWorkerId(long nativeCoreWorker);
+  private static native byte[] nativeGetCurrentWorkerId(long nativeCoreWorker);
 
-  private static native byte[] getCurrentActorId(long nativeCoreWorker);
+  private static native byte[] nativeGetCurrentActorId(long nativeCoreWorker);
 }

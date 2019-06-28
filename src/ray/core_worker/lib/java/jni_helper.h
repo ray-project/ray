@@ -27,7 +27,7 @@ extern jmethodID java_map_entry_set;
 extern jmethodID java_array_list_init_with_capacity;
 
 extern jclass java_ray_function_proxy_class;
-extern jfieldID java_ray_function_proxy_worker_language;
+extern jfieldID java_ray_function_proxy_language;
 extern jfieldID java_ray_function_proxy_function_descriptor;
 
 extern jclass java_task_arg_proxy_class;

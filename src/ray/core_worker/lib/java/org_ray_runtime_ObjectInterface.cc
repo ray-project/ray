@@ -16,11 +16,11 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    put
+ * Method:    nativePut
  * Signature: (JLorg/ray/runtime/proxyTypes/RayObjectProxy;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
+Java_org_ray_runtime_ObjectInterface_nativePut__JLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
     JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject rayObjectProxy) {
   ray::Status status;
   ray::ObjectID object_id = ReadJavaRayObjectProxy<ray::ObjectID>(
@@ -37,11 +37,11 @@ Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObject
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    put
+ * Method:    nativePut
  * Signature: (J[BLorg/ray/runtime/proxyTypes/RayObjectProxy;)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
+Java_org_ray_runtime_ObjectInterface_nativePut__J_3BLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
     JNIEnv *env, jclass o, jlong nativeCoreWorker, jbyteArray objectId,
     jobject rayObjectProxy) {
   auto object_id = UniqueIdFromJByteArray<ray::ObjectID>(env, objectId).GetId();
@@ -56,13 +56,11 @@ Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObj
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    get
+ * Method:    nativeGet
  * Signature: (JLjava/util/List;J)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_get(JNIEnv *env, jclass o,
-                                                                   jlong nativeCoreWorker,
-                                                                   jobject ids,
-                                                                   jlong timeoutMs) {
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_nativeGet(
+    JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, ids, &object_ids, [](JNIEnv *env, jobject id) {
@@ -79,10 +77,10 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_get(JNIEnv *env, 
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    wait
+ * Method:    nativeWait
  * Signature: (JLjava/util/List;IJ)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_wait(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_nativeWait(
     JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject objectIds, jint numObjects,
     jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
@@ -102,10 +100,10 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_wait(
 
 /*
  * Class:     org_ray_runtime_ObjectInterface
- * Method:    delete
+ * Method:    nativeDelete
  * Signature: (JLjava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_ObjectInterface_delete(
+JNIEXPORT void JNICALL Java_org_ray_runtime_ObjectInterface_nativeDelete(
     JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject objectIds, jboolean localOnly,
     jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;

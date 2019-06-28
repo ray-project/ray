@@ -3,7 +3,7 @@ package org.ray.runtime.functionmanager;
 import com.google.common.base.Objects;
 import java.util.Arrays;
 import java.util.List;
-import org.ray.runtime.WorkerLanguage;
+import org.ray.runtime.generated.Gcs.Language;
 
 /**
  * Represents metadata of Java function.
@@ -59,7 +59,7 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
   }
 
   @Override
-  public WorkerLanguage getLanguage() {
-    return WorkerLanguage.JAVA;
+  public Language getLanguage() {
+    return Language.JAVA;
   }
 }

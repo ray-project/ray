@@ -9,66 +9,72 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    fork
+ * Method:    nativeFork
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_fork(JNIEnv *, jclass, jlong);
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_nativeFork(JNIEnv *, jclass,
+                                                                     jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getActorId
+ * Method:    nativeGetActorId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorId(JNIEnv *,
-                                                                          jclass, jlong);
-
-/*
- * Class:     org_ray_runtime_RayActorImpl
- * Method:    getRayActorImplId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_getActorHandleId(JNIEnv *,
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_nativeGetActorId(JNIEnv *,
                                                                                 jclass,
                                                                                 jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getLanguage
- * Signature: (J)I
+ * Method:    nativeGetRayActorImplId
+ * Signature: (J)[B
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_getLanguage(JNIEnv *, jclass,
-                                                                     jlong);
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_RayActorImpl_nativeGetActorHandleId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    getActorDefinitionDescriptor
+ * Method:    nativeGetLanguage
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_ray_runtime_RayActorImpl_nativeGetLanguage(JNIEnv *,
+                                                                           jclass, jlong);
+
+/*
+ * Class:     org_ray_runtime_RayActorImpl
+ * Method:    nativeGetActorCreationTaskFunctionDescriptor
  * Signature: (J)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_RayActorImpl_getActorDefinitionDescriptor(JNIEnv *, jclass, jlong);
+Java_org_ray_runtime_RayActorImpl_nativeGetActorCreationTaskFunctionDescriptor(JNIEnv *,
+                                                                               jclass,
+                                                                               jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    serialize
+ * Method:    nativeSerialize
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_serialize(JNIEnv *, jclass,
-                                                                         jlong);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_nativeSerialize(JNIEnv *,
+                                                                               jclass,
+                                                                               jlong);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    deserialize
+ * Method:    nativeDeserialize
  * Signature: ([B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_deserialize(JNIEnv *, jclass,
-                                                                      jbyteArray);
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_nativeDeserialize(JNIEnv *,
+                                                                            jclass,
+                                                                            jbyteArray);
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    free
+ * Method:    nativeFree
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayActorImpl_free(JNIEnv *, jclass, jlong);
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayActorImpl_nativeFree(JNIEnv *, jclass,
+                                                                    jlong);
 
 #ifdef __cplusplus
 }

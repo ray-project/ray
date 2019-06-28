@@ -1,7 +1,5 @@
 package org.ray.runtime.task;
 
-import org.ray.runtime.WorkerLanguage;
-
 public enum TaskType {
   NORMAL_TASK(0),
   ACTOR_CREATION_TASK(1),
