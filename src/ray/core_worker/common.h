@@ -74,8 +74,8 @@ enum class TaskType { NORMAL_TASK, ACTOR_CREATION_TASK, ACTOR_TASK };
 struct TaskInfo {
   /// The ID of task.
   const TaskID task_id;
-  /// The driver ID.
-  const DriverID driver_id;
+  /// The job ID.
+  const JobID job_id;
   /// The type of task.
   const TaskType task_type;
 };

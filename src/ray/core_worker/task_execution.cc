@@ -46,7 +46,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
         task_type = TaskType::NORMAL_TASK;
       }
 
-      TaskInfo task_info{spec.TaskId(), spec.DriverId(), task_type};
+      TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
 
       auto num_returns = spec.NumReturns();
       if (spec.IsActorCreationTask() || spec.IsActorTask()) {
