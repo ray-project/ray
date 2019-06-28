@@ -30,7 +30,7 @@ class WorkerTaskClient {
     stub_ = WorkerTaskService::NewStub(channel);
   };
 
-  /// Push a task.
+  /// Assign a task to the work.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
