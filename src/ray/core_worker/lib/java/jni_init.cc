@@ -36,10 +36,10 @@ jfieldID java_actor_creation_options_proxy_max_reconstructions;
 jfieldID java_actor_creation_options_proxy_resources;
 jfieldID java_actor_creation_options_proxy_dynamic_worker_options;
 
-jclass java_ray_object_value_proxy_class;
-jmethodID java_ray_object_value_proxy_init;
-jfieldID java_ray_object_value_proxy_data;
-jfieldID java_ray_object_value_proxy_metadata;
+jclass java_ray_object_proxy_class;
+jmethodID java_ray_object_proxy_init;
+jfieldID java_ray_object_proxy_data;
+jfieldID java_ray_object_proxy_metadata;
 
 jint JNI_VERSION = JNI_VERSION_1_8;
 
@@ -109,14 +109,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_proxy_class, "dynamicWorkerOptions",
                       "Ljava/util/List;");
 
-  LOAD_CLASS(java_ray_object_value_proxy_class,
-             "org/ray/runtime/proxyTypes/RayObjectValueProxy");
-  java_ray_object_value_proxy_init =
-      env->GetMethodID(java_ray_object_value_proxy_class, "<init>", "([B[B)V");
-  java_ray_object_value_proxy_data =
-      env->GetFieldID(java_ray_object_value_proxy_class, "data", "[B");
-  java_ray_object_value_proxy_metadata =
-      env->GetFieldID(java_ray_object_value_proxy_class, "metadata", "[B");
+  LOAD_CLASS(java_ray_object_proxy_class, "org/ray/runtime/proxyTypes/RayObjectProxy");
+  java_ray_object_proxy_init =
+      env->GetMethodID(java_ray_object_proxy_class, "<init>", "([B[B)V");
+  java_ray_object_proxy_data = env->GetFieldID(java_ray_object_proxy_class, "data", "[B");
+  java_ray_object_proxy_metadata =
+      env->GetFieldID(java_ray_object_proxy_class, "metadata", "[B");
 
   return JNI_VERSION;
 }
@@ -134,5 +132,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_resources_proxy_class);
   env->DeleteGlobalRef(java_task_options_proxy_class);
   env->DeleteGlobalRef(java_actor_creation_options_proxy_class);
-  env->DeleteGlobalRef(java_ray_object_value_proxy_class);
+  env->DeleteGlobalRef(java_ray_object_proxy_class);
 }

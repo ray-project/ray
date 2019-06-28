@@ -12,9 +12,9 @@ import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.runtime.RayActorImpl;
 import org.ray.runtime.generated.Gcs.ErrorType;
-import org.ray.runtime.proxyTypes.RayObjectValueProxy;
+import org.ray.runtime.proxyTypes.RayObjectProxy;
 
-public class RayObjectValueConverter {
+public class RayObjectConverter {
   public static final byte[] JAVA_OBJECT_META = "JAVA_OBJECT".getBytes();
 
   private static final Converter[] fixedConverters = new Converter[] {
@@ -28,7 +28,7 @@ public class RayObjectValueConverter {
 
   private final FSTConverter[] fstConverters;
 
-  public RayObjectValueConverter(ClassLoader classLoader) {
+  public RayObjectConverter(ClassLoader classLoader) {
     this.fstConverters = new FSTConverter[] {
         new FSTConverter(String.valueOf(ErrorType.TASK_EXCEPTION.getNumber()).getBytes(),
             obj -> obj instanceof RayTaskException, classLoader),
@@ -42,8 +42,8 @@ public class RayObjectValueConverter {
     return Stream.concat(Arrays.stream(fixedConverters), Arrays.stream(fstConverters));
   }
 
-  public RayObjectValueProxy toValue(Object object) {
-    Optional<RayObjectValueProxy> value =
+  public RayObjectProxy toValue(Object object) {
+    Optional<RayObjectProxy> value =
         getConverters().map(converter -> converter.toValue(object)).filter(Objects::nonNull).findFirst();
     if (value.isPresent()) {
       byte[] metadata = value.get().metadata;
@@ -54,7 +54,7 @@ public class RayObjectValueConverter {
     throw new IllegalArgumentException("Cannot convert the object to object value: " + object);
   }
 
-  public Object fromValue(RayObjectValueProxy objectValue) {
+  public Object fromValue(RayObjectProxy objectValue) {
     Preconditions.checkState(objectValue != null);
     Optional<WrappedObject> obj = getConverters()
         .map(converter -> converter.fromValue(objectValue))
@@ -86,29 +86,29 @@ public class RayObjectValueConverter {
      * @param object the object to convert from.
      * @return converted object value. Null if this converter cannot process the input object.
      */
-    RayObjectValueProxy toValue(Object object);
+    RayObjectProxy toValue(Object object);
 
     /**
      * @param objectValue the object value to convert form.
      * @return the original object wrapped by {@link WrappedObject}. Null if cannot process the
      *     input object value.
      */
-    WrappedObject fromValue(RayObjectValueProxy objectValue);
+    WrappedObject fromValue(RayObjectProxy objectValue);
   }
 
   static class RawTypeConverter implements Converter {
     private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
     @Override
-    public RayObjectValueProxy toValue(Object object) {
+    public RayObjectProxy toValue(Object object) {
       if (object instanceof byte[]) {
-        return new RayObjectValueProxy((byte[]) object, RAW_TYPE_META);
+        return new RayObjectProxy((byte[]) object, RAW_TYPE_META);
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectValueProxy objectValue) {
+    public WrappedObject fromValue(RayObjectProxy objectValue) {
       if (Arrays.equals(objectValue.metadata, RAW_TYPE_META)) {
         return new WrappedObject(objectValue.data);
       }
@@ -118,16 +118,16 @@ public class RayObjectValueConverter {
 
   static class ErrorTypeConverter implements Converter {
     private final Object instance;
-    private final RayObjectValueProxy instanceValue;
+    private final RayObjectProxy instanceValue;
 
     ErrorTypeConverter(Object instance, ErrorType errorType) {
       this.instance = instance;
-      this.instanceValue = new RayObjectValueProxy(new byte[0],
+      this.instanceValue = new RayObjectProxy(new byte[0],
           String.valueOf(errorType.getNumber()).getBytes());
     }
 
     @Override
-    public RayObjectValueProxy toValue(Object object) {
+    public RayObjectProxy toValue(Object object) {
       if (this.instance.equals(object)) {
         return instanceValue;
       }
@@ -135,7 +135,7 @@ public class RayObjectValueConverter {
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectValueProxy objectValue) {
+    public WrappedObject fromValue(RayObjectProxy objectValue) {
       if (Arrays.equals(this.instanceValue.metadata, objectValue.metadata)
           && Arrays.equals(instanceValue.data, objectValue.data)) {
         return new WrappedObject(instance);
@@ -148,15 +148,15 @@ public class RayObjectValueConverter {
     private static final byte[] ACTOR_HANDLE_META = "ACTOR_HANDLE".getBytes();
 
     @Override
-    public RayObjectValueProxy toValue(Object object) {
+    public RayObjectProxy toValue(Object object) {
       if (object instanceof RayActorImpl) {
-        return new RayObjectValueProxy(((RayActorImpl) object).fork().Binary(), ACTOR_HANDLE_META);
+        return new RayObjectProxy(((RayActorImpl) object).fork().Binary(), ACTOR_HANDLE_META);
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectValueProxy objectValue) {
+    public WrappedObject fromValue(RayObjectProxy objectValue) {
       if (Arrays.equals(objectValue.metadata, ACTOR_HANDLE_META)) {
         return new WrappedObject(RayActorImpl.fromBinary(objectValue.data));
       }
@@ -176,15 +176,15 @@ public class RayObjectValueConverter {
     }
 
     @Override
-    public RayObjectValueProxy toValue(Object object) {
+    public RayObjectProxy toValue(Object object) {
       if (canConvert.apply(object)) {
-        return new RayObjectValueProxy(Serializer.encode(object, classLoader), expectedMetadata);
+        return new RayObjectProxy(Serializer.encode(object, classLoader), expectedMetadata);
       }
       return null;
     }
 
     @Override
-    public WrappedObject fromValue(RayObjectValueProxy objectValue) {
+    public WrappedObject fromValue(RayObjectProxy objectValue) {
       if (((expectedMetadata == null || expectedMetadata.length == 0) &&
           (objectValue.metadata == null || objectValue.metadata.length == 0)) ||
           Arrays.equals(objectValue.metadata, expectedMetadata)) {

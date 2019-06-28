@@ -5,8 +5,8 @@ import java.util.List;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.Worker;
-import org.ray.runtime.proxyTypes.RayObjectValueProxy;
-import org.ray.runtime.util.RayObjectValueConverter;
+import org.ray.runtime.proxyTypes.RayObjectProxy;
+import org.ray.runtime.util.RayObjectConverter;
 import org.ray.runtime.util.Serializer;
 
 public class ArgumentsBuilder {
@@ -39,18 +39,18 @@ public class ArgumentsBuilder {
         } else {
           // TODO (kfstorm): support pass by value with metadata
           // Pass by value for byte array must call Serializer.encode(...) to keep type information.
-          // We could use RayObjectValueProxy.data here only after pass by value with metadata is
+          // We could use RayObjectProxy.data here only after pass by value with metadata is
           // supported.
           data = Serializer.encode(arg);
         }
       } else {
-        RayObjectValueProxy rayObjectValueProxy =
-            worker.getWorkerContext().getRayObjectValueConverter().toValue(arg);
-        if (Arrays.equals(rayObjectValueProxy.metadata, RayObjectValueConverter.JAVA_OBJECT_META)
-            && rayObjectValueProxy.data.length <= LARGEST_SIZE_PASS_BY_VALUE) {
-          data = rayObjectValueProxy.data;
+        RayObjectProxy rayObjectProxy =
+            worker.getWorkerContext().getRayObjectConverter().toValue(arg);
+        if (Arrays.equals(rayObjectProxy.metadata, RayObjectConverter.JAVA_OBJECT_META)
+            && rayObjectProxy.data.length <= LARGEST_SIZE_PASS_BY_VALUE) {
+          data = rayObjectProxy.data;
         } else {
-          id = worker.getObjectInterface().putSerialized(rayObjectValueProxy);
+          id = worker.getObjectInterface().putSerialized(rayObjectProxy);
         }
       }
       if (id != null) {
@@ -65,7 +65,7 @@ public class ArgumentsBuilder {
   /**
    * Convert list of byte array to real function arguments.
    */
-  public static Object[] unwrap(Worker worker, List<RayObjectValueProxy> args) {
-    return args.stream().map(arg -> worker.getWorkerContext().getRayObjectValueConverter().fromValue(arg)).toArray();
+  public static Object[] unwrap(Worker worker, List<RayObjectProxy> args) {
+    return args.stream().map(arg -> worker.getWorkerContext().getRayObjectConverter().fromValue(arg)).toArray();
   }
 }

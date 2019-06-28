@@ -47,10 +47,10 @@ extern jfieldID java_actor_creation_options_proxy_max_reconstructions;
 extern jfieldID java_actor_creation_options_proxy_resources;
 extern jfieldID java_actor_creation_options_proxy_dynamic_worker_options;
 
-extern jclass java_ray_object_value_proxy_class;
-extern jmethodID java_ray_object_value_proxy_init;
-extern jfieldID java_ray_object_value_proxy_data;
-extern jfieldID java_ray_object_value_proxy_metadata;
+extern jclass java_ray_object_proxy_class;
+extern jmethodID java_ray_object_proxy_init;
+extern jfieldID java_ray_object_proxy_data;
+extern jfieldID java_ray_object_proxy_metadata;
 
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
@@ -179,16 +179,15 @@ inline ReturnT ReadBinary(JNIEnv *env, const jbyteArray &binary,
 }
 
 template <typename ReturnT>
-inline ReturnT ReadJavaRayObjectValueProxy(
+inline ReturnT ReadJavaRayObjectProxy(
     JNIEnv *env, const jobject &java_obj,
-    std::function<ReturnT(const std::shared_ptr<ray::RayObjectValue> &)> reader) {
+    std::function<ReturnT(const std::shared_ptr<ray::RayObject> &)> reader) {
   if (!java_obj) {
     return reader(nullptr);
   }
-  auto java_data =
-      (jbyteArray)env->GetObjectField(java_obj, java_ray_object_value_proxy_data);
+  auto java_data = (jbyteArray)env->GetObjectField(java_obj, java_ray_object_proxy_data);
   auto java_metadata =
-      (jbyteArray)env->GetObjectField(java_obj, java_ray_object_value_proxy_metadata);
+      (jbyteArray)env->GetObjectField(java_obj, java_ray_object_proxy_metadata);
   auto data_size = env->GetArrayLength(java_data);
   jbyte *data = data_size > 0 ? env->GetByteArrayElements(java_data, nullptr) : nullptr;
   auto metadata_size = java_metadata ? env->GetArrayLength(java_metadata) : 0;
@@ -201,7 +200,7 @@ inline ReturnT ReadJavaRayObjectValueProxy(
                                    reinterpret_cast<uint8_t *>(metadata), metadata_size)
                              : nullptr;
 
-  auto native_obj = std::make_shared<ray::RayObjectValue>(data_buffer, metadata_buffer);
+  auto native_obj = std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
   auto result = reader(native_obj);
 
   if (data) {
@@ -214,16 +213,15 @@ inline ReturnT ReadJavaRayObjectValueProxy(
   return result;
 }
 
-inline jobject ToJavaRayObjectValueProxy(
-    JNIEnv *env, const std::shared_ptr<ray::RayObjectValue> &value) {
+inline jobject ToJavaRayObjectProxy(JNIEnv *env,
+                                    const std::shared_ptr<ray::RayObject> &value) {
   if (!value) {
     return nullptr;
   }
   auto java_data = NativeBufferToJavaByteArray(env, value->GetData());
   auto java_metadata = NativeBufferToJavaByteArray(env, value->GetMetadata());
-  auto java_obj =
-      env->NewObject(java_ray_object_value_proxy_class, java_ray_object_value_proxy_init,
-                     java_data, java_metadata);
+  auto java_obj = env->NewObject(java_ray_object_proxy_class, java_ray_object_proxy_init,
+                                 java_data, java_metadata);
   return java_obj;
 }
 

@@ -14,7 +14,7 @@ import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
-import org.ray.runtime.proxyTypes.RayObjectValueProxy;
+import org.ray.runtime.proxyTypes.RayObjectProxy;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
@@ -76,7 +76,7 @@ public class Worker {
   }
 
   // This method is required by JNI
-  private void runTaskCallback(List<String> rayFunctionInfo, List<RayObjectValueProxy> argsBytes,
+  private void runTaskCallback(List<String> rayFunctionInfo, List<RayObjectProxy> argsBytes,
                                byte[] taskIdBytes, byte[] jobIdBytes, int jniTaskType,
                                int numReturns) {
     TaskId taskId = new TaskId(taskIdBytes);

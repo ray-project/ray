@@ -17,15 +17,15 @@ extern "C" {
 /*
  * Class:     org_ray_runtime_ObjectInterface
  * Method:    put
- * Signature: (JLorg/ray/runtime/proxyTypes/RayObjectValueProxy;)[B
+ * Signature: (JLorg/ray/runtime/proxyTypes/RayObjectProxy;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObjectValueProxy_2(
-    JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject rayObjectValueProxy) {
+Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
+    JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject rayObjectProxy) {
   ray::Status status;
-  ray::ObjectID object_id = ReadJavaRayObjectValueProxy<ray::ObjectID>(
-      env, rayObjectValueProxy,
-      [nativeCoreWorker, &status](const std::shared_ptr<ray::RayObjectValue> &value) {
+  ray::ObjectID object_id = ReadJavaRayObjectProxy<ray::ObjectID>(
+      env, rayObjectProxy,
+      [nativeCoreWorker, &status](const std::shared_ptr<ray::RayObject> &value) {
         RAY_CHECK(value != nullptr);
         ray::ObjectID object_id;
         status = GetObjectInterface(nativeCoreWorker).Put(*value, &object_id);
@@ -38,16 +38,16 @@ Java_org_ray_runtime_ObjectInterface_put__JLorg_ray_runtime_proxyTypes_RayObject
 /*
  * Class:     org_ray_runtime_ObjectInterface
  * Method:    put
- * Signature: (J[BLorg/ray/runtime/proxyTypes/RayObjectValueProxy;)V
+ * Signature: (J[BLorg/ray/runtime/proxyTypes/RayObjectProxy;)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObjectValueProxy_2(
+Java_org_ray_runtime_ObjectInterface_put__J_3BLorg_ray_runtime_proxyTypes_RayObjectProxy_2(
     JNIEnv *env, jclass o, jlong nativeCoreWorker, jbyteArray objectId,
-    jobject rayObjectValueProxy) {
+    jobject rayObjectProxy) {
   auto object_id = UniqueIdFromJByteArray<ray::ObjectID>(env, objectId).GetId();
-  auto status = ReadJavaRayObjectValueProxy<ray::Status>(
-      env, rayObjectValueProxy,
-      [nativeCoreWorker, &object_id](const std::shared_ptr<ray::RayObjectValue> &value) {
+  auto status = ReadJavaRayObjectProxy<ray::Status>(
+      env, rayObjectProxy,
+      [nativeCoreWorker, &object_id](const std::shared_ptr<ray::RayObject> &value) {
         RAY_CHECK(value != nullptr);
         return GetObjectInterface(nativeCoreWorker).Put(*value, object_id);
       });
@@ -69,12 +69,12 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_ObjectInterface_get(JNIEnv *env, 
         return UniqueIdFromJByteArray<ray::ObjectID>(env, static_cast<jbyteArray>(id))
             .GetId();
       });
-  std::vector<std::shared_ptr<ray::RayObjectValue>> results;
+  std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status =
       GetObjectInterface(nativeCoreWorker).Get(object_ids, (int64_t)timeoutMs, &results);
   ThrowRayExceptionIfNotOK(env, status);
-  return NativeVectorToJavaList<std::shared_ptr<ray::RayObjectValue>>(
-      env, results, ToJavaRayObjectValueProxy);
+  return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(env, results,
+                                                                 ToJavaRayObjectProxy);
 }
 
 /*

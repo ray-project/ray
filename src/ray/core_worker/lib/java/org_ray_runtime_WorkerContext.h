@@ -12,8 +12,9 @@ extern "C" {
  * Method:    getCurrentJobId
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_WorkerContext_getCurrentJobId(JNIEnv *, jclass, jlong);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_getCurrentJobId(JNIEnv *,
+                                                                                jclass,
+                                                                                jlong);
 
 /*
  * Class:     org_ray_runtime_WorkerContext

@@ -2,14 +2,14 @@ package org.ray.runtime;
 
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.task.TaskInfo;
-import org.ray.runtime.util.RayObjectValueConverter;
+import org.ray.runtime.util.RayObjectConverter;
 
 public class WorkerContext {
   private final long nativeCoreWorker;
 
   private ClassLoader currentClassLoader;
 
-  private RayObjectValueConverter rayObjectValueConverter = new RayObjectValueConverter(null);
+  private RayObjectConverter rayObjectConverter = new RayObjectConverter(null);
 
   private TaskInfo currentTask;
 
@@ -17,8 +17,8 @@ public class WorkerContext {
     this.nativeCoreWorker = nativeCoreWorker;
   }
 
-  public RayObjectValueConverter getRayObjectValueConverter() {
-    return rayObjectValueConverter;
+  public RayObjectConverter getRayObjectConverter() {
+    return rayObjectConverter;
   }
 
   /**
@@ -49,7 +49,7 @@ public class WorkerContext {
   public void setCurrentClassLoader(ClassLoader currentClassLoader) {
     if (this.currentClassLoader != currentClassLoader) {
       this.currentClassLoader = currentClassLoader;
-      rayObjectValueConverter = new RayObjectValueConverter(currentClassLoader);
+      rayObjectConverter = new RayObjectConverter(currentClassLoader);
     }
   }
 

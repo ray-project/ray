@@ -6,7 +6,7 @@ import java.util.stream.Collectors;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.BaseId;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.proxyTypes.RayObjectValueProxy;
+import org.ray.runtime.proxyTypes.RayObjectProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +28,7 @@ public class ObjectInterface {
    * @return Id of the object.
    */
   public ObjectId put(Object obj) {
-    return putInternal(workerContext.getRayObjectValueConverter().toValue(obj));
+    return putInternal(workerContext.getRayObjectConverter().toValue(obj));
   }
 
   /**
@@ -37,7 +37,7 @@ public class ObjectInterface {
    * @param serializedObject The serialized object to put.
    * @return Id of the object.
    */
-  public ObjectId putSerialized(RayObjectValueProxy serializedObject) {
+  public ObjectId putSerialized(RayObjectProxy serializedObject) {
     return putInternal(serializedObject);
   }
 
@@ -48,14 +48,14 @@ public class ObjectInterface {
    * @param obj      The object to put.
    */
   public void put(ObjectId objectId, Object obj) {
-    putInternal(objectId, workerContext.getRayObjectValueConverter().toValue(obj));
+    putInternal(objectId, workerContext.getRayObjectConverter().toValue(obj));
   }
 
-  private ObjectId putInternal(RayObjectValueProxy value) {
+  private ObjectId putInternal(RayObjectProxy value) {
     return new ObjectId(put(nativeCoreWorker, value));
   }
 
-  private void putInternal(ObjectId objectId, RayObjectValueProxy value) {
+  private void putInternal(ObjectId objectId, RayObjectProxy value) {
     try {
       put(nativeCoreWorker, objectId.getBytes(), value);
     } catch (RayException e) {
@@ -64,16 +64,16 @@ public class ObjectInterface {
   }
 
   public <T> List<GetResult<T>> get(List<ObjectId> objectIds, long timeoutMs) {
-    List<RayObjectValueProxy> getResults = get(nativeCoreWorker, toBinaryList(objectIds),
+    List<RayObjectProxy> getResults = get(nativeCoreWorker, toBinaryList(objectIds),
         timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();
 
-    for (RayObjectValueProxy getResult : getResults) {
+    for (RayObjectProxy getResult : getResults) {
       GetResult<T> result;
       if (getResult != null) {
         Object object =
-            workerContext.getRayObjectValueConverter().fromValue(getResult);
+            workerContext.getRayObjectConverter().fromValue(getResult);
         if (object instanceof RayException) {
           // If the object is a `RayException`, it means that an error occurred during task
           // execution.
@@ -105,11 +105,11 @@ public class ObjectInterface {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] put(long nativeCoreWorker, RayObjectValueProxy value);
+  private static native byte[] put(long nativeCoreWorker, RayObjectProxy value);
 
-  private static native void put(long nativeCoreWorker, byte[] objectId, RayObjectValueProxy value);
+  private static native void put(long nativeCoreWorker, byte[] objectId, RayObjectProxy value);
 
-  private static native List<RayObjectValueProxy> get(long nativeCoreWorker, List<byte[]> ids,
+  private static native List<RayObjectProxy> get(long nativeCoreWorker, List<byte[]> ids,
                                                       long timeoutMs);
 
   private static native List<Boolean> wait(long nativeCoreWorker, List<byte[]> objectIds,
