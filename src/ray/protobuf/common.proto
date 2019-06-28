@@ -32,8 +32,8 @@ message TaskSpec {
   // For a Python function, it should be: [module_name, class_name, function_name]
   // For a Java function, it should be: [class_name, method_name, type_descriptor]
   repeated string function_descriptor = 3;
-  // ID of the driver that created this task.
-  bytes driver_id = 4;
+  // ID of the job that this task belongs to.
+  bytes job_id = 4;
   // Task ID of the task.
   bytes task_id = 5;
   // Task ID of the parent task.

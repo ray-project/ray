@@ -210,7 +210,6 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
       language);
   fbb.Finish(message);
   // Register the process ID with the raylet.
