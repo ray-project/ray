@@ -1,8 +1,9 @@
 syntax = "proto3";
 
+import "gcs.proto";
+
 package ray.rpc;
 
-import "gcs.proto";
 
 // Data structure.
 message ResourceIdSetInfo {
@@ -16,7 +17,7 @@ message ResourceIdSetInfo {
   repeated double resource_fractions = 3;
 }
 
-// service request
+// Service request message.
 message SubmitTaskRequest {
   repeated bytes execution_dependencies = 1;
   bytes task_spec = 2;
@@ -29,7 +30,17 @@ message EventLogRequest {
 }
 
 message RegisterClientRequest {
-  repeated int32 gpu_ids = 1;
+  // True if the client is a worker and false if the client is a driver.
+  bool is_worker = 1;
+  // The ID of this raylet client.
+  // Worker id is same as client id if the client is a worker.
+  bytes client_id = 2;
+  // The process ID of this worker.
+  uint32 worker_pid = 3;
+  // The driver ID. This is non-nil if the client is a driver.
+  bytes driver_id = 4;
+  // Language of this worker.
+  Language language = 5;
 }
 
 message DisconnectClientRequest {
@@ -66,7 +77,7 @@ message NotifyActorResumedFromCheckpointRequest {
 message SetResourceRequest {
 }
 
-// service reply
+// Service reply.
 message SubmitTaskReply {
 }
 message TaskDoneReply {
@@ -74,6 +85,7 @@ message TaskDoneReply {
 message EventLogReply {
 }
 message RegisterClientReply {
+  repeated int32 gpu_ids = 1;
 }
 message DisconnectClientReply {
 }
@@ -111,8 +123,10 @@ message SetResourceReply {
 }
 
 
-// service interface
+// Service interface.
 service RayletService {
+  // This struct is used to register a new worker with the raylet.
+  rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
   // Task is submitted to the raylet. This is sent from a worker to a
   // raylet.
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
@@ -121,9 +135,6 @@ service RayletService {
   rpc TaskDone(TaskDoneRequest) returns (TaskDoneReply);
   // Log a message to the event table. This is sent from a worker to a raylet.
   rpc EventLog(EventLogRequest) returns (EventLogReply);
-  // Send an initial connection message to the raylet. This is sent
-  // from a worker or driver to a raylet.
-  rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
   // Notify the raylet that this client is disconnecting unexpectedly.
   // This is sent from a worker to a raylet.
   rpc DisconnectClient(DisconnectClientRequest) returns (DisconnectClientReply);

@@ -16,12 +16,11 @@ namespace {
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const std::shared_ptr<ray::LocalClientConnection> &connection) {
-  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
-    if ((*it)->Connection() == connection) {
-      return (*it);
-    }
+    const std::unordered_map<WorkerID, std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const WorkerID &worker_id) {
+  auto it = worker_pool.find(worker_id);
+  if (it != worker_pool.end()) {
+    return it->second;
   }
   return nullptr;
 }
@@ -173,11 +172,12 @@ pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_a
   return 0;
 }
 
-void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
+void WorkerPool::RegisterWorker(const WorkerID &worker_id,
+                                const std::shared_ptr<Worker> &worker) {
   const auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  state.registered_workers.insert(std::move(worker));
+  state.registered_workers.emplace(worker_id, std::move(worker));
 
   auto it = state.starting_worker_processes.find(pid);
   if (it == state.starting_worker_processes.end()) {
@@ -190,16 +190,16 @@ void WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   }
 }
 
-void WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
+void WorkerPool::RegisterDriver(const DriverID &driver_id,
+                                const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.insert(std::move(driver));
+  state.registered_drivers.emplace(driver_id, std::move(driver));
 }
 
-std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(const WorkerID &worker_id) const {
   for (const auto &entry : states_by_lang_) {
-    auto worker = GetWorker(entry.second.registered_workers, connection);
+    auto worker = GetWorker(entry.second.registered_workers, worker_id);
     if (worker != nullptr) {
       return worker;
     }
@@ -207,10 +207,9 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
   return nullptr;
 }
 
-std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
-    const std::shared_ptr<LocalClientConnection> &connection) const {
+std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(const WorkerID &worker_id) const {
   for (const auto &entry : states_by_lang_) {
-    auto driver = GetWorker(entry.second.registered_drivers, connection);
+    auto driver = GetWorker(entry.second.registered_drivers, worker_id);
     if (driver != nullptr) {
       return driver;
     }

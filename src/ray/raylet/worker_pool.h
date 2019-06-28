@@ -48,12 +48,12 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(const std::shared_ptr<Worker> &worker);
+  void RegisterWorker(const WorkerID &worker_id, const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const std::shared_ptr<Worker> &worker);
+  void RegisterDriver(const DriverID &driver_id, const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
@@ -163,9 +163,9 @@ class WorkerPool {
     std::unordered_map<ActorID, std::shared_ptr<Worker>> idle_actor;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
-    std::unordered_set<std::shared_ptr<Worker>> registered_workers;
+    std::unordered_map<WorkerID, std::shared_ptr<Worker>> registered_workers;
     /// All drivers that have registered and are still connected.
-    std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
+    std::unordered_map<DriverID, std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;
@@ -179,12 +179,12 @@ class WorkerPool {
   /// The number of workers per process.
   int num_workers_per_process_;
   /// Pool states per language.
-  std::unordered_map<Language, State> states_by_lang_;
+  std::unordered_map<rpc::Language, State> states_by_lang_;
 
  private:
   /// A helper function that returns the reference of the pool state
   /// for a given language.
-  State &GetStateForLanguage(const Language &language);
+  State &GetStateForLanguage(const rpc::Language &language);
 
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.

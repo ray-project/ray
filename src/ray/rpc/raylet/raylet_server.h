@@ -14,71 +14,83 @@ namespace rpc {
 /// `src/ray/protobuf/object_manager.proto`.
 class RayletServiceHandler {
  public:
-  /// Handle a `Push` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
+  virtual void HandleRegisterClientRequest(const RegisterClientRequest &request,
+                                           RegisterClientReply *reply,
+                                           RequestDoneCallback done_callback) = 0;
+  /// Handle a `SubmitTask` request.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] done_callback The callback to be called when the request is done.
-  virtual void HandlePushRequest(const PushRequest &request, PushReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
-  /// Handle a `Pull` request
-  virtual void HandlePullRequest(const PullRequest &request, PullReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
-  /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
-                                        FreeObjectsReply *reply,
-                                        RequestDoneCallback done_callback) = 0;
+  virtual void HandleSubmitTaskRequest(const SubmitTaskRequest &request,
+                                       SubmitTaskReply *reply,
+                                       RequestDoneCallback done_callback) = 0;
+  /// Handle a `TaskDone` request.
+  virtual void HandleTaskDoneRequest(const TaskDoneRequest &request, TaskDoneReply *reply,
+                                     RequestDoneCallback done_callback) = 0;
+  /// Handle a `EventLog` request.
+  virtual void HandleEventLogRequest(const EventLogRequest &request, EventLogReply *reply,
+                                     RequestDoneCallback done_callback) = 0;
+  /// Handle a `GetTask` request.
+  virtual void HandleGetTaskRequest(const GetTaskRequest &request, GetTaskReply *reply,
+                                    RequestDoneCallback done_callback) = 0;
 };
 
-/// The `GrpcService` for `RayletService`.
-class RayletService : public GrpcService {
+/// The `GrpcService` for `RayletGrpcService`.
+class RayletGrpcService : public GrpcService {
  public:
-  /// Construct a `RayletService`.
+  /// Construct a `RayletGrpcService`.
   ///
-  /// \param[in] port See `GrpcServer`.
+  /// \param[in] io_service Service used to handle incoming requests
   /// \param[in] handler The service handler that actually handle the requests.
-  RayletService(const uint32_t port, boost::asio::io_service &main_service,
-                      RayletServiceHandler &service_handler)
-      : GrpcServer("Raylet", port, main_service),
-        service_handler_(service_handler){};
+  RayletGrpcService(boost::asio::io_service &io_service,
+                    RayletServiceHandler &service_handler)
+      : GrpcService(io_service), service_handler_(service_handler){};
 
-  void RegisterServices(::grpc::ServerBuilder &builder) override {
-    /// Register `RayletService`.
-    builder.RegisterService(&service_);
-  }
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    // Initialize the factory for `Push` requests.
-    std::unique_ptr<ServerCallFactory> push_call_factory(
-        new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
-                                  PushRequest, PushReply>(
-            service_, &RayletService::AsyncService::RequestPush, service_handler_,
-            &RayletServiceHandler::HandlePushRequest, cq_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory),
-                                                          30);
-
-    // Initialize the factory for `Pull` requests.
-    std::unique_ptr<ServerCallFactory> pull_call_factory(
-        new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
-                                  PullRequest, PullReply>(
-            service_, &RayletService::AsyncService::RequestPull, service_handler_,
-            &RayletServiceHandler::HandlePullRequest, cq_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory),
-                                                          2);
-
-    // Initialize the factory for `FreeObjects` requests.
-    std::unique_ptr<ServerCallFactory> free_objects_call_factory(
-        new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
-                                  FreeObjectsRequest, FreeObjectsReply>(
-            service_, &RayletService::AsyncService::RequestFreeObjects,
-            service_handler_, &RayletServiceHandler::HandleFreeObjectsRequest,
-            cq_));
+    // Initialize the factory for `SubmitTask` requests.
+    std::unique_ptr<ServerCallFactory> submit_task_call_factory(
+        new ServerCallFactoryImpl<RayletService, RayletServiceHandler, SubmitTaskRequest,
+                                  SubmitTaskReply>(
+            service_, &RayletService::AsyncService::RequestSubmitTask, service_handler_,
+            &RayletServiceHandler::HandleSubmitTaskRequest, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(free_objects_call_factory), 1);
+        std::move(submit_task_call_factory), 10);
+
+    // Initialize the factory for `TaskDone` requests.
+    std::unique_ptr<ServerCallFactory> task_done_call_factory(
+        new ServerCallFactoryImpl<RayletService, RayletServiceHandler, TaskDoneRequest,
+                                  TaskDoneReply>(
+            service_, &RayletService::AsyncService::RequestTaskDone, service_handler_,
+            &RayletServiceHandler::HandleTaskDoneRequest, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(task_done_call_factory), 10);
+
+    // Initialize the factory for `EventLog` requests.
+    std::unique_ptr<ServerCallFactory> event_log_call_factory(
+        new ServerCallFactoryImpl<RayletService, RayletServiceHandler, EventLogRequest,
+                                  EventLogReply>(
+            service_, &RayletService::AsyncService::RequestEventLog, service_handler_,
+            &RayletServiceHandler::HandleEventLogRequest, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(event_log_call_factory), 10);
+
+    // Initialize the factory for `GetTask` requests.
+    std::unique_ptr<ServerCallFactory> get_task_call_factory(
+        new ServerCallFactoryImpl<RayletService, RayletServiceHandler, GetTaskRequest,
+                                  EventLogReply>(
+            service_, &RayletService::AsyncService::RequestGetTask, service_handler_,
+            &RayletServiceHandler::GetTaskRequest, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(get_task_call_factory), 10);
   }
 
  private:

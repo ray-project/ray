@@ -52,7 +52,7 @@ proto_library(
 
 cc_proto_library(
     name = "node_manager_cc_proto",
-    deps = ["node_manager_proto"],
+    deps = [":node_manager_proto"],
 )
 
 proto_library(
@@ -62,17 +62,18 @@ proto_library(
 
 cc_proto_library(
     name = "object_manager_cc_proto",
-    deps = ["object_manager_proto"],
+    deps = [":object_manager_proto"],
 )
 
 proto_library(
     name = "raylet_proto",
     srcs = ["src/ray/protobuf/raylet.proto"],
+    deps = [":gcs_proto"]
 )
 
 cc_proto_library(
     name = "raylet_cc_proto",
-    deps = ["raylet_proto"],
+    deps = [":raylet_proto"],
 )
 
 # === End of protobuf definitions ===

@@ -6,7 +6,13 @@ namespace ray {
 namespace rpc {
 
 void GrpcServer::Run() {
-  std::string server_address("0.0.0.0:" + std::to_string(port_));
+  std::string server_address;
+  // Set unix domain socket or tcp address
+  if (!unix_socket_path_.empy()) {
+    server_address = "unix:" + unix_socket_path_;
+  } else {
+    server_address = "0.0.0.0:" + std::to_string(port_);
+  }
 
   grpc::ServerBuilder builder;
   // TODO(hchen): Add options for authentication.

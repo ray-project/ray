@@ -23,7 +23,7 @@ class NodeManager;
 
 class Raylet {
  public:
-  /// Create a node manager server and listen for new clients.
+  /// Create a raylet server and listen for local clients.
   ///
   /// \param main_service The event loop to run the server on.
   /// \param object_manager_service The asio io_service tied to the object manager.
@@ -75,12 +75,8 @@ class Raylet {
   NodeManager node_manager_;
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
-
-  /// The gPRC server.
+  /// The gPRC server, listen for local raylet client through unix domain socket.
   rpc::GrpcServer raylet_server_;
-
-  /// The gRPC service.
-  rpc::RayletGrpcService raylet_service_;
 };
 
 }  // namespace raylet

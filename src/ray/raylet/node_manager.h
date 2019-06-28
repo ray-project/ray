@@ -7,6 +7,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/raylet/raylet_server.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
@@ -61,7 +62,8 @@ struct NodeManagerConfig {
   std::string session_dir;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public rpc::RayletServiceHandler {
  public:
   /// Create a node manager.
   ///
@@ -71,29 +73,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
-
-  /// Process a new client connection.
-  ///
-  /// \param client The client to process.
-  /// \return Void.
-  void ProcessNewClient(LocalClientConnection &client);
-
-  /// Process a message from a client. This method is responsible for
-  /// explicitly listening for more messages from the client if the client is
-  /// still alive.
-  ///
-  /// \param client The client that sent the message.
-  /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                            int64_t message_type, const uint8_t *message_data);
-
-  /// Handle a new node manager connection.
-  ///
-  /// \param node_manager_client The connection to the remote node manager.
-  /// \return Void.
-  void ProcessNewNodeManager(TcpClientConnection &node_manager_client);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
@@ -108,8 +87,34 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Record metrics.
   void RecordMetrics() const;
 
+ public:
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  /// Implementation of node manager grpc service.
+
+  /// Handle a `ForwardTask` request.
+  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
+                         rpc::ForwardTaskReply *reply,
+                         rpc::RequestDoneCallback done_callback) override;
+
+  /// Implementation of raylet grpc service.
+
+  void HandleRegisterClientRequest(const RegisterClientRequest &request,
+                                   RegisterClientReply *reply,
+                                   RequestDoneCallback done_callback);
+
+  void HandleSubmitTaskRequest(const SubmitTaskRequest &request, SubmitTaskReply *reply,
+                               RequestDoneCallback done_callback);
+  /// Handle a `TaskDone` request.
+  void HandleTaskDoneRequest(const TaskDoneRequest &request, TaskDoneReply *reply,
+                             RequestDoneCallback done_callback);
+  /// Handle a `EventLog` request.
+  void HandleEventLogRequest(const EventLogRequest &request, EventLogReply *reply,
+                             RequestDoneCallback done_callback);
+  /// Handle a `GetTask` request.
+  void HandleGetTaskRequest(const GetTaskRequest &request, GetTaskReply *reply,
+                            RequestDoneCallback done_callback);
 
  private:
   /// Methods for handling clients.
@@ -453,11 +458,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// Handle a `ForwardTask` request.
-  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                         rpc::ForwardTaskReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
-
   // GCS client ID for this node.
   ClientID client_id_;
   boost::asio::io_service &io_service_;
@@ -514,8 +514,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
-  /// The RPC service.
+  /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
+
+  /// The raylet RPC service.
+  rpc::RayletGrpcService raylet_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
   rpc::ClientCallManager client_call_manager_;

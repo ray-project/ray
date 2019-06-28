@@ -35,6 +35,9 @@ class GrpcServer {
   GrpcServer(const std::string &name, const uint32_t port)
       : name_(name), port_(port), is_closed_(false) {}
 
+  GrpcServer(const std::string &name, const std::string &unix_socket_path)
+      : GrpcServer(name, 0), unix_socket_path_(unix_socket_path) {}
+
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
 
@@ -72,6 +75,10 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
+  /// Flag indicates whether this server has closed
+  bool is_closed_;
+  /// Unix domain socket path.
+  std::string unix_socket_path_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
@@ -84,8 +91,6 @@ class GrpcServer {
   std::unique_ptr<grpc::Server> server_;
   /// The polling thread used to check the completion queue
   std::thread polling_thread_;
-  /// Flag indicates whether this server has closed
-  bool is_closed_;
 };
 
 /// Base class that represents an abstract gRPC service.

@@ -17,8 +17,7 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const Language &language,
-         std::shared_ptr<LocalClientConnection> connection);
+  Worker(pid_t pid, const rpc::Language &language);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkDead();
@@ -28,7 +27,7 @@ class Worker {
   bool IsBlocked() const;
   /// Return the worker's PID.
   pid_t Pid() const;
-  Language GetLanguage() const;
+  rpc::Language GetLanguage() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -38,8 +37,6 @@ class Worker {
   const DriverID &GetAssignedDriverId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
-  /// Return the worker's connection.
-  const std::shared_ptr<LocalClientConnection> Connection() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
   void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
@@ -56,8 +53,6 @@ class Worker {
   pid_t pid_;
   /// The language type of this worker.
   Language language_;
-  /// Connection state of a worker.
-  std::shared_ptr<LocalClientConnection> connection_;
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Driver ID for the worker's current assigned task.

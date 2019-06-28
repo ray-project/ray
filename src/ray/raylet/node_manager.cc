@@ -103,6 +103,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
+      raylet_service_(io_service, *this),
       client_call_manager_(io_service) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -738,6 +739,76 @@ void NodeManager::DispatchTasks(
   local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
 }
 
+bool NodeManager::WorkerIsDead(const std::string &worker_id) {
+  auto registered_worker =
+      worker_pool_.GetRegisteredWorker(WorkerID::from_binary(worker_id));
+  if (registered_worker && registered_worker->IsDead()) {
+    return true;
+  }
+  return false;
+}
+
+void NodeManager::HandleRegisterClientRequest(const RegisterClientRequest &request,
+                                              RegisterClientReply *reply,
+                                              RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Register client request.";
+  // Client id in register client is treated as worker id.
+  const auto &client_id_str = request.client_id();
+
+  auto worker = std::make_shared<Worker>(request.worker_pid(), request.language());
+  if (request.is_worker()) {
+    // Register the new worker.
+    const WorkerID worker_id = ClientID::from_binary(client_id_str);
+    worker_pool_.RegisterWorker(worker_id, std::move(worker));
+    DispatchTasks(local_queues_.GetReadyTasksWithResources());
+  } else {
+    // Register the new driver. Note that here the driver_id in RegisterClientRequest
+    // message is actually the ID of the driver task, while client_id represents the
+    // real driver ID, which can associate all the tasks/actors for a given driver,
+    // which is set to the worker ID.
+    const DriverID driver_id = DriverID::from_binary(client_id_str);
+    TaskID driver_task_id =
+        TaskID::GetDriverTaskID(DriverID::from_binary(request.driver_id()));
+    worker->AssignTaskId(driver_task_id);
+    worker->AssignDriverId(driver_id);
+    worker_pool_.RegisterDriver(driver_id, std::move(worker));
+    local_queues_.AddDriverTaskId(driver_task_id);
+  }
+  done_callback(Status::OK());
+}
+
+void NodeManager::HandleSubmitTaskRequest(const SubmitTaskRequest &request,
+                                          SubmitTaskReply *reply,
+                                          RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Handle submit request.";
+  /*
+    TaskExecutionSpecification task_execution_spec(request.execution_dependencies());
+    TaskSpecification task_spec(request.task_spec());
+    Task task(task_execution_spec, task_spec);
+    // Submit the task to the raylet. Since the task was submitted
+    // locally, there is no uncommitted lineage.
+    SubmitTask(task, Lineage());
+    */
+}
+
+/// Handle a `TaskDone` request.
+void NodeManager::HandleTaskDoneRequest(const TaskDoneRequest &request,
+                                        TaskDoneReply *reply,
+                                        RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Handle task done request.";
+}
+/// Handle a `EventLog` request.
+void NodeManager::HandleEventLogRequest(const EventLogRequest &request,
+                                        EventLogReply *reply,
+                                        RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Handle event log request.";
+}
+/// Handle a `GetTask` request.
+void NodeManager::HandleGetTaskRequest(const GetTaskRequest &request, GetTaskReply *reply,
+                                       RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Handle get task request.";
+}
+/*
 void NodeManager::ProcessClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
     const uint8_t *message_data) {
@@ -773,7 +844,7 @@ void NodeManager::ProcessClientMessage(
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
-    ProcessDisconnectClientMessage(client, /* intentional_disconnect = */ true);
+    ProcessDisconnectClientMessage(client, true);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
@@ -842,6 +913,7 @@ void NodeManager::ProcessClientMessage(
   client->ProcessMessages();
 }
 
+
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
@@ -865,6 +937,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     local_queues_.AddDriverTaskId(driver_task_id);
   }
 }
+*/
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                           bool intentional_disconnect) {
@@ -1049,7 +1122,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
   auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
   TaskExecutionSpecification task_execution_spec(
-      from_flatbuf<ObjectID>(*message->execution_dependencies()));
+    from_flatbuf<ObjectID>(*message->execution_dependencies()););
   TaskSpecification task_spec(*message->task_spec());
   Task task(task_execution_spec, task_spec);
   // Submit the task to the raylet. Since the task was submitted

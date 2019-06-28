@@ -40,6 +40,16 @@ inline std::vector<T> VectorFromProtobuf(
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
+<T>
+inline std::vector<T> StringsToVector(
+            const std::vector<std::string>& strings) {
+    std::vector<T> ids;
+    for (const auto& e: strings) {
+        ids.emplace_back(T::from_binary(e));
+    }
+    return ids;
+}
+
 }  // namespace rpc
 }  // namespace ray
 
