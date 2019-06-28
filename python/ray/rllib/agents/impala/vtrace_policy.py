@@ -13,8 +13,7 @@ from ray.rllib.agents.impala import vtrace
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import TFPolicy, \
-    LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_policy import TFPolicy, LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
