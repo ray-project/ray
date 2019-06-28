@@ -20,17 +20,17 @@ class CoreWorkerObjectInterface {
 
   /// Put an object into object store.
   ///
-  /// \param[in] value Value of the object.
+  /// \param[in] object The ray object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &value, ObjectID *object_id);
+  Status Put(const RayObject &object, ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
   ///
-  /// \param[in] value Value of the object.
+  /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  Status Put(const RayObject &value, const ObjectID &object_id);
+  Status Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
