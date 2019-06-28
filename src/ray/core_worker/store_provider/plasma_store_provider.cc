@@ -7,10 +7,9 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    plasma::PlasmaClient &store_client, std::mutex &store_client_mutex,
+    plasma::PlasmaClient &store_client,
     RayletClient &raylet_client)
     : store_client_(store_client),
-      store_client_mutex_(store_client_mutex),
       raylet_client_(raylet_client) {}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,

@@ -69,9 +69,6 @@ class CoreWorker {
   /// Plasma store client.
   plasma::PlasmaClient store_client_;
 
-  /// Mutex to protect store_client_.
-  std::mutex store_client_mutex_;
-
   /// Raylet client.
   RayletClient raylet_client_;
 
