@@ -37,7 +37,7 @@ void CoreWorker::InitializeRayletClient(int server_port) {
     // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
     // connect to Raylet after a number of retries, this can be changed later
     // so that the worker (java/python .etc) can retrieve and handle the error
-    // instead of crashing.    
+    // instead of crashing.
     raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
         raylet_socket_, worker_context_.GetWorkerID(),
         (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentDriverID(),

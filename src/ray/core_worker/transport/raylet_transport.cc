@@ -3,14 +3,16 @@
 
 namespace ray {
 
-CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(std::unique_ptr<RayletClient> &raylet_client)
+CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
+    std::unique_ptr<RayletClient> &raylet_client)
     : raylet_client_(raylet_client) {}
 
 Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
   return raylet_client_->SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
 }
 
-CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client)
+CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
+    std::unique_ptr<RayletClient> &raylet_client)
     : raylet_client_(raylet_client) {}
 
 Status CoreWorkerRayletTaskReceiver::GetTasks(std::vector<TaskSpec> *tasks) {
