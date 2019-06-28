@@ -55,7 +55,7 @@ class ConstMessageWrapper {
 
   explicit ConstMessageWrapper(const std::string &serialized_binary) {
     auto message = new Message();
-    message->ParseFromString(serialized_binary);
+    RAY_CHECK(message->ParseFromString(serialized_binary));
     message_unique_ptr.reset(message);
     message_ = message_unique_ptr.get();
   }

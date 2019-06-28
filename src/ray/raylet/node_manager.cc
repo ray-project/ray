@@ -799,7 +799,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::PushProfileEventsRequest: {
     auto fbs_message = flatbuffers::GetRoot<flatbuffers::String>(message_data);
     rpc::ProfileTableData profile_table_data;
-    profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size());
+    RAY_CHECK(profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size()));
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
@@ -1039,8 +1039,8 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
        string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
     task_message->mutable_task_execution_spec()->add_dependencies(dependency);
   }
-  task_message->mutable_task_spec()->ParseFromArray(fbs_message->task_spec()->data(),
-                                                    fbs_message->task_spec()->size());
+  RAY_CHECK(task_message->mutable_task_spec()->ParseFromArray(
+      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
@@ -2012,7 +2012,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
         std::unique_ptr<rpc::Task> task_message(new rpc::Task);
-        task_message->ParseFromString(task_data.task());
+        RAY_CHECK(task_message->ParseFromString(task_data.task()));
         Task task(std::move(task_message));
         ResubmitTask(task);
       },

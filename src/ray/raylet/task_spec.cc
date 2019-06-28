@@ -106,27 +106,45 @@ bool TaskSpecification::IsActorTask() const {
 }
 
 ActorID TaskSpecification::ActorCreationId() const {
+  if (!IsActorCreationTask()) {
+    return ActorID::Nil();
+  }
   return ActorID::FromBinary(message_->actor_creation_task_spec().actor_id());
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
+  if (!IsActorTask()) {
+    return ObjectID::Nil();
+  }
   return ObjectID::FromBinary(
       message_->actor_task_spec().actor_creation_dummy_object_id());
 }
 
 uint64_t TaskSpecification::MaxActorReconstructions() const {
+  if (!IsActorCreationTask()) {
+    return 0;
+  }
   return message_->actor_creation_task_spec().max_actor_reconstructions();
 }
 
 ActorID TaskSpecification::ActorId() const {
+  if (!IsActorTask()) {
+    return ActorID::Nil();
+  }
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
 ActorHandleID TaskSpecification::ActorHandleId() const {
+  if (!IsActorTask()) {
+    return ActorHandleID::Nil();
+  }
   return ActorHandleID::FromBinary(message_->actor_task_spec().actor_handle_id());
 }
 
 uint64_t TaskSpecification::ActorCounter() const {
+  if (!IsActorTask()) {
+    return 0;
+  }
   return message_->actor_task_spec().actor_counter();
 }
 
@@ -136,6 +154,9 @@ ObjectID TaskSpecification::ActorDummyObject() const {
 }
 
 std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
+  if (!IsActorTask()) {
+    return {};
+  }
   return rpc::IdVectorFromProtobuf<ActorHandleID>(
       message_->actor_task_spec().new_actor_handles());
 }

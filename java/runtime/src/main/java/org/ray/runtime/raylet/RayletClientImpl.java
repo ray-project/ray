@@ -6,6 +6,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -182,8 +183,9 @@ public class RayletClientImpl implements RayletClient {
     Preconditions.checkArgument(taskSpec.getLanguage() == Common.Language.JAVA);
     Preconditions.checkArgument(taskSpec.getFunctionDescriptorCount() == 3);
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
-        taskSpec.getFunctionDescriptor(0), taskSpec.getFunctionDescriptor(1),
-        taskSpec.getFunctionDescriptor(2)
+        taskSpec.getFunctionDescriptor(0).toString(Charset.defaultCharset()),
+        taskSpec.getFunctionDescriptor(1).toString(Charset.defaultCharset()),
+        taskSpec.getFunctionDescriptor(2).toString(Charset.defaultCharset())
     );
 
     // Parse ActorCreationTaskSpec.
@@ -247,17 +249,17 @@ public class RayletClientImpl implements RayletClient {
     if (task.language == TaskLanguage.JAVA) {
       builder.setLanguage(Common.Language.JAVA);
       builder.addAllFunctionDescriptor(ImmutableList.of(
-          task.getJavaFunctionDescriptor().className,
-          task.getJavaFunctionDescriptor().name,
-          task.getJavaFunctionDescriptor().typeDescriptor
+          ByteString.copyFrom(task.getJavaFunctionDescriptor().className.getBytes()),
+          ByteString.copyFrom(task.getJavaFunctionDescriptor().name.getBytes()),
+          ByteString.copyFrom(task.getJavaFunctionDescriptor().typeDescriptor.getBytes())
       ));
     } else {
       builder.setLanguage(Common.Language.PYTHON);
       builder.addAllFunctionDescriptor(ImmutableList.of(
-          task.getPyFunctionDescriptor().moduleName,
-          task.getPyFunctionDescriptor().className,
-          task.getPyFunctionDescriptor().functionName,
-          ""
+          ByteString.copyFrom(task.getPyFunctionDescriptor().moduleName.getBytes()),
+          ByteString.copyFrom(task.getPyFunctionDescriptor().className.getBytes()),
+          ByteString.copyFrom(task.getPyFunctionDescriptor().functionName.getBytes()),
+          ByteString.EMPTY
       ));
     }
 
