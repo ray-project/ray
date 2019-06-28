@@ -63,34 +63,10 @@ class MyKerasModel(TFModelV2):
 class MyKerasQModel(DistributionalQModel):
     """Custom model for DQN."""
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 q_hiddens=(256, ),
-                 dueling=False,
-                 num_atoms=1,
-                 use_noisy=False,
-                 v_min=-10.0,
-                 v_max=10.0,
-                 sigma0=0.5,
-                 parameter_noise=False):
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name, **kw):
         super(MyKerasQModel, self).__init__(
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
-            q_hiddens,
-            dueling=False,
-            num_atoms=1,
-            use_noisy=False,
-            v_min=-10.0,
-            v_max=10.0,
-            sigma0=0.5,
-            parameter_noise=False)
+            obs_space, action_space, num_outputs, model_config, name, **kw)
 
         # Define the core model layers which will be used by the other
         # output heads of DistributionalQModel
