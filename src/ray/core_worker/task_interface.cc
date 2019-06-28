@@ -19,10 +19,8 @@ ActorHandle::ActorHandle(
   inner_.set_actor_cursor(actor_id.Data(), actor_id.Size());
 }
 
-ActorHandle::ActorHandle(const ActorHandle &other) {
-  inner_ = other.inner_;
-  new_actor_handles_ = other.new_actor_handles_;
-}
+ActorHandle::ActorHandle(const ActorHandle &other)
+    : inner_(other.inner_), new_actor_handles_(other.new_actor_handles_) {}
 
 const ray::ActorID ActorHandle::ActorID() const {
   return ActorID::FromBinary(inner_.actor_id());
