@@ -3,14 +3,20 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import math
 import sys
+import time
 import uuid
+from collections import defaultdict
 
 import networkx as nx
 
+import ray
+import ray.experimental.streaming.benchmarks.utils as utils
 from ray.experimental.streaming.communication import DataChannel, DataInput
 from ray.experimental.streaming.communication import DataOutput, QueueConfig
-from ray.experimental.streaming.operator import Operator, OpType
+import ray.experimental.streaming.operator as operator
+from ray.experimental.streaming.operator import OpType
 from ray.experimental.streaming.operator import PScheme, PStrategy
 import ray.experimental.streaming.operator_instance as operator_instance
 
@@ -20,19 +26,21 @@ logger.setLevel("INFO")
 
 # Generates UUIDs
 def _generate_uuid():
-    return uuid.uuid4()
-
+    return str(uuid.uuid4())
 
 # Rolling sum's logic
 def _sum(value_1, value_2):
     return value_1 + value_2
 
-
 # Partitioning strategies that require all-to-all instance communication
 all_to_all_strategies = [
-    PStrategy.Shuffle, PStrategy.ShuffleByKey, PStrategy.Broadcast,
-    PStrategy.RoundRobin
+    PStrategy.Shuffle, PStrategy.ShuffleByKey, PStrategy.Custom,
+    PStrategy.Broadcast, PStrategy.RoundRobin
 ]
+
+# Source types
+# TODO (john): Add more
+source_types = [OpType.Source, OpType.ReadTextFile]
 
 
 # Environment configuration
@@ -43,19 +51,112 @@ class Config(object):
     streaming environment.
 
     Attributes:
-         queue_config (QueueConfig): Batched Queue configuration
+         queue_config (QueueConfig): Virtual Queue configuration
          (see: communication.py)
-         A batched queue configuration includes the max queue size,
-         the size of each batch (in number of elements), the batch flush
-         timeout, and the number of batches to prefetch from plasma
+         A virtual queue configuration includes the max queue size in number
+         of batches, the size of each batch (in number of records), and the
+         batch flush timeout
          parallelism (int): The number of isntances (actors) for each logical
          dataflow operator (default: 1)
     """
 
-    def __init__(self, parallelism=1):
+    def __init__(self, parallelism=1, logging=False):
+        # Batched queue configuration
         self.queue_config = QueueConfig()
+        # Dataflow parallelism
         self.parallelism = parallelism
+        # Logging
+        self.logging = logging
         # ...
+
+# A handle to the physical dataflow that is being executed
+# It is returned by Environment.execute()
+class PhysicalDataflow(object):
+    """A physical dataflow handle.
+
+    This class provides access to the physical dataflow, including
+    access to operator states, progress tracking, etc.
+    """
+    def __init__(self):
+        # A mapping from operator ids/names to the list
+        # of actor handles executing the operators
+        self.actor_handles = {}
+        # A mapping from operator ids to operator metadata
+        self.operator_metadata = {}
+        # Handle of the actor monitoring the
+        # progress of the dataflow execution
+        self.monitoring_actor = None
+        # A mapping from operator names to ids
+        self.names_to_ids = {}
+
+    # Adds operator metadata to the dictionary and checks for duplicates
+    def __register_name(self, operator_id, name):
+        id = self.names_to_ids.setdefault(name, operator_id)
+        # Each operator must have a unique name and id
+        assert id == operator_id, (id, operator_id)
+
+    # Adds an actor handle to the dictionary
+    def _register_handle(self, actor_id, handle):
+        operator_id, instance_id = actor_id
+        entry = self.actor_handles.setdefault(operator_id, [None]*1)
+        # Expand list if needed
+        slots_to_add = instance_id - len(entry) + 1
+        if slots_to_add > 0:
+            for _ in range(slots_to_add):
+                entry.append(None)
+        # Local ids of operator instances are in 0..number_of_instances
+        entry[instance_id] = handle
+
+    # Adds operator metadata to the dictionary
+    def _register_metadata(self, operator_id, metadata):
+        self.operator_metadata.setdefault(operator_id, metadata)
+        self.__register_name(operator_id, metadata.name)
+
+    # Returns None if operator id or name does not exist
+    def actor_handles(self, operator_id_or_name):
+        self.actor_handles.get(operator_id_or_name)
+
+    # Returns None if operator name does not exist
+    def operator_id(self, operator_name):
+        return self.names_to_ids.get(operator_name)
+
+    # Returns all dataflow operator ids
+    def operator_ids(self):
+        keys_and_names = set(self.actor_handles.keys())
+        names = set(self.names_to_ids.keys())
+        return list(keys_and_names - names)
+
+    # Returns all dataflow operator names
+    def operator_names(self):
+        return list(self.names_to_ids.keys())
+
+    # Returns the name of the operator
+    def name_of(self, operator_id):
+        return self.operator_metadata[operator_id].name
+
+    # Returns a list of futures representing the local
+    # state of each actor executing the given operator
+    def state_of(self, operator_id_or_name):
+        state = []  # One state object per operator instance
+        actor_handles = self.actor_handles.get(operator_id_or_name)
+        assert actor_handles is not None
+        for actor_handle in actor_handles:
+            state.append(actor_handle.state.remote())
+        return state
+
+    # Returns a list of futures representing the logged
+    # rates for all actors executing the given operator
+    def logs_of(self, operator_id_or_name):
+        logs = []  # One log object per operator instance
+        actor_handles = self.actor_handles.get(operator_id_or_name)
+        assert actor_handles is not None
+        for actor_handle in actor_handles:
+            logs.append(actor_handle.logs.remote())
+        return logs
+
+    # Returns a future representing the execution's status upon termination
+    def termination_status(self):
+        return self.monitoring_actor.all_exit_signals.remote()
 
 
 # The execution environment for a streaming job
@@ -81,16 +182,21 @@ class Environment(object):
          the streaming dataflow.
     """
 
-    def __init__(self, config=Config()):
+    def __init__(self, checkpoint_dir=None, config=Config()):
         self.logical_topo = nx.DiGraph()  # DAG
         self.physical_topo = nx.DiGraph()  # DAG
         self.operators = {}  # operator id --> operator object
         self.config = config  # Environment's configuration
         self.topo_cleaned = False
-        # Handles to all actors in the physical dataflow
-        self.actor_handles = []
+        # A handle to the running dataflow
+        self.physical_dataflow = PhysicalDataflow()
+        self.checkpoint_dir = checkpoint_dir
 
-    # Constructs and deploys a Ray actor of a specific type
+        # For recovery purposes. A mapping from operator ID to a list of its
+        # upstream actors' handle IDs.
+        self.upstream_actor_handle_ids = defaultdict(list)
+
+    # Constructs and deploys an actor of a specific type
     # TODO (john): Actor placement information should be specified in
     # the environment's configuration
     def __generate_actor(self, instance_id, operator, input, output):
@@ -109,64 +215,106 @@ class Environment(object):
         # Record the physical dataflow graph (for debugging purposes)
         self.__add_channel(actor_id, input, output)
         # Select actor to construct
+        actor_handle = None
+        args = [actor_id, operator, input, output, self.checkpoint_dir]
         if operator.type == OpType.Source:
-            source = operator_instance.Source.remote(actor_id, operator, input,
-                                                     output)
-            source.register_handle.remote(source)
-            return source.start.remote()
+            node_id = operator.placement[instance_id]
+            logger.info("Placing source {} at {}.".format(actor_id, node_id))
+            actor_handle = operator_instance.Source._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
         elif operator.type == OpType.Map:
-            map = operator_instance.Map.remote(actor_id, operator, input,
-                                               output)
-            map.register_handle.remote(map)
-            return map.start.remote()
+            node_id = operator.placement[instance_id]
+            logger.info("Placing map {} at {}.".format(actor_id, node_id))
+            actor_handle = operator_instance.Map._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
         elif operator.type == OpType.FlatMap:
-            flatmap = operator_instance.FlatMap.remote(actor_id, operator,
-                                                       input, output)
-            flatmap.register_handle.remote(flatmap)
-            return flatmap.start.remote()
+            node_id = operator.placement[instance_id]
+            logger.info("Placing flatmap {} at {}.".format(actor_id, node_id))
+            actor_handle = operator_instance.FlatMap._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
         elif operator.type == OpType.Filter:
-            filter = operator_instance.Filter.remote(actor_id, operator, input,
-                                                     output)
-            filter.register_handle.remote(filter)
-            return filter.start.remote()
-        elif operator.type == OpType.Reduce:
-            reduce = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                     output)
-            reduce.register_handle.remote(reduce)
-            return reduce.start.remote()
+            actor_handle = operator_instance.Filter.remote(actor_id, operator,
+                                                    input, output)
+        elif operator.type == OpType.Join:
+            del operator.right_input
+            node_id = operator.placement[instance_id]
+            logger.info("Placing join {} at {}.".format(actor_id, node_id))
+            actor_handle = operator_instance.Join._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
+        elif operator.type == OpType.Union:
+            # Other input streams are not needed any more.
+            # Discard them to avoid serialization errors due to
+            # recursive references between stream and environment
+            del operator.other_inputs[:]
+            node_id = operator.placement[instance_id]
+            actor_handle = operator_instance.Union._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
+        elif ((operator.type == OpType.Reduce) or
+              (operator.type ==  OpType.Sum)):
+            args.append(self.config)
+            node_id = operator.placement[instance_id]
+            actor_handle = operator_instance.Reduce._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
+        elif operator.type == OpType.EventTimeWindow:
+                node_id = operator.placement[instance_id]
+                logger.info("Placing event time window {} at {}.".format(
+                                                                    actor_id,
+                                                                    node_id))
+                actor_handle = operator_instance.EventTimeWindow._remote(
+                                                    args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
         elif operator.type == OpType.TimeWindow:
-            pass
+            sys.exit("Time window operator not supported yet.")
         elif operator.type == OpType.KeyBy:
-            keyby = operator_instance.KeyBy.remote(actor_id, operator, input,
-                                                   output)
-            keyby.register_handle.remote(keyby)
-            return keyby.start.remote()
-        elif operator.type == OpType.Sum:
-            sum = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                  output)
-            # Register target handle at state actor
-            state_actor = operator.state_actor
-            if state_actor is not None:
-                state_actor.register_target.remote(sum)
-            # Register own handle
-            sum.register_handle.remote(sum)
-            return sum.start.remote()
+            actor_handle = operator_instance.KeyBy.remote(actor_id, operator,
+                                                          input, output)
         elif operator.type == OpType.Sink:
-            pass
+            node_id = operator.placement[instance_id]
+            logger.info("Placing sink {} at {}.".format(actor_id, node_id))
+            actor_handle = operator_instance.Sink._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
         elif operator.type == OpType.Inspect:
-            inspect = operator_instance.Inspect.remote(actor_id, operator,
-                                                       input, output)
-            inspect.register_handle.remote(inspect)
-            return inspect.start.remote()
+            actor_handle = operator_instance.Inspect.remote(actor_id,
+                                                            operator,
+                                                            input, output)
         elif operator.type == OpType.ReadTextFile:
             # TODO (john): Colocate the source with the input file
-            read = operator_instance.ReadTextFile.remote(
+            actor_handle = operator_instance.ReadTextFile.remote(
                 actor_id, operator, input, output)
-            read.register_handle.remote(read)
-            return read.start.remote()
+        elif operator.type == OpType.WriteTextFile:
+            # TODO (john): Colocate the source with the input file
+            actor_handle = operator_instance.WriteTextFile.remote(
+                actor_id, operator, input, output)
         else:  # TODO (john): Add support for other types of operators
             sys.exit("Unrecognized or unsupported {} operator type.".format(
                 operator.type))
+        # Register current actor handle as destination to upstream actors
+        for channel in input.input_channels:
+            operator_id, _ = channel.src_actor_id
+            upstream_actor_handles = self.physical_dataflow.actor_handles[
+                                                                operator_id]
+            for handle in upstream_actor_handles:
+                destination_handle = ray.put(actor_handle)
+                # Make sure the handle is registered before proceeding
+                ray.get(handle._register_destination_handle.remote(
+                                            destination_handle, channel.id))
+                upstream_handle_id = ray.get(
+                                    destination_handle)._ray_actor_handle_id
+                self.upstream_actor_handle_ids[actor_id].append(
+                                                        upstream_handle_id)
+        ray.get(actor_handle._register_handle.remote(actor_handle))
+        self.physical_dataflow._register_handle(actor_id,actor_handle)
+        self.physical_dataflow._register_metadata(operator.id,operator)
+        assert actor_handle is not None
+        return actor_handle
 
     # Constructs and deploys a Ray actor for each instance of
     # the given operator
@@ -186,7 +334,7 @@ class Environment(object):
         logger.info("Generating {} actors of type {}...".format(
             num_instances, operator.type))
         in_channels = upstream_channels.pop(
-            operator.id) if upstream_channels else []
+            operator.id) if operator.id in upstream_channels else []
         handles = []
         for i in range(num_instances):
             # Collect input and output channels for the particular instance
@@ -202,6 +350,11 @@ class Environment(object):
             log += "for the {}-th instance of the {} operator."
             logger.debug(log.format(len(ip), len(op), i, operator.type))
             input_gate = DataInput(ip)
+            # TODO (john): Join does not work for queue-based execution
+            # if operator.type == OpType.Join:  # Group channels per stream
+            #     input_operator_ids = [operator.left_input_operator_id]
+            #     input_operator_ids.append(operator.right_input_operator_id)
+            #     input_gate._group_channels_per_stream(input_operator_ids)
             output_gate = DataOutput(op, operator.partitioning_strategies)
             handle = self.__generate_actor(i, operator, input_gate,
                                            output_gate)
@@ -229,24 +382,30 @@ class Environment(object):
         The number of total channels generated depends on the partitioning
         strategy specified by the user.
         """
+        env_config = self.config
         channels = {}  # destination operator id -> channels
         strategies = operator.partitioning_strategies
         for dst_operator, p_scheme in strategies.items():
             num_dest_instances = self.operators[dst_operator].num_instances
             entry = channels.setdefault(dst_operator, [])
-            if p_scheme.strategy == PStrategy.Forward:
-                for i in range(operator.num_instances):
-                    # ID of destination instance to connect
-                    id = i % num_dest_instances
-                    channel = DataChannel(self, operator.id, dst_operator, i,
-                                          id)
-                    entry.append(channel)
-            elif p_scheme.strategy in all_to_all_strategies:
+            if p_scheme.strategy in all_to_all_strategies:
                 for i in range(operator.num_instances):
                     for j in range(num_dest_instances):
-                        channel = DataChannel(self, operator.id, dst_operator,
-                                              i, j)
+                        channel = DataChannel(env_config, operator.id,
+                                              dst_operator, i, j)
                         entry.append(channel)
+            elif p_scheme.strategy == PStrategy.Rescale:
+                channels_per_instance = math.trunc(math.ceil(
+                                num_dest_instances / operator.num_instances))
+                index = 0
+                for i in range(operator.num_instances):
+                    for _ in range(channels_per_instance):
+                        if index == num_dest_instances:
+                            index = i % num_dest_instances
+                        channel = DataChannel(env_config, operator.id,
+                                              dst_operator, i, index)
+                        entry.append(channel)
+                        index += 1
             else:
                 # TODO (john): Add support for other partitioning strategies
                 sys.exit("Unrecognized or unsupported partitioning strategy.")
@@ -275,6 +434,10 @@ class Environment(object):
     def set_parallelism(self, parallelism):
         self.config.parallelism = parallelism
 
+    # Enables actor logging
+    def enable_logging(self):
+        self.config.logging = True
+
     # Sets batched queue configuration for the environment
     def set_queue_config(self, queue_config):
         self.config.queue_config = queue_config
@@ -282,24 +445,31 @@ class Environment(object):
     # Creates and registers a user-defined data source
     # TODO (john): There should be different types of sources, e.g. sources
     # reading from Kafka, text files, etc.
-    # TODO (john): Handle case where environment parallelism is set
-    def source(self, source):
+    def source(self, source_object, watermark_interval=0,
+               name="Source_"+_generate_uuid(),
+               batch_size=None,
+               placement=None):
         source_id = _generate_uuid()
         source_stream = DataStream(self, source_id)
-        self.operators[source_id] = Operator(
-            source_id, OpType.Source, "Source", other=source)
+        self.operators[source_id] = operator.CustomSourceOperator(source_id,
+                                             OpType.Source,
+                                             source_object,
+                                             watermark_interval,
+                                             name,
+                                             batch_size=batch_size,
+                                             logging=self.config.logging,
+                                             placement=placement)
         return source_stream
 
     # Creates and registers a new data source that reads a
     # text file line by line
-    # TODO (john): There should be different types of sources,
-    # e.g. sources reading from Kafka, text files, etc.
     # TODO (john): Handle case where environment parallelism is set
     def read_text_file(self, filepath):
         source_id = _generate_uuid()
         source_stream = DataStream(self, source_id)
-        self.operators[source_id] = Operator(
-            source_id, OpType.ReadTextFile, "Read Text File", other=filepath)
+        self.operators[source_id] = operator.ReadTextFileOperator(
+            source_id, OpType.ReadTextFile, filepath, "Read Text File",
+            logging=self.config.logging)
         return source_stream
 
     # Constructs and deploys the physical dataflow
@@ -311,12 +481,13 @@ class Environment(object):
         # the number of downstream instances is larger than the number of
         # upstream instances, some of the downstream instances will not be
         # used at all
-
+        logger.debug("Deploying and executing the dataflow...")
         # Each operator instance is implemented as a Ray actor
         # Actors are deployed in topological order, as we traverse the
         # logical dataflow from sources to sinks. At each step, data
         # producers wait for acknowledge from consumers before starting
         # generating data.
+        all_handles = []
         upstream_channels = {}
         for node in nx.topological_sort(self.logical_topo):
             operator = self.operators[node]
@@ -325,11 +496,55 @@ class Environment(object):
             # Instantiate Ray actors
             handles = self.__generate_actors(operator, upstream_channels,
                                              downstream_channels)
-            if handles:
-                self.actor_handles.extend(handles)
-            upstream_channels.update(downstream_channels)
-        logger.debug("Running...")
-        return self.actor_handles
+            if handles: # TODO (john): We should not return empty handle lists
+                all_handles.extend(handles)
+            # Update upstream channels
+            for destination, channels in downstream_channels.items():
+                value = upstream_channels.setdefault(destination, channels)
+                if value != channels:  # Some channels exist already
+                    value.extend(channels)
+
+        for node in nx.topological_sort(self.logical_topo):
+            operator = self.operators[node]
+            for i, handle in enumerate(self.physical_dataflow.actor_handles[node]):
+                actor_id = (operator.id, i)
+                upstream_actor_handle_ids = self.upstream_actor_handle_ids[actor_id]
+                ray.get(handle.register_upstream_actor_handle_ids.remote(upstream_actor_handle_ids))
+
+        # self.print_logical_graph()
+        # self.print_physical_graph()
+        # Start and register the monitoring actor to the physical dataflow
+        first_node_id = utils.get_cluster_node_ids()[0]
+        logger.info("Placing progress monitor at {}.".format(first_node_id))
+        monitoring_actor = operator_instance.ProgressMonitor._remote(
+                                            args=[all_handles], kwargs=None,
+                                            resources={first_node_id: 1})
+        self.physical_dataflow.monitoring_actor = monitoring_actor
+        logger.info("Done. Starting sources...")
+        # Start spinning actors
+        source_handles = []
+        spinning_actor_handles = []
+        for entry in self.physical_dataflow.actor_handles.items():
+            operator_id, actor_handles = entry
+            operator = self.physical_dataflow.operator_metadata[operator_id]
+            operator_type = operator.type
+            # Keep source handles for now to start sources in the end
+            if operator_type in source_types:
+                source_handles.extend(actor_handles)
+                continue
+        #  Start sources
+        for source_handle in source_handles:
+            _ = source_handle.start.remote()
+        # Update dictionary so that the user can lookup operators
+        # using either an id or a name
+        id_entries = self.physical_dataflow.actor_handles.items()
+        name_entries = {}
+        for operator_id, handles in id_entries:
+            metadata = self.physical_dataflow.operator_metadata[operator_id]
+            operator_name = metadata.name
+            name_entries.setdefault(operator_name,handles)
+        self.physical_dataflow.actor_handles.update(name_entries)
+        return self.physical_dataflow
 
     # Prints the logical dataflow graph
     def print_logical_graph(self):
@@ -387,7 +602,7 @@ class DataStream(object):
          dst_operator_id (UUID): The id of the destination operator of the
          stream.
          is_partitioned (bool): Denotes if there is a partitioning strategy
-         (e.g. shuffle) for the stream or not (default stategy: Forward).
+         (e.g. shuffle) for the stream or not (default stategy: Rescale).
     """
 
     def __init__(self,
@@ -428,37 +643,50 @@ class DataStream(object):
     # of the previously 'open' stream
     def __register(self, operator):
         """Registers the given logical operator to the environment and
-        connects it to its upstream operator (if any).
+        connects it to its upstream operator(s) (if any).
 
-        A call to this function adds a new edge to the logical topology.
+        A call to this function adds new edges to the logical topology.
 
         Attributes:
              operator (Operator): The metadata of the logical operator.
         """
         self.env.operators[operator.id] = operator
-        self.dst_operator_id = operator.id
-        logger.debug("Adding new dataflow edge ({},{}) --> ({},{})".format(
-            self.src_operator_id,
-            self.env.operators[self.src_operator_id].name,
-            self.dst_operator_id,
-            self.env.operators[self.dst_operator_id].name))
-        # Update logical dataflow graphs
-        self.env._add_edge(self.src_operator_id, self.dst_operator_id)
-        # Keep track of the partitioning strategy and the destination operator
-        src_operator = self.env.operators[self.src_operator_id]
-        if self.is_partitioned is True:
-            partitioning, _ = src_operator._get_partition_strategy(self.id)
-            src_operator._set_partition_strategy(_generate_uuid(),
-                                                 partitioning, operator.id)
-        elif src_operator.type == OpType.KeyBy:
-            # Set the output partitioning strategy to shuffle by key
-            partitioning = PScheme(PStrategy.ShuffleByKey)
-            src_operator._set_partition_strategy(_generate_uuid(),
-                                                 partitioning, operator.id)
-        else:  # No partitioning strategy has been defined - set default
-            partitioning = PScheme(PStrategy.Forward)
-            src_operator._set_partition_strategy(_generate_uuid(),
-                                                 partitioning, operator.id)
+        input_streams = [self]
+        # TODO (john): Add support for other multiple-input operators
+        if operator.type == OpType.Union:
+            input_streams.extend(operator.other_inputs)
+        elif operator.type == OpType.Join:
+            input_streams.append(operator.right_input)
+        # ...
+        for input_stream in input_streams:
+            input_stream.dst_operator_id = operator.id
+            logger.debug(
+                "Adding new dataflow edge ({},{}) --> ({},{})".format(
+                input_stream.src_operator_id,
+                input_stream.env.operators[input_stream.src_operator_id].name,
+                input_stream.dst_operator_id,
+                input_stream.env.operators[input_stream.dst_operator_id].name)
+                )
+            # Update logical dataflow graph
+            input_stream.env._add_edge(input_stream.src_operator_id,
+                                                input_stream.dst_operator_id)
+            # Keep track of the partitioning strategy and destination operator
+            src_operator = input_stream.env.operators[
+                                                input_stream.src_operator_id]
+            if input_stream.is_partitioned is True:
+                partitioning, _ = src_operator._get_partition_strategy(
+                                                            input_stream.id)
+                src_operator._set_partition_strategy(_generate_uuid(),
+                                                    partitioning, operator.id)
+            elif src_operator.type == OpType.KeyBy:
+                # Set the output partitioning strategy to shuffle by key
+                partitioning = PScheme(PStrategy.ShuffleByKey)
+                src_operator._set_partition_strategy(_generate_uuid(),
+                                                    partitioning, operator.id)
+            else:  # No partitioning strategy has been defined - set default
+                partitioning = PScheme(PStrategy.Rescale)
+                src_operator._set_partition_strategy(_generate_uuid(),
+                                                    partitioning, operator.id)
         return self.__expand()
 
     # Sets the level of parallelism for an operator, i.e. its total
@@ -476,8 +704,6 @@ class DataStream(object):
         return self
 
     # Stream Partitioning Strategies #
-    # TODO (john): Currently, only forward (default), shuffle,
-    # and broadcast are supported
 
     # Hash-based record shuffling
     def shuffle(self):
@@ -514,38 +740,49 @@ class DataStream(object):
 
     #   Data Trasnformations   #
     # TODO (john): Expand set of supported operators.
-    # TODO (john): To support event-time windows we need a mechanism for
-    # generating and processing watermarks
 
     # Registers map operator to the environment
-    def map(self, map_fn, name="Map"):
+    def map(self, map_fn, name="Map_"+_generate_uuid(),
+            placement=None):
         """Applies a map operator to the stream.
 
         Attributes:
              map_fn (function): The user-defined logic of the map.
+             name (str): The name of the map operator
+             placement list(str): A mapping from local instance ids in
+             [0...num_instances) to cluster node ids
+
         """
-        op = Operator(
+        op = operator.Operator(
             _generate_uuid(),
             OpType.Map,
             name,
             map_fn,
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
         return self.__register(op)
 
     # Registers flatmap operator to the environment
-    def flat_map(self, flatmap_fn):
+    def flat_map(self, flatmap_logic, name="FlatMap_"+_generate_uuid(),
+                 placement=None):
         """Applies a flatmap operator to the stream.
 
         Attributes:
              flatmap_fn (function): The user-defined logic of the flatmap
              (e.g. split()).
+             name (str): The name of the flatmap operator
+             placement list(str): A mapping from local instance ids in
+             [0...num_instances) to cluster node ids
         """
-        op = Operator(
+        op = operator.Operator(
             _generate_uuid(),
             OpType.FlatMap,
-            "FlatMap",
-            flatmap_fn,
-            num_instances=self.env.config.parallelism)
+            name,
+            flatmap_logic,
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
         return self.__register(op)
 
     # Registers keyBy operator to the environment
@@ -557,12 +794,13 @@ class DataStream(object):
              key_attribute_index (int): The index of the key attributed
              (assuming tuple records).
         """
-        op = Operator(
+        op = operator.KeyByOperator(
             _generate_uuid(),
             OpType.KeyBy,
+            key_selector,
             "KeyBy",
-            other=key_selector,
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging)
         return self.__register(op)
 
     # Registers Reduce operator to the environment
@@ -573,71 +811,143 @@ class DataStream(object):
              sum_attribute_index (int): The index of the attribute to sum
              (assuming tuple records).
         """
-        op = Operator(
+        op = operator.Operator(
             _generate_uuid(),
             OpType.Reduce,
             "Sum",
             reduce_fn,
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging)
         return self.__register(op)
 
     # Registers Sum operator to the environment
-    def sum(self, attribute_selector, state_keeper=None):
+    def sum(self, attribute_selector, name="Sum_"+_generate_uuid(),
+            placement=None):
         """Applies a rolling sum operator to the stream.
 
         Attributes:
              sum_attribute_index (int): The index of the attribute to sum
              (assuming tuple records).
         """
-        op = Operator(
+        op = operator.SumOperator(
             _generate_uuid(),
             OpType.Sum,
-            "Sum",
+            attribute_selector,
+            name,
             _sum,
-            other=attribute_selector,
-            state_actor=state_keeper,
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
         return self.__register(op)
 
-    # Registers window operator to the environment.
-    # This is a system time window
-    # TODO (john): This should return a WindowedDataStream
-    def time_window(self, window_width_ms):
+    # Registers union operator to the environment
+    def union(self, other_inputs, name="Union_"+_generate_uuid(),
+              placement=None):
+        """Unions the stream with one or more other streams.
+
+        Attributes:
+             other_streams list(DataStream): The list of streams to union.
+        """
+        assert isinstance(other_inputs, list), other_inputs
+        op = operator.UnionOperator(
+            _generate_uuid(),
+            OpType.Union,
+            other_inputs,
+            name,
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
+        return self.__register(op)
+
+    # Registers a join operator to the environment
+    def join(self, right_stream, join_logic,
+             name="Join_"+_generate_uuid(),
+             placement=None):
+        """Joins two streams based on a user-defined logic.
+
+        Attributes:
+             right_stream (DataStream): The stream to join with self.
+             join_logic (object): A class specifying the join logic
+        """
+        assert isinstance(right_stream, DataStream), type(right_stream)
+        op = operator.JoinOperator(
+            _generate_uuid(),
+            OpType.Join,
+            right_stream,
+            join_logic,
+            self.src_operator_id,           # Will be used later on to
+            right_stream.src_operator_id,   # distinuigh left from right
+            name,
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
+        return self.__register(op)
+
+    def event_time_window(self, window_length_ms, slide_ms,
+                          aggregation_logic=None, offset=0,
+                          name="EventTimeWindow_"+_generate_uuid(),
+                          placement=None):
         """Applies a system time window to the stream.
 
         Attributes:
              window_width_ms (int): The length of the window in ms.
         """
-        op = Operator(
+        op = operator.EventTimeWindowOperator(
+            _generate_uuid(),
+            OpType.EventTimeWindow,
+            window_length_ms,
+            slide_ms,
+            aggregation_logic,
+            offset,
+            name,
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
+        return self.__register(op)
+
+    # Registers window operator to the environment.
+    # This is a system time window
+    # TODO (john): This must be applied on a KeyedDataStream and
+    # must return a WindowedDataStream
+    def time_window(self, window_length_ms):
+        """Applies a system time window to the stream.
+
+        Attributes:
+             window_width_ms (int): The length of the window in ms.
+        """
+        op = operator.TimeWindowOperator(
             _generate_uuid(),
             OpType.TimeWindow,
+            window_length_ms,
             "TimeWindow",
             num_instances=self.env.config.parallelism,
-            other=window_width_ms)
+            logging=self.env.config.logging)
         return self.__register(op)
 
     # Registers filter operator to the environment
-    def filter(self, filter_fn):
+    def filter(self, filter_fn, name="Filter_"+_generate_uuid()):
         """Applies a filter to the stream.
 
         Attributes:
              filter_fn (function): The user-defined filter function.
         """
-        op = Operator(
+        op = operator.Operator(
             _generate_uuid(),
             OpType.Filter,
-            "Filter",
+            name,
             filter_fn,
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging)
         return self.__register(op)
 
     # TODO (john): Registers window join operator to the environment
     def window_join(self, other_stream, join_attribute, window_width):
-        op = Operator(
+        op = operator.Operator(
             _generate_uuid(),
             OpType.WindowJoin,
             "WindowJoin",
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging)
         return self.__register(op)
 
     # Registers inspect operator to the environment
@@ -647,22 +957,50 @@ class DataStream(object):
         Attributes:
              inspect_logic (function): The user-defined inspect function.
         """
-        op = Operator(
+        op = operator.Operator(
             _generate_uuid(),
             OpType.Inspect,
             "Inspect",
             inspect_logic,
-            num_instances=self.env.config.parallelism)
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging)
         return self.__register(op)
 
-    # Registers sink operator to the environment
-    # TODO (john): A sink now just drops records but it should be able to
-    # export data to other systems
-    def sink(self):
-        """Closes the stream with a sink operator."""
-        op = Operator(
+    # Registers built-in sink operator to the environment
+    # This operator writes each record to a distributed text file
+    # Users can optionally specify a logic to be applied to each record
+    # before flushing to disk
+    def write_text_file(self, filename_prefix, logic=None):
+        """Closes the stream with a sink operator
+        that writes to a text file.
+        """
+        op = operator.WriteTextFileOperator(
+            _generate_uuid(),
+            OpType.WriteTextFile,
+            filename_prefix,
+            "Write Text File",
+            logic,
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging)
+        return self.__register(op)
+
+    # Registers a custom sink operator to the environment
+    def sink(self, sink_object, name="Sink_"+_generate_uuid(),
+             placement=None):
+        """Closes the stream with a custom sink operator.
+
+        Attributes:
+            sink_object (object): The sink class with the user-defined logic
+            name (str): The name of the sink operator
+            placement list(str): A mapping from local instance ids in
+            [0...num_instances) to cluster node ids
+        """
+        op = operator.CustomSinkOperator(
             _generate_uuid(),
             OpType.Sink,
-            "Sink",
-            num_instances=self.env.config.parallelism)
+            sink_object,
+            name,
+            num_instances=self.env.config.parallelism,
+            logging=self.env.config.logging,
+            placement=placement)
         return self.__register(op)
