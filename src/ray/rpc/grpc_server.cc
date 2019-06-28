@@ -43,7 +43,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
   bool ok;
   // Keep reading events from the `CompletionQueue` until it's shutdown.
   while (cq_->Next(&tag, &ok)) {
-    ServerCall *server_call = static_cast<ServerCall *>(tag);
+    auto *server_call = static_cast<ServerCall *>(tag);
     // `ok == false` indicates that the server has been shut down.
     // We should delete the call object in this case.
     bool delete_call = !ok;
