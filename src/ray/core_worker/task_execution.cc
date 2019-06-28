@@ -34,7 +34,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
                                     : WorkerLanguage::PYTHON;
       RayFunction func{language, spec.FunctionDescriptor()};
 
-      std::vector<std::shared_ptr<Buffer>> args;
+      std::vector<std::shared_ptr<RayObject>> args;
       RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
 
       TaskType task_type;
@@ -67,7 +67,8 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const raylet::TaskSpecification &spec, std::vector<std::shared_ptr<Buffer>> *args) {
+    const raylet::TaskSpecification &spec,
+    std::vector<std::shared_ptr<RayObject>> *args) {
   auto num_args = spec.NumArgs();
   (*args).resize(num_args);
 
@@ -83,12 +84,14 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<LocalMemoryBuffer>(
-          const_cast<uint8_t *>(spec.ArgVal(i)), spec.ArgValLength(i));
+      (*args)[i] = std::make_shared<RayObject>(
+          std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(spec.ArgVal(i)),
+                                              spec.ArgValLength(i)),
+          nullptr);
     }
   }
 
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   auto status = core_worker_.object_interface_.Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
