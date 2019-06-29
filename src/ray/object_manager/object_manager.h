@@ -20,11 +20,9 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 
-#include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/object_manager/object_manager_client_connection.h"
 #include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
@@ -277,7 +275,7 @@ class ObjectManager : public ObjectManagerInterface,
   };
 
   struct WaitState {
-    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
+    WaitState(boost::asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
         : timeout_ms(timeout_ms),
           timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
               new boost::asio::deadline_timer(
@@ -342,15 +340,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// Executes on main_service_ thread.
   void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
 
-  /// Asynchronously send a pull request via remote object manager connection.
-  /// Executes on main_service_ thread.
-  ///
-  /// \param object_id The ID of the object request.
-  /// \param conn The connection to the remote object manager.
-  /// \return Void.
-  void PullSendRequest(const ObjectID &object_id,
-                       std::shared_ptr<SenderConnection> &conn);
-
   /// This is used to notify the main thread that the sending of a chunk has
   /// completed.
   ///
@@ -414,9 +403,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// The thread pool used for running `rpc_service`.
   /// Data copy operations during request are done in this thread pool.
   std::vector<std::thread> rpc_threads_;
-
-  /// Connection pool for reusing outgoing connections to remote object managers.
-  ConnectionPool connection_pool_;
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.

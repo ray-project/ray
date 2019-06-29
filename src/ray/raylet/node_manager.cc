@@ -716,7 +716,8 @@ std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(
 }
 
 void NodeManager::DispatchTasks(
-    const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources) {
+    const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources,
+    std::function<void()> callback) {
   std::unordered_set<TaskID> removed_task_ids;
   for (const auto &it : tasks_with_resources) {
     const auto &task_resources = it.first;
@@ -727,7 +728,7 @@ void NodeManager::DispatchTasks(
         // once the first task is not feasible, we can break out of this loop
         break;
       }
-      if (AssignTask(task)) {
+      if (AssignTask(task, callback)) {
         removed_task_ids.insert(task_id);
       }
     }
@@ -777,14 +778,14 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::RequestDoneCallback done_callback) {
   RAY_LOG(INFO) << "Handle submit request.";
-  /*
-    TaskExecutionSpecification task_execution_spec(request.execution_dependencies());
-    TaskSpecification task_spec(request.task_spec());
-    Task task(task_execution_spec, task_spec);
-    // Submit the task to the raylet. Since the task was submitted
-    // locally, there is no uncommitted lineage.
-    SubmitTask(task, Lineage());
-    */
+
+  TaskExecutionSpecification task_execution_spec(StringsToIdVector(request.execution_dependencies()));
+  TaskSpecification task_spec(request.task_spec());
+  Task task(task_execution_spec, task_spec);
+  // Submit the task to the raylet. Since the task was submitted
+  // locally, there is no uncommitted lineage.
+  SubmitTask(task, Lineage());
+
   done_callback(Status::OK());
 }
 /// Handle a `DisconnectClient` request.
@@ -926,8 +927,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasksWithResources());
-  done_callback(Status::OK());
+  DispatchTasks(local_queues_.GetReadyTasksWithResources(), done_callback);
 }
 
 /// Handle a `HandleFetchOrReconstruct` request.
@@ -2202,7 +2202,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-bool NodeManager::AssignTask(const Task &task) {
+bool NodeManager::AssignTask(const Task &task, std::function<void()> callback) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // If this is an actor task, check that the new task has the correct counter.

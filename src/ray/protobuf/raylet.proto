@@ -27,7 +27,7 @@ message RegisterClientRequest {
   // The job ID.
   bytes job_id = 4;
   // Language of this worker.
-  Language language = 5;
+  int32 language = 5;
 }
 
 message SubmitTaskRequest {
@@ -44,8 +44,6 @@ message GetTaskRequest {
   bytes worker_id = 1;
 }
 
-message ExecuteTaskRequest {
-}
 message FetchOrReconstructRequest {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   repeated bytes object_ids = 1;
@@ -128,8 +126,6 @@ message GetTaskReply {
   // A list of the resources reserved for this worker.
   repeated ResourceIdSetInfo fractional_resource_ids = 2;
 }
-message ExecuteTaskReply {
-}
 message FetchOrReconstructReply {
 }
 message NotifyUnblockedReply {
@@ -169,9 +165,6 @@ service RayletService {
   // Get a new task from the raylet. This is sent from a worker to a
   // raylet.
   rpc GetTask(GetTaskRequest) returns (GetTaskReply);
-  // Tell a worker to execute a task. This is sent from a raylet to a
-  // worker.
-  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskReply);
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a raylet.
   rpc FetchOrReconstruct(FetchOrReconstructRequest) returns (FetchOrReconstructReply);

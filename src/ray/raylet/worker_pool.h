@@ -177,12 +177,12 @@ class WorkerPool {
   /// The number of workers per process.
   int num_workers_per_process_;
   /// Pool states per language.
-  std::unordered_map<rpc::Language, State> states_by_lang_;
+  std::unordered_map<Language, State> states_by_lang_;
 
  private:
   /// A helper function that returns the reference of the pool state
   /// for a given language.
-  State &GetStateForLanguage(const rpc::Language &language);
+  State &GetStateForLanguage(const Language &language);
 
   /// We'll push a warning to the user every time a multiple of this many
   /// workers has been started.
