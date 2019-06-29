@@ -72,7 +72,8 @@ def run(run_or_experiment,
         trial_executor=None,
         raise_on_failed_trial=True,
         return_trials=True,
-        ray_auto_init=True):
+        ray_auto_init=True,
+        sync_function=None):
     """Executes training.
 
     Args:
@@ -155,6 +156,8 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
+        sync_function: Deprecated. See `sync_to_cloud` and
+            `sync_to_driver`.
 
     Returns:
         List of Trial objects.
@@ -199,7 +202,8 @@ def run(run_or_experiment,
             checkpoint_at_end=checkpoint_at_end,
             export_formats=export_formats,
             max_failures=max_failures,
-            restore=restore)
+            restore=restore,
+            sync_function=sync_function)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 

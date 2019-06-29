@@ -184,6 +184,6 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         trial_name_creator=spec.get("trial_name_creator"),
         loggers=spec.get("loggers"),
         # str(None) doesn't create None
-        sync_function=spec.get("sync_to_driver"),
+        sync_to_driver_fn=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)
