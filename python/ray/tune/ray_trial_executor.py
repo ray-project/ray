@@ -562,6 +562,9 @@ class RayTrialExecutor(TrialExecutor):
                 assert type(value) != Checkpoint, type(value)
                 trial.runner.restore_from_object.remote(value)
             else:
+                # This can be very slow - a better fix would
+                # be to use an actor table to detect the IP of the Trainable
+                # and rsync the files there.
                 with warn_if_slow("get_current_ip"):
                     worker_ip = ray.get(trial.runner.current_ip.remote())
                 with warn_if_slow("sync_to_new_location"):

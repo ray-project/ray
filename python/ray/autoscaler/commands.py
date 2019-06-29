@@ -159,6 +159,13 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     return node_ip
 
 
+def monitor_cluster(cluster_config_file, override_cluster_name):
+    """Kills a random Raylet worker."""
+    cmd = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
+    exec_cluster(cluster_config_file, cmd, False, False, False, False, False,
+                 override_cluster_name, None)
+
+
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""

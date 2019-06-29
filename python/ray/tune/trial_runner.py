@@ -583,9 +583,19 @@ class TrialRunner(object):
 
         This does not notify the SearchAlgorithm because the function
         evaluation is still in progress.
+
         """
         self._scheduler_alg.on_trial_error(self, trial)
         self.trial_executor.set_status(trial, Trial.PENDING)
+
+        # Right now, this requeues the trial to the end of the queue. This is
+        # because restoration can be expensive. However, this is not
+        # ideal since it just hides the issue - a better fix would
+        # be to use an actor table to detect the IP of the Trainable
+        # and rsync the files there.
+        self._trials.pop(self._trials.index(trial))
+        self._trials.append(trial)
+
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
 

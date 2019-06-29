@@ -297,7 +297,7 @@ class NodeLauncher(threading.Thread):
             self.log("Got {} nodes to launch.".format(count))
             try:
                 self._launch_node(config, count)
-            except Exception as e:
+            except Exception:
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(count)
@@ -305,7 +305,6 @@ class NodeLauncher(threading.Thread):
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)
         logger.info(prefix + " {}".format(statement))
-
 
 
 class ConcurrentCounter():
