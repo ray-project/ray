@@ -3,6 +3,7 @@ syntax = "proto3";
 package ray.rpc;
 
 option java_package = "org.ray.runtime.generated";
+option optimize_for = SPEED;
 
 // Language of a worker or task.
 enum Language {

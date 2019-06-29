@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+option optimize_for = SPEED;
+
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.
   bytes task_id = 1;
