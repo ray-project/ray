@@ -7,8 +7,7 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket,
-    RayletClient &raylet_client)
+    const std::string &store_socket, RayletClient &raylet_client)
     : raylet_client_(raylet_client) {
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this needs to be changed

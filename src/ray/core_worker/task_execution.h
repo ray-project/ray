@@ -20,10 +20,9 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(
-  WorkerContext &worker_context,
-  RayletClient &raylet_client,
-  CoreWorkerObjectInterface &object_interface);
+  CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
+                                   RayletClient &raylet_client,
+                                   CoreWorkerObjectInterface &object_interface);
 
   /// The callback provided app-language workers that executes tasks.
   ///

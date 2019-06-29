@@ -6,15 +6,12 @@
 
 namespace ray {
 
-CoreWorkerTaskInterface::CoreWorkerTaskInterface(
-          WorkerContext &worker_context,
-          RayletClient &raylet_client
-        )
+CoreWorkerTaskInterface::CoreWorkerTaskInterface(WorkerContext &worker_context,
+                                                 RayletClient &raylet_client)
     : worker_context_(worker_context) {
-  task_submitters_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-          new CoreWorkerRayletTaskSubmitter(raylet_client)));
+  task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
+                           std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
+                               new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
@@ -70,8 +67,8 @@ Status CoreWorkerTaskInterface::CreateActor(
       context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
       actor_creation_id, ObjectID::Nil(), actor_creation_options.max_reconstructions,
       ActorID::Nil(), ActorHandleID::Nil(), 0, {}, task_arguments, 1,
-      actor_creation_options.resources, actor_creation_options.resources, function.language,
-      function.function_descriptor);
+      actor_creation_options.resources, actor_creation_options.resources,
+      function.language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);

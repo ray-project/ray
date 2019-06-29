@@ -6,15 +6,12 @@
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-  WorkerContext &worker_context,
-  RayletClient &raylet_client,
-  CoreWorkerObjectInterface &object_interface)
-    : worker_context_(worker_context),
-      object_interface_(object_interface) {
-  task_receivers.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(raylet_client)));
+    WorkerContext &worker_context, RayletClient &raylet_client,
+    CoreWorkerObjectInterface &object_interface)
+    : worker_context_(worker_context), object_interface_(object_interface) {
+  task_receivers.emplace(static_cast<int>(TaskTransportType::RAYLET),
+                         std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+                             new CoreWorkerRayletTaskReceiver(raylet_client)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
