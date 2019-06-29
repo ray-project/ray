@@ -71,7 +71,6 @@ class CoreWorkerObjectInterface {
   /// Reference to the parent CoreWorker's raylet client.
   RayletClient &raylet_client_;
 
-
   /// All the store providers supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
 };

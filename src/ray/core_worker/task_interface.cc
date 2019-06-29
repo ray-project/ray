@@ -6,19 +6,23 @@
 
 namespace ray {
 
-CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
-    : core_worker_(core_worker) {
+CoreWorkerTaskInterface::CoreWorkerTaskInterface(
+          WorkerContext &worker_context,
+          RayletClient &raylet_client
+        )
+    : worker_context_(worker_context),
+      raylet_client_(raylet_client) {
   task_submitters_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-          new CoreWorkerRayletTaskSubmitter(core_worker_.raylet_client_)));
+          new CoreWorkerRayletTaskSubmitter(raylet_client_)));
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const std::vector<TaskArg> &args,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
-  auto &context = core_worker_.worker_context_;
+  auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
@@ -45,7 +49,7 @@ Status CoreWorkerTaskInterface::CreateActor(
     const RayFunction &function, const std::vector<TaskArg> &args,
     const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
-  auto &context = core_worker_.worker_context_;
+  auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
@@ -80,7 +84,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
-  auto &context = core_worker_.worker_context_;
+  auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);

@@ -70,7 +70,6 @@ class CoreWorker {
   /// The `CoreWorkerTaskExecutionInterface` instance.
   CoreWorkerTaskExecutionInterface task_execution_interface_;
 
-  friend class CoreWorkerTaskInterface;
   friend class CoreWorkerTaskExecutionInterface;
 };
 
