@@ -277,7 +277,7 @@ class Trial(object):
                  restore_path=None,
                  trial_name_creator=None,
                  loggers=None,
-                 sync_function=None,
+                 sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -307,7 +307,7 @@ class Trial(object):
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
-        self.sync_function = sync_function
+        self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures
 
@@ -348,7 +348,7 @@ class Trial(object):
         self._nonjson_fields = [
             "_checkpoint",
             "loggers",
-            "sync_function",
+            "sync_to_driver_fn",
             "results",
             "best_result",
             "param_config",
@@ -391,7 +391,7 @@ class Trial(object):
                 self.config,
                 self.logdir,
                 loggers=self.loggers,
-                sync_function=self.sync_function)
+                sync_to_driver_fn=self.sync_to_driver_fn)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
