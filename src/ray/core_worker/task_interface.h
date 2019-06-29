@@ -139,8 +139,6 @@ class CoreWorkerTaskInterface {
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
-  /// Reference to the parent CoreWorker's raylet client.
-  RayletClient &raylet_client_;
 
   /// All the task submitters supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;

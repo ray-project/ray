@@ -10,12 +10,11 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
           WorkerContext &worker_context,
           RayletClient &raylet_client
         )
-    : worker_context_(worker_context),
-      raylet_client_(raylet_client) {
+    : worker_context_(worker_context) {
   task_submitters_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-          new CoreWorkerRayletTaskSubmitter(raylet_client_)));
+          new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,

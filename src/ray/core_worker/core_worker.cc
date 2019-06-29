@@ -17,7 +17,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
                      worker_context_.GetCurrentJobID(), language_),
       task_interface_(worker_context_, raylet_client_),
       object_interface_(worker_context_, raylet_client_, store_socket),
-      task_execution_interface_(*this) {
+      task_execution_interface_(worker_context_, raylet_client_, object_interface_) {
 }
 
 }  // namespace ray
