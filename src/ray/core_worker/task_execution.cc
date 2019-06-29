@@ -19,7 +19,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   RAY_CHECK(core_worker_.WorkerType() == WorkerType::WORKER);
 
-  // start rpc server after all the task receivers are properly initialized.
+  // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 
   // Initialize raylet client after the rpc server is started, in order to
