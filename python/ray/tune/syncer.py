@@ -247,16 +247,15 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
     if key in _syncers:
         return _syncers[key]
 
-    if not remote_dir:
-        _syncers[key] = BaseSyncer(local_dir, remote_dir)
-        return _syncers[key]
-
     sync_cls = None
     if sync_function:
         sync_cls = _get_sync_cls(sync_function)
     else:
         sync_cls = CommandSyncer
         sync_function = log_sync_template()
+
+    if not remote_dir or sync_function is None:
+        sync_cls = BaseSyncer
 
     class MixedSyncer(NodeSyncMixin, sync_cls):
         def __init__(self, *args, **kwargs):
