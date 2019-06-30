@@ -511,8 +511,8 @@ class Environment(object):
                 upstream_actor_handle_ids = self.upstream_actor_handle_ids[actor_id]
                 ray.get(handle.register_upstream_actor_handle_ids.remote(upstream_actor_handle_ids))
 
-        # self.print_logical_graph()
-        # self.print_physical_graph()
+        self.print_logical_graph()
+        self.print_physical_graph()
         # Start and register the monitoring actor to the physical dataflow
         first_node_id = utils.get_cluster_node_ids()[0]
         logger.info("Placing progress monitor at {}.".format(first_node_id))

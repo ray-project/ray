@@ -76,7 +76,7 @@ class DataChannel(object):
         self.last_flush_time = 0
         self.num_batches_sent = 0
         self.task_queue = []    # A list of pending downstream tasks (futures)
-        self.write_buffer = []  # A list of record batches to push downstream
+        self.write_buffer = []  # A list of records to push downstream
 
     # For pretty print
     def __repr__(self):
@@ -84,20 +84,20 @@ class DataChannel(object):
                                 self.src_operator_id, self.dst_operator_id,
                                 self.src_instance_id, self.dst_instance_id)
 
-    # Forces a data movement over the channel
+    # Pushes all pending data to the destination
     def _flush_writes(self):
         """Pushes data to the destination operator instance via a new task."""
         if not self.write_buffer:
             return
 
-        args = [self.write_buffer, self.id, self.src_operator_id]
+        args = [[self.write_buffer], self.id]
         obj_id = self.destination_actor.apply._remote(
                 args=args,
                 kwargs={},
                 num_return_vals=1)
         self.task_queue.append(obj_id)
         self.write_buffer = []
-        self._wait_for_task_reader()
+        self._wait_for_consumer()
         self.last_flush_time = time.time()
 
     # Simulates backpressure based on the virtual queue configuration
@@ -121,19 +121,19 @@ class DataChannel(object):
                     num_returns=len(self.task_queue),
                     timeout=0.01)  # Wait for 10ms
 
-    def __put_next(self, item):
+    def __put_next(self, record):
         if not self.write_buffer:  # Reset last flush time for the new batch
             self.last_flush_time = time.time()
-        self.write_buffer.append(item)
+        self.write_buffer.append(record)
 
     def __try_flush(self):
         # If buffer is full...
-        if (len(self.write_buffer) >= self.max_batch_size):
+        if (len(self.write_buffer) >= self.queue_config.max_batch_size):
             self._flush_writes()
             return True
         # ...or if the timeout expired
         delay = time.time() - self.last_flush_time
-        if delay >= self.max_batch_time:
+        if delay >= self.queue_config.max_batch_time:
             self._flush_writes()
             return True
         return False
@@ -141,6 +141,16 @@ class DataChannel(object):
     def push_next(self, record):
         self.__put_next(record)
         return self.__try_flush()
+
+    def push_next_batch(self, batch):
+        args = [[batch], self.id]
+        obj_id = self.destination_actor.apply._remote(
+                args=args,
+                kwargs={},
+                num_return_vals=1)
+        self.task_queue.append(obj_id)
+        self._wait_for_consumer()
+        self.last_flush_time = time.time()
 
     # Registers source actor handle
     def register_source_actor(self, actor_handle):
@@ -479,6 +489,7 @@ class DataOutput(object):
             self.__log(batch_size=1)
 
     def _push_batch(self, record_batch, input_channel_id=None):
+        assert(input_channel_id==-1)  # Make sure it's the source
         assert isinstance(record_batch, list)
         # Simple forwarding
         for channel in self.forward_channels:
@@ -489,7 +500,7 @@ class DataOutput(object):
         # Round-robin forwarding
         for i, channels in enumerate(self.round_robin_channels):
             channel_index = self.round_robin_indexes[i]
-            flushed = channels[channel_index]._flush_writes(record_batch)
+            flushed = channels[channel_index].push_next_batch(record_batch)
             if flushed:  # Round-robin batches, not individual records
                 channel_index += 1
                 channel_index %= len(channels)

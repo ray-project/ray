@@ -77,7 +77,7 @@ class OperatorInstance(object):
         self.output = output_gate
         self.this_actor = None  # A handle to self
 
-        self.records_processed = 0
+        self.num_records_seen = 0
 
         # Logging-related attributes
         self.logging = self.metadata.logging
@@ -86,11 +86,11 @@ class OperatorInstance(object):
             self.output.enable_logging()
 
     # Used for index-based key extraction, e.g. for tuples
-    def _index_based_selector(self,record):
+    def _index_based_selector(self, record):
         return record[self.key_index]
 
     # Used for attribute-based key extraction, e.g. for classes
-    def _attribute_based_selector(self,record):
+    def _attribute_based_selector(self, record):
         return vars(record)[self.key_attribute]
 
     # Used to register own handle so that the actor can schedule itself
@@ -99,9 +99,6 @@ class OperatorInstance(object):
 
     # Used to register the handle of a destination actor to a channel
     def _register_destination_handle(self, actor_handle, channel_id):
-        self.destination_actors.append((actor_handle, channel_id))
-        # Register the downstream handle for recovery purposes.
-        self._ray_downstream_actors.append(actor_handle._ray_actor_id)
         for channel in self.output.forward_channels:
             if channel.id == channel_id:
                 channel.register_destination_actor(actor_handle)
@@ -148,9 +145,22 @@ class OperatorInstance(object):
                     # not push a record to the downstream actors.
                     self._apply(record)
 
+    def apply_batch(self, batches, channel_id):
+        for batch in batches:
+            for record in batch:
+                if record is None:
+                    if self.input._close_channel(channel_id):
+                        # logger.debug("Closing channel {}".format(
+                        #                                   channel_id))
+                        self.output._flush(close=True)
+                        signal.send(ActorExit(self.instance_id))
+            self._apply_batch(batch)
+
     def _apply(self, record):
         raise Exception("OperatorInstances must implement _apply()")
 
+    def _apply_batch(self, batch):
+        raise Exception("OperatorInstances must implement _apply_batch()")
 
 # A monitoring actor used to keep track of the execution's progress
 @ray.remote
@@ -250,7 +260,10 @@ class Map(OperatorInstance):
 
     # Task-based map execution on a set of records
     def _apply(self, record):
-        self.output._push(self.map_fn(record), event=self.num_records_seen)
+        self.output._push(self.map_fn(record))
+
+    # def _apply_batch(self, batch):
+    #     self.output._push_batch(self.map_fn(batch))
 
 # Flatmap actor
 @ray.remote
@@ -672,7 +685,7 @@ class Source(OperatorInstance):
                 self.output._flush(close=True)  # Flush and close output
                 signal.send(ActorExit(self.instance_id))  # Send exit signal
                 return
-            self.output._push_batch(record_batch)
+            self.output._push_batch(record_batch, -1)
             # TODO (john): Handle the case a record does not have event time
             logger.debug("Source watermark: {}. Last record time: {}".format(
                     self.max_event_time, record_batch[-1]["dateTime"]))
