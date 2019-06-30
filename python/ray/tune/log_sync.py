@@ -45,7 +45,6 @@ class NodeSyncMixin():
     """Mixin for syncing files to/from a remote dir to a local dir."""
 
     def __init__(self):
-        # Resolve sync_function into template or function
         assert hasattr(self, "_remote_dir"), "Mixin not mixed with Syncer."
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None

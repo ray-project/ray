@@ -85,9 +85,8 @@ class Experiment(object):
             _raise_deprecation_note(
                 "trial_resources", "resources_per_trial", soft=False)
         if sync_function:
-            raise DeprecationWarning("`sync_function` is deprecated. Please"
-                                     " use `sync_to_driver` for uploading.")
-
+            _raise_deprecation_note(
+                "sync_function", "sync_to_driver", soft=False)
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
