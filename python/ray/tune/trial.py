@@ -391,7 +391,7 @@ class Trial(object):
                 self.config,
                 self.logdir,
                 loggers=self.loggers,
-                sync_to_driver_fn=self.sync_to_driver_fn)
+                sync_function=self.sync_to_driver_fn)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
