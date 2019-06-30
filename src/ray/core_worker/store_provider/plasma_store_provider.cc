@@ -9,10 +9,6 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket, RayletClient &raylet_client)
     : raylet_client_(raylet_client) {
-  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-  // connect to Raylet after a number of retries, this needs to be changed
-  // so that the worker (java/python .etc) can retrieve and handle the error
-  // instead of crashing.
   auto status = store_client_.Connect(store_socket);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"

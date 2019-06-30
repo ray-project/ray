@@ -10,6 +10,10 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type, const ::Language langu
       language_(language),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
+      // TODO(zhijunfu): currently RayletClient would crash in its constructor
+      // if it cannot connect to Raylet after a number of retries, this needs
+      // to be changed so that the worker (java/python .etc) can retrieve and
+      // handle the error instead of crashing.
       raylet_client_(raylet_socket_,
                      ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
                      (worker_type_ == ray::WorkerType::WORKER),
