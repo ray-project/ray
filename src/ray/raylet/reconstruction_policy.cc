@@ -11,6 +11,7 @@ ReconstructionPolicy::ReconstructionPolicy(
     std::function<void(const TaskID &)> reconstruction_handler,
     int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
     gcs::PubsubInterface<TaskID> &task_lease_pubsub,
+    const gcs::TableInterface<TaskID, TaskTableData> &task_table,
     std::shared_ptr<ObjectDirectoryInterface> object_directory,
     gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log)
     : io_service_(io_service),
@@ -18,13 +19,15 @@ ReconstructionPolicy::ReconstructionPolicy(
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
       client_id_(client_id),
       task_lease_pubsub_(task_lease_pubsub),
+      task_table_(task_table),
       object_directory_(std::move(object_directory)),
       task_reconstruction_log_(task_reconstruction_log) {}
 
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
     int64_t timeout_ms) {
-  RAY_LOG(DEBUG) << "Setting reconstruction task timeout " << task_it->first << " for " << timeout_ms << "ms";
+  RAY_LOG(DEBUG) << "Setting reconstruction task timeout " << task_it->first << " for "
+                 << timeout_ms << "ms";
   task_it->second.expires_at = current_time_ms() + timeout_ms;
   auto timeout = boost::posix_time::milliseconds(timeout_ms);
   task_it->second.reconstruction_timer->expires_from_now(timeout);
@@ -157,7 +160,8 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
 
 void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
                                                        int64_t lease_timeout_ms) {
-  RAY_LOG(DEBUG) << "Received task lease notification for task " << task_id << ", " << lease_timeout_ms << "ms";
+  RAY_LOG(DEBUG) << "Received task lease notification for task " << task_id << ", "
+                 << lease_timeout_ms << "ms";
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     // We are no longer listening for this task, so ignore the notification.

@@ -9,6 +9,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/tables.h"
+#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/util.h"
 
 #include "ray/object_manager/object_directory.h"
@@ -18,6 +19,7 @@ namespace ray {
 namespace raylet {
 
 using rpc::TaskReconstructionData;
+using rpc::TaskTableData;
 
 class ReconstructionPolicyInterface {
  public:
@@ -45,6 +47,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
       std::function<void(const TaskID &)> reconstruction_handler,
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
+      const gcs::TableInterface<TaskID, TaskTableData> &task_table,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
       gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
 
@@ -140,6 +143,11 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   const ClientID client_id_;
   /// The GCS pub-sub storage system to request task lease notifications from.
   gcs::PubsubInterface<TaskID> &task_lease_pubsub_;
+  /// The GCS task table to request task information from.
+  /// TODO(swang): This is only needed because we treat actor and non-actor
+  /// tasks differently and we need the actor ID for actor tasks. If we could
+  /// embed the actor ID inside task IDs, we could remove this.
+  const gcs::TableInterface<TaskID, TaskTableData> &task_table_;
   /// The object directory used to lookup object locations.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;

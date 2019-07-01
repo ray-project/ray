@@ -81,7 +81,8 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
+Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id,
+                             const Callback &lookup) const {
   num_lookups_++;
   auto callback = [this, id, lookup](const CallbackReply &reply) {
     if (lookup != nullptr) {
@@ -241,7 +242,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
 
 template <typename ID, typename Data>
 Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
-                               const FailureCallback &failure) {
+                               const FailureCallback &failure) const {
   num_lookups_++;
   return Log<ID, Data>::Lookup(job_id, id,
                                [lookup, failure](AsyncGcsClient *client, const ID &id,

@@ -152,7 +152,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param lookup Callback that is called after lookup. If the callback is
   /// called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) const;
   /// Subscribe to any Append operations to this table. The caller may choose
   /// requests notifications for. This may only be called once per Log
   ///
@@ -217,7 +217,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   std::string DebugString() const;
 
  protected:
-  std::shared_ptr<RedisContext> GetRedisContext(const ID &id) {
+  std::shared_ptr<RedisContext> GetRedisContext(const ID &id) const {
     static std::hash<ID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }
@@ -265,15 +265,21 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   CommandType command_type_ = CommandType::kRegular;
 
   int64_t num_appends_ = 0;
-  int64_t num_lookups_ = 0;
+  mutable int64_t num_lookups_ = 0;
 };
 
 template <typename ID, typename Data>
 class TableInterface {
  public:
+  using Callback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
+  /// The callback to call when a Lookup call returns an empty entry.
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<Data> &data,
                      const WriteCallback &done) = 0;
+  virtual Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+                        const FailureCallback &failure) const = 0;
   virtual ~TableInterface(){};
 };
 
@@ -291,8 +297,7 @@ class Table : private Log<ID, Data>,
               public TableInterface<ID, Data>,
               virtual public PubsubInterface<ID> {
  public:
-  using Callback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
+  using Callback = typename TableInterface<ID, Data>::Callback;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
   /// The callback to call when a Lookup call returns an empty entry.
   using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
@@ -328,7 +333,7 @@ class Table : private Log<ID, Data>,
   /// at the key.
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
-                const FailureCallback &failure);
+                const FailureCallback &failure) const;
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests
@@ -371,7 +376,7 @@ class Table : private Log<ID, Data>,
   using Log<ID, Data>::GetRedisContext;
 
   int64_t num_adds_ = 0;
-  int64_t num_lookups_ = 0;
+  mutable int64_t num_lookups_ = 0;
 };
 
 template <typename ID, typename Data>
