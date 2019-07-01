@@ -381,7 +381,10 @@ class Worker(object):
 
         # Serialize and put the object in the object store.
         try:
-            self.store_and_register(object_id, value)
+            if self.mode == LOCAL_MODE:
+                self.local_mode_manager.put_object(object_id, value)
+            else:
+                self.store_and_register(object_id, value)
         except pyarrow.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
@@ -490,6 +493,10 @@ class Worker(object):
         Args:
             object_ids (List[object_id.ObjectID]): A list of the object IDs
                 whose values should be retrieved.
+
+        Raises:
+            Exception if running in LOCAL_MODE and any of the object IDs do not
+            exist in the emulated object store.
         """
         # Make sure that the values are object IDs.
         for object_id in object_ids:
@@ -2219,10 +2226,7 @@ def put(value):
             worker.current_task_id,
             worker.task_context.put_index,
         )
-        if worker.mode == LOCAL_MODE:
-            worker.local_mode_manager.put_object(object_id, value)
-        else:
-            worker.put_object(object_id, value)
+        worker.put_object(object_id, value)
         worker.task_context.put_index += 1
         return object_id
 

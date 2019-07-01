@@ -1611,6 +1611,22 @@ def test_local_mode(shutdown_only):
     assert ready == object_ids[:num_returns]
     assert remaining == object_ids[num_returns:]
 
+    # Check that ray.put() and ray.internal.free() work in local mode.
+
+    v1 = np.ones(10)
+    v2 = np.zeros(10)
+
+    k1 = ray.put(v1)
+    assert np.alltrue(v1 == ray.get(k1))
+    k2 = ray.put(v2)
+    assert np.alltrue(v2 == ray.get(k2))
+
+    ray.internal.free([k1, k2])
+    with pytest.raises(Exception):
+        ray.get(k1)
+    with pytest.raises(Exception):
+        ray.get(k2)
+
     # Test actors in LOCAL_MODE.
 
     @ray.remote

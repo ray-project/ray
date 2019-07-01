@@ -7,15 +7,10 @@ import random
 import string
 import traceback
 
-import numpy as np
-
+from pyarrow import PlasmaObjectExists
 from ray import ObjectID, ray_constants
 from ray.utils import format_error_message
 from ray.exceptions import RayTaskError
-
-
-def random_object_id():
-    return ObjectID(np.random.bytes(ray_constants.ID_SIZE))
 
 
 class LocalModeManager(object):
@@ -48,7 +43,7 @@ class LocalModeManager(object):
         Returns:
             The ObjectIDs corresponding to the function return values.
         """
-        object_ids = [random_object_id() for _ in range(num_return_vals)]
+        object_ids = [ObjectID.from_random() for _ in range(num_return_vals)]
         try:
             results = function(*copy.deepcopy(args))
             if num_return_vals == 1:
@@ -71,7 +66,13 @@ class LocalModeManager(object):
         Args:
             object_id: The ObjectID to store the value under. An existing value
                 for this ID will be overwritten if it exists.
+
+        Raises:
+            pyarrow.PlasmaObjectExists if the ObjectID exists in the store.
         """
+        if object_id in self.object_store:
+            raise PlasmaObjectExists()
+
         self.object_store[object_id] = value
 
     def get_object(self, object_ids):
