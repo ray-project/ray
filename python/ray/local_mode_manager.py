@@ -6,7 +6,7 @@ import copy
 import traceback
 
 from pyarrow import PlasmaObjectExists
-from ray import ObjectID, ray_constants
+from ray import ObjectID
 from ray.utils import format_error_message
 from ray.exceptions import RayTaskError
 

@@ -551,14 +551,15 @@ class ActorHandle(object):
                     placement_resources={},
                     job_id=self._ray_actor_job_id,
                 )
-                # Update the actor counter and cursor to reflect the most recent
-                # invocation.
+                # Update the actor counter and cursor to reflect the most
+                # recent invocation.
                 self._ray_actor_counter += 1
                 # The last object returned is the dummy object that should be
-                # passed in to the next actor method. Do not return it to the user.
+                # passed in to the next actor method. Do not return it to the
+                # user.
                 self._ray_actor_cursor = object_ids.pop()
-                # We have notified the backend of the new actor handles to expect
-                # since the last task was submitted, so clear the list.
+                # We have notified the backend of the new actor handles to
+                # expect since the last task was submitted, so clear the list.
                 self._ray_new_actor_handles = []
 
         if len(object_ids) == 1:
