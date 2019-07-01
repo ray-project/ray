@@ -381,10 +381,7 @@ class Worker(object):
 
         # Serialize and put the object in the object store.
         try:
-            if self.mode == LOCAL_MODE:
-                self.local_mode_manager.put_object(object_id, value)
-            else:
-                self.store_and_register(object_id, value)
+            self.store_and_register(object_id, value)
         except pyarrow.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
@@ -2222,11 +2219,14 @@ def put(value):
     worker = global_worker
     worker.check_connected()
     with profiling.profile("ray.put"):
-        object_id = ray._raylet.compute_put_id(
-            worker.current_task_id,
-            worker.task_context.put_index,
-        )
-        worker.put_object(object_id, value)
+        if worker.mode == LOCAL_MODE:
+            object_id = worker.local_mode_manager.put_object(value)
+        else:
+            object_id = ray._raylet.compute_put_id(
+                worker.current_task_id,
+                worker.task_context.put_index,
+            )
+            worker.put_object(object_id, value)
         worker.task_context.put_index += 1
         return object_id
 

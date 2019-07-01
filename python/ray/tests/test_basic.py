@@ -280,15 +280,14 @@ def test_complex_serialization(ray_start_regular):
     TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
     # The check that type(obj).__module__ != "numpy" should be unnecessary, but
     # otherwise this seems to fail on Mac OS X on Travis.
-    DICT_OBJECTS = (
-        [{
-            obj: obj
-        } for obj in PRIMITIVE_OBJECTS if
-         (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
-             0: obj
-         } for obj in BASE_OBJECTS] + [{
-             Foo(123): Foo(456)
-         }])
+    DICT_OBJECTS = ([{
+        obj: obj
+    } for obj in PRIMITIVE_OBJECTS if (
+        obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+            0: obj
+        } for obj in BASE_OBJECTS] + [{
+            Foo(123): Foo(456)
+        }])
 
     RAY_TEST_OBJECTS = (
         BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS)
@@ -1730,9 +1729,9 @@ def test_resource_constraints(shutdown_only):
     while True:
         if len(
                 set(
-                    ray.get(
-                        [get_worker_id.remote()
-                         for _ in range(num_workers)]))) == num_workers:
+                    ray.get([
+                        get_worker_id.remote() for _ in range(num_workers)
+                    ]))) == num_workers:
             break
 
     time_buffer = 2
@@ -1806,9 +1805,9 @@ def test_multi_resource_constraints(shutdown_only):
     while True:
         if len(
                 set(
-                    ray.get(
-                        [get_worker_id.remote()
-                         for _ in range(num_workers)]))) == num_workers:
+                    ray.get([
+                        get_worker_id.remote() for _ in range(num_workers)
+                    ]))) == num_workers:
             break
 
     @ray.remote(num_cpus=1, num_gpus=9)
@@ -3017,8 +3016,8 @@ def test_get_postprocess(ray_start_regular):
 
     ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
 
-    assert ray.get([ray.put(i)
-                    for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
+    assert ray.get(
+        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
 
 
 def test_export_after_shutdown(ray_start_regular):
