@@ -130,13 +130,11 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_trial_migration(start_connected_emptyhead_cluster, tmpdir):
+def test_trial_migration(start_connected_emptyhead_cluster):
     """Removing a node while cluster has space should migrate trial.
 
     The trial state should also be consistent with the checkpoint.
     """
-    tmpdir = str(tmpdir)
-
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
