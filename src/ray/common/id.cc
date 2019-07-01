@@ -148,9 +148,10 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
                 actor_handle_id.Size());
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(&num_forks), sizeof(num_forks));
 
-  // Compute the final task ID from the hash.
+  // Compute the final actor handle ID from the hash.
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
+  RAY_CHECK(DIGEST_SIZE >= ActorHandleID::Size());
   return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
