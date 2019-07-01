@@ -6,19 +6,19 @@
 
 namespace ray {
 
-CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
-    : core_worker_(core_worker) {
-  task_submitters_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-          new CoreWorkerRayletTaskSubmitter(core_worker_.raylet_client_)));
+CoreWorkerTaskInterface::CoreWorkerTaskInterface(WorkerContext &worker_context,
+                                                 std::unique_ptr<RayletClient> &raylet_client)
+    : worker_context_(worker_context) {
+  task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
+                           std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
+                               new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const std::vector<TaskArg> &args,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
-  auto &context = core_worker_.worker_context_;
+  auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
@@ -30,12 +30,11 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   }
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = core_worker_.ToTaskLanguage(function.language);
 
   ray::raylet::TaskSpecification spec(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index,
                                       task_arguments, num_returns, task_options.resources,
-                                      language, function.function_descriptor);
+                                      function.language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
@@ -46,7 +45,7 @@ Status CoreWorkerTaskInterface::CreateActor(
     const RayFunction &function, const std::vector<TaskArg> &args,
     const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
-  auto &context = core_worker_.worker_context_;
+  auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
@@ -61,7 +60,6 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = core_worker_.ToTaskLanguage(function.language);
 
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
@@ -69,8 +67,8 @@ Status CoreWorkerTaskInterface::CreateActor(
       context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
       actor_creation_id, ObjectID::Nil(), actor_creation_options.max_reconstructions,
       ActorID::Nil(), ActorHandleID::Nil(), 0, {}, task_arguments, 1,
-      actor_creation_options.resources, actor_creation_options.resources, language,
-      function.function_descriptor);
+      actor_creation_options.resources, actor_creation_options.resources,
+      function.language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
@@ -82,7 +80,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
-  auto &context = core_worker_.worker_context_;
+  auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
                                       context.GetCurrentTaskID(), next_task_index);
@@ -98,7 +96,6 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
 
   auto task_arguments = BuildTaskArguments(args);
-  auto language = core_worker_.ToTaskLanguage(function.language);
 
   std::vector<ActorHandleID> new_actor_handles;
   ray::raylet::TaskSpecification spec(
@@ -106,7 +103,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(), new_actor_handles,
       task_arguments, num_returns, task_options.resources, task_options.resources,
-      language, function.function_descriptor);
+      function.language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());

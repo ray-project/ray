@@ -7,6 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/task.h"
 
@@ -90,7 +91,8 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(CoreWorker &core_worker);
+  CoreWorkerTaskInterface(WorkerContext &worker_context,
+      std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a normal task.
   ///
@@ -127,16 +129,15 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
-
- private:
   /// Build the arguments for a task spec.
   ///
   /// \param[in] args Arguments of a task.
   /// \return Arguments as required by task spec.
   std::vector<std::shared_ptr<raylet::TaskArgument>> BuildTaskArguments(
       const std::vector<TaskArg> &args);
+
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
 
   /// All the task submitters supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;

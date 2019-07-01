@@ -124,7 +124,7 @@ class CoreWorkerTest : public ::testing::Test {
   void TearDown() {}
 
   void TestNormalTask(const std::unordered_map<std::string, double> &resources) {
-    CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
                       JobID::FromRandom());
 
@@ -134,7 +134,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{ray::Language::PYTHON, {}};
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer1));
 
@@ -164,7 +164,7 @@ class CoreWorkerTest : public ::testing::Test {
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{ray::Language::PYTHON, {}};
       TaskOptions options;
 
       std::vector<ObjectID> return_ids;
@@ -182,7 +182,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   void TestActorTask(const std::unordered_map<std::string, double> &resources) {
-    CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                       raylet_store_socket_names_[0], raylet_socket_names_[0],
                       JobID::FromRandom());
 
@@ -193,7 +193,7 @@ class CoreWorkerTest : public ::testing::Test {
       uint8_t array[] = {1, 2, 3};
       auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{ray::Language::PYTHON, {}};
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer));
 
@@ -221,7 +221,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{ray::Language::PYTHON, {}};
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
       RAY_CHECK(return_ids.size() == 1);
@@ -300,7 +300,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
-  CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON,
+  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
                          JobID::FromRandom());
 
@@ -356,11 +356,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 }
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
-  CoreWorker worker1(WorkerType::DRIVER, WorkerLanguage::PYTHON,
+  CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON,
                      raylet_store_socket_names_[0], raylet_socket_names_[0],
                      JobID::FromRandom());
 
-  CoreWorker worker2(WorkerType::DRIVER, WorkerLanguage::PYTHON,
+  CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON,
                      raylet_store_socket_names_[1], raylet_socket_names_[1],
                      JobID::FromRandom());
 
@@ -445,7 +445,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
-    CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON, "",
+    CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "",
                            raylet_socket_names_[0], JobID::FromRandom());
   } catch (const std::exception &e) {
     std::cout << "Caught exception when constructing core worker: " << e.what();

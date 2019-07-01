@@ -32,6 +32,13 @@ class CoreWorkerTaskSubmitter {
 /// This class receives tasks for execution.
 class CoreWorkerTaskReceiver {
  public:
+  using TaskHandler = std::function<Status(const raylet::TaskSpecification &task_spec)>;
+
+  // TODO(zhijunfu): this is currently not used. Will be used after we change to raylet
+  // "assign task", at that time the `GetTask` below will be removed.
+  // Set task handler callback.
+  virtual Status SetTaskHandler(const TaskHandler &callback) = 0;
+ 
   // Get tasks for execution.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) = 0;
 };
