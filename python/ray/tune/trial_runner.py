@@ -185,6 +185,10 @@ class TrialRunner(object):
         """
         if not resume_type:
             return False
+        assert resume_type in self.VALID_RESUME_TYPES, (
+            "resume_type is not one of {}".format(self.VALID_RESUME_TYPES))
+        # Not clear if we need this assertion, since we should always have a
+        # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
         if resume_type in ["LOCAL", "PROMPT"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
