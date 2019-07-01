@@ -192,9 +192,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(),
-      actor_handle.NewActorHandles(), task_arguments, num_returns,
-      task_options.resources, task_options.resources, language,
-      function.function_descriptor);
+      actor_handle.NewActorHandles(), task_arguments, num_returns, task_options.resources,
+      task_options.resources, language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());
