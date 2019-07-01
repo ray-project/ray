@@ -14,21 +14,22 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(WorkerContext &worker_conte
           new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_)));
 }
 
-Status CoreWorkerObjectInterface::Put(const Buffer &buffer, ObjectID *object_id) {
+Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
   ObjectID put_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                      worker_context_.GetNextPutIndex());
   *object_id = put_id;
-  return Put(buffer, put_id);
+  return Put(object, put_id);
 }
 
-Status CoreWorkerObjectInterface::Put(const Buffer &buffer, const ObjectID &object_id) {
+Status CoreWorkerObjectInterface::Put(const RayObject &object,
+                                      const ObjectID &object_id) {
   auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Put(buffer, object_id);
+  return store_providers_[type]->Put(object, object_id);
 }
 
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
-                                      std::vector<std::shared_ptr<Buffer>> *results) {
+                                      std::vector<std::shared_ptr<RayObject>> *results) {
   auto type = static_cast<int>(StoreProviderType::PLASMA);
   return store_providers_[type]->Get(ids, timeout_ms, worker_context_.GetCurrentTaskID(),
                                      results);

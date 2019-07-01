@@ -6,6 +6,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/worker/worker_client.h"
@@ -32,9 +33,10 @@ class CoreWorkerTaskExecutionInterface {
   /// \param ray_function[in] Information about the function to execute.
   /// \param args[in] Arguments of the task.
   /// \return Status.
-  using TaskExecutor = std::function<Status(
-      const RayFunction &ray_function, const std::vector<std::shared_ptr<Buffer>> &args,
-      const TaskInfo &task_info, int num_returns)>;
+  using TaskExecutor =
+      std::function<Status(const RayFunction &ray_function,
+                           const std::vector<std::shared_ptr<RayObject>> &args,
+                           const TaskInfo &task_info, int num_returns)>;
 
   /// Start receving and executes tasks in a infinite loop.
   /// \return Status.
@@ -50,7 +52,7 @@ class CoreWorkerTaskExecutionInterface {
   /// \param args[out] The arguments for passing to task executor.
   ///
   Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
-                              std::vector<std::shared_ptr<Buffer>> *args);
+                              std::vector<std::shared_ptr<RayObject>> *args);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

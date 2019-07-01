@@ -1,5 +1,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
 
 namespace ray {
@@ -21,7 +22,7 @@ class MockWorker {
 
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,
-                                const std::vector<std::shared_ptr<Buffer>> &args,
+                                const std::vector<std::shared_ptr<RayObject>> &args,
                                 const TaskInfo &task_info, int num_returns) {
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
@@ -29,15 +30,17 @@ class MockWorker {
       // Merge all the content from input args.
       std::vector<uint8_t> buffer;
       for (const auto &arg : args) {
-        buffer.insert(buffer.end(), arg->Data(), arg->Data() + arg->Size());
+        auto &data = arg->GetData();
+        buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
       }
 
-      LocalMemoryBuffer memory_buffer(buffer.data(), buffer.size());
+      auto return_value = RayObject(
+          std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
 
       // Write the merged content to each of return ids.
       for (int i = 0; i < num_returns; i++) {
         ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
-        RAY_CHECK_OK(worker_.Objects().Put(memory_buffer, id));
+        RAY_CHECK_OK(worker_.Objects().Put(return_value, id));
       }
       return Status::OK();
     };
