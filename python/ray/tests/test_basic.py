@@ -1627,6 +1627,9 @@ def test_local_mode(shutdown_only):
     with pytest.raises(Exception):
         ray.get(k2)
 
+    # Should fail silently.
+    ray.internal.free([k1, k2])
+
     # Test actors in LOCAL_MODE.
 
     @ray.remote

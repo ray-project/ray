@@ -3,8 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import random
-import string
 import traceback
 
 from pyarrow import PlasmaObjectExists
@@ -91,9 +89,7 @@ class LocalModeManager(object):
 
         Args:
             object_ids: A list of ObjectIDs to delete.
-
-        Raises:
-            KeyError if any of the ObjectIDs do not exist in the object store.
         """
         for object_id in object_ids:
-            del self.object_store[object_id]
+            if object_id in self.object_store:
+                del self.object_store[object_id]
