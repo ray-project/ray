@@ -38,7 +38,7 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// many milliseconds after the first acquisition of the lease. Nodes that
 /// require an object will not try to reconstruct the task until at least
 /// this many milliseconds.
-RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
+RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.

@@ -24,6 +24,7 @@ ReconstructionPolicy::ReconstructionPolicy(
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
     int64_t timeout_ms) {
+  RAY_LOG(DEBUG) << "Setting reconstruction task timeout " << task_it->first << " for " << timeout_ms << "ms";
   task_it->second.expires_at = current_time_ms() + timeout_ms;
   auto timeout = boost::posix_time::milliseconds(timeout_ms);
   task_it->second.reconstruction_timer->expires_from_now(timeout);
@@ -131,6 +132,7 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
 }
 
 void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Task lease expired for task " << task_id;
   auto it = listening_tasks_.find(task_id);
   RAY_CHECK(it != listening_tasks_.end());
   int reconstruction_attempt = it->second.reconstruction_attempt;
@@ -155,6 +157,7 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
 
 void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
                                                        int64_t lease_timeout_ms) {
+  RAY_LOG(DEBUG) << "Received task lease notification for task " << task_id << ", " << lease_timeout_ms << "ms";
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     // We are no longer listening for this task, so ignore the notification.
