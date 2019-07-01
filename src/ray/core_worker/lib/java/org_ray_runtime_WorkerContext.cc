@@ -56,6 +56,9 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeSetCurrentTask(
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentTask(
     JNIEnv *env, jclass, jlong nativeWorkerContext) {
   auto spec = GetWorkerContext(nativeWorkerContext)->GetCurrentTask();
+  if (!spec) {
+    return nullptr;
+  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message = spec->ToFlatbuffer(fbb);
   fbb.Finish(message);

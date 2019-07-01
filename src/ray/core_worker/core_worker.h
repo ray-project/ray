@@ -32,10 +32,6 @@ class CoreWorker {
   /// Language of this worker.
   enum WorkerLanguage Language() const { return language_; }
 
-  WorkerContext &Context() { return worker_context_; }
-
-  RayletClient &Raylet() { return raylet_client_; }
-
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return task_interface_; }
