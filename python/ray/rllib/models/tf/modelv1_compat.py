@@ -95,6 +95,8 @@ def make_v1_wrapper(legacy_model_cls):
         @override(ModelV2)
         def __call__(self, input_dict, state, seq_lens):
             new_instance = self.instance_template(input_dict, state, seq_lens)
+            if len(new_instance.state_init) != len(self.get_initial_state()):
+                raise ValueError("Guessed wrong", new_instance.state_init, self.get_initial_state())
             self.cur_instance = new_instance
             self.variable_scope = new_instance.scope
             return new_instance.outputs, new_instance.state_out
