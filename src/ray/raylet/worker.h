@@ -17,7 +17,7 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const rpc::Language &language);
+  Worker(const WorkerID &worker_id, pid_t pid, const Language &language);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkDead();
@@ -27,7 +27,8 @@ class Worker {
   bool IsBlocked() const;
   /// Return the worker's PID.
   pid_t Pid() const;
-  rpc::Language GetLanguage() const;
+  Language GetLanguage() const;
+  const WorkerID &GetWorkerID() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -49,6 +50,8 @@ class Worker {
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
  private:
+  /// The worker's ID.
+  WorkerID worker_id_;
   /// The worker's PID.
   pid_t pid_;
   /// The language type of this worker.

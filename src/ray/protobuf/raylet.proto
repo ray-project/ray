@@ -51,6 +51,8 @@ message FetchOrReconstructRequest {
   bool fetch_only = 2;
   // The current task ID. If fetch_only is false, then this task is blocked.
   bytes task_id = 3;
+  // The worker ID.
+  bytes worker_id = 4;
 }
 
 message NotifyUnblockedRequest {
@@ -70,6 +72,8 @@ message WaitRequest{
   // The current task ID. If there are less than num_ready_objects local, then
   // this task is blocked.
   bytes task_id = 5;
+  // Worker ID
+  bytes worker_id = 6;
 }
 message PushErrorRequest {
   // The ID of the job that the error is for.
@@ -95,6 +99,7 @@ message FreeObjectsInObjectStoreRequest {
 }
 message PrepareActorCheckpointRequest {
   bytes actor_id = 1;
+  bytes worker_id = 2;
 }
 message NotifyActorResumedFromCheckpointRequest {
   // ID of the actor.

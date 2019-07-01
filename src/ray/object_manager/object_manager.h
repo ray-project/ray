@@ -18,6 +18,7 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -275,7 +276,8 @@ class ObjectManager : public ObjectManagerInterface,
   };
 
   struct WaitState {
-    WaitState(boost::asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
+    WaitState(boost::asio::io_service &service, int64_t timeout_ms,
+              const WaitCallback &callback)
         : timeout_ms(timeout_ms),
           timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
               new boost::asio::deadline_timer(

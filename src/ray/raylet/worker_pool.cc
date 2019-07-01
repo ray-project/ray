@@ -16,8 +16,9 @@ namespace {
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::unordered_map<WorkerID, std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const WorkerID &worker_id) {
+    const std::unordered_map<ray::WorkerID, std::shared_ptr<ray::raylet::Worker>>
+        &worker_pool,
+    const ray::WorkerID &worker_id) {
   auto it = worker_pool.find(worker_id);
   if (it != worker_pool.end()) {
     return it->second;
@@ -27,9 +28,10 @@ std::shared_ptr<ray::raylet::Worker> GetWorker(
 
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
-bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-                  const std::shared_ptr<ray::raylet::Worker> &worker) {
-  return worker_pool.erase(worker) > 0;
+bool RemoveWorker(
+    std::unordered_map<ray::WorkerID, std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const ray::WorkerID &worker_id) {
+  return worker_pool.erase(worker_id) > 0;
 }
 
 }  // namespace
@@ -72,8 +74,8 @@ WorkerPool::~WorkerPool() {
   for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
-    for (const auto &worker : entry.second.registered_workers) {
-      pids_to_kill.insert(worker->Pid());
+    for (const auto &worker_pair : entry.second.registered_workers) {
+      pids_to_kill.insert(worker_pair.second->Pid());
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
@@ -295,18 +297,18 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  RAY_CHECK(RemoveWorker(state.registered_workers, worker->GetWorkerID()));
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
 
-  return RemoveWorker(state.idle, worker);
+  return (state.idle.erase(worker) > 0);
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
+  RAY_CHECK(RemoveWorker(state.registered_drivers, driver->GetWorkerID()));
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
@@ -323,7 +325,8 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
-    for (const auto &worker : entry.second.registered_workers) {
+    for (const auto &worker_pair : entry.second.registered_workers) {
+      auto &worker = worker_pair.second;
       if (worker->GetAssignedJobId() == job_id) {
         workers.push_back(worker);
       }
@@ -378,14 +381,16 @@ std::string WorkerPool::DebugString() const {
 void WorkerPool::RecordMetrics() const {
   for (const auto &entry : states_by_lang_) {
     // Record worker.
-    for (auto worker : entry.second.registered_workers) {
+    for (auto worker_pair : entry.second.registered_workers) {
+      auto &worker = worker_pair.second;
       stats::CurrentWorker().Record(
           worker->Pid(), {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
     }
 
     // Record driver.
-    for (auto driver : entry.second.registered_drivers) {
+    for (auto driver_pair : entry.second.registered_drivers) {
+      auto &driver = driver_pair.second;
       stats::CurrentDriver().Record(
           driver->Pid(), {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(driver->Pid())}});

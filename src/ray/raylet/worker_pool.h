@@ -51,6 +51,7 @@ class WorkerPool {
   void RegisterWorker(const WorkerID &worker_id, const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
+  /// Driver is a treated as a special worker, so use WorkerID as key here.
   ///
   /// \param The driver to be registered.
   void RegisterDriver(const WorkerID &driver_id, const std::shared_ptr<Worker> &worker);

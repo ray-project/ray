@@ -124,7 +124,7 @@ class RayletGrpcService : public GrpcService {
     // Initialize the factory for `GetTask` requests.
     std::unique_ptr<ServerCallFactory> get_task_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, GetTaskRequest,
-                                  EventLogReply>(
+                                  GetTaskReply>(
             service_, &RayletService::AsyncService::RequestGetTask, service_handler_,
             &RayletServiceHandler::HandleGetTaskRequest, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(

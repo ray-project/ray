@@ -137,11 +137,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handle a `FreeObjectsInObjectStore` request.
   void HandleFreeObjectsInObjectStoreRequest(
       const rpc::FreeObjectsInObjectStoreRequest &request,
-      rpc::FreeObjectsInObjectStoreReply *reply, rpc::RequestDoneCallback done_callback) override;
+      rpc::FreeObjectsInObjectStoreReply *reply,
+      rpc::RequestDoneCallback done_callback) override;
   /// Handle a `PrepareActorCheckpoint` request.
   void HandlePrepareActorCheckpointRequest(
       const rpc::PrepareActorCheckpointRequest &request,
-      rpc::PrepareActorCheckpointReply *reply, rpc::RequestDoneCallback done_callback) override;
+      rpc::PrepareActorCheckpointReply *reply,
+      rpc::RequestDoneCallback done_callback) override;
   /// Handle a `NotifyActorResumedFromCheckpointReply` request.
   void HandleNotifyActorResumedFromCheckpointRequest(
       const rpc::NotifyActorResumedFromCheckpointRequest &request,
@@ -153,7 +155,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                 rpc::RequestDoneCallback done_callback) override;
 
  private:
-  bool WorkerIsDead(const std::string &worker_id);
+  bool WorkerIsDead(const WorkerID &worker_id);
   /// Methods for handling clients.
 
   /// Handler for the addition of a new GCS client.
@@ -245,7 +247,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param task The task in question.
   /// \return true, if tasks was assigned to a worker, false otherwise.
-  bool AssignTask(const Task &task, std::function<void()> callback = nullptr);
+  bool AssignTask(const Task &task);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
@@ -313,8 +315,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param tasks_with_resources Mapping from resource shapes to tasks with
   /// that resource shape.
   void DispatchTasks(
-      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources,
-      std::function<void()> callback = nullptr);
+      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources);
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -325,7 +326,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param required_object_ids The IDs that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \return Void.
-  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+  void HandleTaskBlocked(const WorkerID &worker_id,
                          const std::vector<ObjectID> &required_object_ids,
                          const TaskID &current_task_id);
 
@@ -338,8 +339,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
   /// \return Void.
-  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const TaskID &current_task_id);
+  void HandleTaskUnblocked(const WorkerID &worker_id, const TaskID &current_task_id);
 
   /// Kill a worker.
   ///
@@ -425,9 +425,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that sent the message.
   /// \param intentional_disconnect Wether the client was intentionally disconnected.
   /// \return Void.
-  void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client,
-      bool intentional_disconnect = false);
+  void ProcessDisconnectClientMessage(const WorkerID &worker_id,
+                                      bool intentional_disconnect = false);
 
   /// Process client message of SubmitTask
   ///
@@ -547,6 +546,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
+
+  /// Reply of get task request is not sent in function HandleGetRequest. Should handle
+  /// reply in AssignTasks function
+  std::unordered_map<WorkerID, std::pair<rpc::GetTaskReply *, rpc::RequestDoneCallback>>
+      get_task_requests_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;

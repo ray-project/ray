@@ -141,6 +141,7 @@ cc_grpc_library(
 cc_library(
     name = "raylet_rpc",
     hdrs = glob([
+        "src/ray/rpc/raylet/*.cc",
         "src/ray/rpc/raylet/*.h",
     ]),
     copts = COPTS,

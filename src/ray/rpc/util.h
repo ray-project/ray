@@ -40,6 +40,27 @@ inline std::vector<T> VectorFromProtobuf(
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
+template <typename ID>
+inline std::vector<ID> IdVectorFromProtobuf(
+    const ::google::protobuf::RepeatedPtrField< ::std::string> &pb_repeated) {
+  std::vector<ID> ids;
+  for (const auto &e : pb_repeated) {
+    ids.emplace_back(ID::FromBinary(e));
+  }
+  return ids;
+}
+
+template <typename Message>
+using AddFunction = void (Message::*)(const ::std::string &value);
+
+template <typename ID, typename Message>
+inline void IdVectorToProtobuf(const std::vector<ID> &ids, Message &message,
+                               AddFunction<Message> add_func) {
+  for (const auto &id : ids) {
+    (message.*add_func)(id.Binary());
+  }
+}
+
 }  // namespace rpc
 }  // namespace ray
 

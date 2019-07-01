@@ -17,7 +17,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
-      connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       object_manager_server_("object_manager", config_.object_manager_port),
       object_manager_service_(rpc_service_, *this),
@@ -767,9 +766,8 @@ void ObjectManager::SpreadFreeObjectsRequest(
     const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
-  for (const auto &e : object_ids) {
-    free_objects_request.add_object_ids(e.Binary());
-  }
+  rpc::IdVectorToProtobuf<ObjectID, rpc::FreeObjectsRequest>(
+      object_ids, free_objects_request, &rpc::FreeObjectsRequest::add_object_ids);
 
   for (auto &rpc_client : rpc_clients) {
     rpc_client->FreeObjects(free_objects_request, [](const Status &status,
@@ -831,7 +829,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_.DebugString();
   result << "\n" << buffer_pool_.DebugString();
-  result << "\n" << connection_pool_.DebugString();
   return result.str();
 }
 
@@ -847,7 +844,6 @@ void ObjectManager::RecordMetrics() const {
                                      {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectManagerStats().Record(profile_events_.size(),
                                      {{stats::ValueTypeKey, "num_profile_events"}});
-  connection_pool_.RecordMetrics();
 }
 
 }  // namespace ray
