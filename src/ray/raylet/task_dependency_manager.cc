@@ -256,7 +256,7 @@ void TaskDependencyManager::AddTaskLeaseData(const TaskID &task_id,
   task_lease_data->set_node_manager_id(client_id_.Hex());
   task_lease_data->set_acquired_at(current_sys_time_ms());
   task_lease_data->set_timeout(lease_period);
-  RAY_CHECK_OK(task_lease_table_.Add(DriverID::Nil(), task_id, task_lease_data, nullptr));
+  RAY_CHECK_OK(task_lease_table_.Add(JobID::Nil(), task_id, task_lease_data, nullptr));
 }
 
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {

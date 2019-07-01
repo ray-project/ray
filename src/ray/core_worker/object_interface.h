@@ -20,17 +20,17 @@ class CoreWorkerObjectInterface {
 
   /// Put an object into object store.
   ///
-  /// \param[in] buffer Data buffer of the object.
+  /// \param[in] object The ray object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const Buffer &buffer, ObjectID *object_id);
+  Status Put(const RayObject &object, ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
   ///
-  /// \param[in] buffer Data buffer of the object.
+  /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  Status Put(const Buffer &buffer, const ObjectID &object_id);
+  Status Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -39,7 +39,7 @@ class CoreWorkerObjectInterface {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<Buffer>> *results);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Wait for a list of objects to appear in the object store.
   ///

@@ -38,35 +38,34 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const DriverID &driver_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type(worker_type),
-      worker_id(worker_type == WorkerType::DRIVER
-                    ? ClientID::FromBinary(driver_id.Binary())
-                    : ClientID::FromRandom()),
-      current_driver_id(worker_type == WorkerType::DRIVER ? driver_id : DriverID::Nil()) {
+      worker_id(worker_type == WorkerType::DRIVER ? WorkerID::FromBinary(job_id.Binary())
+                                                  : WorkerID::FromRandom()),
+      current_job_id(worker_type == WorkerType::DRIVER ? job_id : JobID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
-  // (For other threads it's set to randmom ID via GetThreadContext).
+  // (For other threads it's set to random ID via GetThreadContext).
   GetThreadContext().SetCurrentTask(
       (worker_type == WorkerType::DRIVER) ? TaskID::FromRandom() : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type; }
 
-const ClientID &WorkerContext::GetWorkerID() const { return worker_id; }
+const WorkerID &WorkerContext::GetWorkerID() const { return worker_id; }
 
 int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
 
 int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
 
-const DriverID &WorkerContext::GetCurrentDriverID() const { return current_driver_id; }
+const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id; }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
 void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
-  current_driver_id = spec.DriverId();
+  current_job_id = spec.JobId();
   GetThreadContext().SetCurrentTask(spec);
 }
 
