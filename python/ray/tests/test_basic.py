@@ -2432,6 +2432,9 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception):
         ray.nodes()
 
+    with pytest.raises(Exception):
+        ray.jobs()
+
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
@@ -2508,6 +2511,12 @@ def test_global_state_api(shutdown_only):
     assert object_table[x_id] == ray.objects(x_id)
     object_table_entry = ray.objects(result_id)
     assert object_table[result_id] == object_table_entry
+
+    job_table = ray.jobs()
+
+    assert len(job_table) == 1
+    assert job_table[0]["JobID"] == job_id
+    assert job_table[0]["NodeManagerAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we

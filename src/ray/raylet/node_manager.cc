@@ -858,11 +858,18 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // which is set to the worker ID.
     // TODO(qwang): Use driver_task_id instead here.
     const WorkerID driver_id = from_flatbuf<WorkerID>(*message->driver_id());
+    const JobID job_id = from_flatbuf<JobID>(*message->client_id());
     TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
     worker->AssignTaskId(driver_task_id);
-    worker->AssignJobId(from_flatbuf<JobID>(*message->client_id()));
+    worker->AssignJobId(job_id);
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
+    RAY_CHECK_OK(
+      gcs_client_->job_table().AppendJobData(job_id,
+                                             /*is_dead=*/false,
+                                             std::time(nullptr),
+                                             initial_config_.node_manager_address,
+                                             message->worker_pid()));
   }
 }
 
@@ -1029,7 +1036,10 @@ void NodeManager::ProcessDisconnectClientMessage(
   } else if (is_driver) {
     // The client is a driver.
     RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(JobID(client->GetClientId()),
-                                                        /*is_dead=*/true));
+                                                        /*is_dead=*/true,
+                                                        std::time(nullptr),
+                                                        initial_config_.node_manager_address,
+                                                        worker->Pid()));
     auto job_id = worker->GetAssignedTaskId();
     RAY_CHECK(!job_id.IsNil());
     local_queues_.RemoveDriverTaskId(job_id);
