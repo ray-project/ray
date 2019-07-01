@@ -1,7 +1,7 @@
 package org.ray.runtime;
 
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.objectstore.MockObjectStore;
+import org.ray.runtime.objectstore.MockObjectInterface;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.MockRayletClient;
 
@@ -11,12 +11,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private MockObjectStore store;
+  private MockObjectInterface objectInterface;
 
   @Override
   public void start() {
-    store = new MockObjectStore(this);
-    objectStoreProxy = new ObjectStoreProxy(this, null);
+    // Reset library path at runtime.
+    resetLibraryPath();
+
+    objectInterface = new MockObjectInterface(workerContext);
+    objectStoreProxy = new ObjectStoreProxy(workerContext, objectInterface);
     rayletClient = new MockRayletClient(this, rayConfig.numberExecThreadsForDevRuntime);
   }
 
@@ -25,8 +28,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
     rayletClient.destroy();
   }
 
-  public MockObjectStore getObjectStore() {
-    return store;
+  public MockObjectInterface getObjectInterface() {
+    return objectInterface;
   }
 
   @Override

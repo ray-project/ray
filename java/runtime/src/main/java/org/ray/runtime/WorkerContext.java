@@ -1,35 +1,16 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import java.nio.ByteBuffer;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.TaskSpec;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class WorkerContext {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
-
-  private UniqueId workerId;
-
-  private ThreadLocal<TaskId> currentTaskId;
-
-  /**
-   * Number of objects that have been put from current task.
-   */
-  private ThreadLocal<Integer> putIndex;
-
-  /**
-   * Number of tasks that have been submitted from current task.
-   */
-  private ThreadLocal<Integer> taskIndex;
-
-  private ThreadLocal<TaskSpec> currentTask;
-
-  private UniqueId currentJobId;
+  private final long nativeWorkerContext;
 
   private ClassLoader currentClassLoader;
 
@@ -44,24 +25,14 @@ public class WorkerContext {
   private RunMode runMode;
 
   public WorkerContext(WorkerMode workerMode, UniqueId jobId, RunMode runMode) {
+    this.nativeWorkerContext = nativeCreateWorkerContext(workerMode.value(), jobId.getBytes());
     mainThreadId = Thread.currentThread().getId();
-    taskIndex = ThreadLocal.withInitial(() -> 0);
-    putIndex = ThreadLocal.withInitial(() -> 0);
-    currentTaskId = ThreadLocal.withInitial(TaskId::randomId);
     this.runMode = runMode;
-    currentTask = ThreadLocal.withInitial(() -> null);
     currentClassLoader = null;
-    if (workerMode == WorkerMode.DRIVER) {
-      // TODO(qwang): Assign the driver id to worker id
-      // once we treat driver id as a special worker id.
-      workerId = jobId;
-      currentTaskId.set(TaskId.randomId());
-      currentJobId = jobId;
-    } else {
-      workerId = UniqueId.randomId();
-      this.currentTaskId.set(TaskId.NIL);
-      this.currentJobId = UniqueId.NIL;
-    }
+  }
+
+  public long getNativeWorkerContext() {
+    return nativeWorkerContext;
   }
 
   /**
@@ -69,7 +40,7 @@ public class WorkerContext {
    *     for other threads, this method returns a random ID.
    */
   public TaskId getCurrentTaskId() {
-    return currentTaskId.get();
+    return new TaskId(nativeGetCurrentTaskId(nativeWorkerContext));
   }
 
   /**
@@ -79,17 +50,14 @@ public class WorkerContext {
   public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
     if (runMode == RunMode.CLUSTER) {
       Preconditions.checkState(
-              Thread.currentThread().getId() == mainThreadId,
-              "This method should only be called from the main thread."
+          Thread.currentThread().getId() == mainThreadId,
+          "This method should only be called from the main thread."
       );
     }
 
     Preconditions.checkNotNull(task);
-    this.currentTaskId.set(task.taskId);
-    this.currentJobId = task.jobId;
-    taskIndex.set(0);
-    putIndex.set(0);
-    this.currentTask.set(task);
+    ByteBuffer info = RayletClientImpl.convertTaskSpecToFlatbuffer(task);
+    nativeSetCurrentTask(nativeWorkerContext, info, info.position(), info.remaining());
     currentClassLoader = classLoader;
   }
 
@@ -97,30 +65,28 @@ public class WorkerContext {
    * Increment the put index and return the new value.
    */
   public int nextPutIndex() {
-    putIndex.set(putIndex.get() + 1);
-    return putIndex.get();
+    return nativeGetNextPutIndex(nativeWorkerContext);
   }
 
   /**
    * Increment the task index and return the new value.
    */
   public int nextTaskIndex() {
-    taskIndex.set(taskIndex.get() + 1);
-    return taskIndex.get();
+    return nativeGetNextTaskIndex(nativeWorkerContext);
   }
 
   /**
    * @return The ID of the current worker.
    */
   public UniqueId getCurrentWorkerId() {
-    return workerId;
+    return new UniqueId(nativeGetCurrentWorkerId(nativeWorkerContext));
   }
 
   /**
    * The ID of the current job.
    */
   public UniqueId getCurrentJobId() {
-    return currentJobId;
+    return new UniqueId(nativeGetCurrentJobId(nativeWorkerContext));
   }
 
   /**
@@ -134,6 +100,28 @@ public class WorkerContext {
    * Get the current task.
    */
   public TaskSpec getCurrentTask() {
-    return this.currentTask.get();
+    byte[] bytes = nativeGetCurrentTask(nativeWorkerContext);
+    if (bytes == null) {
+      return null;
+    }
+    ByteBuffer bb = ByteBuffer.wrap(bytes);
+    return RayletClientImpl.parseTaskSpecFromFlatbuffer(bb);
   }
+
+  private static native long nativeCreateWorkerContext(int workerType, byte[] jobId);
+
+  private static native byte[] nativeGetCurrentTaskId(long nativeWorkerContext);
+
+  private static native void nativeSetCurrentTask(long nativeWorkerContext, ByteBuffer taskBuff,
+                                                  int pos, int taskSize);
+
+  private static native byte[] nativeGetCurrentTask(long nativeWorkerContext);
+
+  private static native byte[] nativeGetCurrentJobId(long nativeWorkerContext);
+
+  private static native byte[] nativeGetCurrentWorkerId(long nativeWorkerContext);
+
+  private static native int nativeGetNextTaskIndex(long nativeWorkerContext);
+
+  private static native int nativeGetNextPutIndex(long nativeWorkerContext);
 }

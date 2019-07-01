@@ -4,20 +4,14 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import org.apache.arrow.plasma.ObjectStoreLink;
-import org.apache.arrow.plasma.ObjectStoreLink.ObjectStoreData;
-import org.apache.arrow.plasma.PlasmaClient;
-import org.apache.arrow.plasma.exceptions.DuplicateObjectException;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
+import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.RayDevRuntime;
-import org.ray.runtime.config.RunMode;
+import org.ray.runtime.WorkerContext;
 import org.ray.runtime.generated.Gcs.ErrorType;
-import org.ray.runtime.util.IdUtil;
 import org.ray.runtime.util.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,29 +30,26 @@ public class ObjectStoreProxy {
   private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
       .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
 
+  private static final byte[] TASK_EXCEPTION_META = String
+      .valueOf(ErrorType.TASK_EXCEPTION.getNumber()).getBytes();
+
   private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
-  private final AbstractRayRuntime runtime;
+  private final WorkerContext workerContext;
 
-  private static ThreadLocal<ObjectStoreLink> objectStore;
+  private final ObjectInterfaceProtocol objectInterface;
 
-  public ObjectStoreProxy(AbstractRayRuntime runtime, String storeSocketName) {
-    this.runtime = runtime;
-    objectStore = ThreadLocal.withInitial(() -> {
-      if (runtime.getRayConfig().runMode == RunMode.CLUSTER) {
-        return new PlasmaClient(storeSocketName, "", 0);
-      } else {
-        return ((RayDevRuntime) runtime).getObjectStore();
-      }
-    });
+  public ObjectStoreProxy(WorkerContext workerContext, ObjectInterfaceProtocol objectInterface) {
+    this.workerContext = workerContext;
+    this.objectInterface = objectInterface;
   }
 
   /**
    * Get an object from the object store.
    *
-   * @param id Id of the object.
+   * @param id        Id of the object.
    * @param timeoutMs Timeout in milliseconds.
-   * @param <T> Type of the object.
+   * @param <T>       Type of the object.
    * @return The GetResult object.
    */
   public <T> GetResult<T> get(ObjectId id, int timeoutMs) {
@@ -69,43 +60,40 @@ public class ObjectStoreProxy {
   /**
    * Get a list of objects from the object store.
    *
-   * @param ids List of the object ids.
+   * @param ids       List of the object ids.
    * @param timeoutMs Timeout in milliseconds.
-   * @param <T> Type of these objects.
+   * @param <T>       Type of these objects.
    * @return A list of GetResult objects.
    */
   public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
-    byte[][] binaryIds = IdUtil.getIdBytes(ids);
-    List<ObjectStoreData> dataAndMetaList = objectStore.get().get(binaryIds, timeoutMs);
+    List<RayObjectProxy> dataAndMetaList = objectInterface.get(ids, timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
-      byte[] meta = dataAndMetaList.get(i).metadata;
-      byte[] data = dataAndMetaList.get(i).data;
-
+      RayObjectProxy dataAndMeta = dataAndMetaList.get(i);
       GetResult<T> result;
-      if (meta != null) {
-        // If meta is not null, deserialize the object from meta.
-        result = deserializeFromMeta(meta, data, ids.get(i));
-      } else if (data != null) {
-        // If data is not null, deserialize the Java object.
-        Object object = Serializer.decode(data, runtime.getWorkerContext().getCurrentClassLoader());
-        if (object instanceof RayException) {
-          // If the object is a `RayException`, it means that an error occurred during task
-          // execution.
-          result = new GetResult<>(true, null, (RayException) object);
+      if (dataAndMeta != null) {
+        byte[] meta = dataAndMeta.metadata;
+        byte[] data = dataAndMeta.data;
+        if (meta != null && meta.length > 0) {
+          // If meta is not null, deserialize the object from meta.
+          result = deserializeFromMeta(meta, data,
+              workerContext.getCurrentClassLoader(), ids.get(i));
         } else {
-          // Otherwise, the object is valid.
-          result = new GetResult<>(true, (T) object, null);
+          // If data is not null, deserialize the Java object.
+          Object object = Serializer.decode(data, workerContext.getCurrentClassLoader());
+          if (object instanceof RayException) {
+            // If the object is a `RayException`, it means that an error occurred during task
+            // execution.
+            result = new GetResult<>(true, null, (RayException) object);
+          } else {
+            // Otherwise, the object is valid.
+            result = new GetResult<>(true, (T) object, null);
+          }
         }
       } else {
         // If both meta and data are null, the object doesn't exist in object store.
         result = new GetResult<>(false, null, null);
-      }
-
-      if (meta != null || data != null) {
-        // Release the object from object store..
-        objectStore.get().release(binaryIds[i]);
       }
 
       results.add(result);
@@ -114,7 +102,8 @@ public class ObjectStoreProxy {
   }
 
   @SuppressWarnings("unchecked")
-  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data, ObjectId objectId) {
+  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data,
+                                               ClassLoader classLoader, ObjectId objectId) {
     if (Arrays.equals(meta, RAW_TYPE_META)) {
       return (GetResult<T>) new GetResult<>(true, data, null);
     } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
@@ -123,6 +112,8 @@ public class ObjectStoreProxy {
       return new GetResult<>(true, null, RayActorException.INSTANCE);
     } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
       return new GetResult<>(true, null, new UnreconstructableException(objectId));
+    } else if (Arrays.equals(meta, TASK_EXCEPTION_META)) {
+      return new GetResult<>(true, null, Serializer.decode(data, classLoader));
     }
     throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
   }
@@ -130,35 +121,29 @@ public class ObjectStoreProxy {
   /**
    * Serialize and put an object to the object store.
    *
-   * @param id Id of the object.
+   * @param id     Id of the object.
    * @param object The object to put.
    */
   public void put(ObjectId id, Object object) {
-    try {
-      if (object instanceof byte[]) {
-        // If the object is a byte array, skip serializing it and use a special metadata to
-        // indicate it's raw binary. So that this object can also be read by Python.
-        objectStore.get().put(id.getBytes(), (byte[]) object, RAW_TYPE_META);
-      } else {
-        objectStore.get().put(id.getBytes(), Serializer.encode(object), null);
-      }
-    } catch (DuplicateObjectException e) {
-      LOGGER.warn(e.getMessage());
+    if (object instanceof byte[]) {
+      // If the object is a byte array, skip serializing it and use a special metadata to
+      // indicate it's raw binary. So that this object can also be read by Python.
+      objectInterface.put(new RayObjectProxy((byte[]) object, RAW_TYPE_META), id);
+    } else if (object instanceof RayTaskException) {
+      objectInterface.put(new RayObjectProxy(Serializer.encode(object), TASK_EXCEPTION_META), id);
+    } else {
+      objectInterface.put(new RayObjectProxy(Serializer.encode(object), null), id);
     }
   }
 
   /**
    * Put an already serialized object to the object store.
    *
-   * @param id Id of the object.
+   * @param id               Id of the object.
    * @param serializedObject The serialized object to put.
    */
   public void putSerialized(ObjectId id, byte[] serializedObject) {
-    try {
-      objectStore.get().put(id.getBytes(), serializedObject, null);
-    } catch (DuplicateObjectException e) {
-      LOGGER.warn(e.getMessage());
-    }
+    objectInterface.put(new RayObjectProxy(serializedObject, null), id);
   }
 
   /**

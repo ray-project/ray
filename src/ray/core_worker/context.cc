@@ -14,19 +14,27 @@ struct WorkerThreadContext {
 
   const TaskID &GetCurrentTaskID() const { return current_task_id; }
 
-  void SetCurrentTask(const TaskID &task_id) {
+  std::shared_ptr<const raylet::TaskSpecification> GetCurrentTask() const {
+    return current_task;
+  }
+
+  void SetCurrentTaskId(const TaskID &task_id) {
     current_task_id = task_id;
     task_index = 0;
     put_index = 0;
   }
 
   void SetCurrentTask(const raylet::TaskSpecification &spec) {
-    SetCurrentTask(spec.TaskId());
+    SetCurrentTaskId(spec.TaskId());
+    current_task = std::make_shared<const raylet::TaskSpecification>(spec);
   }
 
  private:
   /// The task ID for current task.
   TaskID current_task_id;
+
+  /// The current task.
+  std::shared_ptr<const raylet::TaskSpecification> current_task;
 
   /// Number of tasks that have been submitted from current task.
   int task_index;
@@ -40,13 +48,15 @@ thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_
 
 WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type(worker_type),
+      // TODO(qwang): Assign the driver id to worker id
+      // once we treat driver id as a special worker id.
       worker_id(worker_type == WorkerType::DRIVER ? WorkerID::FromBinary(job_id.Binary())
                                                   : WorkerID::FromRandom()),
       current_job_id(worker_type == WorkerType::DRIVER ? job_id : JobID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTask(
+  GetThreadContext().SetCurrentTaskId(
       (worker_type == WorkerType::DRIVER) ? TaskID::FromRandom() : TaskID::Nil());
 }
 
@@ -67,6 +77,10 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
 void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
   current_job_id = spec.JobId();
   GetThreadContext().SetCurrentTask(spec);
+}
+
+std::shared_ptr<const raylet::TaskSpecification> WorkerContext::GetCurrentTask() const {
+  return GetThreadContext().GetCurrentTask();
 }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {

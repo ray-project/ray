@@ -32,6 +32,10 @@ class CoreWorker {
   /// Language of this worker.
   enum WorkerLanguage Language() const { return language_; }
 
+  WorkerContext &Context() { return worker_context_; }
+
+  RayletClient &Raylet() { return raylet_client_; }
+
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return task_interface_; }
@@ -57,20 +61,11 @@ class CoreWorker {
   /// Language of this worker.
   const enum WorkerLanguage language_;
 
-  /// Plasma store socket name.
-  const std::string store_socket_;
-
   /// raylet socket name.
   const std::string raylet_socket_;
 
   /// Worker context.
   WorkerContext worker_context_;
-
-  /// Plasma store client.
-  plasma::PlasmaClient store_client_;
-
-  /// Mutex to protect store_client_.
-  std::mutex store_client_mutex_;
 
   /// Raylet client.
   RayletClient raylet_client_;
@@ -85,7 +80,6 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface task_execution_interface_;
 
   friend class CoreWorkerTaskInterface;
-  friend class CoreWorkerObjectInterface;
   friend class CoreWorkerTaskExecutionInterface;
 };
 

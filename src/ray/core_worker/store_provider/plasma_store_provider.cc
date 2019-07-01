@@ -3,15 +3,25 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/protobuf/gcs.pb.h"
+
+// Print a warning every this number of attempts.
+#define WARN_PER_NUM_ATTEMPTS 50
+// Max number of ids to print in the warning message.
+#define MAX_IDS_TO_PRINT_IN_WARNING 20
 
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    plasma::PlasmaClient &store_client, std::mutex &store_client_mutex,
-    RayletClient &raylet_client)
-    : store_client_(store_client),
-      store_client_mutex_(store_client_mutex),
-      raylet_client_(raylet_client) {}
+    const std::string &store_socket, RayletClient &raylet_client)
+    : raylet_client_(raylet_client) {
+  auto status = store_client_.Connect(store_socket);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
+                   << " core worker: " << status.message();
+    throw std::runtime_error(status.message());
+  }
+}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
@@ -97,11 +107,43 @@ Status CoreWorkerPlasmaStoreProvider::Get(
             std::make_shared<PlasmaBuffer>(object_buffers[i].data),
             std::make_shared<PlasmaBuffer>(object_buffers[i].metadata));
         unready.erase(object_id);
+        // TODO (kfstorm): metadata should be structured.
+        std::string metadata = object_buffers[i].metadata->ToString();
+        auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
+        for (int i = 0; i < error_type_descriptor->value_count(); i++) {
+          auto error_type_number = error_type_descriptor->value(i)->number();
+          if (metadata == std::to_string(error_type_number)) {
+            should_break = true;
+          }
+        }
       }
     }
 
     num_attempts += 1;
-    // TODO(zhijunfu): log a message if attempted too many times.
+    if (num_attempts % WARN_PER_NUM_ATTEMPTS == 0) {
+      // Print a warning if we've attempted too many times, but some objects are still
+      // unavailable.
+      std::ostringstream oss;
+      size_t printed = 0;
+      for (auto &entry : unready) {
+        if (printed >= MAX_IDS_TO_PRINT_IN_WARNING) {
+          break;
+        }
+        if (printed > 0) {
+          oss << ", ";
+        }
+        oss << entry.first.Hex();
+      }
+      if (printed < unready.size()) {
+        oss << ", etc";
+      }
+      RAY_LOG(WARNING)
+          << "Attempted " << num_attempts << " times to reconstruct objects, but "
+          << "some objects are still unavailable. If this message continues to print,"
+          << " it may indicate that object's creating task is hanging, or something wrong"
+          << " happened in raylet backend. " << unready.size()
+          << " object(s) pending: " << oss.str() << ".";
+    }
   }
 
   if (was_blocked) {

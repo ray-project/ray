@@ -22,6 +22,8 @@ class WorkerContext {
 
   void SetCurrentTask(const raylet::TaskSpecification &spec);
 
+  std::shared_ptr<const raylet::TaskSpecification> GetCurrentTask() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();

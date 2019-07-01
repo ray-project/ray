@@ -51,6 +51,10 @@ public class RayletClientImpl implements RayletClient {
         isWorker, jobId.getBytes());
   }
 
+  public long getClient() {
+    return client;
+  }
+
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, TaskId currentTaskId) {
@@ -142,7 +146,7 @@ public class RayletClientImpl implements RayletClient {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
-  private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
+  public static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
     UniqueId jobId = UniqueId.fromByteBuffer(info.jobIdAsByteBuffer());
@@ -202,7 +206,7 @@ public class RayletClientImpl implements RayletClient {
         args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
-  private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
+  public static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
     ByteBuffer bb = taskSpecBuffer.get();
     bb.clear();
 
