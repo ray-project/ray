@@ -102,7 +102,7 @@ pushd "$BUILD_DIR"
 # the commit listed in the command.
 $PYTHON_EXECUTABLE -m pip install \
     --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-    --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/9f35817b35f9d0614a736a497d70de2cf07fed52/index.html
+    --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/8772ea2ca8bbaf68576227991575ed0de3b23bff/index.html
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
