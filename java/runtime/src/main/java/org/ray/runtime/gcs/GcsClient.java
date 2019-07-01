@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.id.BaseId;
+import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
@@ -156,6 +157,11 @@ public class GcsClient {
     }
     checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
     return checkpoints;
+  }
+
+  public JobId nextJobId() {
+    Long jobCounter = primary.incr("JobCounter".getBytes());
+    return JobId.fromLong(jobCounter);
   }
 
   private RedisClient getShardClient(BaseId key) {

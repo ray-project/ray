@@ -129,16 +129,6 @@ const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
   return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
 }
 
-const WorkerID ComputeDriverId(const JobID &job_id) {
-  // Currently, a job id equals its driver id.
-  return WorkerID(job_id);
-}
-
-const JobID ComputeJobId(const WorkerID &driver_id) {
-  // Currently, a job id equals its driver id.
-  return JobID(driver_id);
-}
-
 const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
                                              int64_t num_forks) {
   // Compute hashes.
@@ -155,6 +145,13 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
   return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
+JobID JobID::FromDriverId(const WorkerID &driver_id) {
+  // RAY_CHECK driver id format
+  std::string driver_id_str = driver_id.Binary();
+  driver_id_str.resize(Size());
+  return JobID::FromBinary(driver_id_str);
+}
+
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
     if (id.IsNil()) {                                             \
@@ -166,6 +163,7 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
   }
 
 ID_OSTREAM_OPERATOR(UniqueID);
+ID_OSTREAM_OPERATOR(JobID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 

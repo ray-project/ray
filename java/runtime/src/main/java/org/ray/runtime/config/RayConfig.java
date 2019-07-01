@@ -10,6 +10,8 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
@@ -32,7 +34,7 @@ public class RayConfig {
   public final WorkerMode workerMode;
   public final RunMode runMode;
   public final Map<String, Double> resources;
-  public final UniqueId jobId;
+  public final JobId jobId;
   public final String logDir;
   public final boolean redirectOutput;
   public final List<String> libraryPath;
@@ -108,9 +110,9 @@ public class RayConfig {
     // Job id.
     String jobId = config.getString("ray.job.id");
     if (!jobId.isEmpty()) {
-      this.jobId = UniqueId.fromHexString(jobId);
+      this.jobId = JobId.fromHexString(jobId);
     } else {
-      this.jobId = UniqueId.randomId();
+      this.jobId = JobId.NIL;
     }
     // Log dir.
     logDir = removeTrailingSlash(config.getString("ray.log-dir"));

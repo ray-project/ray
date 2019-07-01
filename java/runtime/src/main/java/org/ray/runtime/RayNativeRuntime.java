@@ -11,6 +11,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.gcs.GcsClient;
@@ -94,6 +96,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
+    if (rayConfig.jobId == JobId.NIL) {
+      // TODO(qwang): Generate from GCS.
+      rayConfig.jobId = gcsClient.nextJobId();
+    }
+
+    workerContext = new WorkerContext(rayConfig.workerMode,
+        rayConfig.jobId, rayConfig.runMode);
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     objectStoreProxy = new ObjectStoreProxy(this, rayConfig.objectStoreSocketName);
 

@@ -1025,7 +1025,9 @@ void NodeManager::ProcessDisconnectClientMessage(
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else if (is_driver) {
     // The client is a driver.
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(JobID(client->GetClientId()),
+    // Explicit ID type cast.
+    const auto driver_id = WorkerID(client->GetClientId());
+    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(JobID::FromDriverId(driver_id),
                                                         /*is_dead=*/true));
     auto job_id = worker->GetAssignedTaskId();
     RAY_CHECK(!job_id.IsNil());

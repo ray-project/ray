@@ -1,11 +1,13 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +31,7 @@ public class WorkerContext {
 
   private ThreadLocal<TaskSpec> currentTask;
 
-  private UniqueId currentJobId;
+  private JobId currentJobId;
 
   private ClassLoader currentClassLoader;
 
@@ -43,7 +45,7 @@ public class WorkerContext {
    */
   private RunMode runMode;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId jobId, RunMode runMode) {
+  public WorkerContext(WorkerMode workerMode, JobId jobId, RunMode runMode) {
     mainThreadId = Thread.currentThread().getId();
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
@@ -52,15 +54,13 @@ public class WorkerContext {
     currentTask = ThreadLocal.withInitial(() -> null);
     currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
-      // TODO(qwang): Assign the driver id to worker id
-      // once we treat driver id as a special worker id.
-      workerId = jobId;
+      workerId = IdUtil.computeDriverId(jobId);
       currentTaskId.set(TaskId.randomId());
       currentJobId = jobId;
     } else {
       workerId = UniqueId.randomId();
       this.currentTaskId.set(TaskId.NIL);
-      this.currentJobId = UniqueId.NIL;
+      this.currentJobId = JobId.NIL;
     }
   }
 
@@ -119,7 +119,7 @@ public class WorkerContext {
   /**
    * The ID of the current job.
    */
-  public UniqueId getCurrentJobId() {
+  public JobId getCurrentJobId() {
     return currentJobId;
   }
 

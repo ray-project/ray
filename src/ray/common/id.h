@@ -31,7 +31,6 @@ template <typename T>
 class BaseID {
  public:
   BaseID();
-  static T FromRandom();
   static T FromBinary(const std::string &binary);
   static const T &Nil();
   static size_t Size() { return T::Size(); }
@@ -45,6 +44,8 @@ class BaseID {
   std::string Hex() const;
 
  protected:
+  static T FromRandom();
+
   BaseID(const std::string &binary) {
     std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), T::Size());
   }
@@ -58,7 +59,12 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-  UniqueID() : BaseID(){};
+  // TODO(qwang): Move this definition out of this class declaration.
+  static UniqueID FromRandom() {
+    return BaseID<UniqueID>::FromRandom();
+  }
+
+  UniqueID() : BaseID(){}
   static size_t Size() { return kUniqueIDSize; }
 
  protected:
@@ -68,11 +74,27 @@ class UniqueID : public BaseID<UniqueID> {
   uint8_t id_[kUniqueIDSize];
 };
 
+class JobID : public BaseID<JobID> {
+ public:
+  // Note that this is only used for driver id since we only embed
+  // job id to driver id and not embed job id to worker id yet.
+  static JobID FromDriverId(const WorkerID &driver_id);
+
+  JobID() : BaseID() {}
+  static size_t Size() { return kJobIDSize; }
+
+ private:
+  uint8_t id_[kJobIDSize];
+};
+
 class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
+  static TaskID FromRandom() {
+    return BaseID<TaskID>::FromRandom();
+  }
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -80,6 +102,10 @@ class TaskID : public BaseID<TaskID> {
 
 class ObjectID : public BaseID<ObjectID> {
  public:
+  static ObjectID FromRandom() {
+    return BaseID<ObjectID>::FromRandom();
+  }
+
   ObjectID() : BaseID() {}
   static size_t Size() { return kUniqueIDSize; }
   plasma::ObjectID ToPlasmaId() const;
@@ -116,12 +142,15 @@ class ObjectID : public BaseID<ObjectID> {
   int32_t index_;
 };
 
+static_assert(sizeof(JobID) == kJobIDSize + sizeof(size_t),
+              "JobID size is not as expected");
 static_assert(sizeof(TaskID) == kTaskIDSize + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
               "ObjectID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
@@ -192,6 +221,7 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
+  RAY_CHECK(binary.size() == T::Size());
   T t = T::Nil();
   std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
@@ -272,6 +302,7 @@ namespace std {
   };
 
 DEFINE_UNIQUE_ID(UniqueID);
+DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 #include "id_def.h"

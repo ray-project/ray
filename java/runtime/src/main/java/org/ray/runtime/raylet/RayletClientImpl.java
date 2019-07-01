@@ -11,6 +11,7 @@ import java.util.Map;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -46,7 +47,7 @@ public class RayletClientImpl implements RayletClient {
 
   // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
   public RayletClientImpl(String schedulerSockName, UniqueId clientId,
-      boolean isWorker, UniqueId jobId) {
+                          boolean isWorker, JobId jobId) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
         isWorker, jobId.getBytes());
   }
@@ -115,7 +116,7 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public TaskId generateTaskId(UniqueId jobId, TaskId parentTaskId, int taskIndex) {
+  public TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
     byte[] bytes = nativeGenerateTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
     return new TaskId(bytes);
   }
@@ -145,7 +146,7 @@ public class RayletClientImpl implements RayletClient {
   private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
-    UniqueId jobId = UniqueId.fromByteBuffer(info.jobIdAsByteBuffer());
+    JobId jobId = JobId.fromByteBuffer(info.jobIdAsByteBuffer());
     TaskId taskId = TaskId.fromByteBuffer(info.taskIdAsByteBuffer());
     TaskId parentTaskId = TaskId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
