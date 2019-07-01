@@ -38,8 +38,9 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   // Get tasks for execution from raylet.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
 
-  /// TODO(zhijunfu): This is currently unused. Later when we migrate from worker "get task"
-  /// to raylet "assign task", this method will be used and the `GetTask` above will be removed.
+  /// TODO(zhijunfu): This is currently unused. Later when we migrate from worker "get
+  /// task" to raylet "assign task", this method will be used and the `GetTask` above will
+  /// be removed.
   ///
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -52,17 +53,16 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                         rpc::AssignTaskReply *reply,
                         rpc::RequestDoneCallback done_callback) override;
 
-  Status SetTaskHandler(const TaskHandler &callback) override;                        
+  Status SetTaskHandler(const TaskHandler &callback) override;
 
  private:
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
-  TaskHandler task_handler_;  
+  TaskHandler task_handler_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
 };
-
 
 }  // namespace ray
 

@@ -6,8 +6,8 @@
 
 namespace ray {
 
-CoreWorkerTaskInterface::CoreWorkerTaskInterface(WorkerContext &worker_context,
-                                                 std::unique_ptr<RayletClient> &raylet_client)
+CoreWorkerTaskInterface::CoreWorkerTaskInterface(
+    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client)
     : worker_context_(worker_context) {
   task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(

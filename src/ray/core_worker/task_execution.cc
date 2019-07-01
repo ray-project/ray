@@ -12,17 +12,16 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       object_interface_(object_interface),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_work_(main_service_) {
-  task_receivers_.emplace(static_cast<int>(TaskTransportType::RAYLET),
-                         std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-                             new CoreWorkerRayletTaskReceiver(raylet_client,
-                             main_service_, worker_server_)));
+  task_receivers_.emplace(
+      static_cast<int>(TaskTransportType::RAYLET),
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+          raylet_client, main_service_, worker_server_)));
 
   // start rpc server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
-
   while (true) {
     std::vector<TaskSpec> tasks;
     auto status =

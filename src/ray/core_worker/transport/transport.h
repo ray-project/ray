@@ -38,7 +38,7 @@ class CoreWorkerTaskReceiver {
   // "assign task", at that time the `GetTask` below will be removed.
   // Set task handler callback.
   virtual Status SetTaskHandler(const TaskHandler &callback) = 0;
- 
+
   // Get tasks for execution.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) = 0;
 };

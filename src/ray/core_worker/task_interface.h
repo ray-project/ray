@@ -92,7 +92,7 @@ class ActorHandle {
 class CoreWorkerTaskInterface {
  public:
   CoreWorkerTaskInterface(WorkerContext &worker_context,
-      std::unique_ptr<RayletClient> &raylet_client);
+                          std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a normal task.
   ///

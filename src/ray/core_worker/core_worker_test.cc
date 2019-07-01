@@ -124,9 +124,8 @@ class CoreWorkerTest : public ::testing::Test {
   void TearDown() {}
 
   void TestNormalTask(const std::unordered_map<std::string, double> &resources) {
-    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
-                      raylet_store_socket_names_[0], raylet_socket_names_[0],
-                      JobID::FromRandom());
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                      raylet_socket_names_[0], JobID::FromRandom());
 
     // Test pass by value.
     {
@@ -184,9 +183,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   void TestActorTask(const std::unordered_map<std::string, double> &resources) {
-    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
-                      raylet_store_socket_names_[0], raylet_socket_names_[0],
-                      JobID::FromRandom());
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                      raylet_socket_names_[0], JobID::FromRandom());
 
     std::unique_ptr<ActorHandle> actor_handle;
 
@@ -367,13 +365,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 }
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
-  CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON,
-                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                     JobID::FromRandom());
+  CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                     raylet_socket_names_[0], JobID::FromRandom());
 
-  CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON,
-                     raylet_store_socket_names_[1], raylet_socket_names_[1],
-                     JobID::FromRandom());
+  CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
+                     raylet_socket_names_[1], JobID::FromRandom());
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
