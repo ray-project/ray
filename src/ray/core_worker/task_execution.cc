@@ -17,7 +17,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
           raylet_client, main_service_, worker_server_)));
 
-  // start rpc server after all the task receivers are properly initialized.
+  // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
