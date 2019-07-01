@@ -130,13 +130,11 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_trial_migration(start_connected_emptyhead_cluster, tmpdir):
+def test_trial_migration(start_connected_emptyhead_cluster):
     """Removing a node while cluster has space should migrate trial.
 
     The trial state should also be consistent with the checkpoint.
     """
-    tmpdir = str(tmpdir)
-
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -382,7 +380,8 @@ tune.run_experiments(
     for i in range(100):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration"):
@@ -474,7 +473,8 @@ tune.run_experiments(
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration") == 3:
@@ -490,7 +490,8 @@ tune.run_experiments(
     Experiment._register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
-    runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
+    runner = TrialRunner(
+        resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING

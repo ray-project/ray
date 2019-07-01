@@ -109,14 +109,15 @@ def run(run_or_experiment,
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
-        sync_to_cloud (func|str): Function for syncing the local_dir to
-            upload_dir. If string, then it must be a string template for
-            syncer to run. If not provided, the sync command defaults
-            to standard S3 or gsutil sync comamnds.
+        sync_to_cloud (func|str): Function for syncing the local_dir to and
+            from upload_dir. If string, then it must be a string template
+            that includes `{source}` and `{target}` for the syncer to run.
+            If not provided, the sync command defaults to standard
+            S3 or gsutil sync comamnds.
         sync_to_driver (func|str): Function for syncing trial logdir from
-            remote node to local. If string, then it must be a
-            string template for syncer to run. If not provided, defaults
-            to using rsync.
+            remote node to local. If string, then it must be a string template
+            that includes `{source}` and `{target}` for the syncer to run.
+            If not provided, defaults to using rsync.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
@@ -139,9 +140,12 @@ def run(run_or_experiment,
         server_port (int): Port number for launching TuneServer.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
-        resume (bool|"prompt"): If checkpoint exists, the experiment will
-            resume from there. If resume is "prompt", Tune will prompt if
-            checkpoint detected.
+        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
+            LOCAL/True restores the checkpoint from the local_checkpoint_dir.
+            REMOTE restores the checkpoint from remote_checkpoint_dir.
+            PROMPT provides CLI feedback. False forces a new
+            experiment. If resume is set but checkpoint does not exist,
+            ValueError will be thrown.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
