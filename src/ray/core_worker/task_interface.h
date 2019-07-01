@@ -56,27 +56,27 @@ class ActorHandle {
   ActorHandle(const ActorHandle &other);
 
   /// ID of the actor.
-  const ray::ActorID ActorID() const;
+  ray::ActorID ActorID() const;
 
   /// ID of this actor handle.
-  const ray::ActorHandleID ActorHandleID() const;
+  ray::ActorHandleID ActorHandleID() const;
 
   /// Language of the actor.
-  const ray::rpc::Language ActorLanguage() const;
+  ray::rpc::Language ActorLanguage() const;
 
   // Function descriptor of actor creation task.
-  const std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
+  std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
 
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
-  const ObjectID ActorCursor() const;
+  ObjectID ActorCursor() const;
 
   /// The number of tasks that have been invoked on this actor.
-  const int64_t TaskCounter() const;
+  int64_t TaskCounter() const;
 
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
-  const int64_t NumForks() const;
+  int64_t NumForks() const;
 
   ActorHandle Fork();
 
@@ -93,7 +93,7 @@ class ActorHandle {
   /// Increase task counter.
   int64_t IncreaseTaskCounter();
 
-  std::vector<ray::ActorHandleID> GetNewActorHandles();
+  std::vector<ray::ActorHandleID> NewActorHandles() const;
 
   void ClearNewActorHandles();
 
