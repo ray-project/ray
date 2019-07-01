@@ -99,6 +99,7 @@ class TrialRunner(object):
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
+    VALID_RESUME_TYPES = ["LOCAL", "REMOTE", "PROMPT"]
 
     def __init__(self,
                  search_alg=None,
@@ -107,7 +108,7 @@ class TrialRunner(object):
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
                  sync_to_cloud=None,
-                 resume=None,
+                 resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
                  trial_executor=None):
@@ -120,13 +121,14 @@ class TrialRunner(object):
             launch_web_server (bool): Flag for starting TuneServer
             local_checkpoint_dir (str): Path where
                 global checkpoints are stored and restored from.
-            server_port (int): Port number for launching TuneServer
+            remote_checkpoint_dir (str): Remote path where
+                global checkpoints are stored and restored from. Used
+                if `resume` == REMOTE.
+            resume (str|False): see `tune.py:run`.
+            sync_to_cloud (func|str): see `tune.py:run`.
+            server_port (int): Port number for launching TuneServer.
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
-            reuse_actors (bool): Whether to reuse actors between different
-                trials when possible. This can drastically speed up experiments
-                that start and stop actors often (e.g., PBT in
-                time-multiplexing mode).
             trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
         self._search_alg = search_alg or BasicVariantGenerator()
@@ -201,6 +203,8 @@ class TrialRunner(object):
                     "Called resume from remote without remote directory.")
 
             # Try syncing down the upload directory.
+            logger.info("Downloading from {}".format(
+                self._remote_checkpoint_dir))
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
