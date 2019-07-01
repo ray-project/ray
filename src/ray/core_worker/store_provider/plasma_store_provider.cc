@@ -115,13 +115,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     num_attempts += 1;
-    if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() == 0) {
+    if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
+        0) {
       // Print a warning if we've attempted too many times, but some objects are still
       // unavailable.
       std::ostringstream oss;
       size_t printed = 0;
       for (auto &entry : unready) {
-        if (printed >= RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
+        if (printed >=
+            RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
           break;
         }
         if (printed > 0) {
