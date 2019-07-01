@@ -1044,8 +1044,14 @@ global_state = DeprecatedGlobalState()
 
 def jobs():
     """Get a list of the jobs in the cluster.
+
      Returns:
-        Information from the job table.
+        Information from the job table, namely a list of dicts with keys:
+        - "JobID" (sha1 identifier for the job),
+        - "NodeManagerAddress" (IP address of the driver for this job),
+        - "DriverPid" (process ID of the driver for this job),
+        - "StartTime" (UNIX timestamp of the start time of this job),
+        - "StopTime" (UNIX timestamp of the stop time of this job, if any)
     """
     return state.job_table()
 
