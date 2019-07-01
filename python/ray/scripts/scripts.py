@@ -515,14 +515,20 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--lines",
+    required=False,
+    default=100,
+    type=int,
+    help="Number of lines to show in ")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def monitor(cluster_config_file, cluster_name):
-    """Runs `tail -n 100 -f /tmp/ray/session_*/logs/monitor*` on head node."""
-    monitor_cluster(cluster_config_file, cluster_name)
+def monitor(cluster_config_file, lines, cluster_name):
+    """Runs `tail -n [lines] -f /tmp/ray/session_*/logs/monitor*` on head."""
+    monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
 @cli.command()
