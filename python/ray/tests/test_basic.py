@@ -2420,7 +2420,8 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
+    # os.environ.get("RAY_USE_NEW_GCS") == "on",
+    True,
     reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
     with pytest.raises(Exception):
