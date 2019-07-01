@@ -99,7 +99,7 @@ class TrialRunner(object):
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
-    VALID_RESUME_TYPES = ["LOCAL", "REMOTE", "PROMPT"]
+    VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT"]
 
     def __init__(self,
                  search_alg=None,
@@ -186,11 +186,12 @@ class TrialRunner(object):
         if not resume_type:
             return False
         assert resume_type in self.VALID_RESUME_TYPES, (
-            "resume_type is not one of {}".format(self.VALID_RESUME_TYPES))
+            "resume_type {} is not one of {}".format(
+                resume_type, self.VALID_RESUME_TYPES))
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
-        if resume_type in ["LOCAL", "PROMPT"]:
+        if resume_type in [True, "LOCAL", "PROMPT"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
                                  "in local directory.")
@@ -207,8 +208,7 @@ class TrialRunner(object):
                     "Called resume from remote without remote directory.")
 
             # Try syncing down the upload directory.
-            logger.info("Downloading from {}".format(
-                self._remote_checkpoint_dir))
+            logger.info("Downloading from {}".format(self._remote_checkpoint_dir))
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
