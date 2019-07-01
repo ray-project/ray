@@ -186,8 +186,8 @@ class TrialRunner(object):
         if not resume_type:
             return False
         assert resume_type in self.VALID_RESUME_TYPES, (
-            "resume_type {} is not one of {}".format(
-                resume_type, self.VALID_RESUME_TYPES))
+            "resume_type {} is not one of {}".format(resume_type,
+                                                     self.VALID_RESUME_TYPES))
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
@@ -208,7 +208,8 @@ class TrialRunner(object):
                     "Called resume from remote without remote directory.")
 
             # Try syncing down the upload directory.
-            logger.info("Downloading from {}".format(self._remote_checkpoint_dir))
+            logger.info("Downloading from {}".format(
+                self._remote_checkpoint_dir))
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
