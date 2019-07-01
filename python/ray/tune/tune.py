@@ -140,10 +140,10 @@ def run(run_or_experiment,
         server_port (int): Port number for launching TuneServer.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
-        resume (str|False): One of "LOCAL", "REMOTE", "PROMPT", or False.
-            LOCAL restores the checkpoint from the local_checkpoint_dir.
+        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
+            LOCAL/True restores the checkpoint from the local_checkpoint_dir.
             REMOTE restores the checkpoint from remote_checkpoint_dir.
-            PROMPT provides CLI feedback, while False forces a new
+            PROMPT provides CLI feedback. False forces a new
             experiment. If resume is set but checkpoint does not exist,
             ValueError will be thrown.
         queue_trials (bool): Whether to queue trials when the cluster does
