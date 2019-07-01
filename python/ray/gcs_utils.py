@@ -2,10 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.core.generated.common_pb2 import (
-    Task,
-    TaskType,
-)
+from ray.core.generated.ray.protocol.Task import Task
 
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
@@ -38,7 +35,6 @@ __all__ = [
     "TablePubsub",
     "Task",
     "TaskTableData",
-    "TaskType",
     "construct_error_message",
 ]
 

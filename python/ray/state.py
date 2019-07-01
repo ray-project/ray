@@ -305,46 +305,44 @@ class GlobalState(object):
         assert len(gcs_entries.entries) == 1
         task_table_data = gcs_utils.TaskTableData.FromString(
             gcs_entries.entries[0])
-        task_table_message = gcs_utils.Task.FromString(task_table_data.task)
+        task_table_message = gcs_utils.Task.GetRootAsTask(
+            task_table_data.task, 0)
 
-        task_spec = task_table_message.task_spec
+        execution_spec = task_table_message.TaskExecutionSpec()
+        task_spec = task_table_message.TaskSpecification()
+        task = ray._raylet.Task.from_string(task_spec)
+        function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
-            list(task_spec.function_descriptor))
-
-        is_actor_task = task_spec.type == gcs_utils.TaskType.Value('ACTOR_TASK')
-        actor_creation_spec = task_spec.actor_creation_task_spec
+            function_descriptor_list)
 
         task_spec_info = {
-            "JobID": binary_to_hex(task_spec.job_id),
-            "TaskID": binary_to_hex(task_spec.task_id),
-            "ParentTaskID": binary_to_hex(task_spec.parent_task_id),
-            "ParentCounter": task_spec.parent_counter,
-            "ActorID": (binary_to_hex(task_spec.actor_task_spec.actor_id)
-                        if is_actor_task else ray.ActorID.nil().hex()),
-            # XXX
-            # "ActorCreationID": binary_to_hex(task_spec.actor_creation_id),
-            # "ActorCreationDummyObjectID": binary_to_hex(
-            #     task_spec.actor_creation_dummy_object_id),
-            # "ActorCounter": task_spec.actor_counter,
-            "Args": list(task_spec.args),
-            # "ReturnObjectIDs": [
-            #     binary_to_hex(ret) for ret in task_spec.num_returns
-            # ],
-            "RequiredResources": task_spec.required_resources,
+            "JobID": task.job_id().hex(),
+            "TaskID": task.task_id().hex(),
+            "ParentTaskID": task.parent_task_id().hex(),
+            "ParentCounter": task.parent_counter(),
+            "ActorID": (task.actor_id().hex()),
+            "ActorCreationID": task.actor_creation_id().hex(),
+            "ActorCreationDummyObjectID": (
+                task.actor_creation_dummy_object_id().hex()),
+            "ActorCounter": task.actor_counter(),
+            "Args": task.arguments(),
+            "ReturnObjectIDs": task.returns(),
+            "RequiredResources": task.required_resources(),
             "FunctionID": function_descriptor.function_id.hex(),
             "FunctionHash": binary_to_hex(function_descriptor.function_hash),
             "ModuleName": function_descriptor.module_name,
             "ClassName": function_descriptor.class_name,
             "FunctionName": function_descriptor.function_name,
         }
-        print(task_spec_info)
 
-        execution_spec = task_table_message.task_execution_spec
         return {
             "ExecutionSpec": {
-                "Dependencies": list(execution_spec.dependencies),
-                "LastTimestamp": execution_spec.last_timestamp,
-                "NumForwards": execution_spec.num_forwards,
+                "Dependencies": [
+                    execution_spec.Dependencies(i)
+                    for i in range(execution_spec.DependenciesLength())
+                ],
+                "LastTimestamp": execution_spec.LastTimestamp(),
+                "NumForwards": execution_spec.NumForwards()
             },
             "TaskSpec": task_spec_info
         }
