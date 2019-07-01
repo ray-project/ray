@@ -143,11 +143,15 @@ class TaskDependencyManager {
   };
 
   struct PendingTask {
-    PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
-        : lease_period(initial_lease_period_ms),
+    PendingTask(uint64_t task_actor_version, int64_t initial_lease_period_ms,
+                boost::asio::io_service &io_service)
+        : actor_version(task_actor_version),
+          lease_period(initial_lease_period_ms),
           expires_at(INT64_MAX),
           lease_timer(new boost::asio::deadline_timer(io_service)) {}
 
+    /// The actor version of the pending task. This is 0 for non-actor tasks.
+    uint64_t actor_version;
     /// The timeout within which the lease should be renewed.
     int64_t lease_period;
     /// The time at which the current lease will expire, according to this
@@ -177,7 +181,8 @@ class TaskDependencyManager {
   /// Add a task lease entry to the GCS for the given task ID. It will expire
   /// after the given lease period. A lease period of -1 indicates that the
   /// lease will never expire (unless it is overwritten).
-  void AddTaskLeaseData(const TaskID &task_id, int64_t lease_period);
+  void AddTaskLeaseData(const TaskID &task_id, int64_t lease_period,
+                        uint64_t actor_version);
   /// Mark that the given task is no longer pending execution. Any objects that
   /// it creates that are not already local are now considered to be remote. If
   /// there are any subscribed tasks that depend on these objects, then the

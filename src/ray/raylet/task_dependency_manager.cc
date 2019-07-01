@@ -226,8 +226,9 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
-  auto inserted =
-      pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
+  auto inserted = pending_tasks_.emplace(
+      task_id, PendingTask(task.GetTaskExecutionSpec().ActorVersion(),
+                           initial_lease_period_ms_, io_service_));
   if (inserted.second) {
     // This is the first time we've heard that this task is pending.  Find any
     // subscribed tasks that are dependent on objects created by the pending
@@ -250,12 +251,13 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   }
 }
 
-void TaskDependencyManager::AddTaskLeaseData(const TaskID &task_id,
-                                             int64_t lease_period) {
+void TaskDependencyManager::AddTaskLeaseData(const TaskID &task_id, int64_t lease_period,
+                                             uint64_t actor_version) {
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->set_node_manager_id(client_id_.Hex());
   task_lease_data->set_acquired_at(current_sys_time_ms());
   task_lease_data->set_timeout(lease_period);
+  task_lease_data->set_actor_version(actor_version);
   RAY_CHECK_OK(task_lease_table_.Add(JobID::Nil(), task_id, task_lease_data, nullptr));
 }
 
@@ -273,7 +275,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                      << (it->second.expires_at - now_ms) << "ms";
   }
 
-  AddTaskLeaseData(task_id, it->second.lease_period);
+  AddTaskLeaseData(task_id, it->second.lease_period, it->second.actor_version);
 
   auto period = boost::posix_time::milliseconds(it->second.lease_period / 2);
   it->second.lease_timer->expires_from_now(period);
@@ -295,14 +297,18 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
 void TaskDependencyManager::CancelTask(const TaskID &task_id, bool task_finished) {
   // Record that the task is no longer pending execution.
   auto it = pending_tasks_.find(task_id);
-  if (it != pending_tasks_.end()) {
-    pending_tasks_.erase(it);
+  if (it == pending_tasks_.end()) {
+    // The task should only be marked as finished once.
+    RAY_CHECK(!task_finished);
+    return;
   }
+  const uint64_t actor_version = it->second.actor_version;
+  pending_tasks_.erase(it);
 
   // If the task finished execution, then add a task lease entry with an
   // infinite timeout to the GCS.
   if (task_finished) {
-    AddTaskLeaseData(task_id, -1);
+    AddTaskLeaseData(task_id, -1, actor_version);
   }
 
   // Find any subscribed tasks that are dependent on objects created by the
