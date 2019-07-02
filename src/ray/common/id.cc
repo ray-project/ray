@@ -85,7 +85,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-TaskID TaskID::GetDriverTaskID(const WorkerID &driver_id) {
+TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return TaskID::FromBinary(driver_id_str);
@@ -137,6 +137,22 @@ const WorkerID ComputeDriverId(const JobID &job_id) {
 const JobID ComputeJobId(const WorkerID &driver_id) {
   // Currently, a job id equals its driver id.
   return JobID(driver_id);
+}
+
+const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
+                                             int64_t num_forks) {
+  // Compute hashes.
+  SHA256_CTX ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(actor_handle_id.Data()),
+                actor_handle_id.Size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(&num_forks), sizeof(num_forks));
+
+  // Compute the final actor handle ID from the hash.
+  BYTE buff[DIGEST_SIZE];
+  sha256_final(&ctx, buff);
+  RAY_CHECK(DIGEST_SIZE >= ActorHandleID::Size());
+  return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
