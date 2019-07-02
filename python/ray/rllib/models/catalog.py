@@ -60,6 +60,9 @@ MODEL_DEFAULTS = {
     "lstm_cell_size": 256,
     # Whether to feed a_{t-1}, r_{t-1} to LSTM
     "lstm_use_prev_action_reward": False,
+    # When using modelv1 models with a modelv2 algorithm, you may have to
+    # define the state shape here (e.g., [256, 256]).
+    "state_shape": None,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs

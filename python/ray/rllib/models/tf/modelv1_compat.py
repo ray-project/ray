@@ -76,7 +76,12 @@ def make_v1_wrapper(legacy_model_cls):
             # XXX: Try to guess the initial state size. Since the size of the
             # state is known only after forward() for V1 models, it might be
             # wrong.
-            if model_config.get("use_lstm"):
+            if model_config.get("state_shape"):
+                self.initial_state = [
+                    np.zeros(s, np.float32)
+                    for s in model_config["state_shape"]
+                ]
+            elif model_config.get("use_lstm"):
                 cell_size = model_config.get("lstm_cell_size", 256)
                 self.initial_state = [
                     np.zeros(cell_size, np.float32),
@@ -96,7 +101,13 @@ def make_v1_wrapper(legacy_model_cls):
         def __call__(self, input_dict, state, seq_lens):
             new_instance = self.instance_template(input_dict, state, seq_lens)
             if len(new_instance.state_init) != len(self.get_initial_state()):
-                raise ValueError("Guessed wrong", new_instance.state_init, self.get_initial_state())
+                raise ValueError(
+                    "When using a custom recurrent ModelV1 model, you should "
+                    "declare the state_shape in the model options. For "
+                    "example, set 'state_shape': [256, 256] for a lstm with "
+                    "cell size 256. The guessed state shape was {} which "
+                    "appears to be incorrect.".format(
+                        [s.shape[0] for s in self.get_initial_state()]))
             self.cur_instance = new_instance
             self.variable_scope = new_instance.scope
             return new_instance.outputs, new_instance.state_out

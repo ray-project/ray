@@ -152,13 +152,11 @@ class DynamicTFPolicy(TFPolicy):
             ]
             if self.state_in:
                 self.seq_lens = existing_inputs["seq_lens"]
-            print("STATE IN 1", self.state_in)
         else:
             self.state_in = [
                 tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                 for s in self.model.get_initial_state()
             ]
-            print("STATE IN 2", self.state_in)
         self.model_out, self.state_out = self.model(
             self.input_dict, self.state_in, self.seq_lens)
 

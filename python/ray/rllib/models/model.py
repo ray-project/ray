@@ -199,6 +199,12 @@ class Model(object):
         """Deprecated: use self.custom_loss()."""
         return None
 
+    @classmethod
+    def get_initial_state(cls, obs_space, action_space, num_outputs, options):
+        raise NotImplementedError(
+            "In order to use recurrent models with ModelV2, you should define "
+            "the get_initial_state @classmethod on your custom model class.")
+
     def _validate_output_shape(self):
         """Checks that the model has the correct number of outputs."""
         try:
