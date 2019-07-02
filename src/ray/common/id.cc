@@ -85,7 +85,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-TaskID TaskID::GetDriverTaskID(const WorkerID &driver_id) {
+TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return TaskID::FromBinary(driver_id_str);
