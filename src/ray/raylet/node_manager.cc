@@ -1917,45 +1917,48 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &tas
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorID actor_id;
   ActorHandleID actor_handle_id;
+  TaskSpecification task_spec = task.GetTaskSpecification();
   bool resumed_from_checkpoint = false;
-  if (task.GetTaskSpecification().IsActorCreationTask()) {
-    actor_id = task.GetTaskSpecification().ActorCreationId();
+  if (task_spec.IsActorCreationTask()) {
+    actor_id = task_spec.ActorCreationId();
     actor_handle_id = ActorHandleID::Nil();
     if (checkpoint_id_to_restore_.count(actor_id) > 0) {
       resumed_from_checkpoint = true;
     }
   } else {
-    actor_id = task.GetTaskSpecification().ActorId();
-    actor_handle_id = task.GetTaskSpecification().ActorHandleId();
+    actor_id = task_spec.ActorId();
+    actor_handle_id = task_spec.ActorHandleId();
   }
+  const auto dummy_object = task_spec.ActorDummyObject();
 
-  if (task.GetTaskSpecification().IsActorCreationTask()) {
+  if (task_spec.IsActorCreationTask()) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
     // Notify the other node managers that the actor has been created.
     auto new_actor_data = CreateActorTableDataFromCreationTask(task);
-    // Lookup the parent actor id
-    auto parent_task_id = task.GetTaskSpecification().ParentTaskId();
+    // Lookup the parent actor id.
+    auto parent_task_id = task_spec.ParentTaskId();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         //success_callback
-        [this, task, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
+        [this, dummy_object, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
            (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id,
                const TaskTableData &parent_task_data) mutable {
           // The task was in the GCS task table. Use the stored task spec to
           // get the parent actor id.
           auto message = flatbuffers::GetRoot<protocol::Task>(parent_task_data.task().data());
           Task parent_task(*message);
-          new_actor_data.set_parent_actor_id(parent_task.GetTaskSpecification().ActorId().Binary());
-          FinishAssignedActorTaskHelper(actor_id, new_actor_data, resumed_from_checkpoint);
-          if(!resumed_from_checkpoint){
-            // The actor was not resumed from a checkpoint. We extend the actor's
-            // frontier as usual since there is no frontier to restore.
-            ExtendActorFrontier(task, actor_id, actor_handle_id);
+          ActorID parent_actor_id;
+          if (parent_task.GetTaskSpecification().IsActorCreationTask()){
+            parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+          } else{
+            parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
+          new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
+          FinishAssignedActorCreationTask(actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint, dummy_object);
         },
         //failure_callback
-        [this, task, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
+        [this, dummy_object, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
             (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id) mutable {
           // The parent task was not in the GCS task table. It must therefore be in the
           // lineage cache.
@@ -1967,27 +1970,26 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
               << "ray.init(redis_max_memory=<max_memory_bytes>).";
           // Use a copy of the cached task spec to get the parent actor id.
           Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
-          new_actor_data.set_parent_actor_id(parent_task.GetTaskSpecification().ActorId().Binary());
-          FinishAssignedActorTaskHelper(actor_id, new_actor_data, resumed_from_checkpoint);
-          if(!resumed_from_checkpoint){
-            // The actor was not resumed from a checkpoint. We extend the actor's
-            // frontier as usual since there is no frontier to restore.
-            ExtendActorFrontier(task, actor_id, actor_handle_id);
+          ActorID parent_actor_id;
+          if (parent_task.GetTaskSpecification().IsActorCreationTask()){
+            parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+          } else{
+            parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
+          new_actor_data.set_parent_actor_id(parent_task.GetTaskSpecification().ActorId().Binary());
+          FinishAssignedActorCreationTask(actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint, dummy_object);
         }));
-  }
-  else if (!resumed_from_checkpoint) {
+  } else if (!resumed_from_checkpoint) {
     // The actor was not resumed from a checkpoint. We extend the actor's
     // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task, actor_id, actor_handle_id);
+    ExtendActorFrontier(dummy_object, actor_id, actor_handle_id);
   }
 }
 
-void NodeManager::ExtendActorFrontier(const Task &task, ActorID &actor_id, ActorHandleID &actor_handle_id){
+void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id, const ActorHandleID &actor_handle_id){
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   // Extend the actor's frontier to include the executed task.
-  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
   const ObjectID object_to_release =
       actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
   if (!object_to_release.IsNil()) {
@@ -2006,7 +2008,7 @@ void NodeManager::ExtendActorFrontier(const Task &task, ActorID &actor_id, Actor
   HandleObjectLocal(dummy_object);
 }
 
-void NodeManager::FinishAssignedActorTaskHelper(const ActorID& actor_id, const ActorTableData new_actor_data, bool resumed_from_checkpoint) {
+void NodeManager::FinishAssignedActorCreationTask(const ActorID& actor_id, const ActorHandleID &actor_handle_id, const ActorTableData new_actor_data, bool resumed_from_checkpoint, const ObjectID &dummy_object) {
   // Notify the other node managers that the actor has been created.
   if (resumed_from_checkpoint) {
     // This actor was resumed from a checkpoint. In this case, we first look
@@ -2054,6 +2056,11 @@ void NodeManager::FinishAssignedActorTaskHelper(const ActorID& actor_id, const A
           // Only one node at a time should succeed at creating the actor.
           RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
         });
+  }
+  if(!resumed_from_checkpoint){
+    // The actor was not resumed from a checkpoint. We extend the actor's
+    // frontier as usual since there is no frontier to restore.
+    ExtendActorFrontier(dummy_object, actor_id, actor_handle_id);
   }
 }
 

@@ -224,15 +224,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param actor_id The actor id corresponding to the actor (creation) task.
   /// \param new_actor_data The struct which will be used to register the task.
   /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param dummy_object Dummy object corresponding to the actor creation task.
   /// \return Void.
-  void FinishAssignedActorTaskHelper(const ActorID& actor_id,
-            const ActorTableData new_actor_data, bool resumed_from_checkpoint);
-  /// Extend actor frontier when an actor task or actor creation task arrives.
+  void FinishAssignedActorCreationTask(const ActorID& actor_id, const ActorHandleID& actor_handle_id,
+            const ActorTableData new_actor_data, bool resumed_from_checkpoint, const ObjectID &dummy_object);
+  /// Extend actor frontier after an actor task or actor creation task executes.
   ///
-  /// \param task The task that arrived.
+  /// \param dummy_object Dummy object corresponding to the task.
   /// \param actor_id The relevant actor ID.
   /// \param actor_handle_id The relevant actor handle ID.
-  void ExtendActorFrontier(const Task &task, ActorID &actor_id, ActorHandleID &actor_handle_id);
+  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id, const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
