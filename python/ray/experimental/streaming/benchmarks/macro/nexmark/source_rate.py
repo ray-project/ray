@@ -100,7 +100,7 @@ if __name__ == "__main__":
     if pin_processes:
         logger.info("Waiting for python processes to come up...")
         time.sleep(5)  # Wait a bit for Ray to start
-        pin_processes()
+        utils.pin_processes()
 
     if fetch_data:
         logger.info("Fetching data...")
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     env = Environment()
     env.set_queue_config(queue_config)
     env.enable_logging()  # Enable logging to measure throughput
-    
+
     source = None
 
     if source_type == "auctions":  # Add the auction source
