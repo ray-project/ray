@@ -47,18 +47,44 @@ void ReconstructionPolicy::SetTaskTimeout(
             // received. The current lease is now considered expired.
             HandleTaskLeaseExpired(task_id);
           } else {
-            // This task is still required, so subscribe to task lease
-            // notifications.  Reconstruction will be triggered if the current
-            // task lease expires, or if no one has acquired the task lease.
-            // NOTE(swang): When reconstruction for a task is first requested,
-            // we do not initially subscribe to task lease notifications, which
-            // requires at least one GCS operation. This is in case the objects
-            // required by the task are no longer needed soon after.  If the
-            // task is still required after this initial period, then we now
-            // subscribe to task lease notifications.
-            RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(JobID::Nil(), task_id,
-                                                                 client_id_));
-            it->second.subscribed = true;
+            RAY_CHECK_OK(task_table_.Lookup(
+                JobID::Nil(), task_id,
+                /*success_callback=*/
+                [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                       const TaskTableData &task_data) {
+                  auto it = listening_tasks_.find(task_id);
+                  if (it == listening_tasks_.end()) {
+                    return;
+                  }
+                  // The task was in the GCS task table. Use the stored task spec to
+                  // re-execute the task.
+                  auto message =
+                      flatbuffers::GetRoot<protocol::Task>(task_data.task().data());
+                  RAY_CHECK(it->second.task == nullptr);
+                  it->second.task = std::unique_ptr<Task>(new Task(*message));
+                  // This task is still required, so subscribe to task lease
+                  // notifications.  Reconstruction will be triggered if the current
+                  // task lease expires, or if no one has acquired the task lease.
+                  // NOTE(swang): When reconstruction for a task is first requested,
+                  // we do not initially subscribe to task lease notifications, which
+                  // requires at least one GCS operation. This is in case the objects
+                  // required by the task are no longer needed soon after.  If the
+                  // task is still required after this initial period, then we now
+                  // subscribe to task lease notifications.
+                  RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(
+                      JobID::Nil(), task_id, client_id_));
+                  it->second.subscribed = true;
+                },
+                /*failure_callback=*/
+                [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
+                  // No task information found.
+                  auto it = listening_tasks_.find(task_id);
+                  if (it != listening_tasks_.end()) {
+                    // The task is still needed. Wait some time, then try the GCS lookup
+                    // again.
+                    SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
+                  }
+                }));
           }
         } else {
           // Check that the error was due to the timer being canceled.
@@ -134,26 +160,39 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   it->second.reconstruction_attempt++;
 }
 
+bool ReconstructionPolicy::CheckTaskExpired(const Task &task) {
+  // TODO(swang): Fill this out according to whether the task is an actor task
+  // or not.
+  return true;
+}
+
 void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Task lease expired for task " << task_id;
   auto it = listening_tasks_.find(task_id);
   RAY_CHECK(it != listening_tasks_.end());
-  int reconstruction_attempt = it->second.reconstruction_attempt;
-  // Lookup the objects created by this task in the object directory. If any
-  // objects no longer exist on any live nodes, then reconstruction will be
-  // attempted asynchronously.
-  for (const auto &created_object_id : it->second.created_objects) {
-    RAY_CHECK_OK(object_directory_->LookupLocations(
-        created_object_id, [this, task_id, reconstruction_attempt](
-                               const ray::ObjectID &object_id,
-                               const std::unordered_set<ray::ClientID> &clients) {
-          if (clients.empty()) {
-            // The required object no longer exists on any live nodes. Attempt
-            // reconstruction.
-            AttemptReconstruction(task_id, object_id, reconstruction_attempt);
-          }
-        }));
+  RAY_CHECK(it->second.task != nullptr);
+  if (CheckTaskExpired(*it->second.task)) {
+    RAY_LOG(DEBUG) << "Task " << task_id
+                   << " may have failed, reconstruction will be attempted if a needed "
+                      "object was lost";
+    int reconstruction_attempt = it->second.reconstruction_attempt;
+    // Lookup the objects created by this task in the object directory. If any
+    // objects no longer exist on any live nodes, then reconstruction will be
+    // attempted asynchronously.
+    for (const auto &created_object_id : it->second.created_objects) {
+      RAY_CHECK_OK(object_directory_->LookupLocations(
+          created_object_id, [this, task_id, reconstruction_attempt](
+                                 const ray::ObjectID &object_id,
+                                 const std::unordered_set<ray::ClientID> &clients) {
+            if (clients.empty()) {
+              // The required object no longer exists on any live nodes. Attempt
+              // reconstruction.
+              AttemptReconstruction(task_id, object_id, reconstruction_attempt);
+            }
+          }));
+    }
   }
+
   // Reset the timer to wait for task lease notifications again.
   SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
 }
@@ -169,6 +208,11 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
   }
 
   if (lease_timeout_ms == 0) {
+    HandleTaskLeaseExpired(task_id);
+  } else if (lease_timeout_ms == -1) {
+    // The task finished execution and its return values should be available.
+    // If they are not available, then they have been evicted, so someone must
+    // handle the task failure.
     HandleTaskLeaseExpired(task_id);
   } else if ((current_time_ms() + lease_timeout_ms) > it->second.expires_at) {
     // The current lease is longer than the timer's current expiration time.

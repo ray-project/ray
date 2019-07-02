@@ -10,6 +10,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/tables.h"
 #include "ray/protobuf/gcs.pb.h"
+#include "ray/raylet/task.h"
 #include "ray/util/util.h"
 
 #include "ray/object_manager/object_directory.h"
@@ -104,6 +105,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     // The task's reconstruction timer. If this expires before a lease
     // notification is received, then the task will be reconstructed.
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
+    std::unique_ptr<Task> task;
   };
 
   /// Set the reconstruction timer for a task. If no task lease notifications
@@ -124,6 +126,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// that both require reconstruction).
   void AttemptReconstruction(const TaskID &task_id, const ObjectID &required_object_id,
                              int reconstruction_attempt);
+
+  /// Returns true if the given task failed. Assumes that the task's lease has
+  /// expired.
+  bool CheckTaskExpired(const Task &task);
 
   /// Handle expiration of a task lease.
   void HandleTaskLeaseExpired(const TaskID &task_id);
