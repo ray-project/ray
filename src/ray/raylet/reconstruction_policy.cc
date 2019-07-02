@@ -160,10 +160,14 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   it->second.reconstruction_attempt++;
 }
 
-bool ReconstructionPolicy::CheckTaskExpired(const Task &task) {
-  // TODO(swang): Fill this out according to whether the task is an actor task
-  // or not.
-  return true;
+bool ReconstructionPolicy::CheckExpiredTask(const Task &task,
+                                            int64_t lease_actor_version) {
+  if (task.GetTaskSpecification().IsActorTask()) {
+    // TODO(swang): Get the actor version from the registry.
+    return true;
+  } else {
+    return true;
+  }
 }
 
 void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
@@ -171,7 +175,7 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
   auto it = listening_tasks_.find(task_id);
   RAY_CHECK(it != listening_tasks_.end());
   RAY_CHECK(it->second.task != nullptr);
-  if (CheckTaskExpired(*it->second.task)) {
+  if (CheckExpiredTask(*it->second.task, it->second.lease_actor_version)) {
     RAY_LOG(DEBUG) << "Task " << task_id
                    << " may have failed, reconstruction will be attempted if a needed "
                       "object was lost";
@@ -198,13 +202,25 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
 }
 
 void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
-                                                       int64_t lease_timeout_ms) {
+                                                       int64_t lease_timeout_ms,
+                                                       int64_t lease_actor_version) {
   RAY_LOG(DEBUG) << "Received task lease notification for task " << task_id << ", "
                  << lease_timeout_ms << "ms";
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     // We are no longer listening for this task, so ignore the notification.
     return;
+  }
+
+  if (lease_actor_version != -1) {
+    if (it->second.lease_actor_version < it->second.lease_actor_version) {
+      // TODO(swang): When could this happen?
+      RAY_LOG(WARNING) << "Received task lease for " << task_id << " with actor version "
+                       << lease_actor_version
+                       << " but we already received a task lease with version "
+                       << it->second.lease_actor_version;
+    }
+    it->second.lease_actor_version = lease_actor_version;
   }
 
   if (lease_timeout_ms == 0) {

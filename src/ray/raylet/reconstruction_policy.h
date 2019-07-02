@@ -75,7 +75,11 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// \param lease_timeout_ms After this timeout, the task's lease is
   /// guaranteed to be expired. If a second notification is not received within
   /// this timeout, then objects that the task creates may be reconstructed.
-  void HandleTaskLeaseNotification(const TaskID &task_id, int64_t lease_timeout_ms);
+  /// \param The actor version. For non-actor tasks, this is always 0.  For
+  /// actor tasks, this is the number of times the actor restarted before
+  /// the task was executed.
+  void HandleTaskLeaseNotification(const TaskID &task_id, int64_t lease_timeout_ms,
+                                   int64_t actor_version);
 
   /// Returns debug string for class.
   ///
@@ -91,7 +95,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
         : expires_at(INT64_MAX),
           subscribed(false),
           reconstruction_attempt(0),
-          reconstruction_timer(new boost::asio::deadline_timer(io_service)) {}
+          reconstruction_timer(new boost::asio::deadline_timer(io_service)),
+          // We initialize the actor version to -1 to indicate that we have not
+          // yet received a task lease, so the task has not yet been executed.
+          lease_actor_version(-1) {}
 
     // The objects created by this task that we are listening for notifications for.
     std::unordered_set<ObjectID> created_objects;
@@ -105,7 +112,12 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     // The task's reconstruction timer. If this expires before a lease
     // notification is received, then the task will be reconstructed.
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
+    // The task information from the GCS, if we have any.
     std::unique_ptr<Task> task;
+    // The actor version of the task that was executed, according to the task
+    // lease table. This is -1 if the task has not yet been executed and 0 if
+    // the task is not for an actor.
+    int64_t lease_actor_version;
   };
 
   /// Set the reconstruction timer for a task. If no task lease notifications
@@ -129,7 +141,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
   /// Returns true if the given task failed. Assumes that the task's lease has
   /// expired.
-  bool CheckTaskExpired(const Task &task);
+  bool CheckExpiredTask(const Task &task, int64_t lease_actor_version);
 
   /// Handle expiration of a task lease.
   void HandleTaskLeaseExpired(const TaskID &task_id);
