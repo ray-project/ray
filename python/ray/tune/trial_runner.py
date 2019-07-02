@@ -152,7 +152,6 @@ class TrialRunner(object):
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
 
-        # TODO(rliaw): This may fail
         if self._local_checkpoint_dir and not os.path.exists(
                 self._local_checkpoint_dir):
             os.makedirs(self._local_checkpoint_dir)
@@ -179,9 +178,10 @@ class TrialRunner(object):
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
 
     def _validate_resume(self, resume_type):
-        """
+        """Checks whether to resume experiment.
+
         Args:
-            resume_type: One of "REMOTE", "LOCAL", "PROMPT".
+            resume_type: One of True, "REMOTE", "LOCAL", "PROMPT".
         """
         if not resume_type:
             return False

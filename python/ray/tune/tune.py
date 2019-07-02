@@ -35,15 +35,6 @@ def _make_scheduler(args):
             args.scheduler, _SCHEDULERS.keys()))
 
 
-def _get_resume_path(local_checkpoint_dir, remote_checkpoint_dir):
-    if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-        return local_checkpoint_dir
-    elif remote_checkpoint_dir:
-        return remote_checkpoint_dir
-    else:
-        raise ValueError
-
-
 def run(run_or_experiment,
         name=None,
         stop=None,
