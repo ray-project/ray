@@ -19,7 +19,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpec
 
 
 cdef extern from "ray/protobuf/gcs.pb.h" nogil:
@@ -52,8 +52,8 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayStatus Disconnect()
         CRayStatus SubmitTask(
             const c_vector[CObjectID] &execution_dependencies,
-            const CTaskSpecification &task_spec)
-        CRayStatus GetTask(unique_ptr[CTaskSpecification] *task_spec)
+            const CTaskSpec &task_spec)
+        CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
         CRayStatus TaskDone()
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
                                       c_bool fetch_only,

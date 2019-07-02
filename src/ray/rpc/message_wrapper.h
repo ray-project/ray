@@ -20,9 +20,10 @@ class MessageWrapper {
   }
 
   explicit MessageWrapper(const std::string &serialized_binary) {
-    message_unique_ptr->reset(new Message);
+    auto message = new Message();
+    RAY_CHECK(message->ParseFromString(serialized_binary));
+    message_unique_ptr.reset(message);
     message_ = message_unique_ptr.get();
-    message_->ParseFromString(serialized_binary);
   }
 
   MessageWrapper(const MessageWrapper<Message> &from)

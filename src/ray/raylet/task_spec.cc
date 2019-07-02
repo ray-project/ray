@@ -166,7 +166,7 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
-TaskSpecification *CreateTaskSpecification(
+TaskSpecification *CreateTaskSpec(
     const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
     const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
     uint64_t max_actor_reconstructions, const ActorID &actor_id,
@@ -211,6 +211,7 @@ TaskSpecification *CreateTaskSpecification(
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_handle_id(actor_handle_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
+    actor_spec->set_actor_creation_dummy_object_id(actor_creation_dummy_object_id.Binary());
     for (const auto &new_handle : new_actor_handles) {
       actor_spec->add_new_actor_handles(new_handle.Binary());
     }

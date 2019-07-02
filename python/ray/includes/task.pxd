@@ -40,8 +40,8 @@ cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
         const c_string &SerializeAsString()
 
 cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
-    cdef cppclass CTaskSpecification "ray::raylet::TaskSpecification":
-        CTaskSpecification(const c_string &serialized_binary)
+    cdef cppclass CTaskSpec "ray::raylet::TaskSpecification":
+        CTaskSpec(const c_string &serialized_binary)
         const RpcTaskSpec &GetMessage()
         c_string Serialize() const
 
@@ -76,7 +76,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
         CObjectID ActorDummyObject() const
         c_vector[CActorHandleID] NewActorHandles() const
 
-    cdef CTaskSpecification *CreateTaskSpecification(
+    cdef CTaskSpec *CreateTaskSpec(
         const CJobID &job_id, const CTaskID &parent_task_id, uint64_t parent_counter,
         const CActorID &actor_creation_id, const CObjectID &actor_creation_dummy_object_id,
         uint64_t max_actor_reconstructions, const CActorID &actor_id,
@@ -92,6 +92,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
 cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskExecutionSpec "ray::raylet::TaskExecutionSpecification":
         CTaskExecutionSpec(unique_ptr[RpcTaskExecutionSpec] message)
+        CTaskExecutionSpec(const c_string &serialized_binary)
         const RpcTaskExecutionSpec &GetMessage()
         c_vector[CObjectID] ExecutionDependencies()
         uint64_t NumForwards()

@@ -12,9 +12,9 @@ namespace ray {
 
 namespace raylet {
 
+using rpc::IdVectorFromProtobuf;
 using rpc::MessageWrapper;
 using rpc::TaskExecutionSpec;
-using rpc::IdVectorFromProtobuf;
 
 /// \class TaskExecutionSpecification
 ///
@@ -30,6 +30,11 @@ class TaskExecutionSpecification : public MessageWrapper<TaskExecutionSpec> {
 
   explicit TaskExecutionSpecification(std::unique_ptr<TaskExecutionSpec> message)
       : MessageWrapper(std::move(message)) {
+    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
+  }
+
+  explicit TaskExecutionSpecification(const std::string &serialized_binary)
+      : MessageWrapper(serialized_binary) {
     dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
   }
 

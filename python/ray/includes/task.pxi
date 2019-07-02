@@ -8,8 +8,8 @@ from ray.includes.task cimport (
     CTask,
     CTaskArg,
     CTaskExecutionSpec,
-    CTaskSpecification,
-    CreateTaskSpecification,
+    CTaskSpec,
+    CreateTaskSpec,
     RpcTask,
     RpcTaskExecutionSpec,
     TaskTableData,
@@ -18,7 +18,7 @@ from ray.includes.task cimport (
 
 cdef class TaskSpec:
     cdef:
-        unique_ptr[CTaskSpecification] task_spec
+        unique_ptr[CTaskSpec] task_spec
 
     def __init__(self, JobID job_id, function_descriptor, arguments,
                  int num_returns, TaskID parent_task_id, int parent_counter,
@@ -65,7 +65,7 @@ cdef class TaskSpec:
             task_new_actor_handles.push_back(
                 (<ActorHandleID?>new_actor_handle).native())
 
-        self.task_spec.reset(CreateTaskSpecification(
+        self.task_spec.reset(CreateTaskSpec(
             job_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
             actor_creation_dummy_object_id.native(), max_actor_reconstructions, actor_id.native(),
             actor_handle_id.native(), actor_counter, task_new_actor_handles, task_args, num_returns,
@@ -73,7 +73,7 @@ cdef class TaskSpec:
             c_function_descriptor, []))
 
     @staticmethod
-    cdef make(unique_ptr[CTaskSpecification]& task_spec):
+    cdef make(unique_ptr[CTaskSpec]& task_spec):
         cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
         self.task_spec.reset(task_spec.release())
         return self
@@ -89,8 +89,7 @@ cdef class TaskSpec:
             Python task specification object.
         """
         cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
-        # TODO(pcm): Use flatbuffers validation here.
-        self.task_spec.reset(new CTaskSpecification(task_spec_str))
+        self.task_spec.reset(new CTaskSpec(task_spec_str))
         return self
 
     def to_string(self):
@@ -129,7 +128,7 @@ cdef class TaskSpec:
     def arguments(self):
         """Return the arguments for the task."""
         cdef:
-            CTaskSpecification *task_spec = self.task_spec.get()
+            CTaskSpec*task_spec = self.task_spec.get()
             int64_t num_args = task_spec.NumArgs()
             int32_t lang = <int32_t>task_spec.GetLanguage()
             int count
@@ -154,7 +153,7 @@ cdef class TaskSpec:
 
     def returns(self):
         """Return the object IDs for the return values of the task."""
-        cdef CTaskSpecification *task_spec = self.task_spec.get()
+        cdef CTaskSpec *task_spec = self.task_spec.get()
         return_id_list = []
         for i in range(task_spec.NumReturns()):
             return_id_list.append(ObjectID(task_spec.ReturnId(i).Binary()))
@@ -215,13 +214,21 @@ cdef class TaskExecutionSpec:
                 (<ObjectID?>dependency).binary())
         self.c_spec.reset(new CTaskExecutionSpec(unique_ptr[RpcTaskExecutionSpec](message)))
 
+    @staticmethod
+    def from_string(const c_string& string):
+        """Convert a string to a Ray `TaskExecutionSpec` Python object.
+        """
+        cdef TaskExecutionSpec self = TaskExecutionSpec.__new__(TaskExecutionSpec)
+        self.c_spec.reset(new CTaskExecutionSpec(string))
+        return self
+
     def dependencies(self):
         cdef:
             CObjectID c_id
             c_vector[CObjectID] dependencies = self.c_spec.get().ExecutionDependencies()
         ret = []
         for c_id in dependencies:
-            ret.append(ObjectID.c_id.Binary())
+            ret.append(ObjectID(c_id.Binary()))
         return ret
 
     def num_forwards(self):

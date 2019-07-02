@@ -34,7 +34,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
 
@@ -239,7 +239,7 @@ cdef class RayletClient:
 
     def get_task(self):
         cdef:
-            unique_ptr[CTaskSpecification] task_spec
+            unique_ptr[CTaskSpec] task_spec
 
         with nogil:
             check_status(self.client.get().GetTask(&task_spec))

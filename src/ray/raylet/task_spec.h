@@ -130,7 +130,7 @@ class TaskSpecification : public ConstMessageWrapper<rpc::TaskSpec> {
   ResourceSet required_placement_resources_;
 };
 
-TaskSpecification *CreateTaskSpecification(
+TaskSpecification *CreateTaskSpec(
     const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
     const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
     uint64_t max_actor_reconstructions, const ActorID &actor_id,

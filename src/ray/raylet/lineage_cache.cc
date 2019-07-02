@@ -273,7 +273,7 @@ void LineageCache::FlushTask(const TaskID &task_id) {
              const TaskTableData &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   auto task_data = std::make_shared<TaskTableData>();
-  *task_data->mutable_task() = task->TaskData().GetMessage();
+  task_data->mutable_task()->CopyFrom(task->TaskData().GetMessage());
   RAY_CHECK_OK(task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
                                  task_id, task_data, task_callback));
 
