@@ -24,8 +24,6 @@ class WorkerContext {
 
   const ActorID &GetCurrentActorID() const;
 
-  void SetCurrentActorID(const ActorID &actor_id);
-
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
@@ -39,9 +37,6 @@ class WorkerContext {
 
   /// Job ID for this worker.
   JobID current_job_id;
-
-  /// ID of current actor.
-  ActorID current_actor_id;
 
  private:
   static WorkerThreadContext &GetThreadContext();
