@@ -17,8 +17,7 @@ from ray.function_manager import FunctionDescriptor
 import ray.ray_constants as ray_constants
 import ray.signature as signature
 import ray.worker
-from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID,
-                 DriverID)
+from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID)
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +185,7 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _last_driver_id_exported_for: The ID of the driver ID of the last Ray
+        _last_job_id_exported_for: The ID of the job of the last Ray
             session during which this actor class definition was exported. This
             is an imperfect mechanism used to determine if we need to export
             the remote function again. It is imperfect in the sense that the
@@ -212,7 +211,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._last_driver_id_exported_for = None
+        self._last_job_id_exported_for = None
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
@@ -345,13 +344,12 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if (self._last_driver_id_exported_for is None
-                    or self._last_driver_id_exported_for !=
-                    worker.task_driver_id):
+            if (self._last_job_id_exported_for is None or
+                    self._last_job_id_exported_for != worker.current_job_id):
                 # If this actor class was exported in a previous session, we
                 # need to export this function again, because current GCS
                 # doesn't have it.
-                self._last_driver_id_exported_for = worker.task_driver_id
+                self._last_job_id_exported_for = worker.current_job_id
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
 
@@ -389,7 +387,7 @@ class ActorClass(object):
             actor_id, self._modified_class.__module__, self._class_name,
             actor_cursor, self._actor_method_names, self._method_decorators,
             self._method_signatures, self._actor_method_num_return_vals,
-            actor_cursor, actor_method_cpu, worker.task_driver_id)
+            actor_cursor, actor_method_cpu, worker.current_job_id)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1
@@ -446,9 +444,9 @@ class ActorHandle(object):
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
             this handle goes out of scope.
-        _ray_actor_driver_id: The driver ID of the job that created the actor
-            (it is possible that this ActorHandle exists on a driver with a
-            different driver ID).
+        _ray_actor_job_id: The ID of the job that created the actor
+            (it is possible that this ActorHandle exists on a job with a
+            different job ID).
         _ray_new_actor_handles: The new actor handles that were created from
             this handle since the last task on this handle was submitted. This
             is used to garbage-collect dummy objects that are no longer
@@ -466,10 +464,10 @@ class ActorHandle(object):
                  method_num_return_vals,
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
-                 actor_driver_id,
+                 actor_job_id,
                  actor_handle_id=None):
         assert isinstance(actor_id, ActorID)
-        assert isinstance(actor_driver_id, DriverID)
+        assert isinstance(actor_job_id, ray.JobID)
         self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         # False if this actor handle was created by forking or pickling. True
@@ -491,7 +489,7 @@ class ActorHandle(object):
         self._ray_actor_creation_dummy_object_id = (
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
-        self._ray_actor_driver_id = actor_driver_id
+        self._ray_actor_job_id = actor_job_id
         self._ray_new_actor_handles = []
         self._ray_actor_lock = threading.Lock()
 
@@ -551,7 +549,7 @@ class ActorHandle(object):
                 num_return_vals=num_return_vals + 1,
                 resources={"CPU": self._ray_actor_method_cpus},
                 placement_resources={},
-                driver_id=self._ray_actor_driver_id,
+                job_id=self._ray_actor_job_id,
             )
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
@@ -612,7 +610,7 @@ class ActorHandle(object):
         # not just the first one.
         worker = ray.worker.get_global_worker()
         if (worker.mode == ray.worker.SCRIPT_MODE
-                and self._ray_actor_driver_id.binary() != worker.worker_id):
+                and self._ray_actor_job_id.binary() != worker.worker_id):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
@@ -666,7 +664,7 @@ class ActorHandle(object):
             "actor_creation_dummy_object_id": self.
             _ray_actor_creation_dummy_object_id,
             "actor_method_cpus": self._ray_actor_method_cpus,
-            "actor_driver_id": self._ray_actor_driver_id,
+            "actor_job_id": self._ray_actor_job_id,
             "ray_forking": ray_forking
         }
 
@@ -727,9 +725,9 @@ class ActorHandle(object):
             state["method_num_return_vals"],
             state["actor_creation_dummy_object_id"],
             state["actor_method_cpus"],
-            # This is the driver ID of the driver that owns the actor, not
-            # necessarily the driver that owns this actor handle.
-            state["actor_driver_id"],
+            # This is the ID of the job that owns the actor, not
+            # necessarily the job that owns this actor handle.
+            state["actor_job_id"],
             actor_handle_id=actor_handle_id)
 
     def __getstate__(self):

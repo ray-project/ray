@@ -13,7 +13,7 @@ import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc0;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.FunctionManager.DriverFunctionTable;
+import org.ray.runtime.functionmanager.FunctionManager.JobFunctionTable;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -106,7 +106,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testLoadFunctionTableForClass() {
-    DriverFunctionTable functionTable = new DriverFunctionTable(getClass().getClassLoader());
+    JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
     Map<Pair<String, String>, RayFunction> res = functionTable
         .loadFunctionsForClass(Bar.class.getName());
     // The result should 2 entries, one for the constructor, the other for bar.
@@ -119,13 +119,13 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
-    UniqueId driverId = UniqueId.randomId();
+    UniqueId jobId = UniqueId.randomId();
     final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
-    final String driverResourcePath = resourcePath + "/" + driverId.toString();
-    File driverResourceDir = new File(driverResourcePath);
-    FileUtils.deleteQuietly(driverResourceDir);
-    driverResourceDir.mkdirs();
-    driverResourceDir.deleteOnExit();
+    final String jobResourcePath = resourcePath + "/" + jobId.toString();
+    File jobResourceDir = new File(jobResourcePath);
+    FileUtils.deleteQuietly(jobResourceDir);
+    jobResourceDir.mkdirs();
+    jobResourceDir.deleteOnExit();
 
     String demoJavaFile = "";
     demoJavaFile += "public class DemoApp {\n";
@@ -134,13 +134,13 @@ public class FunctionManagerTest {
     demoJavaFile += "  }\n";
     demoJavaFile += "}";
 
-    // Write the demo java file to the driver resource path.
-    String javaFilePath = driverResourcePath + "/DemoApp.java";
+    // Write the demo java file to the job resource path.
+    String javaFilePath = jobResourcePath + "/DemoApp.java";
     Files.write(Paths.get(javaFilePath), demoJavaFile.getBytes());
 
     // Compile the java file.
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    int result = compiler.run(null, null, null, "-d", driverResourcePath, javaFilePath);
+    int result = compiler.run(null, null, null, "-d", jobResourcePath, javaFilePath);
     if (result != 0) {
       throw new RuntimeException("Couldn't compile Demo.java.");
     }
@@ -149,7 +149,7 @@ public class FunctionManagerTest {
     JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
         "DemoApp", "hello", "()Ljava/lang/String;");
     final FunctionManager functionManager = new FunctionManager(resourcePath);
-    RayFunction func = functionManager.getFunction(driverId, descriptor);
+    RayFunction func = functionManager.getFunction(jobId, descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }
 

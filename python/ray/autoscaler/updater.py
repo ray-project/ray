@@ -231,17 +231,13 @@ class NodeUpdater(object):
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.initialization_commands:
-                    self.ssh_cmd(
-                        cmd, redirect=None if self.verbose else redirect)
+            for cmd in self.initialization_commands:
+                self.ssh_cmd(cmd)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.setup_commands:
-                    self.ssh_cmd(
-                        cmd, redirect=None if self.verbose else redirect)
+            for cmd in self.setup_commands:
+                self.ssh_cmd(cmd)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         logger.info("NodeUpdater: "

@@ -30,6 +30,8 @@ class ClientCall {
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
   virtual void OnReplyReceived() = 0;
+
+  virtual ~ClientCall() = default;
 };
 
 class ClientCallManager;
@@ -47,7 +49,11 @@ using ClientCallback = std::function<void(const Status &status, const Reply &rep
 template <class Reply>
 class ClientCallImpl : public ClientCall {
  public:
-  void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
+  void OnReplyReceived() override {
+    if (callback_ != nullptr) {
+      callback_(GrpcStatusToRayStatus(status_), reply_);
+    }
+  }
 
  private:
   /// Constructor.
@@ -142,7 +148,7 @@ class ClientCallManager {
     bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     while (cq_.Next(&got_tag, &ok)) {
-      ClientCall *call = reinterpret_cast<ClientCall *>(got_tag);
+      auto *call = reinterpret_cast<ClientCall *>(got_tag);
       if (ok) {
         // Post the callback to the main event loop.
         main_service_.post([call]() {
