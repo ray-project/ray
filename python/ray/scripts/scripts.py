@@ -519,7 +519,7 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     required=False,
     default=100,
     type=int,
-    help="Number of lines to show in ")
+    help="Number of lines to tail.")
 @click.option(
     "--cluster-name",
     "-n",
