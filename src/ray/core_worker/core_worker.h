@@ -22,7 +22,7 @@ class CoreWorker {
   /// \param[in] langauge Language of this worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  CoreWorker(const WorkerType worker_type, const WorkerLanguage language,
+  CoreWorker(const WorkerType worker_type, const ray::rpc::Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id = JobID::Nil());
 
@@ -30,7 +30,7 @@ class CoreWorker {
   enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  enum WorkerLanguage Language() const { return language_; }
+  ray::rpc::Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -45,17 +45,11 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
-  /// Translate from WorkLanguage to Language type (required by raylet client).
-  ///
-  /// \param[in] language Language for a task.
-  /// \return Translated task language.
-  ::Language ToTaskLanguage(WorkerLanguage language);
-
   /// Type of this worker.
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const enum WorkerLanguage language_;
+  const ray::rpc::Language language_;
 
   /// Plasma store socket name.
   const std::string store_socket_;
