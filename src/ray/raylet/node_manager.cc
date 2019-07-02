@@ -1934,7 +1934,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     worker.AssignActorId(actor_id);
     // Notify the other node managers that the actor has been created.
     auto new_actor_data = CreateActorTableDataFromCreationTask(task);
-    // Lookup the parent actor id
+    // Lookup the parent actor id.
     auto parent_task_id = task.GetTaskSpecification().ParentTaskId();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
