@@ -16,6 +16,19 @@ if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
     git remote add 'upstream' 'https://github.com/ray-project/ray.git'
 fi
 
+FLAKE8_VERSION=$(python -c "import flake8, sys; print(flake8.__version__); sys.stdout.flush()")
+YAPF_VERSION=$(python -c "import yapf, sys; print(yapf.__version__); sys.stdout.flush()")
+
+if [[ $FLAKE8_VERSION != "3.6.0" ]]; then
+  echo "Please install flake8==3.6.0. You currently are using $FLAKE8_VERSION."
+  exit 1
+fi
+
+if [[ $YAPF_VERSION != "0.23.0" ]]; then
+  echo "Please install yapf==0.23.0. You currently are using $YAPF_VERSION."
+  exit 1
+fi
+
 # Only fetch master since that's the branch we're diffing against.
 git fetch upstream master
 
