@@ -15,10 +15,10 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type, const ::Language langu
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-        new CoreWorkerTaskExecutionInterface(
-        worker_context_, raylet_client_, object_interface_));
+        new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
+                                             object_interface_));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
-  } 
+  }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error

@@ -52,11 +52,12 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::RequestDoneCallback done_callback) override;
+
  private:
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
-  TaskHandler task_handler_;  
+  TaskHandler task_handler_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
 };
