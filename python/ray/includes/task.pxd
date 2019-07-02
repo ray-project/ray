@@ -22,20 +22,32 @@ cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc" nogil:
         void add_object_ids(const c_string &value)
         void set_data(const c_string &value)
 
+    cdef cppclass RpcTaskSpec "ray::rpc::TaskSpec":
+        void CopyFrom(const RpcTaskSpec &value)
+
+    cdef cppclass RpcTaskExecutionSpec "ray::rpc::TaskExecutionSpec":
+        void CopyFrom(const RpcTaskExecutionSpec &value)
+        void add_dependencies(const c_string &value)
+
+    cdef cppclass RpcTask "ray::rpc::Task":
+        RpcTaskSpec *mutable_task_spec()
+        RpcTaskExecutionSpec *mutable_task_execution_spec()
+
 
 cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskSpecification "ray::raylet::TaskSpecification":
         CTaskSpecification(const c_string &serialized_binary)
+        const RpcTaskSpec &GetMessage()
         c_string Serialize() const
 
         CTaskID TaskId() const
         CJobID JobId() const
         CTaskID ParentTaskId() const
-        int64_t ParentCounter() const
+        uint64_t ParentCounter() const
         c_vector[c_string] FunctionDescriptor() const
         c_string FunctionDescriptorString() const
-        int64_t NumArgs() const
-        int64_t NumReturns() const
+        uint64_t NumArgs() const
+        uint64_t NumReturns() const
         c_bool ArgByRef(int64_t arg_index) const
         int ArgIdCount(int64_t arg_index) const
         CObjectID ArgId(int64_t arg_index, int64_t id_index) const
@@ -52,10 +64,10 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
         c_bool IsActorTask() const
         CActorID ActorCreationId() const
         CObjectID ActorCreationDummyObjectId() const
-        int64_t MaxActorReconstructions() const
+        uint64_t MaxActorReconstructions() const
         CActorID ActorId() const
         CActorHandleID ActorHandleId() const
-        int64_t ActorCounter() const
+        uint64_t ActorCounter() const
         CObjectID ActorDummyObject() const
         c_vector[CActorHandleID] NewActorHandles() const
 
@@ -71,7 +83,15 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
         const CLanguage &language, const c_vector[c_string] &function_descriptor,
         const c_vector[c_string] &dynamic_worker_options)
 
+
+cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
+    cdef cppclass CTaskExecutionSpec "ray::raylet::TaskExecutionSpecification":
+        CTaskExecutionSpec(unique_ptr[RpcTaskExecutionSpec] message)
+        const RpcTaskExecutionSpec &GetMessage()
+        c_vector[CObjectID] ExecutionDependencies()
+        uint64_t NumForwards()
+
 cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
-    cdef c_string SerializeTaskAsString(
-        const c_vector[CObjectID] *dependencies,
-        const CTaskSpecification *task_spec)
+    cdef cppclass CTask "ray::raylet::Task":
+        CTask(unique_ptr[RpcTask] message)
+        c_string Serialize()

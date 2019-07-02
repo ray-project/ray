@@ -7,15 +7,17 @@ from libcpp.memory cimport (
 from ray.includes.task cimport (
     CTaskArg,
     CTaskSpecification,
+    CTask,
+    CTaskExecutionSpec,
+    RpcTask,
+    RpcTaskExecutionSpec,
     CreateTaskSpecification,
-    SerializeTaskAsString,
 )
 
 
-cdef class Task:
+cdef class TaskSpec:
     cdef:
         unique_ptr[CTaskSpecification] task_spec
-        unique_ptr[c_vector[CObjectID]] execution_dependencies
 
     def __init__(self, JobID job_id, function_descriptor, arguments,
                  int num_returns, TaskID parent_task_id, int parent_counter,
@@ -23,8 +25,7 @@ cdef class Task:
                  ObjectID actor_creation_dummy_object_id,
                  int32_t max_actor_reconstructions, ActorID actor_id,
                  ActorHandleID actor_handle_id, int actor_counter,
-                 new_actor_handles, execution_arguments, resource_map,
-                 placement_resource_map):
+                 new_actor_handles, resource_map, placement_resource_map):
         cdef:
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
@@ -70,19 +71,10 @@ cdef class Task:
             required_resources, required_placement_resources, LANGUAGE_PYTHON,
             c_function_descriptor, []))
 
-        # Set the task's execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
-        if execution_arguments is not None:
-            for execution_arg in execution_arguments:
-                self.execution_dependencies.get().push_back(
-                    (<ObjectID?>execution_arg).native())
-
     @staticmethod
     cdef make(unique_ptr[CTaskSpecification]& task_spec):
-        cdef Task self = Task.__new__(Task)
+        cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
         self.task_spec.reset(task_spec.release())
-        # The created task does not include any execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
         return self
 
     @staticmethod
@@ -95,11 +87,9 @@ cdef class Task:
         Returns:
             Python task specification object.
         """
-        cdef Task self = Task.__new__(Task)
+        cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
         # TODO(pcm): Use flatbuffers validation here.
         self.task_spec.reset(new CTaskSpecification(task_spec_str))
-        # The created task does not include any execution dependencies.
-        self.execution_dependencies.reset(new c_vector[CObjectID]())
         return self
 
     def to_string(self):
@@ -109,10 +99,6 @@ cdef class Task:
             String representing the task specification.
         """
         return self.task_spec.get().Serialize()
-
-    def _serialized_raylet_task(self):
-        return SerializeTaskAsString(
-            self.execution_dependencies.get(), self.task_spec.get())
 
     def job_id(self):
         """Return the job ID for this task."""
@@ -213,3 +199,44 @@ cdef class Task:
     def actor_counter(self):
         """Return the actor counter for this task."""
         return self.task_spec.get().ActorCounter()
+
+
+cdef class TaskExecutionSpec:
+    cdef:
+        unique_ptr[CTaskExecutionSpec] c_spec
+
+    def __init__(self, execution_dependencies):
+        cdef:
+            RpcTaskExecutionSpec *message = new RpcTaskExecutionSpec()
+
+        for dependency in execution_dependencies:
+            message.add_dependencies(
+                (<ObjectID?>dependency).binary())
+        self.c_spec.reset(new CTaskExecutionSpec(unique_ptr[RpcTaskExecutionSpec](message)))
+
+    def dependencies(self):
+        cdef:
+            CObjectID c_id
+            c_vector[CObjectID] dependencies = self.c_spec.get().ExecutionDependencies()
+        ret = []
+        for c_id in dependencies:
+            ret.append(ObjectID.c_id.Binary())
+        return ret
+
+    def num_forwards(self):
+        return self.c_spec.get().NumForwards()
+
+
+cdef class Task:
+    cdef:
+        unique_ptr[CTask] c_task
+
+    def __init__(self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
+        cdef:
+            RpcTask *message = new RpcTask()
+        message.mutable_task_spec().CopyFrom(task_spec.task_spec.get().GetMessage())
+        message.mutable_task_execution_spec().CopyFrom(task_execution_spec.c_spec.get().GetMessage())
+        self.c_task.reset(new CTask(unique_ptr[RpcTask](message)))
+
+    def serialize(self):
+        return self.c_task.get().Serialize()

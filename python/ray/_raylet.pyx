@@ -232,9 +232,9 @@ cdef class RayletClient:
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def submit_task(self, Task task_spec):
+    def submit_task(self, TaskSpec task_spec, execution_dependencies):
         check_status(self.client.get().SubmitTask(
-            task_spec.execution_dependencies.get()[0],
+            TaskExecutionSpec(execution_dependencies).c_spec.get().ExecutionDependencies(),
             task_spec.task_spec.get()[0]))
 
     def get_task(self):
@@ -243,7 +243,7 @@ cdef class RayletClient:
 
         with nogil:
             check_status(self.client.get().GetTask(&task_spec))
-        return Task.make(task_spec)
+        return TaskSpec.make(task_spec)
 
     def task_done(self):
         check_status(self.client.get().TaskDone())
