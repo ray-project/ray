@@ -268,8 +268,8 @@ class PopulationBasedTraining(FIFOScheduler):
             "pbt_policy_" + trial_to_clone_id + ".txt")
         policy = [
             trial_name, trial_to_clone_name,
-            trial.last_result[TRAINING_ITERATION],
-            trial_to_clone.last_result[TRAINING_ITERATION],
+            trial.last_result.get(TRAINING_ITERATION, 0),
+            trial_to_clone.last_result.get(TRAINING_ITERATION, 0),
             trial_to_clone.config, new_config
         ]
         # Log to global file.

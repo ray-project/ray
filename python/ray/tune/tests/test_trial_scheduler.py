@@ -622,10 +622,14 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def basicSetup(self, resample_prob=0.0, explore=None, log_config=False):
+    def basicSetup(self,
+                   resample_prob=0.0,
+                   explore=None,
+                   perturbation_interval=10,
+                   log_config=False):
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
-            perturbation_interval=10,
+            perturbation_interval=perturbation_interval,
             resample_probability=resample_prob,
             quantile_fraction=0.25,
             hyperparam_mutations={
@@ -958,6 +962,14 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             TrialScheduler.CONTINUE)
         self.assertEqual(trials[0].config["id_factor"], 42)
         self.assertEqual(trials[0].config["float_factor"], 43)
+
+    def testFastIteration(self):
+        pbt, runner = self.basicSetup(
+            resample_prob=0.0, perturbation_interval=1)
+        trials = runner.get_trials()
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[0], result(20, -100)),
+            TrialScheduler.CONTINUE)
 
 
 class AsyncHyperBandSuite(unittest.TestCase):
