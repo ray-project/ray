@@ -9,6 +9,7 @@ import sys
 import time
 import uuid
 
+import ray
 from ray.experimental.streaming.operator import PStrategy
 from ray.experimental.streaming.batched_queue import BatchedQueue
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
