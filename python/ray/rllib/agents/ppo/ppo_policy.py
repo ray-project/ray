@@ -126,7 +126,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
         policy.convert_to_eager(policy.value_function),
         policy.convert_to_eager(policy.kl_coeff),
         mask,
-        entropy_coeff=policy.entropy_coeff,
+        entropy_coeff=policy.convert_to_eager(policy.entropy_coeff),
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
