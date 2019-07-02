@@ -14,7 +14,7 @@ auth:
 
 head_node:
     InstanceType: m5.xlarge
-    ImageId: ami-0888a3b5189309429  # DLAMI
+    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -22,7 +22,7 @@ head_node:
 
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-0888a3b5189309429  # DLAMI
+    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -51,11 +51,7 @@ head_setup_commands: []
 worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
-    - source activate tensorflow_p36 && ray stop
-    - source activate tensorflow_p36 && ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+head_start_ray_commands: []
 
 # Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - source activate tensorflow_p36 && ray stop
-    - source activate tensorflow_p36 && ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+worker_start_ray_commands: []
