@@ -35,7 +35,7 @@ worker_nodes:
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Install nightly Ray wheels.
-    - source activate tensorflow_p36 && pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/<<<RAY_BRANCH>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-cp36-cp36m-manylinux1_x86_64.whl
+    - source activate tensorflow_p36 && pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/master/7859f6c8652634282afd69c1041509e887bc3848/ray-0.8.0-dev2-cp36-cp36m-manylinux1_x86_64.whl
     - source activate tensorflow_p36 && pip install ray[rllib] ray[debug] gym[atari]
     # Uncomment the following if you wish to build Ray instead.
     # - sudo apt-get update
