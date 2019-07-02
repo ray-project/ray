@@ -13,24 +13,19 @@ from collections import defaultdict
 from threading import Thread
 
 import numpy as np
+import ray
+
+logger = logging.getLogger(__name__)
 
 try:
     import psutil
 except ImportError:
     psutil = None
-    logging.warning("System performance monitoring not available."
-                    "Install psutil package.")
 
 try:
     import GPUtil
 except ImportError:
     GPUtil = None
-    logging.warning("GPU system monitoring not available."
-                    "Install gputil package.")
-
-import ray
-
-logger = logging.getLogger(__name__)
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -48,6 +43,12 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
+        if GPUtil is None:
+            logger.warning("Install gputil for GPU system monitoring.")
+
+        if psutil is None:
+            logger.warning("Install psutil to monitor system performance.")
+
         if GPUtil is None and psutil is None:
             return
 
