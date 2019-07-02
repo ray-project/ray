@@ -79,6 +79,7 @@ def run(run_or_experiment,
         sync_function=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
+        global_checkpoint_period=10,
         export_formats=None,
         max_failures=3,
         restore=None,
@@ -137,6 +138,9 @@ def run(run_or_experiment,
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        global_checkpoint_period (int): Seconds between global checkpointing.
+            This does not affect `checkpoint_freq`, which specifies frequency
+            for individual trials.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
         max_failures (int): Try to recover a trial from its last
@@ -244,6 +248,7 @@ def run(run_or_experiment,
             metadata_checkpoint_dir=checkpoint_dir,
             launch_web_server=with_server,
             server_port=server_port,
+            checkpoint_period=global_checkpoint_period,
             verbose=bool(verbose > 1),
             trial_executor=trial_executor)
 

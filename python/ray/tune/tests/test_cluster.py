@@ -273,7 +273,9 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
 
     dirpath = str(tmpdir)
     runner = TrialRunner(
-        BasicVariantGenerator(), metadata_checkpoint_dir=dirpath)
+        BasicVariantGenerator(),
+        metadata_checkpoint_dir=dirpath,
+        checkpoint_period=0)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -360,15 +362,15 @@ from ray import tune
 
 ray.init(redis_address="{redis_address}")
 
-kwargs = dict(
-    run="PG",
-    env="CartPole-v1",
+
+tune.run(
+    "PG",
+    config=dict(env="CartPole-v1"),
     stop=dict(training_iteration=10),
     local_dir="{checkpoint_dir}",
+    global_checkpoint_period=0,
     checkpoint_freq=1,
-    max_failures=1)
-
-tune.run_experiments(
+    max_failures=1,
     dict(experiment=kwargs),
     raise_on_failed_trial=False)
 """.format(
@@ -449,15 +451,13 @@ ray.init(redis_address="{redis_address}")
 
 {fail_class_code}
 
-kwargs = dict(
-    run={fail_class},
+tune.run(
+    {fail_class},
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
-    max_failures=1)
-
-tune.run_experiments(
-    dict(experiment=kwargs),
+    global_checkpoint_period=0,
+    max_failures=1,
     raise_on_failed_trial=False)
 """.format(
         redis_address=cluster.redis_address,
