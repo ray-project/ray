@@ -12,6 +12,7 @@ import tempfile
 import shutil
 import ray
 
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
                                  TrialScheduler)
@@ -938,7 +939,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
-            trial.last_result = {}
+            trial.last_result = {TRAINING_ITERATION: i}
         pbt.on_trial_result(runner, trials[0], result(15, -100))
         pbt.on_trial_result(runner, trials[0], result(20, -100))
         pbt.on_trial_result(runner, trials[2], result(20, 40))
