@@ -353,3 +353,36 @@ def test_serial_tasks_reading_same_signal(ray_start_regular):
     assert len(result_list) == 1
     result_list = ray.get(f.remote([a]))
     assert len(result_list) == 1
+
+
+def test_non_integral_receive_timeout(ray_start_regular):
+    @ray.remote
+    def send_signal(value):
+        signal.send(UserSignal(value))
+
+    a = send_signal.remote(0)
+    # make sure send_signal had a chance to execute
+    ray.get(a)
+
+    result_list = ray.experimental.signal.receive([a], timeout=0.1)
+
+    assert len(result_list) == 1
+
+
+def test_small_receive_timeout(ray_start_regular):
+    """ Test that receive handles timeout smaller than the 1ms min
+    """
+    # 0.1 ms
+    small_timeout = 1e-4
+
+    @ray.remote
+    def send_signal(value):
+        signal.send(UserSignal(value))
+
+    a = send_signal.remote(0)
+    # make sure send_signal had a chance to execute
+    ray.get(a)
+
+    result_list = ray.experimental.signal.receive([a], timeout=small_timeout)
+
+    assert len(result_list) == 1

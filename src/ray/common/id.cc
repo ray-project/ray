@@ -85,7 +85,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-TaskID TaskID::GetDriverTaskID(const DriverID &driver_id) {
+TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return TaskID::FromBinary(driver_id_str);
@@ -105,20 +105,20 @@ ObjectID ObjectID::ForPut(const TaskID &task_id, int64_t put_index) {
 }
 
 ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, int64_t return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns) << "index="
-                                                                  << return_index;
+  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns)
+      << "index=" << return_index;
   ObjectID object_id;
   std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
   object_id.index_ = return_index;
   return object_id;
 }
 
-const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
                             int parent_task_counter) {
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(driver_id.Data()), driver_id.Size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
                 parent_task_id.Size());
   sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
@@ -127,6 +127,16 @@ const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
   return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
+}
+
+const WorkerID ComputeDriverId(const JobID &job_id) {
+  // Currently, a job id equals its driver id.
+  return WorkerID(job_id);
+}
+
+const JobID ComputeJobId(const WorkerID &driver_id) {
+  // Currently, a job id equals its driver id.
+  return JobID(driver_id);
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \

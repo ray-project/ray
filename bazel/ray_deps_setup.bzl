@@ -67,7 +67,7 @@ def ray_deps_setup():
     new_git_repository(
         name = "plasma",
         build_file = "@//bazel:BUILD.plasma",
-        commit = "9fcc12fc094b85ec2e3e9798bae5c8151d14df5e",
+        commit = "aa9f08c2b927dee09f6193033f1678fb1d42114c",
         remote = "https://github.com/apache/arrow",
     )
 
@@ -100,4 +100,19 @@ def ray_deps_setup():
         # TODO(qwang): We should use the repository of `jupp0r` here when this PR
         # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
         urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
+    )
+
+    http_archive(
+        name = "com_github_grpc_grpc",
+        urls = [
+            "https://github.com/grpc/grpc/archive/76a381869413834692b8ed305fbe923c0f9c4472.tar.gz",
+        ],
+        strip_prefix = "grpc-76a381869413834692b8ed305fbe923c0f9c4472",
+    )
+
+    http_archive(
+        name = "build_stack_rules_proto",
+        urls = ["https://github.com/stackb/rules_proto/archive/b93b544f851fdcd3fc5c3d47aee3b7ca158a8841.tar.gz"],
+        sha256 = "c62f0b442e82a6152fcd5b1c0b7c4028233a9e314078952b6b04253421d56d61",
+        strip_prefix = "rules_proto-b93b544f851fdcd3fc5c3d47aee3b7ca158a8841",
     )

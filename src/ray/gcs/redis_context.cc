@@ -48,28 +48,28 @@ namespace gcs {
 
 CallbackReply::CallbackReply(redisReply *redis_reply) {
   RAY_CHECK(nullptr != redis_reply);
-  RAY_CHECK(redis_reply->type != REDIS_REPLY_ERROR) << "Got an error in redis reply: "
-                                                    << redis_reply->str;
+  RAY_CHECK(redis_reply->type != REDIS_REPLY_ERROR)
+      << "Got an error in redis reply: " << redis_reply->str;
   this->redis_reply_ = redis_reply;
 }
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == redis_reply_->type; }
 
 int64_t CallbackReply::ReadAsInteger() const {
-  RAY_CHECK(REDIS_REPLY_INTEGER == redis_reply_->type) << "Unexpected type: "
-                                                       << redis_reply_->type;
+  RAY_CHECK(REDIS_REPLY_INTEGER == redis_reply_->type)
+      << "Unexpected type: " << redis_reply_->type;
   return static_cast<int64_t>(redis_reply_->integer);
 }
 
 std::string CallbackReply::ReadAsString() const {
-  RAY_CHECK(REDIS_REPLY_STRING == redis_reply_->type) << "Unexpected type: "
-                                                      << redis_reply_->type;
+  RAY_CHECK(REDIS_REPLY_STRING == redis_reply_->type)
+      << "Unexpected type: " << redis_reply_->type;
   return std::string(redis_reply_->str, redis_reply_->len);
 }
 
 Status CallbackReply::ReadAsStatus() const {
-  RAY_CHECK(REDIS_REPLY_STATUS == redis_reply_->type) << "Unexpected type: "
-                                                      << redis_reply_->type;
+  RAY_CHECK(REDIS_REPLY_STATUS == redis_reply_->type)
+      << "Unexpected type: " << redis_reply_->type;
   const std::string status_str(redis_reply_->str, redis_reply_->len);
   if ("OK" == status_str) {
     return Status::OK();
@@ -79,8 +79,8 @@ Status CallbackReply::ReadAsStatus() const {
 }
 
 std::string CallbackReply::ReadAsPubsubData() const {
-  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply_->type) << "Unexpected type: "
-                                                     << redis_reply_->type;
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply_->type)
+      << "Unexpected type: " << redis_reply_->type;
 
   std::string data = "";
   // Parse the published message.

@@ -165,9 +165,10 @@ class NodeUpdater(object):
                 logger.debug("NodeUpdater: "
                              "{}: Waiting for SSH...".format(self.node_id))
 
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "uptime", connect_timeout=5, redirect=redirect)
+                # Setting redirect=False allows the user to see errors like
+                # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
+                # for Unix domain socket.
+                self.ssh_cmd("uptime", connect_timeout=5, redirect=False)
 
                 return True
 
@@ -225,15 +226,13 @@ class NodeUpdater(object):
 
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.initialization_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.initialization_commands:
+                self.ssh_cmd(cmd)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.setup_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.setup_commands:
+                self.ssh_cmd(cmd)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         logger.info("NodeUpdater: "

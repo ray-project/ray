@@ -149,9 +149,13 @@ class SchedulingQueue {
   /// Create a scheduling queue.
   SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
     for (const auto &task_state : {
-             TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
-             TaskState::RUNNING, TaskState::INFEASIBLE,
-             TaskState::WAITING_FOR_ACTOR_CREATION, TaskState::SWAP,
+             TaskState::PLACEABLE,
+             TaskState::WAITING,
+             TaskState::READY,
+             TaskState::RUNNING,
+             TaskState::INFEASIBLE,
+             TaskState::WAITING_FOR_ACTOR_CREATION,
+             TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
@@ -279,11 +283,11 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
-  /// \brief Get all the task IDs for a driver.
+  /// \brief Get all the task IDs for a job.
   ///
-  /// \param driver_id All the tasks that have the given driver_id are returned.
-  /// \return All the tasks that have the given driver ID.
-  std::unordered_set<TaskID> GetTaskIdsForDriver(const DriverID &driver_id) const;
+  /// \param job_id All the tasks that have the given job_id are returned.
+  /// \return All the tasks that have the given job ID.
+  std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
 
   /// \brief Get all the task IDs for an actor.
   ///

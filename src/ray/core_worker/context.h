@@ -1,7 +1,7 @@
 #ifndef RAY_CORE_WORKER_CONTEXT_H
 #define RAY_CORE_WORKER_CONTEXT_H
 
-#include "common.h"
+#include "ray/core_worker/common.h"
 #include "ray/raylet/task_spec.h"
 
 namespace ray {
@@ -10,13 +10,13 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const DriverID &driver_id);
+  WorkerContext(WorkerType worker_type, const JobID &job_id);
 
   const WorkerType GetWorkerType() const;
 
-  const ClientID &GetWorkerID() const;
+  const WorkerID &GetWorkerID() const;
 
-  const DriverID &GetCurrentDriverID() const;
+  const JobID &GetCurrentJobID() const;
 
   const TaskID &GetCurrentTaskID() const;
 
@@ -31,10 +31,10 @@ class WorkerContext {
   const WorkerType worker_type;
 
   /// ID for this worker.
-  const ClientID worker_id;
+  const WorkerID worker_id;
 
-  /// Driver ID for this worker.
-  DriverID current_driver_id;
+  /// Job ID for this worker.
+  JobID current_job_id;
 
  private:
   static WorkerThreadContext &GetThreadContext();

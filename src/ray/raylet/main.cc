@@ -22,6 +22,7 @@ DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
+DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
@@ -61,6 +62,7 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
+  const std::string session_dir = FLAGS_session_dir;
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
@@ -69,7 +71,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.7.1"},
+      {ray::stats::VersionKey, "0.7.2"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -132,6 +134,7 @@ int main(int argc, char *argv[]) {
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;
+  node_manager_config.session_dir = session_dir;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
@@ -143,14 +146,13 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-  object_manager_config.max_sends = std::max(1, num_cpus / 4);
-  object_manager_config.max_receives = std::max(1, num_cpus / 4);
+  object_manager_config.rpc_service_threads_number = std::max(2, num_cpus / 2);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                 << "max_sends = " << object_manager_config.max_sends << "\n"
-                 << "max_receives = " << object_manager_config.max_receives << "\n"
+                 << "rpc_service_threads_number = "
+                 << object_manager_config.rpc_service_threads_number
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.
@@ -171,7 +173,7 @@ int main(int argc, char *argv[]) {
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
-      const boost::system::error_code &error, int signal_number) {
+                     const boost::system::error_code &error, int signal_number) {
     auto shutdown_callback = [&server, &main_service]() {
       server.reset();
       main_service.stop();
