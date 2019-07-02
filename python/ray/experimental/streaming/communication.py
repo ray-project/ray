@@ -90,7 +90,7 @@ class DataChannel(object):
         if not self.write_buffer:
             return
 
-        args = [[self.write_buffer], self.id]
+        args = [self.write_buffer, self.id]
         obj_id = self.destination_actor.apply._remote(
                 args=args,
                 kwargs={},
@@ -143,14 +143,15 @@ class DataChannel(object):
         return self.__try_flush()
 
     def push_next_batch(self, batch):
-        args = [[batch], self.id]
-        obj_id = self.destination_actor.apply._remote(
+        args = [batch, self.id]
+        obj_id = self.destination_actor.apply_batch._remote(
                 args=args,
                 kwargs={},
                 num_return_vals=1)
         self.task_queue.append(obj_id)
         self._wait_for_consumer()
         self.last_flush_time = time.time()
+        return True
 
     # Registers source actor handle
     def register_source_actor(self, actor_handle):
@@ -379,29 +380,34 @@ class DataOutput(object):
              also marked as 'closed' (True) or not (False) after flushing.
         """
         for channel in self.forward_channels:
+            channel._flush_writes()
             if close is True:
                 channel.push_next(None)
-            channel._flush_writes()
+                channel._flush_writes()
         for channels in self.shuffle_channels:
             for channel in channels:
+                channel._flush_writes()
                 if close is True:
                     channel.push_next(None)
-                channel._flush_writes()
+                    channel._flush_writes()
         for channels in self.shuffle_key_channels:
             for channel in channels:
+                channel._flush_writes()
                 if close is True:
                     channel.push_next(None)
-                channel._flush_writes()
+                    channel._flush_writes()
         for channels in self.round_robin_channels:
             for channel in channels:
+                channel._flush_writes()
                 if close is True:
                     channel.push_next(None)
-                channel._flush_writes()
+                    channel._flush_writes()
         for channels in self.custom_partitioning_channels:
             for channel in channels:
+                channel._flush_writes()
                 if close is True:
                     channel.push_next(None)
-                channel._flush_writes()
+                    channel._flush_writes()
 
         if self.logging:  # Log rate (records/s)
             self.__log(force=close)  # force=True only on termination
@@ -489,7 +495,7 @@ class DataOutput(object):
             self.__log(batch_size=1)
 
     def _push_batch(self, record_batch, input_channel_id=None):
-        assert(input_channel_id==-1)  # Make sure it's the source
+        # assert input_channel_id == -1
         assert isinstance(record_batch, list)
         # Simple forwarding
         for channel in self.forward_channels:

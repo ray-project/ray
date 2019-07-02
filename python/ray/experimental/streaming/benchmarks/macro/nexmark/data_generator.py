@@ -133,6 +133,16 @@ class LatencySink(object):
             # TODO (john): Clock skew might distort elapsed time
             self.state.append(time.time() - generation_time)
 
+    # Evicts next record
+    def evict_batch(self, batch):
+        for record in batch:
+            if record["event_type"] == "Watermark":
+                return  # Ignore watermarks
+            generation_time = record["system_time"]
+            if generation_time is not None:
+                # TODO (john): Clock skew might distort elapsed time
+                self.state.append(time.time() - generation_time)
+
     # Closes the sink
     def close(self):
         pass

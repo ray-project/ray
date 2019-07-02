@@ -83,16 +83,14 @@ parser.add_argument("--flush-timeout", default=0.1,
 # def dollar_to_euro(price_in_dollars):
 #     return price_in_dollars * 0.9
 
-def map_function(bid):
-    bid["price"] = bid["price"] * 0.9
-    return bid
+# def map_function(bid):
+#     bid["price"] = bid["price"] * 0.9
+#     return bid
 
-# def map_function(batch):
-#     for bid in batch:
-#         bid["price"] = dollar_to_euro(bid["price"])
-#         # record = Record(auction=bid.auction, bidder=bid.bidder,
-#         #            price=bid.price, date_time=bid.dateTime,
-#         #            system_time=bid.system_time)
+def map_function(batch):
+    for bid in batch:
+        bid["price"] = bid["price"] * 0.9
+    return batch
 
 if __name__ == "__main__":
 

@@ -132,29 +132,20 @@ class OperatorInstance(object):
         return (self.instance_id, self.input.rates,
                 self.output.rates)
 
-    def apply(self, batches, channel_id):
-        for batch in batches:
-            for record in batch:
-                if record is None:
-                    if self.input._close_channel(channel_id):
-                        # logger.debug("Closing channel {}".format(
-                        #                                   channel_id))
-                        self.output._flush(close=True)
-                        signal.send(ActorExit(self.instance_id))
-                else:  # Apply the operator-specific logic. This may or may
-                    # not push a record to the downstream actors.
-                    self._apply(record)
+    def apply(self, batch, channel_id):
+        for record in batch:
+            if record is None:
+                if self.input._close_channel(channel_id):
+                    # logger.debug("Closing channel {}".format(
+                    #                                   channel_id))
+                    self.output._flush(close=True)
+                    signal.send(ActorExit(self.instance_id))
+            else:  # Apply the operator-specific logic. This may or may
+                # not push a record to the downstream actors.
+                self._apply(record)
 
-    def apply_batch(self, batches, channel_id):
-        for batch in batches:
-            for record in batch:
-                if record is None:
-                    if self.input._close_channel(channel_id):
-                        # logger.debug("Closing channel {}".format(
-                        #                                   channel_id))
-                        self.output._flush(close=True)
-                        signal.send(ActorExit(self.instance_id))
-            self._apply_batch(batch)
+    def apply_batch(self, batch, channel_id):
+        self._apply_batch(batch)
 
     def _apply(self, record):
         raise Exception("OperatorInstances must implement _apply()")
@@ -262,8 +253,8 @@ class Map(OperatorInstance):
     def _apply(self, record):
         self.output._push(self.map_fn(record))
 
-    # def _apply_batch(self, batch):
-    #     self.output._push_batch(self.map_fn(batch))
+    def _apply_batch(self, batch):
+        self.output._push_batch(self.map_fn(batch))
 
 # Flatmap actor
 @ray.remote
@@ -714,6 +705,11 @@ class Sink(OperatorInstance):
     def _apply(self, record):
         # logger.debug("SINK %s", record)
         self.state.evict(record)
+
+    # Task-based sink execution on a set of batches
+    def _apply_batch(self, batch):
+        # logger.debug("SINK %s", record)
+        self.state.evict_batch(batch)
 
     # Returns the sink's state
     def state(self):
