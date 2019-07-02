@@ -33,10 +33,6 @@ static const std::vector<std::string> node_manager_message_enum =
     GenerateEnumNames(ray::protocol::EnumNamesMessageType(),
                       static_cast<int>(ray::protocol::MessageType::MIN),
                       static_cast<int>(ray::protocol::MessageType::MAX));
-static const std::vector<std::string> object_manager_message_enum =
-    GenerateEnumNames(ray::object_manager::protocol::EnumNamesMessageType(),
-                      static_cast<int>(ray::object_manager::protocol::MessageType::MIN),
-                      static_cast<int>(ray::object_manager::protocol::MessageType::MAX));
 }  // namespace
 
 namespace ray {
@@ -56,15 +52,9 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                     object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
-      socket_(main_service),
-      object_manager_acceptor_(
-          main_service,
-          boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(),
-                                         object_manager_config.object_manager_port)),
-      object_manager_socket_(main_service) {
+      socket_(main_service) {
   // Start listening for clients.
   DoAccept();
-  DoAcceptObjectManager();
 
   RAY_CHECK_OK(RegisterGcs(
       node_ip_address, socket_name_, object_manager_config.store_socket_name,
@@ -94,7 +84,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   client_info.set_node_manager_address(node_ip_address);
   client_info.set_raylet_socket_name(raylet_socket_name);
   client_info.set_object_store_socket_name(object_store_socket_name);
-  client_info.set_object_manager_port(object_manager_acceptor_.local_endpoint().port());
+  client_info.set_object_manager_port(object_manager_.GetServerPort());
   client_info.set_node_manager_port(node_manager_.GetServerPort());
   // Add resource information.
   for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
@@ -113,28 +103,6 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 
   return Status::OK();
-}
-
-void Raylet::DoAcceptObjectManager() {
-  object_manager_acceptor_.async_accept(
-      object_manager_socket_, boost::bind(&Raylet::HandleAcceptObjectManager, this,
-                                          boost::asio::placeholders::error));
-}
-
-void Raylet::HandleAcceptObjectManager(const boost::system::error_code &error) {
-  ClientHandler<boost::asio::ip::tcp> client_handler =
-      [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
-  MessageHandler<boost::asio::ip::tcp> message_handler =
-      [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-             const uint8_t *message) {
-        object_manager_.ProcessClientMessage(client, message_type, message);
-      };
-  // Accept a new TCP client and dispatch it to the node manager.
-  auto new_connection = TcpClientConnection::Create(
-      client_handler, message_handler, std::move(object_manager_socket_),
-      "object manager", object_manager_message_enum,
-      static_cast<int64_t>(object_manager::protocol::MessageType::DisconnectClient));
-  DoAcceptObjectManager();
 }
 
 void Raylet::DoAccept() {

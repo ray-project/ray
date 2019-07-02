@@ -14,8 +14,8 @@ namespace rpc {
 class NodeManagerServiceHandler {
  public:
   /// Handle a `ForwardTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
