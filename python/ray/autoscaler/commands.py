@@ -205,11 +205,19 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         remote_key_path = "~/ray_bootstrap_key.pem"
         remote_config = copy.deepcopy(config)
         remote_config["auth"]["ssh_private_key"] = remote_key_path
+        use_docker = bool(remote_config["docker"]["container_name"])
 
         # Adjust for new file locations
         new_mounts = {}
-        for remote_path in config["file_mounts"]:
-            new_mounts[remote_path] = remote_path
+
+        if use_docker:
+            assert "cp_files" in remote_config["docker"]
+            for docker_internal_path, host_path in (
+                    remote_config["docker"]["cp_files"].items()):
+                new_mounts[host_path] = docker_internal_path
+        else:
+            for remote_path in config["file_mounts"]:
+                new_mounts[remote_path] = remote_path
         remote_config["file_mounts"] = new_mounts
         remote_config["no_restart"] = no_restart
 
@@ -262,7 +270,6 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             "Head node up-to-date, IP address is: {}".format(head_node_ip))
 
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
-        use_docker = bool(config["docker"]["container_name"])
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))
@@ -411,6 +418,28 @@ def _exec(updater, cmd, screen, tmux, expect_error=False, port_forward=None):
             allocate_tty=True,
             expect_error=expect_error,
             port_forward=port_forward)
+
+
+def copy_to_docker(config_file, target_script, override_cluster_name):
+    """Rsyncs files.
+
+    Arguments:
+        config_file: path to the cluster yaml
+        target: target file on host
+        override_cluster_name: set the name of the cluster
+    """
+    config = yaml.load(open(config_file).read())
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+    config = _bootstrap_config(config)
+    base_path = os.path.basename(target_script)
+    cname = config["docker"]["container_name"]
+    cmd = "docker cp {} {}:{}".format(target_script, cname, base_path)
+    cmd = cmd + " && " + with_docker_exec(
+        ["cp {} {}".format("/" + base_path, os.path.join("~", base_path))],
+        container_name=cname)[0]
+    exec_cluster(config_file, cmd, False, False, False, False, False,
+                 override_cluster_name, None)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):

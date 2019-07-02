@@ -13,7 +13,8 @@ import sys
 import ray.services as services
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, rsync,
-    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
+    copy_to_docker)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -608,7 +609,8 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
 
     target = os.path.join("~", os.path.basename(script))
     rsync(cluster_config_file, script, target, cluster_name, down=False)
-
+    if docker:
+        copy_to_docker(cluster_config_file, target, cluster_name)
     command_parts = ["python", target]
     if args is not None:
         command_parts += [args]

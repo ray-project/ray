@@ -95,7 +95,8 @@ CLUSTER_CONFIG_SCHEMA = {
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
             # shared options for starting head/worker docker
             "run_options": (list, OPTIONAL),
-
+            # Volume mounts for docker exec -v
+            "volumes": (dict, OPTIONAL),
             # image for head node, takes precedence over "image" if specified
             "head_image": (str, OPTIONAL),
             # head specific run options, appended to run_options
@@ -104,6 +105,9 @@ CLUSTER_CONFIG_SCHEMA = {
             "worker_image": (str, OPTIONAL),
             # analogous to head_run_options
             "worker_run_options": (list, OPTIONAL),
+            # This field is controlled by ray's Docker configuration
+            #  and cannot be set by the user.
+            "cp_files": (None, OPTIONAL),
         },
         OPTIONAL),
 
@@ -714,12 +718,12 @@ def check_required(config, schema):
                 check_required(config[k], v)
 
 
-def check_extraneous(config, schema):
+def check_types(config, schema, strict_include=False):
     """Make sure all items of config are in schema"""
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
     for k in config:
-        if k not in schema:
+        if k not in schema and strict_include:
             raise ValueError("Unexpected config key `{}` not in {}".format(
                 k, list(schema.keys())))
         v, kreq = schema[k]
@@ -734,7 +738,7 @@ def check_extraneous(config, schema):
                         k,
                         type(config[k]).__name__, v.__name__))
         else:
-            check_extraneous(config[k], v)
+            check_types(config[k], v)
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
@@ -743,7 +747,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
         raise ValueError("Config {} is not a dictionary".format(config))
 
     check_required(config, schema)
-    check_extraneous(config, schema)
+    check_types(config, schema)
 
 
 def fillout_defaults(config):

@@ -11,6 +11,8 @@ except ImportError:  # py2
 
 logger = logging.getLogger(__name__)
 
+STAGING_PATH = "~/ray_staging/"
+
 
 def dockerize_if_needed(config):
     if "docker" not in config:
@@ -35,24 +37,37 @@ def dockerize_if_needed(config):
         return config
     else:
         assert cname, "Must provide container name!"
-    docker_mounts = {dst: dst for dst in config["file_mounts"]}
+
+    docker_cp_files = {}
+    new_file_mounts = {}
+
+    for dst, src in config["file_mounts"].items():
+        staged_dst = os.path.join(STAGING_PATH, dst)
+        new_file_mounts[staged_dst] = src
+        docker_cp_files[dst] = staged_dst
+
+    config["file_mounts"] = new_file_mounts
+    config["docker"]["cp_files"] = docker_cp_files
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          docker_mounts, cname,
+                                          config["docker"]["volumes"], cname,
                                           run_options + head_run_options)
 
     worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            docker_mounts, cname,
+                                            config["docker"]["volumes"], cname,
                                             run_options + worker_run_options)
 
-    config["head_setup_commands"] = head_docker_start + (with_docker_exec(
-        config["head_setup_commands"], container_name=cname))
+    config["head_setup_commands"] = (
+        head_docker_start + docker_cp_file_cmds(docker_cp_files, cname) +
+        with_docker_exec(config["head_setup_commands"], container_name=cname))
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
-    config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
-        config["worker_setup_commands"], container_name=cname))
+    config["worker_setup_commands"] = (
+        worker_docker_start + docker_cp_file_cmds(
+            docker_cp_files, cname) + with_docker_exec(
+                config["worker_setup_commands"], container_name=cname))
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
@@ -112,14 +127,23 @@ def docker_start_cmds(user, image, mount, cname, user_options):
 
 
 def docker_autoscaler_setup(cname):
-    cmds = []
-    for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
-        # needed because docker doesn't allow relative paths
-        base_path = os.path.basename(path)
-        cmds.append("docker cp {path} {cname}:{dpath}".format(
-            path=path, dpath=base_path, cname=cname))
+    # needed because docker doesn't allow relative paths
+    files = {
+        os.path.basename(path): path
+        for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]
+    }
+    cmds = docker_cp_file_cmds(files, cname)
+    for base_name, path in files.items():
         cmds.extend(
             with_docker_exec(
-                ["cp {} {}".format("/" + base_path, path)],
+                ["cp {} {}".format("/" + base_name, path)],
                 container_name=cname))
+    return cmds
+
+
+def docker_cp_file_cmds(files, cname):
+    cmds = []
+    for dst, src in files.items():
+        cmds.append("docker cp {path} {cname}:{dpath}".format(
+            path=src, dpath=dst, cname=cname))
     return cmds
