@@ -34,6 +34,11 @@ cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc" nogil:
         RpcTaskExecutionSpec *mutable_task_execution_spec()
 
 
+cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
+    cdef cppclass TaskTableData "ray::rpc::TaskTableData":
+        RpcTask *mutable_task()
+        const c_string &SerializeAsString()
+
 cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskSpecification "ray::raylet::TaskSpecification":
         CTaskSpecification(const c_string &serialized_binary)

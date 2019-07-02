@@ -5,13 +5,14 @@ from libcpp.memory cimport (
     static_pointer_cast,
 )
 from ray.includes.task cimport (
-    CTaskArg,
-    CTaskSpecification,
     CTask,
+    CTaskArg,
     CTaskExecutionSpec,
+    CTaskSpecification,
+    CreateTaskSpecification,
     RpcTask,
     RpcTaskExecutionSpec,
-    CreateTaskSpecification,
+    TaskTableData,
 )
 
 
@@ -238,5 +239,10 @@ cdef class Task:
         message.mutable_task_execution_spec().CopyFrom(task_execution_spec.c_spec.get().GetMessage())
         self.c_task.reset(new CTask(unique_ptr[RpcTask](message)))
 
-    def serialize(self):
-        return self.c_task.get().Serialize()
+
+def generate_gcs_task_table_data(TaskSpec task_spec):
+    cdef:
+        TaskTableData task_table_data
+    task_table_data.mutable_task().mutable_task_spec().CopyFrom(
+        task_spec.task_spec.get().GetMessage())
+    return task_table_data.SerializeAsString()

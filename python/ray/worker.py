@@ -1871,12 +1871,8 @@ def connect(node,
             {},  # resource_map.
             {},  # placement_resource_map.
         )
-        driver_task = ray._raylet.Task(
-            driver_task_spec,
-            ray._raylet.TaskExecutionSpec([]),
-        )
-        task_table_data = ray.gcs_utils.TaskTableData()
-        task_table_data.task = driver_task.serialize()
+        task_table_data = ray._raylet.generate_gcs_task_table_data(
+            driver_task_spec)
 
         # Add the driver task to the task table.
         ray.state.state._execute_command(
@@ -1884,7 +1880,8 @@ def connect(node,
             ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
             ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
             driver_task_spec.task_id().binary(),
-            task_table_data.SerializeToString())
+            task_table_data,
+        )
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.

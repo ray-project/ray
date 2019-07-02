@@ -72,12 +72,8 @@ message TaskReconstructionData {
   bytes node_manager_id = 2;
 }
 
-// TODO(hchen): Task table currently still uses flatbuffers-defined data structure
-// (`Task` in `node_manager.fbs`), because a lot of code depends on that. This should
-// be migrated to protobuf very soon.
 message TaskTableData {
-  // Flatbuffers-serialized content of the task, see `src/ray/raylet/task.h`.
-  bytes task = 1;
+  Task task = 1;
 }
 
 message ActorTableData {

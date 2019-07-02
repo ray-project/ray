@@ -272,9 +272,8 @@ void LineageCache::FlushTask(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
              const TaskTableData &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
-  // TODO(swang): Make this better...
   auto task_data = std::make_shared<TaskTableData>();
-  task_data->set_task(task->TaskData().Serialize());
+  *task_data->mutable_task() = task->TaskData().GetMessage();
   RAY_CHECK_OK(task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
                                  task_id, task_data, task_callback));
 
