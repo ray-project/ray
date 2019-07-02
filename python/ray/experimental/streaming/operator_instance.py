@@ -678,8 +678,8 @@ class Source(OperatorInstance):
                 return
             self.output._push_batch(record_batch, -1)
             # TODO (john): Handle the case a record does not have event time
-            logger.debug("Source watermark: {}. Last record time: {}".format(
-                    self.max_event_time, record_batch[-1]["dateTime"]))
+            # logger.debug("Source watermark: {}. Last record time: {}".format(
+            #         self.max_event_time, record_batch[-1]["dateTime"]))
             if self.watermark_interval > 0:  # Watermarks are activated
                 self.__watermark(record_batch)
             # Measure source throughput every 10K records
