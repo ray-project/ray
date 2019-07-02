@@ -855,7 +855,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     const JobID job_id = from_flatbuf<JobID>(*message->worker_id());
     // Compute a dummy driver task id from a given driver.
-    const TaskID driver_task_id = ComputeDriverTaskId(job_id);
+    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(job_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
     worker_pool_.RegisterDriver(std::move(worker));
