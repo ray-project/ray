@@ -508,7 +508,7 @@ class StandardAutoscaler(object):
     def reload_config(self, errors_fatal=False):
         try:
             with open(self.config_path) as f:
-                new_config = yaml.load(f.read())
+                new_config = yaml.load(f.read(), Loader=yaml.FullLoader)
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
