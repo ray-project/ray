@@ -395,6 +395,7 @@ class GlobalState(object):
         """
         # Allow the argument to be either a DriverID or a hex string.
         if not isinstance(job_id, ray.JobID):
+            assert isinstance(job_id, str)
             job_id = ray.JobID(hex_to_binary(job_id))
 
         # Return information about a single job ID.
@@ -426,7 +427,13 @@ class GlobalState(object):
     def job_table(self):
         """Fetch and parse the Redis job table.
          Returns:
-            Information about the Ray jobs in the cluster.
+            Information about the Ray jobs in the cluster,
+            namely a list of dicts with keys:
+            - "JobID" (sha1 identifier for the job),
+            - "NodeManagerAddress" (IP address of the driver for this job),
+            - "DriverPid" (process ID of the driver for this job),
+            - "StartTime" (UNIX timestamp of the start time of this job),
+            - "StopTime" (UNIX timestamp of the stop time of this job, if any)
         """
         self._check_connected()
 
