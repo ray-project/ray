@@ -9,7 +9,7 @@ message AssignTaskRequest {
   // TODO(hchen): Currently, `task_spec` are represented as
   // flatbutters-serialized bytes. This is because the flatbuffers-defined Task data
   // structure is being used in many places. We should move Task and all related data
-  // strucutres to protobuf.
+  // structures to protobuf.
   bytes task_spec = 2;
 }
 
