@@ -2,9 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.utils.annotations import override
+import logging
+import numpy as np
+
+from ray.rllib.utils.annotations import override, PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class VectorEnv(object):
     """An environment that supports batch evaluation.
 
@@ -17,9 +23,15 @@ class VectorEnv(object):
     """
 
     @staticmethod
-    def wrap(make_env=None, existing_envs=None, num_envs=1):
-        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs)
+    def wrap(make_env=None,
+             existing_envs=None,
+             num_envs=1,
+             action_space=None,
+             observation_space=None):
+        return _VectorizedGymEnv(make_env, existing_envs or [], num_envs,
+                                 action_space, observation_space)
 
+    @PublicAPI
     def vector_reset(self):
         """Resets all environments.
 
@@ -28,6 +40,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def reset_at(self, index):
         """Resets a single environment.
 
@@ -36,6 +49,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def vector_step(self, actions):
         """Vectorized step.
 
@@ -50,6 +64,7 @@ class VectorEnv(object):
         """
         raise NotImplementedError
 
+    @PublicAPI
     def get_unwrapped(self):
         """Returns the underlying env instances."""
         raise NotImplementedError
@@ -65,14 +80,20 @@ class _VectorizedGymEnv(VectorEnv):
         num_envs (int): Desired num gym envs to keep total.
     """
 
-    def __init__(self, make_env, existing_envs, num_envs):
+    def __init__(self,
+                 make_env,
+                 existing_envs,
+                 num_envs,
+                 action_space=None,
+                 observation_space=None):
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
-        self.action_space = self.envs[0].action_space
-        self.observation_space = self.envs[0].observation_space
+        self.action_space = action_space or self.envs[0].action_space
+        self.observation_space = observation_space or \
+            self.envs[0].observation_space
 
     @override(VectorEnv)
     def vector_reset(self):
@@ -86,9 +107,16 @@ class _VectorizedGymEnv(VectorEnv):
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
-            obs, rew, done, info = self.envs[i].step(actions[i])
+            obs, r, done, info = self.envs[i].step(actions[i])
+            if not np.isscalar(r) or not np.isreal(r) or not np.isfinite(r):
+                raise ValueError(
+                    "Reward should be finite scalar, got {} ({})".format(
+                        r, type(r)))
+            if type(info) is not dict:
+                raise ValueError("Info should be a dict, got {} ({})".format(
+                    info, type(info)))
             obs_batch.append(obs)
-            rew_batch.append(rew)
+            rew_batch.append(r)
             done_batch.append(done)
             info_batch.append(info)
         return obs_batch, rew_batch, done_batch, info_batch

@@ -8,7 +8,7 @@ import argparse
 import yaml
 
 import ray
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
@@ -79,7 +79,7 @@ def create_parser(parser_creator=None):
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
-        action='store_true',
+        action="store_true",
         help=(
             "Whether to queue trials when the cluster does not currently have "
             "enough resources to launch one. This should be set to True when "
@@ -104,6 +104,8 @@ def run(args, parser):
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
+                "keep_checkpoints_num": args.keep_checkpoints_num,
+                "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
                 "resources_per_trial": (
                     args.resources_per_trial and
@@ -126,10 +128,8 @@ def run(args, parser):
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(
-                resources={
-                    "num_cpus": args.ray_num_cpus or 1,
-                    "num_gpus": args.ray_num_gpus or 0,
-                },
+                num_cpus=args.ray_num_cpus or 1,
+                num_gpus=args.ray_num_gpus or 0,
                 object_store_memory=args.ray_object_store_memory,
                 redis_max_memory=args.ray_redis_max_memory)
         ray.init(redis_address=cluster.redis_address)

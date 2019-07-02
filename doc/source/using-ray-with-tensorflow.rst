@@ -54,8 +54,8 @@ method.
 
 .. code-block:: python
 
-  import ray
-  variables = ray.experimental.TensorFlowVariables(loss, sess)
+  import ray.experimental.tf_utils
+  variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
 
 The ``TensorFlowVariables`` object provides methods for getting and setting the
 weights as well as collecting all of the variables in the model.
@@ -96,6 +96,7 @@ complex Python objects.
   import tensorflow as tf
   import numpy as np
   import ray
+  import ray.experimental.tf_utils
 
   ray.init()
 
@@ -123,7 +124,7 @@ complex Python objects.
           init = tf.global_variables_initializer()
           self.sess = tf.Session()
           # Additional code for setting and getting the weights
-          self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+          self.variables = ray.experimental.tf_utils.TensorFlowVariables(self.loss, self.sess)
           # Return all of the data needed to use the network.
           self.sess.run(init)
 
@@ -254,7 +255,7 @@ For reference, the full code is below:
           init = tf.global_variables_initializer()
           self.sess = tf.Session()
           # Additional code for setting and getting the weights
-          self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+          self.variables = ray.experimental.tf_utils.TensorFlowVariables(self.loss, self.sess)
           # Return all of the data needed to use the network.
           self.sess.run(init)
 
@@ -320,7 +321,7 @@ For reference, the full code is below:
       if iteration % 20 == 0:
           print("Iteration {}: weights are {}".format(iteration, weights))
 
-.. autoclass:: ray.experimental.TensorFlowVariables
+.. autoclass:: ray.experimental.tf_utils.TensorFlowVariables
    :members:
 
 Troubleshooting
@@ -346,7 +347,7 @@ class definiton ``Network`` with a ``TensorFlowVariables`` instance:
           sess = tf.Session()
           init = tf.global_variables_initializer()
           sess.run(init)
-          self.variables = ray.experimental.TensorFlowVariables(c, sess)
+          self.variables = ray.experimental.tf_utils.TensorFlowVariables(c, sess)
 
       def set_weights(self, weights):
           self.variables.set_weights(weights)

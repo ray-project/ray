@@ -5,13 +5,13 @@ from __future__ import print_function
 
 import argparse
 
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
-
 import ray
+from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
-from ray.tune import run_experiments
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-iters", type=int, default=200)
@@ -24,21 +24,21 @@ class BatchNormModel(Model):
         hiddens = [256, 256]
         for i, size in enumerate(hiddens):
             label = "fc{}".format(i)
-            last_layer = slim.fully_connected(
+            last_layer = tf.layers.dense(
                 last_layer,
                 size,
-                weights_initializer=normc_initializer(1.0),
-                activation_fn=tf.nn.tanh,
-                scope=label)
+                kernel_initializer=normc_initializer(1.0),
+                activation=tf.nn.tanh,
+                name=label)
             # Add a batch norm layer
             last_layer = tf.layers.batch_normalization(
                 last_layer, training=input_dict["is_training"])
-        output = slim.fully_connected(
+        output = tf.layers.dense(
             last_layer,
             num_outputs,
-            weights_initializer=normc_initializer(0.01),
-            activation_fn=None,
-            scope="fc_out")
+            kernel_initializer=normc_initializer(0.01),
+            activation=None,
+            name="fc_out")
         return output, last_layer
 
 
@@ -47,18 +47,14 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model("bn_model", BatchNormModel)
-    run_experiments({
-        "batch_norm_demo": {
-            "run": args.run,
+    tune.run(
+        args.run,
+        stop={"training_iteration": args.num_iters},
+        config={
             "env": "Pendulum-v0" if args.run == "DDPG" else "CartPole-v0",
-            "stop": {
-                "training_iteration": args.num_iters
+            "model": {
+                "custom_model": "bn_model",
             },
-            "config": {
-                "model": {
-                    "custom_model": "bn_model",
-                },
-                "num_workers": 0,
-            },
+            "num_workers": 0,
         },
-    })
+    )

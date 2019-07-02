@@ -5,10 +5,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
 import org.apache.arrow.plasma.ObjectStoreLink;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.RayDevRuntime;
-import org.ray.runtime.raylet.MockRayletClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,13 +20,21 @@ import org.slf4j.LoggerFactory;
 public class MockObjectStore implements ObjectStoreLink {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectStore.class);
+
+  private static final int GET_CHECK_INTERVAL_MS = 100;
+
   private final RayDevRuntime runtime;
-  private final Map<UniqueId, byte[]> data = new ConcurrentHashMap<>();
-  private final Map<UniqueId, byte[]> metadata = new ConcurrentHashMap<>();
-  private MockRayletClient scheduler = null;
+  private final Map<ObjectId, byte[]> data = new ConcurrentHashMap<>();
+  private final Map<ObjectId, byte[]> metadata = new ConcurrentHashMap<>();
+  private final List<Consumer<ObjectId>> objectPutCallbacks;
 
   public MockObjectStore(RayDevRuntime runtime) {
     this.runtime = runtime;
+    this.objectPutCallbacks = new ArrayList<>();
+  }
+
+  public void addObjectPutCallback(Consumer<ObjectId> callback) {
+    this.objectPutCallbacks.add(callback);
   }
 
   @Override
@@ -34,36 +44,56 @@ public class MockObjectStore implements ObjectStoreLink {
           .error("{} cannot put null: {}, {}", logPrefix(), objectId, Arrays.toString(value));
       System.exit(-1);
     }
-    UniqueId uniqueId = new UniqueId(objectId);
-    data.put(uniqueId, value);
+    ObjectId id = new ObjectId(objectId);
+    data.put(id, value);
     if (metadataValue != null) {
-      metadata.put(uniqueId, metadataValue);
+      metadata.put(id, metadataValue);
     }
-    if (scheduler != null) {
-      scheduler.onObjectPut(uniqueId);
+    for (Consumer<ObjectId> callback : objectPutCallbacks) {
+      callback.accept(id);
     }
+  }
+
+  @Override
+  public byte[] get(byte[] objectId, int timeoutMs, boolean isMetadata) {
+    return get(new byte[][] {objectId}, timeoutMs, isMetadata).get(0);
   }
 
   @Override
   public List<byte[]> get(byte[][] objectIds, int timeoutMs, boolean isMetadata) {
-    final Map<UniqueId, byte[]> dataMap = isMetadata ? metadata : data;
-    ArrayList<byte[]> rets = new ArrayList<>(objectIds.length);
-    for (byte[] objId : objectIds) {
-      UniqueId uniqueId = new UniqueId(objId);
-      LOGGER.info("{} is notified for objectid {}",logPrefix(), uniqueId);
-      rets.add(dataMap.get(uniqueId));
-    }
-    return rets;
+    return get(objectIds, timeoutMs)
+            .stream()
+            .map(data -> isMetadata ? data.metadata : data.data)
+            .collect(Collectors.toList());
   }
 
   @Override
-  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
-    ArrayList<byte[]> rets = new ArrayList<>();
-    for (byte[] objId : objectIds) {
-      //tod test
-      if (data.containsKey(new UniqueId(objId))) {
-        rets.add(objId);
+  public List<ObjectStoreData> get(byte[][] objectIds, int timeoutMs) {
+    int ready = 0;
+    int remainingTime = timeoutMs;
+    boolean firstCheck = true;
+    while (ready < objectIds.length && remainingTime > 0) {
+      if (!firstCheck) {
+        int sleepTime = Math.min(remainingTime, GET_CHECK_INTERVAL_MS);
+        try {
+          Thread.sleep(sleepTime);
+        } catch (InterruptedException e) {
+          LOGGER.warn("Got InterruptedException while sleeping.");
+        }
+        remainingTime -= sleepTime;
       }
+      ready = 0;
+      for (byte[] id : objectIds) {
+        if (data.containsKey(new ObjectId(id))) {
+          ready += 1;
+        }
+      }
+      firstCheck = false;
+    }
+    ArrayList<ObjectStoreData> rets = new ArrayList<>();
+    for (byte[] objId : objectIds) {
+      ObjectId objectId = new ObjectId(objId);
+      rets.add(new ObjectStoreData(metadata.get(objectId), data.get(objectId)));
     }
     return rets;
   }
@@ -71,11 +101,6 @@ public class MockObjectStore implements ObjectStoreLink {
   @Override
   public byte[] hash(byte[] objectId) {
     return null;
-  }
-
-  @Override
-  public void fetch(byte[][] objectIds) {
-
   }
 
   @Override
@@ -89,9 +114,13 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public boolean contains(byte[] objectId) {
+  public void delete(byte[] objectId) {
+    return;
+  }
 
-    return data.containsKey(new UniqueId(objectId));
+  @Override
+  public boolean contains(byte[] objectId) {
+    return data.containsKey(new ObjectId(objectId));
   }
 
   private String logPrefix() {
@@ -108,11 +137,12 @@ public class MockObjectStore implements ObjectStoreLink {
     return stes[k].getFileName() + ":" + stes[k].getLineNumber();
   }
 
-  public boolean isObjectReady(UniqueId id) {
+  public boolean isObjectReady(ObjectId id) {
     return data.containsKey(id);
   }
 
-  public void registerScheduler(MockRayletClient s) {
-    scheduler = s;
+  public void free(ObjectId id) {
+    data.remove(id);
+    metadata.remove(id);
   }
 }

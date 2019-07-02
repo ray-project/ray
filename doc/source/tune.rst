@@ -7,9 +7,9 @@ Tune: Scalable Hyperparameter Search
 
 Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
 
-You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tune.ipynb>`__.
+You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tutorial.ipynb>`__.
 
-(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTune.ipynb>`__.
+(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTutorial.ipynb>`__.
 
 
 Features
@@ -25,9 +25,9 @@ Features
 
    -  `HyperBand <tune-schedulers.html#asynchronous-hyperband>`__
 
-*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_.
+*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_ or `Nevergrad with HyperBand`_.
 
-*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `parallel coordinates (Plot.ly) <https://plot.ly/python/parallel-coordinates-plot/>`__, and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
+*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__ and `rllab's VisKit <https://github.com/vitchyr/viskit>`__.
 
 *  Scale to running on a large distributed cluster without changing your code.
 
@@ -58,7 +58,7 @@ Tune uses Ray as a backend, so we will first import and initialize Ray.
 .. code-block:: python
 
     import ray
-    import ray.tune as tune
+    from ray import tune
 
     ray.init()
 
@@ -82,15 +82,20 @@ For the function you wish to tune, pass in a ``reporter`` object:
 
 .. code-block:: python
 
-    all_trials = tune.run_experiments({
-        "my_experiment": {
-            "run": train_func,
-            "stop": {"mean_accuracy": 99},
-            "config": {"momentum": tune.grid_search([0.1, 0.2])}
-        }
-    })
+    all_trials = tune.run(
+        train_func,
+        name="quick-start",
+        stop={"mean_accuracy": 99},
+        config={"momentum": tune.grid_search([0.1, 0.2])}
+    )
 
 Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
+
+Contribute to Tune
+------------------
+
+Take a look at our `Contributor Guide <tune-contrib.html>`__ for guidelines on contributing.
+
 
 Citing Tune
 -----------
@@ -109,3 +114,4 @@ If Tune helps you in your academic research, you are encouraged to cite `our pap
 
 
 .. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py
+.. _Nevergrad with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py

@@ -3,17 +3,18 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import Counter
-import socket
 import sys
 import time
 import ray
 
 if __name__ == "__main__":
-    ray.init(redis_address="{}:6379".format(socket.gethostbyname("ray-head")))
+    # Note that if you run this script on a non-head node, then you must
+    # replace "localhost" with socket.gethostbyname("ray-head").
+    ray.init(redis_address="localhost:6379")
 
     # Wait for all 4 nodes to join the cluster.
     while True:
-        num_nodes = len(ray.global_state.client_table())
+        num_nodes = len(ray.nodes())
         if num_nodes < 4:
             print("{} nodes have joined so far. Waiting for more."
                   .format(num_nodes))

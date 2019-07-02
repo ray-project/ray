@@ -5,6 +5,8 @@ from __future__ import print_function
 import logging
 import pickle
 
+from ray.rllib.utils.annotations import PublicAPI
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -16,6 +18,7 @@ except ImportError:
         " the client side.")
 
 
+@PublicAPI
 class PolicyClient(object):
     """REST client to interact with a RLlib policy server."""
 
@@ -25,9 +28,11 @@ class PolicyClient(object):
     LOG_RETURNS = "LOG_RETURNS"
     END_EPISODE = "END_EPISODE"
 
+    @PublicAPI
     def __init__(self, address):
         self._address = address
 
+    @PublicAPI
     def start_episode(self, episode_id=None, training_enabled=True):
         """Record the start of an episode.
 
@@ -47,6 +52,7 @@ class PolicyClient(object):
             "training_enabled": training_enabled,
         })["episode_id"]
 
+    @PublicAPI
     def get_action(self, episode_id, observation):
         """Record an observation and get the on-policy action.
 
@@ -63,6 +69,7 @@ class PolicyClient(object):
             "episode_id": episode_id,
         })["action"]
 
+    @PublicAPI
     def log_action(self, episode_id, observation, action):
         """Record an observation and (off-policy) action taken.
 
@@ -78,6 +85,7 @@ class PolicyClient(object):
             "episode_id": episode_id,
         })
 
+    @PublicAPI
     def log_returns(self, episode_id, reward, info=None):
         """Record returns from the environment.
 
@@ -96,6 +104,7 @@ class PolicyClient(object):
             "episode_id": episode_id,
         })
 
+    @PublicAPI
     def end_episode(self, episode_id, observation):
         """Record the end of an episode.
 

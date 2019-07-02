@@ -30,7 +30,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskLeaseData> {
   MOCK_METHOD4(
       Add,
       ray::Status(const JobID &job_id, const TaskID &task_id,
-                  std::shared_ptr<TaskLeaseDataT> &task_data,
+                  std::shared_ptr<TaskLeaseData> &task_data,
                   const gcs::TableInterface<TaskID, TaskLeaseData>::WriteCallback &done));
 };
 
@@ -43,7 +43,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         gcs_mock_(),
         initial_lease_period_ms_(100),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
-                                 io_service_, ClientID::nil(), initial_lease_period_ms_,
+                                 io_service_, ClientID::Nil(), initial_lease_period_ms_,
                                  gcs_mock_) {}
 
   void Run(uint64_t timeout_ms) {
@@ -75,9 +75,9 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
     task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
   }
   std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(UniqueID::nil(), UniqueID::from_random(), 0,
-                                task_arguments, num_returns, required_resources,
-                                Language::PYTHON, function_descriptor);
+  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
+                                num_returns, required_resources, Language::PYTHON,
+                                function_descriptor);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
   execution_spec.IncrementNumForwards();
   Task task = Task(execution_spec, spec);
@@ -105,9 +105,9 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
-    arguments.push_back(ObjectID::from_random());
+    arguments.push_back(ObjectID::FromRandom());
   }
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
   for (const auto &argument_id : arguments) {
@@ -139,12 +139,12 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
 
 TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
   // Create a task with 3 arguments.
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
     // Add the new argument to the list of dependencies to subscribe to.
-    ObjectID argument_id = ObjectID::from_random();
+    ObjectID argument_id = ObjectID::FromRandom();
     arguments.push_back(argument_id);
     // Subscribe to the task's dependencies. All arguments except the last are
     // duplicates of previous subscription calls. Each argument should only be
@@ -176,7 +176,7 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
 
 TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   // Create 3 tasks that are dependent on the same object.
-  ObjectID argument_id = ObjectID::from_random();
+  ObjectID argument_id = ObjectID::FromRandom();
   std::vector<TaskID> dependent_tasks;
   int num_dependent_tasks = 3;
   // The object should only be requested from the object manager once for all
@@ -184,7 +184,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   EXPECT_CALL(object_manager_mock_, Pull(argument_id));
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   for (int i = 0; i < num_dependent_tasks; i++) {
-    TaskID task_id = TaskID::from_random();
+    TaskID task_id = TaskID::FromRandom();
     dependent_tasks.push_back(task_id);
     // Subscribe to each of the task's dependencies.
     bool ready = task_dependency_manager_.SubscribeDependencies(task_id, {argument_id});
@@ -266,7 +266,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
 TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
-  ObjectID put_id = ComputePutId(task1.GetTaskSpecification().TaskId(), 1);
+  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), 1);
   auto task2 = ExampleTask({put_id}, 0);
 
   // No objects have been registered in the task dependency manager, so the put
@@ -326,9 +326,9 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
-    arguments.push_back(ObjectID::from_random());
+    arguments.push_back(ObjectID::FromRandom());
   }
-  TaskID task_id = TaskID::from_random();
+  TaskID task_id = TaskID::FromRandom();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
   for (const auto &argument_id : arguments) {
@@ -413,6 +413,62 @@ TEST_F(TaskDependencyManagerTest, TestTaskLeaseRenewal) {
   EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _))
       .Times(num_expected_calls);
   Run(sleep_time);
+}
+
+TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
+  // Create 3 tasks, each dependent on the previous. The first task has no
+  // arguments.
+  int num_tasks = 3;
+  auto tasks = MakeTaskChain(num_tasks, {}, 1);
+  // No objects should be remote or canceled since each task depends on a
+  // locally queued task.
+  EXPECT_CALL(object_manager_mock_, Pull(_)).Times(0);
+  EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_)).Times(0);
+  EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(0);
+  EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
+  for (const auto &task : tasks) {
+    // Subscribe to each of the tasks' arguments.
+    const auto &arguments = task.GetDependencies();
+    task_dependency_manager_.SubscribeDependencies(task.GetTaskSpecification().TaskId(),
+                                                   arguments);
+    // Mark each task as pending. A lease entry should be added to the GCS for
+    // each task.
+    EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
+    task_dependency_manager_.TaskPending(task);
+  }
+
+  // Simulate executing the first task. This should make the second task
+  // runnable.
+  auto task = tasks.front();
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  auto return_id = task.GetTaskSpecification().ReturnId(0);
+  task_dependency_manager_.UnsubscribeDependencies(task_id);
+  // Simulate the object notifications for the task's return values.
+  auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
+  // The second task should be ready to run.
+  ASSERT_EQ(ready_tasks.size(), 1);
+  // Simulate the task finishing execution.
+  task_dependency_manager_.TaskCanceled(task_id);
+
+  // Remove all tasks from the manager except the first task, which already
+  // finished executing.
+  std::unordered_set<TaskID> task_ids;
+  for (const auto &task : tasks) {
+    task_ids.insert(task.GetTaskSpecification().TaskId());
+  }
+  task_ids.erase(task_id);
+  task_dependency_manager_.RemoveTasksAndRelatedObjects(task_ids);
+  // Simulate evicting the return value of the first task. Make sure that this
+  // does not return the second task, which should have been removed.
+  auto waiting_tasks = task_dependency_manager_.HandleObjectMissing(return_id);
+  ASSERT_TRUE(waiting_tasks.empty());
+
+  // Simulate the object notifications for the second task's return values.
+  // Make sure that this does not return the third task, which should have been
+  // removed.
+  return_id = tasks[1].GetTaskSpecification().ReturnId(0);
+  ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
+  ASSERT_TRUE(ready_tasks.empty());
 }
 
 }  // namespace raylet

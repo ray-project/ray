@@ -10,22 +10,11 @@ import os.path as osp
 import numpy as np
 import json
 
+from ray.tune.util import flatten_dict
+
 logger = logging.getLogger(__name__)
 
-
-def _flatten_dict(dt):
-    while any(type(v) is dict for v in dt.values()):
-        remove = []
-        add = {}
-        for key, value in dt.items():
-            if type(value) is dict:
-                for subkey, v in value.items():
-                    add[":".join([key, subkey])] = v
-                remove.append(key)
-        dt.update(add)
-        for k in remove:
-            del dt[k]
-    return dt
+logger.warning("This module will be deprecated in a future version of Tune.")
 
 
 def _parse_results(res_path):
@@ -35,7 +24,7 @@ def _parse_results(res_path):
             # Get last line in file
             for line in f:
                 pass
-        res_dict = _flatten_dict(json.loads(line.strip()))
+        res_dict = flatten_dict(json.loads(line.strip()))
     except Exception:
         logger.exception("Importing %s failed...Perhaps empty?" % res_path)
     return res_dict
@@ -44,7 +33,7 @@ def _parse_results(res_path):
 def _parse_configs(cfg_path):
     try:
         with open(cfg_path) as f:
-            cfg_dict = _flatten_dict(json.load(f))
+            cfg_dict = flatten_dict(json.load(f))
     except Exception:
         logger.exception("Config parsing failed.")
     return cfg_dict

@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.agent import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNAgent
-from ray.rllib.agents.qmix.qmix_policy_graph import QMixPolicyGraph
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
+from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
+from ray.rllib.optimizers import SyncBatchReplayOptimizer
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -18,6 +19,15 @@ DEFAULT_CONFIG = with_common_config({
     "double_q": True,
     # Optimize over complete episodes by default.
     "batch_mode": "complete_episodes",
+
+    # === Evaluation ===
+    # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
+    # The evaluation stats will be reported under the "evaluation" metric key.
+    # Note that evaluation is currently not parallelized, and that for Ape-X
+    # metrics are already only reported for the lowest epsilon workers.
+    "evaluation_interval": None,
+    # Number of episodes to run per evaluation period.
+    "evaluation_num_episodes": 10,
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -62,8 +72,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Optimizer class to use.
-    "optimizer_class": "SyncBatchReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
@@ -81,12 +89,16 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class QMixAgent(DQNAgent):
-    """QMix implementation in PyTorch."""
+def make_sync_batch_optimizer(workers, config):
+    return SyncBatchReplayOptimizer(
+        workers,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        train_batch_size=config["train_batch_size"])
 
-    _agent_name = "QMIX"
-    _default_config = DEFAULT_CONFIG
-    _policy_graph = QMixPolicyGraph
-    _optimizer_shared_configs = [
-        "learning_starts", "buffer_size", "train_batch_size"
-    ]
+
+QMixTrainer = GenericOffPolicyTrainer.with_updates(
+    name="QMIX",
+    default_config=DEFAULT_CONFIG,
+    default_policy=QMixTorchPolicy,
+    make_policy_optimizer=make_sync_batch_optimizer)

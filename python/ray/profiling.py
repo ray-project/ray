@@ -27,7 +27,7 @@ class _NullLogSpan(object):
 NULL_LOG_SPAN = _NullLogSpan()
 
 
-def profile(event_type, extra_data=None, worker=None):
+def profile(event_type, extra_data=None):
     """Profile a span of time so that it appears in the timeline visualization.
 
     Note that this only works in the raylet code path.
@@ -57,8 +57,7 @@ def profile(event_type, extra_data=None, worker=None):
     Returns:
         An object that can profile a span of time via a "with" statement.
     """
-    if worker is None:
-        worker = ray.worker.global_worker
+    worker = ray.worker.global_worker
     return RayLogSpanRaylet(worker.profiler, event_type, extra_data=extra_data)
 
 
@@ -69,47 +68,49 @@ class Profiler(object):
         worker: the worker to profile.
         events: the buffer of events.
         lock: the lock to protect access of events.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
     """
 
-    def __init__(self, worker):
+    def __init__(self, worker, threads_stopped):
         self.worker = worker
         self.events = []
         self.lock = threading.Lock()
+        self.threads_stopped = threads_stopped
 
     def start_flush_thread(self):
-        t = threading.Thread(
+        self.t = threading.Thread(
             target=self._periodically_flush_profile_events,
             name="ray_push_profiling_information")
         # Making the thread a daemon causes it to exit when the main thread
         # exits.
-        t.daemon = True
-        t.start()
+        self.t.daemon = True
+        self.t.start()
+
+    def join_flush_thread(self):
+        """Wait for the flush thread to exit."""
+        self.t.join()
 
     def _periodically_flush_profile_events(self):
         """Drivers run this as a thread to flush profile data in the
         background."""
         # Note(rkn): This is run on a background thread in the driver. It uses
-        # the local scheduler client. This should be ok because it doesn't read
-        # from the local scheduler client and we have the GIL here. However,
+        # the raylet client. This should be ok because it doesn't read
+        # from the raylet client and we have the GIL here. However,
         # if either of those things changes, then we could run into issues.
-        try:
-            while True:
-                time.sleep(1)
-                self.flush_profile_data()
-        except AttributeError:
-            # This is to suppress errors that occur at shutdown.
-            pass
+        while True:
+            # Sleep for 1 second. This will be interrupted if
+            # self.threads_stopped is set.
+            self.threads_stopped.wait(timeout=1)
+
+            # Exit if we received a signal that we should stop.
+            if self.threads_stopped.is_set():
+                return
+
+            self.flush_profile_data()
 
     def flush_profile_data(self):
-        """Push the logged profiling data to the global control store.
-
-        By default, profiling information for a given task won't appear in the
-        timeline until after the task has completed. For very long-running
-        tasks, we may want profiling information to appear more quickly.
-        In such cases, this function can be called. Note that as an
-        aalternative, we could start thread in the background on workers that
-        calls this automatically.
-        """
+        """Push the logged profiling data to the global control store."""
         with self.lock:
             events = self.events
             self.events = []
@@ -120,7 +121,7 @@ class Profiler(object):
             component_type = "driver"
 
         self.worker.raylet_client.push_profile_events(
-            component_type, ray.ObjectID(self.worker.worker_id),
+            component_type, ray.UniqueID(self.worker.worker_id),
             self.worker.node_ip_address, events)
 
     def add_event(self, event):
@@ -133,7 +134,7 @@ class RayLogSpanRaylet(object):
 
     Attributes:
         event_type (str): The type of the event being logged.
-        contents: Additional information to log.
+        extra_data: Additional information to log.
     """
 
     def __init__(self, profiler, event_type, extra_data=None):

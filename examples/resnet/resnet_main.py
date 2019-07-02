@@ -23,22 +23,41 @@ if (tf_major < 1) or (tf_major == 1 and tf_minor < 2):
                     "update Tensorflow to the latest version.")
 
 parser = argparse.ArgumentParser(description="Run the ResNet example.")
-parser.add_argument("--dataset", default="cifar10", type=str,
-                    help="Dataset to use: cifar10 or cifar100.")
-parser.add_argument("--train_data_path",
-                    default="cifar-10-batches-bin/data_batch*", type=str,
-                    help="Data path for the training data.")
-parser.add_argument("--eval_data_path",
-                    default="cifar-10-batches-bin/test_batch.bin", type=str,
-                    help="Data path for the testing data.")
-parser.add_argument("--eval_dir", default="/tmp/resnet-model/eval", type=str,
-                    help="Data path for the tensorboard logs.")
-parser.add_argument("--eval_batch_count", default=50, type=int,
-                    help="Number of batches to evaluate over.")
-parser.add_argument("--num_gpus", default=0, type=int,
-                    help="Number of GPUs to use for training.")
-parser.add_argument("--redis-address", default=None, type=str,
-                    help="The Redis address of the cluster.")
+parser.add_argument(
+    "--dataset",
+    default="cifar10",
+    type=str,
+    help="Dataset to use: cifar10 or cifar100.")
+parser.add_argument(
+    "--train_data_path",
+    default="cifar-10-batches-bin/data_batch*",
+    type=str,
+    help="Data path for the training data.")
+parser.add_argument(
+    "--eval_data_path",
+    default="cifar-10-batches-bin/test_batch.bin",
+    type=str,
+    help="Data path for the testing data.")
+parser.add_argument(
+    "--eval_dir",
+    default="/tmp/resnet-model/eval",
+    type=str,
+    help="Data path for the tensorboard logs.")
+parser.add_argument(
+    "--eval_batch_count",
+    default=50,
+    type=int,
+    help="Number of batches to evaluate over.")
+parser.add_argument(
+    "--num_gpus",
+    default=0,
+    type=int,
+    help="Number of GPUs to use for training.")
+parser.add_argument(
+    "--redis-address",
+    default=None,
+    type=str,
+    help="The Redis address of the cluster.")
 
 FLAGS = parser.parse_args()
 
@@ -87,9 +106,8 @@ class ResNetTrainActor(object):
 
         with tf.device("/gpu:0" if num_gpus > 0 else "/cpu:0"):
             # Build the model.
-            images, labels = cifar_input.build_input(data,
-                                                     hps.batch_size, dataset,
-                                                     False)
+            images, labels = cifar_input.build_input(data, hps.batch_size,
+                                                     dataset, False)
             self.model = resnet_model.ResNet(hps, images, labels, "train")
             self.model.build_graph()
             config = tf.ConfigProto(allow_soft_placement=True)
@@ -131,9 +149,8 @@ class ResNetTestActor(object):
             num_gpus=0)
         with tf.device("/cpu:0"):
             # Builds the testing network.
-            images, labels = cifar_input.build_input(data,
-                                                     hps.batch_size, dataset,
-                                                     False)
+            images, labels = cifar_input.build_input(data, hps.batch_size,
+                                                     dataset, False)
             self.model = resnet_model.ResNet(hps, images, labels, "eval")
             self.model.build_graph()
             config = tf.ConfigProto(allow_soft_placement=True)
@@ -159,8 +176,7 @@ class ResNetTestActor(object):
         sess = self.model.variables.sess
         for _ in range(self.eval_batch_count):
             summaries, loss, predictions, truth = sess.run(
-                [model.summaries, model.cost, model.predictions,
-                 model.labels])
+                [model.summaries, model.cost, model.predictions, model.labels])
 
             truth = np.argmax(truth, axis=1)
             predictions = np.argmax(predictions, axis=1)
@@ -170,8 +186,7 @@ class ResNetTestActor(object):
         precision = 1.0 * correct_prediction / total_prediction
         self.best_precision = max(precision, self.best_precision)
         precision_summ = tf.Summary()
-        precision_summ.value.add(
-            tag="Precision", simple_value=precision)
+        precision_summ.value.add(tag="Precision", simple_value=precision)
         self.summary_writer.add_summary(precision_summ, train_step)
         best_precision_summ = tf.Summary()
         best_precision_summ.value.add(
@@ -192,7 +207,7 @@ class ResNetTestActor(object):
 def train():
     num_gpus = FLAGS.num_gpus
     if FLAGS.redis_address is None:
-        ray.init(num_gpus=num_gpus, redirect_output=True)
+        ray.init(num_gpus=num_gpus)
     else:
         ray.init(redis_address=FLAGS.redis_address)
     train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
@@ -200,15 +215,16 @@ def train():
     # Creates an actor for each gpu, or one if only using the cpu. Each actor
     # has access to the dataset.
     if FLAGS.num_gpus > 0:
-        train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset,
-                                                num_gpus)
-                        for _ in range(num_gpus)]
+        train_actors = [
+            ResNetTrainActor.remote(train_data, FLAGS.dataset, num_gpus)
+            for _ in range(num_gpus)
+        ]
     else:
         train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset, 0)]
     test_actor = ResNetTestActor.remote(test_data, FLAGS.dataset,
                                         FLAGS.eval_batch_count, FLAGS.eval_dir)
-    print("The log files for tensorboard are stored at ip {}."
-          .format(ray.get(test_actor.get_ip_addr.remote())))
+    print("The log files for tensorboard are stored at ip {}.".format(
+        ray.get(test_actor.get_ip_addr.remote())))
     step = 0
     weight_id = train_actors[0].get_weights.remote()
     acc_id = test_actor.accuracy.remote(weight_id, step)
@@ -218,11 +234,13 @@ def train():
     print("Starting training loop. Use Ctrl-C to exit.")
     try:
         while True:
-            all_weights = ray.get([actor.compute_steps.remote(weight_id)
-                                   for actor in train_actors])
-            mean_weights = {k: (sum(weights[k] for weights in all_weights) /
-                                num_gpus)
-                            for k in all_weights[0]}
+            all_weights = ray.get([
+                actor.compute_steps.remote(weight_id) for actor in train_actors
+            ])
+            mean_weights = {
+                k: (sum(weights[k] for weights in all_weights) / num_gpus)
+                for k in all_weights[0]
+            }
             weight_id = ray.put(mean_weights)
             step += 10
             if step % 200 == 0:

@@ -1,25 +1,42 @@
 package org.ray.runtime.objectstore;
 
+import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.apache.arrow.plasma.ObjectStoreLink;
+import org.apache.arrow.plasma.ObjectStoreLink.ObjectStoreData;
 import org.apache.arrow.plasma.PlasmaClient;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.arrow.plasma.exceptions.DuplicateObjectException;
+import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
-import org.ray.api.id.UniqueId;
+import org.ray.api.exception.RayWorkerException;
+import org.ray.api.exception.UnreconstructableException;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.generated.Gcs.ErrorType;
+import org.ray.runtime.util.IdUtil;
 import org.ray.runtime.util.Serializer;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Object store proxy, which handles serialization and deserialization, and utilize a {@code
- * org.ray.spi.ObjectStoreLink} to actually store data.
+ * A class that is used to put/get objects to/from the object store.
  */
 public class ObjectStoreProxy {
 
-  private static final int GET_TIMEOUT_MS = 1000;
+  private static final Logger LOGGER = LoggerFactory.getLogger(ObjectStoreProxy.class);
+
+  private static final byte[] WORKER_EXCEPTION_META = String
+      .valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
+  private static final byte[] ACTOR_EXCEPTION_META = String
+      .valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
+      .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
+
+  private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
   private final AbstractRayRuntime runtime;
 
@@ -36,60 +53,140 @@ public class ObjectStoreProxy {
     });
   }
 
-  public <T> Pair<T, GetStatus> get(UniqueId objectId, boolean isMetadata)
-      throws RayException {
-    return get(objectId, GET_TIMEOUT_MS, isMetadata);
+  /**
+   * Get an object from the object store.
+   *
+   * @param id Id of the object.
+   * @param timeoutMs Timeout in milliseconds.
+   * @param <T> Type of the object.
+   * @return The GetResult object.
+   */
+  public <T> GetResult<T> get(ObjectId id, int timeoutMs) {
+    List<GetResult<T>> list = get(ImmutableList.of(id), timeoutMs);
+    return list.get(0);
   }
 
-  public <T> Pair<T, GetStatus> get(UniqueId id, int timeoutMs, boolean isMetadata)
-      throws RayException {
-    byte[] obj = objectStore.get().get(id.getBytes(), timeoutMs, isMetadata);
-    if (obj != null) {
-      T t = Serializer.decode(obj, runtime.getWorkerContext().getCurrentClassLoader());
-      objectStore.get().release(id.getBytes());
-      if (t instanceof RayException) {
-        throw (RayException) t;
-      }
-      return Pair.of(t, GetStatus.SUCCESS);
-    } else {
-      return Pair.of(null, GetStatus.FAILED);
-    }
-  }
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param ids List of the object ids.
+   * @param timeoutMs Timeout in milliseconds.
+   * @param <T> Type of these objects.
+   * @return A list of GetResult objects.
+   */
+  public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
+    byte[][] binaryIds = IdUtil.getIdBytes(ids);
+    List<ObjectStoreData> dataAndMetaList = objectStore.get().get(binaryIds, timeoutMs);
 
-  public <T> List<Pair<T, GetStatus>> get(List<UniqueId> objectIds, boolean isMetadata)
-      throws RayException {
-    return get(objectIds, GET_TIMEOUT_MS, isMetadata);
-  }
+    List<GetResult<T>> results = new ArrayList<>();
+    for (int i = 0; i < dataAndMetaList.size(); i++) {
+      byte[] meta = dataAndMetaList.get(i).metadata;
+      byte[] data = dataAndMetaList.get(i).data;
 
-  public <T> List<Pair<T, GetStatus>> get(List<UniqueId> ids, int timeoutMs, boolean isMetadata)
-      throws RayException {
-    List<byte[]> objs = objectStore.get().get(UniqueIdUtil.getIdBytes(ids), timeoutMs, isMetadata);
-    List<Pair<T, GetStatus>> ret = new ArrayList<>();
-    for (int i = 0; i < objs.size(); i++) {
-      byte[] obj = objs.get(i);
-      if (obj != null) {
-        T t = Serializer.decode(obj, runtime.getWorkerContext().getCurrentClassLoader());
-        objectStore.get().release(ids.get(i).getBytes());
-        if (t instanceof RayException) {
-          throw (RayException) t;
+      GetResult<T> result;
+      if (meta != null) {
+        // If meta is not null, deserialize the object from meta.
+        result = deserializeFromMeta(meta, data, ids.get(i));
+      } else if (data != null) {
+        // If data is not null, deserialize the Java object.
+        Object object = Serializer.decode(data, runtime.getWorkerContext().getCurrentClassLoader());
+        if (object instanceof RayException) {
+          // If the object is a `RayException`, it means that an error occurred during task
+          // execution.
+          result = new GetResult<>(true, null, (RayException) object);
+        } else {
+          // Otherwise, the object is valid.
+          result = new GetResult<>(true, (T) object, null);
         }
-        ret.add(Pair.of(t, GetStatus.SUCCESS));
       } else {
-        ret.add(Pair.of(null, GetStatus.FAILED));
+        // If both meta and data are null, the object doesn't exist in object store.
+        result = new GetResult<>(false, null, null);
       }
+
+      if (meta != null || data != null) {
+        // Release the object from object store..
+        objectStore.get().release(binaryIds[i]);
+      }
+
+      results.add(result);
     }
-    return ret;
+    return results;
   }
 
-  public void put(UniqueId id, Object obj, Object metadata) {
-    objectStore.get().put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
+  @SuppressWarnings("unchecked")
+  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data, ObjectId objectId) {
+    if (Arrays.equals(meta, RAW_TYPE_META)) {
+      return (GetResult<T>) new GetResult<>(true, data, null);
+    } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
+      return new GetResult<>(true, null, RayWorkerException.INSTANCE);
+    } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
+      return new GetResult<>(true, null, RayActorException.INSTANCE);
+    } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
+      return new GetResult<>(true, null, new UnreconstructableException(objectId));
+    }
+    throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
   }
 
-  public void putSerialized(UniqueId id, byte[] obj, byte[] metadata) {
-    objectStore.get().put(id.getBytes(), obj, metadata);
+  /**
+   * Serialize and put an object to the object store.
+   *
+   * @param id Id of the object.
+   * @param object The object to put.
+   */
+  public void put(ObjectId id, Object object) {
+    try {
+      if (object instanceof byte[]) {
+        // If the object is a byte array, skip serializing it and use a special metadata to
+        // indicate it's raw binary. So that this object can also be read by Python.
+        objectStore.get().put(id.getBytes(), (byte[]) object, RAW_TYPE_META);
+      } else {
+        objectStore.get().put(id.getBytes(), Serializer.encode(object), null);
+      }
+    } catch (DuplicateObjectException e) {
+      LOGGER.warn(e.getMessage());
+    }
   }
 
-  public enum GetStatus {
-    SUCCESS, FAILED
+  /**
+   * Put an already serialized object to the object store.
+   *
+   * @param id Id of the object.
+   * @param serializedObject The serialized object to put.
+   */
+  public void putSerialized(ObjectId id, byte[] serializedObject) {
+    try {
+      objectStore.get().put(id.getBytes(), serializedObject, null);
+    } catch (DuplicateObjectException e) {
+      LOGGER.warn(e.getMessage());
+    }
+  }
+
+  /**
+   * A class that represents the result of a get operation.
+   */
+  public static class GetResult<T> {
+
+    /**
+     * Whether this object exists in object store.
+     */
+    public final boolean exists;
+
+    /**
+     * The Java object that was fetched and deserialized from the object store. Note, this field
+     * only makes sense when @code{exists == true && exception !=null}.
+     */
+    public final T object;
+
+    /**
+     * If this field is not null, it represents the exception that occurred during object's creating
+     * task.
+     */
+    public final RayException exception;
+
+    GetResult(boolean exists, T object, RayException exception) {
+      this.exists = exists;
+      this.object = object;
+      this.exception = exception;
+    }
   }
 }

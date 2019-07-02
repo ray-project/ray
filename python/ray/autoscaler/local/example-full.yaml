@@ -2,6 +2,7 @@ cluster_name: default
 min_workers: 0
 max_workers: 0
 initial_workers: 0
+autoscaling_mode: default
 docker:
     image: ""
     container_name: ""
@@ -20,6 +21,7 @@ file_mounts: {}
 setup_commands: []
 head_setup_commands: []
 worker_setup_commands: []
+initialization_commands: []
 setup_commands:
     - source activate ray && pip install -U ray
 head_start_ray_commands:

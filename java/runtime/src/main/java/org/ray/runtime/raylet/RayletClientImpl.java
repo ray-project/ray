@@ -11,15 +11,18 @@ import java.util.Map;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Arg;
 import org.ray.runtime.generated.Language;
 import org.ray.runtime.generated.ResourcePair;
 import org.ray.runtime.generated.TaskInfo;
 import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.UniqueIdUtil;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,30 +40,31 @@ public class RayletClientImpl implements RayletClient {
   );
 
   /**
-   * The pointer to c++'s local scheduler client.
+   * The pointer to c++'s raylet client.
    */
   private long client = 0;
 
+  // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
   public RayletClientImpl(String schedulerSockName, UniqueId clientId,
-      boolean isWorker, UniqueId driverId) {
+      boolean isWorker, UniqueId jobId) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
-        isWorker, driverId.getBytes());
+        isWorker, jobId.getBytes());
   }
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
-      timeoutMs, UniqueId currentTaskId) {
+      timeoutMs, TaskId currentTaskId) {
     Preconditions.checkNotNull(waitFor);
     if (waitFor.isEmpty()) {
       return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
     }
 
-    List<UniqueId> ids = new ArrayList<>();
+    List<ObjectId> ids = new ArrayList<>();
     for (RayObject<T> element : waitFor) {
       ids.add(element.getId());
     }
 
-    boolean[] ready = nativeWaitObject(client, UniqueIdUtil.getIdBytes(ids),
+    boolean[] ready = nativeWaitObject(client, IdUtil.getIdBytes(ids),
         numReturns, timeoutMs, false, currentTaskId.getBytes());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
@@ -80,7 +84,7 @@ public class RayletClientImpl implements RayletClient {
   public void submitTask(TaskSpec spec) {
     LOGGER.debug("Submitting task: {}", spec);
     Preconditions.checkState(!spec.parentTaskId.isNil());
-    Preconditions.checkState(!spec.driverId.isNil());
+    Preconditions.checkState(!spec.jobId.isNil());
 
     ByteBuffer info = convertTaskSpecToFlatbuffer(spec);
     byte[] cursorId = null;
@@ -100,48 +104,62 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly,
-      UniqueId currentTaskId) {
+  public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
+      TaskId currentTaskId) {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
-          UniqueIdUtil.computeTaskId(objectIds.get(0)), objectIds);
+          objectIds.get(0).getTaskId(), objectIds);
     }
-    int ret = nativeFetchOrReconstruct(client, UniqueIdUtil.getIdBytes(objectIds),
+    nativeFetchOrReconstruct(client, IdUtil.getIdBytes(objectIds),
         fetchOnly, currentTaskId.getBytes());
-    if (ret != 0) {
-      throw new RayException("Connection closed by Raylet");
-    }
   }
 
   @Override
-  public UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex) {
-    byte[] bytes = nativeGenerateTaskId(driverId.getBytes(), parentTaskId.getBytes(), taskIndex);
-    return new UniqueId(bytes);
+  public TaskId generateTaskId(UniqueId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return new TaskId(bytes);
   }
 
   @Override
-  public void notifyUnblocked(UniqueId currentTaskId) {
+  public void notifyUnblocked(TaskId currentTaskId) {
     nativeNotifyUnblocked(client, currentTaskId.getBytes());
   }
 
   @Override
-  public void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly) {
-    byte[][] objectIdsArray = UniqueIdUtil.getIdBytes(objectIds);
-    nativeFreePlasmaObjects(client, objectIdsArray, localOnly);
+  public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
+                                boolean deleteCreatingTasks) {
+    byte[][] objectIdsArray = IdUtil.getIdBytes(objectIds);
+    nativeFreePlasmaObjects(client, objectIdsArray, localOnly, deleteCreatingTasks);
+  }
+
+  @Override
+  public UniqueId prepareCheckpoint(UniqueId actorId) {
+    return new UniqueId(nativePrepareCheckpoint(client, actorId.getBytes()));
+  }
+
+  @Override
+  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+    nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
   private static TaskSpec parseTaskSpecFromFlatbuffer(ByteBuffer bb) {
     bb.order(ByteOrder.LITTLE_ENDIAN);
     TaskInfo info = TaskInfo.getRootAsTaskInfo(bb);
-    UniqueId driverId = UniqueId.fromByteBuffer(info.driverIdAsByteBuffer());
-    UniqueId taskId = UniqueId.fromByteBuffer(info.taskIdAsByteBuffer());
-    UniqueId parentTaskId = UniqueId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
+    UniqueId jobId = UniqueId.fromByteBuffer(info.jobIdAsByteBuffer());
+    TaskId taskId = TaskId.fromByteBuffer(info.taskIdAsByteBuffer());
+    TaskId parentTaskId = TaskId.fromByteBuffer(info.parentTaskIdAsByteBuffer());
     int parentCounter = info.parentCounter();
     UniqueId actorCreationId = UniqueId.fromByteBuffer(info.actorCreationIdAsByteBuffer());
     int maxActorReconstructions = info.maxActorReconstructions();
     UniqueId actorId = UniqueId.fromByteBuffer(info.actorIdAsByteBuffer());
     UniqueId actorHandleId = UniqueId.fromByteBuffer(info.actorHandleIdAsByteBuffer());
     int actorCounter = info.actorCounter();
+    int numReturns = info.numReturns();
+
+    // Deserialize new actor handles
+    UniqueId[] newActorHandles = IdUtil.getUniqueIdsFromByteBuffer(
+        info.newActorHandlesAsByteBuffer());
+
     // Deserialize args
     FunctionArg[] args = new FunctionArg[info.argsLength()];
     for (int i = 0; i < info.argsLength(); i++) {
@@ -151,8 +169,7 @@ public class RayletClientImpl implements RayletClient {
       if (objectIdsLength > 0) {
         Preconditions.checkArgument(objectIdsLength == 1,
             "This arg has more than one id: {}", objectIdsLength);
-        UniqueId id = UniqueIdUtil.getUniqueIdsFromByteBuffer(arg.objectIdsAsByteBuffer())[0];
-        args[i] = FunctionArg.passByReference(id);
+        args[i] = FunctionArg.passByReference(ObjectId.fromByteBuffer(arg.objectIdsAsByteBuffer()));
       } else {
         ByteBuffer lbb = arg.dataAsByteBuffer();
         Preconditions.checkState(lbb != null && lbb.remaining() > 0);
@@ -161,8 +178,6 @@ public class RayletClientImpl implements RayletClient {
         args[i] = FunctionArg.passByValue(data);
       }
     }
-    // Deserialize return ids
-    UniqueId[] returnIds = UniqueIdUtil.getUniqueIdsFromByteBuffer(info.returnsAsByteBuffer());
 
     // Deserialize required resources;
     Map<String, Double> resources = new HashMap<>();
@@ -170,13 +185,21 @@ public class RayletClientImpl implements RayletClient {
       resources.put(info.requiredResources(i).key(), info.requiredResources(i).value());
     }
     // Deserialize function descriptor
+    Preconditions.checkArgument(info.language() == Language.JAVA);
     Preconditions.checkArgument(info.functionDescriptorLength() == 3);
-    FunctionDescriptor functionDescriptor = new FunctionDescriptor(
+    JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
         info.functionDescriptor(0), info.functionDescriptor(1), info.functionDescriptor(2)
     );
-    return new TaskSpec(driverId, taskId, parentTaskId, parentCounter, actorCreationId,
-        maxActorReconstructions, actorId, actorHandleId, actorCounter,
-        args, returnIds, resources, functionDescriptor);
+
+    // Deserialize dynamic worker options.
+    List<String> dynamicWorkerOptions = new ArrayList<>();
+    for (int i = 0; i < info.dynamicWorkerOptionsLength(); ++i) {
+      dynamicWorkerOptions.add(info.dynamicWorkerOptions(i));
+    }
+
+    return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
+        maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
+        args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
   private static ByteBuffer convertTaskSpecToFlatbuffer(TaskSpec task) {
@@ -184,7 +207,7 @@ public class RayletClientImpl implements RayletClient {
     bb.clear();
 
     FlatBufferBuilder fbb = new FlatBufferBuilder(bb);
-    final int driverIdOffset = fbb.createString(task.driverId.toByteBuffer());
+    final int jobIdOffset = fbb.createString(task.jobId.toByteBuffer());
     final int taskIdOffset = fbb.createString(task.taskId.toByteBuffer());
     final int parentTaskIdOffset = fbb.createString(task.parentTaskId.toByteBuffer());
     final int parentCounter = task.parentCounter;
@@ -194,10 +217,11 @@ public class RayletClientImpl implements RayletClient {
     final int actorIdOffset = fbb.createString(task.actorId.toByteBuffer());
     final int actorHandleIdOffset = fbb.createString(task.actorHandleId.toByteBuffer());
     final int actorCounter = task.actorCounter;
+    final int numReturnsOffset = task.numReturns;
 
     // Serialize the new actor handles.
     int newActorHandlesOffset
-        = fbb.createString(UniqueIdUtil.concatUniqueIds(task.newActorHandles));
+        = fbb.createString(IdUtil.concatIds(task.newActorHandles));
 
     // Serialize args
     int[] argsOffsets = new int[task.args.length];
@@ -206,7 +230,7 @@ public class RayletClientImpl implements RayletClient {
       int dataOffset = 0;
       if (task.args[i].id != null) {
         objectIdOffset = fbb.createString(
-          UniqueIdUtil.concatUniqueIds(new UniqueId[] {task.args[i].id}));
+            IdUtil.concatIds(new ObjectId[]{task.args[i].id}));
       } else {
         objectIdOffset = fbb.createString("");
       }
@@ -216,9 +240,6 @@ public class RayletClientImpl implements RayletClient {
       argsOffsets[i] = Arg.createArg(fbb, objectIdOffset, dataOffset);
     }
     int argsOffset = fbb.createVectorOfTables(argsOffsets);
-
-    // Serialize returns
-    int returnsOffset = fbb.createString(UniqueIdUtil.concatUniqueIds(task.returnIds));
 
     // Serialize required resources
     // The required_resources vector indicates the quantities of the different
@@ -237,16 +258,39 @@ public class RayletClientImpl implements RayletClient {
     int requiredPlacementResourcesOffset =
         fbb.createVectorOfTables(requiredPlacementResourcesOffsets);
 
-    int[] functionDescriptorOffsets = new int[]{
-        fbb.createString(task.functionDescriptor.className),
-        fbb.createString(task.functionDescriptor.name),
-        fbb.createString(task.functionDescriptor.typeDescriptor)
-    };
-    int functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    int language;
+    int functionDescriptorOffset;
+
+    if (task.language == TaskLanguage.JAVA) {
+      // This is a Java task.
+      language = Language.JAVA;
+      int[] functionDescriptorOffsets = new int[]{
+          fbb.createString(task.getJavaFunctionDescriptor().className),
+          fbb.createString(task.getJavaFunctionDescriptor().name),
+          fbb.createString(task.getJavaFunctionDescriptor().typeDescriptor)
+      };
+      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    } else {
+      // This is a Python task.
+      language = Language.PYTHON;
+      int[] functionDescriptorOffsets = new int[]{
+          fbb.createString(task.getPyFunctionDescriptor().moduleName),
+          fbb.createString(task.getPyFunctionDescriptor().className),
+          fbb.createString(task.getPyFunctionDescriptor().functionName),
+          fbb.createString("")
+      };
+      functionDescriptorOffset = fbb.createVectorOfTables(functionDescriptorOffsets);
+    }
+
+    int [] dynamicWorkerOptionsOffsets = new int[task.dynamicWorkerOptions.size()];
+    for (int index = 0; index < task.dynamicWorkerOptions.size(); ++index) {
+      dynamicWorkerOptionsOffsets[index] = fbb.createString(task.dynamicWorkerOptions.get(index));
+    }
+    int dynamicWorkerOptionsOffset = fbb.createVectorOfTables(dynamicWorkerOptionsOffsets);
 
     int root = TaskInfo.createTaskInfo(
         fbb,
-        driverIdOffset,
+        jobIdOffset,
         taskIdOffset,
         parentTaskIdOffset,
         parentCounter,
@@ -256,24 +300,28 @@ public class RayletClientImpl implements RayletClient {
         actorIdOffset,
         actorHandleIdOffset,
         actorCounter,
-        false,
         newActorHandlesOffset,
         argsOffset,
-        returnsOffset,
+        numReturnsOffset,
         requiredResourcesOffset,
         requiredPlacementResourcesOffset,
-        Language.JAVA,
-        functionDescriptorOffset);
+        language,
+        functionDescriptorOffset,
+        dynamicWorkerOptionsOffset);
     fbb.finish(root);
     ByteBuffer buffer = fbb.dataBuffer();
 
     if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
       LOGGER.error(
-          "Allocated buffer is not enough to transfer the task specification: {}vs {}",
-              TASK_SPEC_BUFFER_SIZE, buffer.remaining());
+          "Allocated buffer is not enough to transfer the task specification: {} vs {}",
+          TASK_SPEC_BUFFER_SIZE, buffer.remaining());
       throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
     }
     return buffer;
+  }
+
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    nativeSetResource(client, resourceName, capacity, nodeId.getBytes());
   }
 
   public void destroy() {
@@ -297,27 +345,35 @@ public class RayletClientImpl implements RayletClient {
       boolean isWorker, byte[] driverTaskId);
 
   private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
-      int pos, int taskSize);
+      int pos, int taskSize) throws RayException;
 
   // return TaskInfo (in FlatBuffer)
-  private static native byte[] nativeGetTask(long client);
+  private static native byte[] nativeGetTask(long client) throws RayException;
 
-  private static native void nativeDestroy(long client);
+  private static native void nativeDestroy(long client) throws RayException;
 
-  private static native int nativeFetchOrReconstruct(long client, byte[][] objectIds,
-      boolean fetchOnly, byte[] currentTaskId);
+  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
+      boolean fetchOnly, byte[] currentTaskId) throws RayException;
 
-  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId);
+  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId)
+      throws RayException;
 
   private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
-      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId);
+      int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;
 
-  private static native byte[] nativeGenerateTaskId(byte[] driverId, byte[] parentTaskId,
+  private static native byte[] nativeGenerateTaskId(byte[] jobId, byte[] parentTaskId,
       int taskIndex);
 
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
-      boolean localOnly);
+      boolean localOnly, boolean deleteCreatingTasks) throws RayException;
 
+  private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId);
+
+  private static native void nativeNotifyActorResumedFromCheckpoint(long conn, byte[] actorId,
+      byte[] checkpointId);
+
+  private static native void nativeSetResource(long conn, String resourceName, double capacity,
+                                               byte[] nodeId) throws RayException;
 }

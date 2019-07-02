@@ -22,7 +22,7 @@ To run the application, first install **ray** and then some dependencies:
   pip install tensorflow
   pip install six
   pip install gym[atari]
-  pip install opencv-python
+  pip install opencv-python-headless
   pip install scipy
 
 You can run the code with
@@ -127,7 +127,7 @@ global model parameters. The main training script looks like the following.
       obs = 0
 
       # Start simulations on actors
-      agents = [Runner(env_name, i) for i in range(num_workers)]
+      agents = [Runner.remote(env_name, i) for i in range(num_workers)]
 
       # Start gradient calculation tasks on each actor
       parameters = policy.get_weights()

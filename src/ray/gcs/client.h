@@ -4,11 +4,10 @@
 #include <map>
 #include <string>
 
-#include "plasma/events.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/asio.h"
 #include "ray/gcs/tables.h"
-#include "ray/id.h"
-#include "ray/status.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -41,18 +40,11 @@ class RAY_EXPORT AsyncGcsClient {
   AsyncGcsClient(const std::string &address, int port, const std::string &password);
   AsyncGcsClient(const std::string &address, int port, bool is_test_client);
 
-  /// Attach this client to a plasma event loop. Note that only
-  /// one event loop should be attached at a time.
-  Status Attach(plasma::EventLoop &event_loop);
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
-  inline ClassTable &class_table();
-  inline CustomSerializerTable &custom_serializer_table();
-  inline ConfigTable &config_table();
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
   ActorTable &actor_table();
@@ -62,15 +54,18 @@ class RAY_EXPORT AsyncGcsClient {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
-  DriverTable &driver_table();
+  JobTable &job_table();
   ProfileTable &profile_table();
+  ActorCheckpointTable &actor_checkpoint_table();
+  ActorCheckpointIdTable &actor_checkpoint_id_table();
+  DynamicResourceTable &resource_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
 
   using GetExportCallback = std::function<void(const std::string &data)>;
-  Status AddExport(const std::string &driver_id, std::string &export_data);
-  Status GetExport(const std::string &driver_id, int64_t export_index,
+  Status AddExport(const std::string &job_id, std::string &export_data);
+  Status GetExport(const std::string &job_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
@@ -82,8 +77,6 @@ class RAY_EXPORT AsyncGcsClient {
   std::string DebugString() const;
 
  private:
-  std::unique_ptr<FunctionTable> function_table_;
-  std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
@@ -94,13 +87,16 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
+  std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
+  std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
+  std::unique_ptr<DynamicResourceTable> resource_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_subscribe_clients_;
   // The following context writes everything to the primary shard
   std::shared_ptr<RedisContext> primary_context_;
-  std::unique_ptr<DriverTable> driver_table_;
+  std::unique_ptr<JobTable> job_table_;
   std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
   CommandType command_type_;
@@ -115,8 +111,8 @@ class SyncGcsClient {
   Status RetrieveFunction(const JobID &job_id, const FunctionID &function_id,
                           std::string *name, std::string *data);
 
-  Status AddExport(const std::string &driver_id, std::string &export_data);
-  Status GetExport(const std::string &driver_id, int64_t export_index, std::string *data);
+  Status AddExport(const std::string &job_id, std::string &export_data);
+  Status GetExport(const std::string &job_id, int64_t export_index, std::string *data);
 };
 
 }  // namespace gcs

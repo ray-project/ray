@@ -10,10 +10,9 @@
 #include <boost/bind.hpp>
 
 #include "plasma/client.h"
-#include "plasma/events.h"
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/object_directory.h"
 

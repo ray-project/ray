@@ -31,7 +31,8 @@ def register_trainable(name, trainable):
             automatically converted into a class during registration.
     """
 
-    from ray.tune.trainable import Trainable, wrap_function
+    from ray.tune.trainable import Trainable
+    from ray.tune.function_runner import wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")

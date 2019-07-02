@@ -123,14 +123,12 @@ std::shared_ptr<SenderConnection> ConnectionPool::Borrow(SenderMapType &conn_map
                                                          const ClientID &client_id) {
   std::shared_ptr<SenderConnection> conn = std::move(conn_map[client_id].back());
   conn_map[client_id].pop_back();
-  RAY_LOG(DEBUG) << "Borrow " << client_id << " " << conn_map[client_id].size();
   return conn;
 }
 
 void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
                             std::shared_ptr<SenderConnection> conn) {
   conn_map[client_id].push_back(std::move(conn));
-  RAY_LOG(DEBUG) << "Return " << client_id << " " << conn_map[client_id].size();
 }
 
 std::string ConnectionPool::DebugString() const {
@@ -147,6 +145,27 @@ std::string ConnectionPool::DebugString() const {
   result << "\n- num transfer receive connections: "
          << transfer_receive_connections_.size();
   return result.str();
+}
+
+void ConnectionPool::RecordMetrics() const {
+  stats::ConnectionPoolStats().Record(
+      message_send_connections_.size(),
+      {{stats::ValueTypeKey, "num_message_send_connections"}});
+  stats::ConnectionPoolStats().Record(
+      transfer_send_connections_.size(),
+      {{stats::ValueTypeKey, "num_transfer_send_connections"}});
+  stats::ConnectionPoolStats().Record(
+      available_transfer_send_connections_.size(),
+      {{stats::ValueTypeKey, "num_avail_message_send_connections"}});
+  stats::ConnectionPoolStats().Record(
+      available_transfer_send_connections_.size(),
+      {{stats::ValueTypeKey, "num_avail_transfer_send_connections"}});
+  stats::ConnectionPoolStats().Record(
+      message_receive_connections_.size(),
+      {{stats::ValueTypeKey, "num_message_receive_connections"}});
+  stats::ConnectionPoolStats().Record(
+      transfer_receive_connections_.size(),
+      {{stats::ValueTypeKey, "num_transfer_receive_connections"}});
 }
 
 }  // namespace ray

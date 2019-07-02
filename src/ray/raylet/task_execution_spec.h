@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
@@ -77,7 +77,7 @@ class TaskExecutionSpecification {
   /// Set the task's last timestamp to the specified value.
   ///
   /// \param new_timestamp The new timestamp in millisecond to set the task's
-  /// time stamp to. Tracks the last time this task entered a local scheduler.
+  /// time stamp to. Tracks the last time this task entered a raylet.
   void SetLastTimestamp(int64_t new_timestamp);
 
  private:

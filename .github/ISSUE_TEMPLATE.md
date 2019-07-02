@@ -1,5 +1,7 @@
 <!--
 General questions should be asked on the mailing list ray-dev@googlegroups.com.
+Questions about how to use Ray should be asked on
+[StackOverflow](https://stackoverflow.com/questions/tagged/ray).
 
 Before submitting an issue, please fill out the following form.
 -->

@@ -146,17 +146,26 @@ class PongEnv(object):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train an RL agent on Pong.")
-    parser.add_argument("--batch-size", default=10, type=int,
-                        help="The number of rollouts to do per batch.")
-    parser.add_argument("--redis-address", default=None, type=str,
-                        help="The Redis address of the cluster.")
-    parser.add_argument("--iterations", default=-1, type=int,
-                        help="The number of model updates to perform. By "
-                             "default, training will not terminate.")
+    parser.add_argument(
+        "--batch-size",
+        default=10,
+        type=int,
+        help="The number of rollouts to do per batch.")
+    parser.add_argument(
+        "--redis-address",
+        default=None,
+        type=str,
+        help="The Redis address of the cluster.")
+    parser.add_argument(
+        "--iterations",
+        default=-1,
+        type=int,
+        help="The number of model updates to perform. By "
+        "default, training will not terminate.")
     args = parser.parse_args()
     batch_size = args.batch_size
 
-    ray.init(redis_address=args.redis_address, redirect_output=True)
+    ray.init(redis_address=args.redis_address)
 
     # Run the reinforcement learning.
 
@@ -187,8 +196,8 @@ if __name__ == "__main__":
             # Accumulate the gradient over batch.
             for k in model:
                 grad_buffer[k] += grad[k]
-            running_reward = (reward_sum if running_reward is None
-                              else running_reward * 0.99 + reward_sum * 0.01)
+            running_reward = (reward_sum if running_reward is None else
+                              running_reward * 0.99 + reward_sum * 0.01)
         end_time = time.time()
         print("Batch {} computed {} rollouts in {} seconds, "
               "running mean is {}".format(batch_num, batch_size,
@@ -196,8 +205,8 @@ if __name__ == "__main__":
                                           running_reward))
         for k, v in model.items():
             g = grad_buffer[k]
-            rmsprop_cache[k] = (decay_rate * rmsprop_cache[k] +
-                                (1 - decay_rate) * g ** 2)
+            rmsprop_cache[k] = (
+                decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g**2)
             model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
             # Reset the batch gradient buffer.
             grad_buffer[k] = np.zeros_like(v)

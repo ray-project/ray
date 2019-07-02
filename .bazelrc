@@ -1,0 +1,6 @@
+# build config
+build --compilation_mode=opt
+build --action_env=PATH
+build --action_env=PYTHON_BIN_PATH
+# This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
+build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"

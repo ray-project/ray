@@ -5,11 +5,13 @@ from __future__ import print_function
 import random
 
 import ray
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.memory import ray_get_and_free
 
 
 class SyncBatchReplayOptimizer(PolicyOptimizer):
@@ -17,11 +19,13 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
 
     This enables RNN support. Does not currently support prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              train_batch_size=32):
+    def __init__(self,
+                 workers,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 train_batch_size=32):
+        PolicyOptimizer.__init__(self, workers)
+
         self.replay_starts = learning_starts
         self.max_buffer_size = buffer_size
         self.train_batch_size = train_batch_size
@@ -40,17 +44,17 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
-            if self.remote_evaluators:
-                weights = ray.put(self.local_evaluator.get_weights())
-                for e in self.remote_evaluators:
+            if self.workers.remote_workers():
+                weights = ray.put(self.workers.local_worker().get_weights())
+                for e in self.workers.remote_workers():
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            if self.remote_evaluators:
-                batches = ray.get(
-                    [e.sample.remote() for e in self.remote_evaluators])
+            if self.workers.remote_workers():
+                batches = ray_get_and_free(
+                    [e.sample.remote() for e in self.workers.remote_workers()])
             else:
-                batches = [self.local_evaluator.sample()]
+                batches = [self.workers.local_worker().sample()]
 
             # Handle everything as if multiagent
             tmp = []
@@ -63,6 +67,11 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
             batches = tmp
 
             for batch in batches:
+                if batch.count > self.max_buffer_size:
+                    raise ValueError(
+                        "The size of a single sample batch exceeds the replay "
+                        "buffer size ({} > {})".format(batch.count,
+                                                       self.max_buffer_size))
                 self.replay_buffer.append(batch)
                 self.num_steps_sampled += batch.count
                 self.buffer_size += batch.count
@@ -71,7 +80,9 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
                     self.buffer_size -= evicted.count
 
         if self.num_steps_sampled >= self.replay_starts:
-            self._optimize()
+            return self._optimize()
+        else:
+            return {}
 
     @override(PolicyOptimizer)
     def stats(self):
@@ -93,9 +104,9 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
             samples.append(random.choice(self.replay_buffer))
         samples = SampleBatch.concat_samples(samples)
         with self.grad_timer:
-            info_dict = self.local_evaluator.compute_apply(samples)
+            info_dict = self.workers.local_worker().learn_on_batch(samples)
             for policy_id, info in info_dict.items():
-                if "stats" in info:
-                    self.learner_stats[policy_id] = info["stats"]
+                self.learner_stats[policy_id] = get_learner_stats(info)
             self.grad_timer.push_units_processed(samples.count)
         self.num_steps_trained += samples.count
+        return info_dict

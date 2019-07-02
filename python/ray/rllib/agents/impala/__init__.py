@@ -1,3 +1,6 @@
-from ray.rllib.agents.impala.impala import ImpalaAgent, DEFAULT_CONFIG
+from ray.rllib.agents.impala.impala import ImpalaTrainer, DEFAULT_CONFIG
+from ray.rllib.utils import renamed_agent
 
-__all__ = ["ImpalaAgent", "DEFAULT_CONFIG"]
+ImpalaAgent = renamed_agent(ImpalaTrainer)
+
+__all__ = ["ImpalaAgent", "ImpalaTrainer", "DEFAULT_CONFIG"]

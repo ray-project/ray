@@ -13,7 +13,7 @@ from __future__ import print_function
 import random
 
 import ray
-from ray.tune import run_experiments, sample_from
+from ray.tune import run, sample_from
 from ray.tune.schedulers import PopulationBasedTraining
 
 if __name__ == "__main__":
@@ -30,7 +30,8 @@ if __name__ == "__main__":
 
     pbt = PopulationBasedTraining(
         time_attr="time_total_s",
-        reward_attr="episode_reward_mean",
+        metric="episode_reward_mean",
+        mode="max",
         perturbation_interval=120,
         resample_probability=0.25,
         # Specifies the mutations of these hyperparams
@@ -45,31 +46,30 @@ if __name__ == "__main__":
         custom_explore_fn=explore)
 
     ray.init()
-    run_experiments(
-        {
-            "pbt_humanoid_test": {
-                "run": "PPO",
-                "env": "Humanoid-v1",
-                "num_samples": 8,
-                "config": {
-                    "kl_coeff": 1.0,
-                    "num_workers": 8,
-                    "num_gpus": 1,
-                    "model": {
-                        "free_log_std": True
-                    },
-                    # These params are tuned from a fixed starting value.
-                    "lambda": 0.95,
-                    "clip_param": 0.2,
-                    "lr": 1e-4,
-                    # These params start off randomly drawn from a set.
-                    "num_sgd_iter": sample_from(
-                        lambda spec: random.choice([10, 20, 30])),
-                    "sgd_minibatch_size": sample_from(
-                        lambda spec: random.choice([128, 512, 2048])),
-                    "train_batch_size": sample_from(
-                        lambda spec: random.choice([10000, 20000, 40000]))
+    run(
+        "PPO",
+        name="pbt_humanoid_test",
+        scheduler=pbt,
+        **{
+            "env": "Humanoid-v1",
+            "num_samples": 8,
+            "config": {
+                "kl_coeff": 1.0,
+                "num_workers": 8,
+                "num_gpus": 1,
+                "model": {
+                    "free_log_std": True
                 },
+                # These params are tuned from a fixed starting value.
+                "lambda": 0.95,
+                "clip_param": 0.2,
+                "lr": 1e-4,
+                # These params start off randomly drawn from a set.
+                "num_sgd_iter": sample_from(
+                    lambda spec: random.choice([10, 20, 30])),
+                "sgd_minibatch_size": sample_from(
+                    lambda spec: random.choice([128, 512, 2048])),
+                "train_batch_size": sample_from(
+                    lambda spec: random.choice([10000, 20000, 40000]))
             },
-        },
-        scheduler=pbt)
+        })

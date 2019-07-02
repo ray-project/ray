@@ -4,13 +4,17 @@ from __future__ import print_function
 
 import os
 
+from ray.rllib.utils.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 class EvaluatorInterface(object):
     """This is the interface between policy optimizers and policy evaluation.
 
-    See also: PolicyEvaluator
+    See also: RolloutWorker
     """
 
+    @DeveloperAPI
     def sample(self):
         """Returns a batch of experience sampled from this evaluator.
 
@@ -27,15 +31,38 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
+    def learn_on_batch(self, samples):
+        """Update policies based on the given batch.
+
+        This is the equivalent to apply_gradients(compute_gradients(samples)),
+        but can be optimized to avoid pulling gradients into CPU memory.
+
+        Either this or the combination of compute/apply grads must be
+        implemented by subclasses.
+
+        Returns:
+            info: dictionary of extra metadata from compute_gradients().
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> ev.learn_on_batch(samples)
+        """
+
+        grads, info = self.compute_gradients(samples)
+        self.apply_gradients(grads)
+        return info
+
+    @DeveloperAPI
     def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples.
 
-        This method must be implemented by subclasses.
+        Either this or learn_on_batch() must be implemented by subclasses.
 
         Returns:
             (grads, info): A list of gradients that can be applied on a
             compatible evaluator. In the multi-agent case, returns a dict
-            of gradients keyed by policy graph ids. An info dictionary of
+            of gradients keyed by policy ids. An info dictionary of
             extra metadata is also returned.
 
         Examples:
@@ -45,10 +72,11 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def apply_gradients(self, grads):
         """Applies the given gradients to this evaluator's weights.
 
-        This method must be implemented by subclasses.
+        Either this or learn_on_batch() must be implemented by subclasses.
 
         Examples:
             >>> samples = ev1.sample()
@@ -58,6 +86,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def get_weights(self):
         """Returns the model weights of this Evaluator.
 
@@ -73,6 +102,7 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
+    @DeveloperAPI
     def set_weights(self, weights):
         """Sets the model weights of this Evaluator.
 
@@ -85,26 +115,13 @@ class EvaluatorInterface(object):
 
         raise NotImplementedError
 
-    def compute_apply(self, samples):
-        """Fused compute gradients and apply gradients call.
-
-        Returns:
-            info: dictionary of extra metadata from compute_gradients().
-
-        Examples:
-            >>> batch = ev.sample()
-            >>> ev.compute_apply(samples)
-        """
-
-        grads, info = self.compute_gradients(samples)
-        self.apply_gradients(grads)
-        return info
-
+    @DeveloperAPI
     def get_host(self):
         """Returns the hostname of the process running this evaluator."""
 
         return os.uname()[1]
 
+    @DeveloperAPI
     def apply(self, func, *args):
         """Apply the given function to this evaluator instance."""
 

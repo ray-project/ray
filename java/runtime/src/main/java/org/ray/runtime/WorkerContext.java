@@ -1,7 +1,9 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
@@ -13,7 +15,7 @@ public class WorkerContext {
 
   private UniqueId workerId;
 
-  private ThreadLocal<UniqueId> currentTaskId;
+  private ThreadLocal<TaskId> currentTaskId;
 
   /**
    * Number of objects that have been put from current task.
@@ -25,7 +27,9 @@ public class WorkerContext {
    */
   private ThreadLocal<Integer> taskIndex;
 
-  private UniqueId currentDriverId;
+  private ThreadLocal<TaskSpec> currentTask;
+
+  private UniqueId currentJobId;
 
   private ClassLoader currentClassLoader;
 
@@ -34,20 +38,29 @@ public class WorkerContext {
    */
   private long mainThreadId;
 
+  /**
+   * The run-mode of this worker.
+   */
+  private RunMode runMode;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
+  public WorkerContext(WorkerMode workerMode, UniqueId jobId, RunMode runMode) {
     mainThreadId = Thread.currentThread().getId();
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
-    currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    currentTaskId = ThreadLocal.withInitial(TaskId::randomId);
+    this.runMode = runMode;
+    currentTask = ThreadLocal.withInitial(() -> null);
+    currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
-      workerId = driverId;
-      currentTaskId.set(UniqueId.randomId());
-      currentDriverId = driverId;
-      currentClassLoader = null;
+      // TODO(qwang): Assign the driver id to worker id
+      // once we treat driver id as a special worker id.
+      workerId = jobId;
+      currentTaskId.set(TaskId.randomId());
+      currentJobId = jobId;
     } else {
       workerId = UniqueId.randomId();
-      setCurrentTask(null, null);
+      this.currentTaskId.set(TaskId.NIL);
+      this.currentJobId = UniqueId.NIL;
     }
   }
 
@@ -55,7 +68,7 @@ public class WorkerContext {
    * @return For the main thread, this method returns the ID of this worker's current running task;
    *     for other threads, this method returns a random ID.
    */
-  public UniqueId getCurrentTaskId() {
+  public TaskId getCurrentTaskId() {
     return currentTaskId.get();
   }
 
@@ -64,19 +77,19 @@ public class WorkerContext {
    * be called from the main thread.
    */
   public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
-    Preconditions.checkState(
-        Thread.currentThread().getId() == mainThreadId,
-        "This method should only be called from the main thread."
-    );
-    if (task != null) {
-      currentTaskId.set(task.taskId);
-      currentDriverId = task.driverId;
-    } else {
-      currentTaskId.set(UniqueId.NIL);
-      currentDriverId = UniqueId.NIL;
+    if (runMode == RunMode.CLUSTER) {
+      Preconditions.checkState(
+              Thread.currentThread().getId() == mainThreadId,
+              "This method should only be called from the main thread."
+      );
     }
+
+    Preconditions.checkNotNull(task);
+    this.currentTaskId.set(task.taskId);
+    this.currentJobId = task.jobId;
     taskIndex.set(0);
     putIndex.set(0);
+    this.currentTask.set(task);
     currentClassLoader = classLoader;
   }
 
@@ -104,18 +117,23 @@ public class WorkerContext {
   }
 
   /**
-   * @return If this worker is a driver, this method returns the driver ID; Otherwise, it returns
-   *     the driver ID of the current running task.
+   * The ID of the current job.
    */
-  public UniqueId getCurrentDriverId() {
-    return currentDriverId;
+  public UniqueId getCurrentJobId() {
+    return currentJobId;
   }
 
   /**
-   * @return The class loader which is associated with the current driver.
+   * @return The class loader which is associated with the current job.
    */
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;
   }
 
+  /**
+   * Get the current task.
+   */
+  public TaskSpec getCurrentTask() {
+    return this.currentTask.get();
+  }
 }

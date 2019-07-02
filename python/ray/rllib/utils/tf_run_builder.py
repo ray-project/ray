@@ -6,9 +6,10 @@ import logging
 import os
 import time
 
-import tensorflow as tf
-from tensorflow.python.client import timeline
+from ray.rllib.utils.debug import log_once
+from ray.rllib.utils import try_import_tf
 
+tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -46,6 +47,8 @@ class TFRunBuilder(object):
                     self.session, self.fetches, self.debug_name,
                     self.feed_dict, os.environ.get("TF_TIMELINE_DIR"))
             except Exception:
+                logger.exception("Error fetching: {}, feed_dict={}".format(
+                    self.fetches, self.feed_dict))
                 raise ValueError("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
         if isinstance(to_fetch, int):
@@ -63,6 +66,8 @@ _count = 0
 
 def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
     if timeline_dir:
+        from tensorflow.python.client import timeline
+
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
         start = time.time()
@@ -75,12 +80,16 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
         global _count
         outf = os.path.join(
             timeline_dir, "timeline-{}-{}-{}.json".format(
-                debug_name, os.getpid(), _count))
+                debug_name, os.getpid(), _count % 10))
         _count += 1
         trace_file = open(outf, "w")
         logger.info("Wrote tf timeline ({} s) to {}".format(
             time.time() - start, os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
+        if log_once("tf_timeline"):
+            logger.info(
+                "Executing TF run without tracing. To dump TF timeline traces "
+                "to disk, set the TF_TIMELINE_DIR environment variable.")
         fetches = sess.run(ops, feed_dict=feed_dict)
     return fetches

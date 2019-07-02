@@ -7,7 +7,8 @@ from __future__ import print_function
 import gym
 import numpy as np
 
-from ray.rllib.evaluation.sample_batch import SampleBatchBuilder
+from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 from ray.rllib.offline.json_writer import JsonWriter
 
 if __name__ == "__main__":
@@ -17,6 +18,12 @@ if __name__ == "__main__":
     # You normally wouldn't want to manually create sample batches if a
     # simulator is available, but let's do it anyways for example purposes:
     env = gym.make("CartPole-v0")
+
+    # RLlib uses preprocessors to implement transforms such as one-hot encoding
+    # and flattening of tuple and dict observations. For CartPole a no-op
+    # preprocessor is used, but this may be relevant for more complex envs.
+    prep = get_preprocessor(env.observation_space)(env.observation_space)
+    print("The preprocessor is", prep)
 
     for eps_id in range(100):
         obs = env.reset()
@@ -31,14 +38,15 @@ if __name__ == "__main__":
                 t=t,
                 eps_id=eps_id,
                 agent_index=0,
-                obs=obs,
+                obs=prep.transform(obs),
                 actions=action,
+                action_prob=1.0,  # put the true action probability here
                 rewards=rew,
                 prev_actions=prev_action,
                 prev_rewards=prev_reward,
                 dones=done,
                 infos=info,
-                new_obs=new_obs)
+                new_obs=prep.transform(new_obs))
             obs = new_obs
             prev_action = action
             prev_reward = rew

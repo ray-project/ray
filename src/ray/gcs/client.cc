@@ -1,7 +1,7 @@
 #include "ray/gcs/client.h"
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/ray_config.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -23,8 +23,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> &addr
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
       << "No entry found for NumRedisShards";
-  RAY_CHECK(reply->type == REDIS_REPLY_STRING) << "Expected string, found Redis type "
-                                               << reply->type << " for NumRedisShards";
+  RAY_CHECK(reply->type == REDIS_REPLY_STRING)
+      << "Expected string, found Redis type " << reply->type << " for NumRedisShards";
   int num_redis_shards = atoi(reply->str);
   RAY_CHECK(num_redis_shards >= 1) << "Expected at least one Redis shard, "
                                    << "found " << num_redis_shards;
@@ -109,15 +109,18 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   actor_table_.reset(new ActorTable({primary_context_}, this));
   client_table_.reset(new ClientTable({primary_context_}, this, client_id));
   error_table_.reset(new ErrorTable({primary_context_}, this));
-  driver_table_.reset(new DriverTable({primary_context_}, this));
+  job_table_.reset(new JobTable({primary_context_}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
-  object_table_.reset(new ObjectTable(shard_contexts_, this, command_type));
+  object_table_.reset(new ObjectTable(shard_contexts_, this));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
   profile_table_.reset(new ProfileTable(shard_contexts_, this));
+  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
+  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
+  resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
   command_type_ = command_type;
 
   // TODO(swang): Call the client table's Connect() method here. To do this,
@@ -144,25 +147,19 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                CommandType command_type, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), command_type,
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type,
                      is_test_client) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
                                const std::string &password = "")
-    : AsyncGcsClient(address, port, ClientID::from_random(), false, password) {}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), false, password) {}
 
 AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::from_random(), is_test_client) {}
-
-Status Attach(plasma::EventLoop &event_loop) {
-  // TODO(pcm): Implement this via
-  // context()->AttachToEventLoop(event loop)
-  return Status::OK();
-}
+    : AsyncGcsClient(address, port, ClientID::FromRandom(), is_test_client) {}
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
@@ -191,7 +188,7 @@ std::string AsyncGcsClient::DebugString() const {
   result << "\n- ErrorTable: " << error_table_->DebugString();
   result << "\n- ProfileTable: " << profile_table_->DebugString();
   result << "\n- ClientTable: " << client_table_->DebugString();
-  result << "\n- DriverTable: " << driver_table_->DebugString();
+  result << "\n- JobTable: " << job_table_->DebugString();
   return result.str();
 }
 
@@ -209,10 +206,6 @@ TaskLeaseTable &AsyncGcsClient::task_lease_table() { return *task_lease_table_; 
 
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 
-FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
-
-ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
-
 HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 HeartbeatBatchTable &AsyncGcsClient::heartbeat_batch_table() {
@@ -221,9 +214,19 @@ HeartbeatBatchTable &AsyncGcsClient::heartbeat_batch_table() {
 
 ErrorTable &AsyncGcsClient::error_table() { return *error_table_; }
 
-DriverTable &AsyncGcsClient::driver_table() { return *driver_table_; }
+JobTable &AsyncGcsClient::job_table() { return *job_table_; }
 
 ProfileTable &AsyncGcsClient::profile_table() { return *profile_table_; }
+
+ActorCheckpointTable &AsyncGcsClient::actor_checkpoint_table() {
+  return *actor_checkpoint_table_;
+}
+
+ActorCheckpointIdTable &AsyncGcsClient::actor_checkpoint_id_table() {
+  return *actor_checkpoint_id_table_;
+}
+
+DynamicResourceTable &AsyncGcsClient::resource_table() { return *resource_table_; }
 
 }  // namespace gcs
 

@@ -84,6 +84,9 @@ class Task {
   /// \param task Task structure with updated dynamic information.
   void CopyTaskExecutionSpec(const Task &task);
 
+  /// Serialize this task as a string.
+  const std::string Serialize() const;
+
  private:
   void ComputeDependencies();
 
@@ -99,6 +102,9 @@ class Task {
   /// TaskExecutionSpecification.
   std::vector<ObjectID> dependencies_;
 };
+
+std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+                                  const TaskSpecification *task_spec);
 
 }  // namespace raylet
 

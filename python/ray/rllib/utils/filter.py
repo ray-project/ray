@@ -110,7 +110,7 @@ class RunningStat(object):
         self._S = S
 
     def __repr__(self):
-        return '(n={}, mean_mean={}, mean_std={})'.format(
+        return "(n={}, mean_mean={}, mean_std={})".format(
             self.n, np.mean(self.mean), np.mean(self.std))
 
     @property
@@ -234,7 +234,7 @@ class MeanStdFilter(Filter):
         return x
 
     def __repr__(self):
-        return 'MeanStdFilter({}, {}, {}, {}, {}, {})'.format(
+        return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
             self.shape, self.demean, self.destd, self.clip, self.rs,
             self.buffer)
 
@@ -268,7 +268,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         return other
 
     def __repr__(self):
-        return 'ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})'.format(
+        return "ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})".format(
             self.shape, self.demean, self.destd, self.clip, self.rs,
             self.buffer)
 

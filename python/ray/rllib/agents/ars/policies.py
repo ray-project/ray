@@ -7,12 +7,15 @@ from __future__ import print_function
 
 import gym
 import numpy as np
-import tensorflow as tf
 
 import ray
+import ray.experimental.tf_utils
 from ray.rllib.evaluation.sampler import _unbatch_tuple_actions
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
@@ -77,11 +80,11 @@ class GenericPolicy(object):
 
         model = ModelCatalog.get_model({
             "obs": self.inputs
-        }, obs_space, dist_dim, model_config)
+        }, obs_space, action_space, dist_dim, model_config)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
-        self.variables = ray.experimental.TensorFlowVariables(
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
             model.outputs, self.sess)
 
         self.num_params = sum(

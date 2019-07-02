@@ -18,6 +18,17 @@ class ClientConnectionTest : public ::testing::Test {
     boost::asio::local::connect_pair(in_, out_);
   }
 
+  ray::Status WriteBadMessage(std::shared_ptr<ray::LocalClientConnection> conn,
+                              int64_t type, int64_t length, const uint8_t *message) {
+    std::vector<boost::asio::const_buffer> message_buffers;
+    auto write_cookie = 123456;  // incorrect version.
+    message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
+    message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
+    message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
+    message_buffers.push_back(boost::asio::buffer(message, length));
+    return conn->WriteBuffer(message_buffers);
+  }
+
  protected:
   boost::asio::io_service io_service_;
   boost::asio::local::stream_protocol::socket in_;
@@ -40,10 +51,10 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
       };
 
   auto conn1 = LocalClientConnection::Create(
-      client_handler, message_handler, std::move(in_), "conn1", error_message_type_);
+      client_handler, message_handler, std::move(in_), "conn1", {}, error_message_type_);
 
   auto conn2 = LocalClientConnection::Create(
-      client_handler, message_handler, std::move(out_), "conn2", error_message_type_);
+      client_handler, message_handler, std::move(out_), "conn2", {}, error_message_type_);
 
   RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
   RAY_CHECK_OK(conn2->WriteMessage(0, 5, arr));
@@ -62,9 +73,9 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   ClientHandler<boost::asio::local::stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
-      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-      const uint8_t *message) {};
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+      [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+         const uint8_t *message) {};
 
   std::shared_ptr<LocalClientConnection> reader = NULL;
 
@@ -86,10 +97,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
       };
 
   auto writer = LocalClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", error_message_type_);
+      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   reader = LocalClientConnection::Create(client_handler, message_handler, std::move(out_),
-                                         "reader", error_message_type_);
+                                         "reader", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     RAY_CHECK_OK(status);
@@ -109,12 +120,12 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
   ClientHandler<boost::asio::local::stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
-      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-      const uint8_t *message) {};
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+      [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+         const uint8_t *message) {};
 
   auto writer = LocalClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", error_message_type_);
+      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     ASSERT_TRUE(!status.ok());
@@ -131,12 +142,12 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   ClientHandler<boost::asio::local::stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler = [](
-      std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-      const uint8_t *message) {};
+  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+      [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+         const uint8_t *message) {};
 
   auto writer = LocalClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", error_message_type_);
+      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback =
       [writer](const ray::Status &status) {
@@ -145,6 +156,38 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
       };
   writer->WriteMessageAsync(0, 5, msg1, callback);
   io_service_.run();
+}
+
+TEST_F(ClientConnectionTest, ProcessBadMessage) {
+  const uint8_t arr[5] = {1, 2, 3, 4, 5};
+  int num_messages = 0;
+
+  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+      [](LocalClientConnection &client) {};
+
+  MessageHandler<boost::asio::local::stream_protocol> message_handler =
+      [&arr, &num_messages](std::shared_ptr<LocalClientConnection> client,
+                            int64_t message_type, const uint8_t *message) {
+        ASSERT_TRUE(!std::memcmp(arr, message, 5));
+        num_messages += 1;
+      };
+
+  auto writer = LocalClientConnection::Create(
+      client_handler, message_handler, std::move(in_), "writer", {}, error_message_type_);
+
+  auto reader =
+      LocalClientConnection::Create(client_handler, message_handler, std::move(out_),
+                                    "reader", {}, error_message_type_);
+
+  // If client ID is set, bad message would crash the test.
+  // reader->SetClientID(UniqueID::FromRandom());
+
+  // Intentionally write a message with incorrect cookie.
+  // Verify it won't crash as long as client ID is not set.
+  RAY_CHECK_OK(WriteBadMessage(writer, 0, 5, arr));
+  reader->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(num_messages, 0);
 }
 
 }  // namespace raylet

@@ -28,9 +28,9 @@ One of the Ray libraries is compiled against the wrong version of Python
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If there is a segfault or a sigabort immediately upon importing Ray, one of the
-components may have been compiled against the wrong Python libraries. CMake
+components may have been compiled against the wrong Python libraries. Bazel
 should normally find the right version of Python, but this process is not
-completely reliable. In this case, check the CMake output from installation and
+completely reliable. In this case, check the Bazel output from installation and
 make sure that the version of the Python libraries that were found match the
 version of Python that you're using.
 

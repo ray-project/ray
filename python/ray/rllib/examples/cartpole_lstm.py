@@ -20,8 +20,8 @@ parser.add_argument("--run", type=str, default="PPO")
 
 class CartPoleStatelessEnv(gym.Env):
     metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second': 60
+        "render.modes": ["human", "rgb_array"],
+        "video.frames_per_second": 60
     }
 
     def __init__(self):
@@ -102,7 +102,7 @@ class CartPoleStatelessEnv(gym.Env):
         rv = np.r_[self.state[0], self.state[2]]
         return rv
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         screen_width = 600
         screen_height = 400
 
@@ -149,7 +149,7 @@ class CartPoleStatelessEnv(gym.Env):
         self.carttrans.set_translation(cartx, carty)
         self.poletrans.set_rotation(-x[2])
 
-        return self.viewer.render(return_rgb_array=mode == 'rgb_array')
+        return self.viewer.render(return_rgb_array=mode == "rgb_array")
 
     def close(self):
         if self.viewer:
@@ -169,6 +169,8 @@ if __name__ == "__main__":
     configs = {
         "PPO": {
             "num_sgd_iter": 5,
+            "vf_share_layers": True,
+            "vf_loss_coeff": 0.0001,
         },
         "IMPALA": {
             "num_workers": 2,
@@ -177,20 +179,15 @@ if __name__ == "__main__":
         },
     }
 
-    tune.run_experiments({
-        "test": {
-            "env": "cartpole_stateless",
-            "run": args.run,
-            "stop": {
-                "episode_reward_mean": args.stop
-            },
-            "config": dict(
-                configs[args.run], **{
-                    "model": {
-                        "use_lstm": True,
-                        "lstm_use_prev_action_reward": args.
-                        use_prev_action_reward,
-                    },
-                }),
-        }
-    })
+    tune.run(
+        args.run,
+        stop={"episode_reward_mean": args.stop},
+        config=dict(
+            configs[args.run], **{
+                "env": "cartpole_stateless",
+                "model": {
+                    "use_lstm": True,
+                    "lstm_use_prev_action_reward": args.use_prev_action_reward,
+                },
+            }),
+    )

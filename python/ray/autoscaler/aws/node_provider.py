@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import threading
+from collections import defaultdict
 
 import boto3
 from botocore.config import Config
@@ -10,6 +12,7 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
+from ray.autoscaler.log_timer import LogTimer
 
 
 def to_aws_format(tags):
@@ -33,22 +36,66 @@ def from_aws_format(tags):
 class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
+        config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
         self.ec2 = boto3.resource(
             "ec2", region_name=provider_config["region"], config=config)
 
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
 
+        self.tag_cache = {}  # Tags that we believe to actually be on EC2.
+        self.tag_cache_pending = {}  # Tags that we will soon upload.
+        self.tag_cache_lock = threading.Lock()
+        self.tag_cache_update_event = threading.Event()
+        self.tag_cache_kill_event = threading.Event()
+        self.tag_update_thread = threading.Thread(
+            target=self._node_tag_update_loop)
+        self.tag_update_thread.start()
+
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
-        # Cache of ip lookups. We assume IPs never change once assigned.
-        self.internal_ip_cache = {}
-        self.external_ip_cache = {}
+    def _node_tag_update_loop(self):
+        """ Update the AWS tags for a cluster periodically.
 
-    def nodes(self, tag_filters):
+        The purpose of this loop is to avoid excessive EC2 calls when a large
+        number of nodes are being launched simultaneously.
+        """
+        while True:
+            self.tag_cache_update_event.wait()
+            self.tag_cache_update_event.clear()
+
+            batch_updates = defaultdict(list)
+
+            with self.tag_cache_lock:
+                for node_id, tags in self.tag_cache_pending.items():
+                    for x in tags.items():
+                        batch_updates[x].append(node_id)
+                    self.tag_cache[node_id].update(tags)
+
+                self.tag_cache_pending = {}
+
+            for (k, v), node_ids in batch_updates.items():
+                m = "Set tag {}={} on {}".format(k, v, node_ids)
+                with LogTimer("AWSNodeProvider: {}".format(m)):
+                    if k == TAG_RAY_NODE_NAME:
+                        k = "Name"
+                    self.ec2.meta.client.create_tags(
+                        Resources=node_ids,
+                        Tags=[{
+                            "Key": k,
+                            "Value": v
+                        }],
+                    )
+
+            self.tag_cache_kill_event.wait(timeout=5)
+            if self.tag_cache_kill_event.is_set():
+                return
+
+    def non_terminated_nodes(self, tag_filters):
+        # Note that these filters are acceptable because they are set on
+        #       node initialization, and so can never be sitting in the cache.
         tag_filters = to_aws_format(tag_filters)
         filters = [
             {
@@ -65,54 +112,59 @@ class AWSNodeProvider(NodeProvider):
                 "Name": "tag:{}".format(k),
                 "Values": [v],
             })
-        instances = list(self.ec2.instances.filter(Filters=filters))
-        self.cached_nodes = {i.id: i for i in instances}
-        return [i.id for i in instances]
+
+        nodes = list(self.ec2.instances.filter(Filters=filters))
+        # Populate the tag cache with initial information if necessary
+        for node in nodes:
+            if node.id in self.tag_cache:
+                continue
+
+            self.tag_cache[node.id] = from_aws_format(
+                {x["Key"]: x["Value"]
+                 for x in node.tags})
+
+        self.cached_nodes = {node.id: node for node in nodes}
+        return [node.id for node in nodes]
 
     def is_running(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         return node.state["Name"] == "running"
 
     def is_terminated(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         state = node.state["Name"]
         return state not in ["running", "pending"]
 
     def node_tags(self, node_id):
-        node = self._node(node_id)
-        tags = {}
-        for tag in node.tags:
-            tags[tag["Key"]] = tag["Value"]
-        return from_aws_format(tags)
+        with self.tag_cache_lock:
+            d1 = self.tag_cache[node_id]
+            d2 = self.tag_cache_pending.get(node_id, {})
+            return dict(d1, **d2)
 
     def external_ip(self, node_id):
-        if node_id in self.external_ip_cache:
-            return self.external_ip_cache[node_id]
-        node = self._node(node_id)
-        ip = node.public_ip_address
-        if ip:
-            self.external_ip_cache[node_id] = ip
-        return ip
+        node = self._get_cached_node(node_id)
+
+        if node.public_ip_address is None:
+            node = self._get_node(node_id)
+
+        return node.public_ip_address
 
     def internal_ip(self, node_id):
-        if node_id in self.internal_ip_cache:
-            return self.internal_ip_cache[node_id]
-        node = self._node(node_id)
-        ip = node.private_ip_address
-        if ip:
-            self.internal_ip_cache[node_id] = ip
-        return ip
+        node = self._get_cached_node(node_id)
+
+        if node.private_ip_address is None:
+            node = self._get_node(node_id)
+
+        return node.private_ip_address
 
     def set_node_tags(self, node_id, tags):
-        tags = to_aws_format(tags)
-        node = self._node(node_id)
-        tag_pairs = []
-        for k, v in tags.items():
-            tag_pairs.append({
-                "Key": k,
-                "Value": v,
-            })
-        node.create_tags(Tags=tag_pairs)
+        with self.tag_cache_lock:
+            try:
+                self.tag_cache_pending[node_id].update(tags)
+            except KeyError:
+                self.tag_cache_pending[node_id] = tags
+
+            self.tag_cache_update_event.set()
 
     def create_node(self, node_config, tags, count):
         tags = to_aws_format(tags)
@@ -163,12 +215,39 @@ class AWSNodeProvider(NodeProvider):
         self.ec2.create_instances(**conf)
 
     def terminate_node(self, node_id):
-        node = self._node(node_id)
+        node = self._get_cached_node(node_id)
         node.terminate()
 
-    def _node(self, node_id):
+        self.tag_cache.pop(node_id, None)
+        self.tag_cache_pending.pop(node_id, None)
+
+    def terminate_nodes(self, node_ids):
+        self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+
+        for node_id in node_ids:
+            self.tag_cache.pop(node_id, None)
+            self.tag_cache_pending.pop(node_id, None)
+
+    def _get_node(self, node_id):
+        """Refresh and get info for this node, updating the cache."""
+        self.non_terminated_nodes({})  # Side effect: updates cache
+
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
+
+        # Node not in {pending, running} -- retry with a point query. This
+        # usually means the node was recently preempted or terminated.
         matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
         assert len(matches) == 1, "Invalid instance id {}".format(node_id)
         return matches[0]
+
+    def _get_cached_node(self, node_id):
+        """Return node info from cache if possible, otherwise fetches it."""
+        if node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
+
+        return self._get_node(node_id)
+
+    def cleanup(self):
+        self.tag_cache_update_event.set()
+        self.tag_cache_kill_event.set()

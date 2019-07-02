@@ -15,11 +15,11 @@ import argparse
 import gym
 
 import ray
-from ray.rllib.agents.dqn.dqn import DQNAgent
-from ray.rllib.agents.dqn.dqn_policy_graph import DQNPolicyGraph
-from ray.rllib.agents.ppo.ppo import PPOAgent
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
+from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
+from ray.rllib.agents.ppo.ppo import PPOTrainer
+from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
@@ -36,11 +36,11 @@ if __name__ == "__main__":
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 
-    # You can also have multiple policy graphs per trainer, but here we just
+    # You can also have multiple policies per trainer, but here we just
     # show one each for PPO and DQN.
-    policy_graphs = {
-        "ppo_policy": (PPOPolicyGraph, obs_space, act_space, {}),
-        "dqn_policy": (DQNPolicyGraph, obs_space, act_space, {}),
+    policies = {
+        "ppo_policy": (PPOTFPolicy, obs_space, act_space, {}),
+        "dqn_policy": (DQNTFPolicy, obs_space, act_space, {}),
     }
 
     def policy_mapping_fn(agent_id):
@@ -49,11 +49,11 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo_trainer = PPOAgent(
+    ppo_trainer = PPOTrainer(
         env="multi_cartpole",
         config={
             "multiagent": {
-                "policy_graphs": policy_graphs,
+                "policies": policies,
                 "policy_mapping_fn": policy_mapping_fn,
                 "policies_to_train": ["ppo_policy"],
             },
@@ -62,11 +62,11 @@ if __name__ == "__main__":
             "observation_filter": "NoFilter",
         })
 
-    dqn_trainer = DQNAgent(
+    dqn_trainer = DQNTrainer(
         env="multi_cartpole",
         config={
             "multiagent": {
-                "policy_graphs": policy_graphs,
+                "policies": policies,
                 "policy_mapping_fn": policy_mapping_fn,
                 "policies_to_train": ["dqn_policy"],
             },
@@ -75,7 +75,7 @@ if __name__ == "__main__":
         })
 
     # disable DQN exploration when used by the PPO trainer
-    ppo_trainer.optimizer.foreach_evaluator(
+    ppo_trainer.workers.foreach_worker(
         lambda ev: ev.for_policy(
             lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
 

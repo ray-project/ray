@@ -5,7 +5,7 @@ Configuration
 -------------
 Ray will read your configurations in the following order:
 
-* Java system properties: e.g., ``-Dray.home=/path/to/ray``.
+* Java system properties: e.g., ``-Dray.run-mode=SINGLE_PROCESS``.
 * A ``ray.conf`` file in the classpath: `example <https://github.com/ray-project/ray/blob/master/java/example.conf>`_.
 * Customise your own ``ray.conf`` path using system property ``-Dray.config=/path/to/ray.conf``
 

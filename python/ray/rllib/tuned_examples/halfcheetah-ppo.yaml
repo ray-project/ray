@@ -1,0 +1,23 @@
+halfcheetah-ppo:
+    env: HalfCheetah-v2
+    run: PPO
+    stop:
+        episode_reward_mean: 9800
+        time_total_s: 10800           
+    config:
+        gamma: 0.99
+        lambda: 0.95
+        kl_coeff: 1.0
+        num_sgd_iter: 32
+        lr: .0003
+        vf_loss_coeff: 0.5
+        clip_param: 0.2
+        sgd_minibatch_size: 4096
+        train_batch_size: 65536
+        num_workers: 16
+        num_gpus: 1
+        grad_clip: 0.5
+        num_envs_per_worker: 
+            grid_search: [16, 32]
+        batch_mode: truncate_episodes
+        observation_filter: MeanStdFilter

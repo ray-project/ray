@@ -11,8 +11,8 @@
 #include <boost/enable_shared_from_this.hpp>
 
 #include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/ray_config.h"
+#include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -59,7 +59,7 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
+  /// \return Status.
   Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
     return conn_->WriteBuffer(buffer);
   }
@@ -67,10 +67,9 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// Read a buffer from this connection.
   ///
   /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
-  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
-                  boost::system::error_code &ec) {
-    return conn_->ReadBuffer(buffer, ec);
+  /// \return Status.
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer) {
+    return conn_->ReadBuffer(buffer);
   }
 
   /// \return The ClientID of this connection.

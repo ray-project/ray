@@ -7,3 +7,4 @@ cartpole-ppo:
     config:
         num_workers: 1
         batch_mode: complete_episodes
+        observation_filter: MeanStdFilter

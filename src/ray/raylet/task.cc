@@ -46,6 +46,20 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
   ComputeDependencies();
 }
 
+const std::string Task::Serialize() const {
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.Finish(ToFlatbuffer(fbb));
+  return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+}
+
+std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
+                                  const TaskSpecification *task_spec) {
+  std::vector<ObjectID> execution_dependencies(*dependencies);
+  TaskExecutionSpecification execution_spec(std::move(execution_dependencies));
+  Task task(execution_spec, *task_spec);
+  return task.Serialize();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

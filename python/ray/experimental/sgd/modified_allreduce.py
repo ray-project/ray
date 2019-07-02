@@ -27,32 +27,31 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 
 logger = logging.getLogger(__name__)
 
-AllReduceSpecTuple = pycoll.namedtuple('AllReduceSpecTuple',
-                                       'alg shards limit')
+AllReduceSpecTuple = pycoll.namedtuple("AllReduceSpecTuple",
+                                       "alg shards limit")
 
 
 def parse_general_int(s):
     """Parse integer with power-of-2 suffix eg. 32k."""
-    mo = re.match(r'(\d+)([KkMGT]?)$', s)
+    mo = re.match(r"(\d+)([KkMGT]?)$", s)
     if mo:
         i, suffix = mo.group(1, 2)
         v = int(i)
         if suffix:
-            if suffix == 'K' or suffix == 'k':
+            if suffix == "K" or suffix == "k":
                 v *= 1024
-            elif suffix == 'M':
+            elif suffix == "M":
                 v *= (1024 * 1024)
-            elif suffix == 'G':
+            elif suffix == "G":
                 v *= (1024 * 1024 * 1024)
-            elif suffix == 'T':
+            elif suffix == "T":
                 v *= (1024 * 1024 * 1024 * 1024)
             else:
-                raise ValueError('invalid integer string %s' % s)
+                raise ValueError("invalid integer string %s" % s)
         return v
     else:
         v = int(s)
@@ -82,37 +81,37 @@ def parse_all_reduce_spec(all_reduce_spec):
   Not all syntactically correct specifications are supported.
   Examples of supported all_reduce_spec strings, with semantics explained:
 
-    'xring' == apply ring all-reduce to all tensors
-    'xring#2' == apply ring all-reduce to all tensors, using two simultaneous
+    "xring" == apply ring all-reduce to all tensors
+    "xring#2" == apply ring all-reduce to all tensors, using two simultaneous
             transfer rings, each operating on 1/2 of each tensor.
-    'nccl'  == apply NCCL all-reduce to all tensors (only works within
+    "nccl"  == apply NCCL all-reduce to all tensors (only works within
             a single worker process where all devices are GPUs)
-    'nccl/xring' == apply NCCL all-reduce to all tensors within each worker
+    "nccl/xring" == apply NCCL all-reduce to all tensors within each worker
             to produce at least one full-reduced (locally) value,
             then apply ring all-reduce to one such value from each
             worker, then apply NCCL broadcast to propagate those globally
             reduced values back to every device within each worker.
-    'pscpu' == Shuffle reduce using worker CPUs as the gather devices: each
+    "pscpu" == Shuffle reduce using worker CPUs as the gather devices: each
             distributed tensor is reduced by copying all instances to
             one of the worker CPUs, computing the reduction there, then
             copying back to each participating device.  Tensor reductions
             are assigned to specific CPUs round-robin.
-    'psgpu#4' == Arrange all GPUs across all workers into groups of 4.
+    "psgpu#4" == Arrange all GPUs across all workers into groups of 4.
             Each distributed tensor is shuffle reduced against one
             such group of 4 GPUs, selected round-robin.  That is, each
             tensor is split across 4 shards for the reduction.
-    'pscpu:2k:pscpu#2:64k:xring' == Apply single-shard pscpu to
+    "pscpu:2k:pscpu#2:64k:xring" == Apply single-shard pscpu to
             tensors of size <= 2048 elements, apply 2-shard pscpu to
             tensors up to size 64k elements, apply xring to larger tensors.
-    'pscpu/pscpu#2' == Use shuffle gather to locally reduce each tensor on
+    "pscpu/pscpu#2" == Use shuffle gather to locally reduce each tensor on
             the worker's CPU, then use 2-shard shuffle to reduce those
             locally reduced tensors across workers (on the worker CPUs), then
             scatter the globally reduced values locally from each worker CPU.
   """
-    range_parts = all_reduce_spec.split(':') + ['-1']
+    range_parts = all_reduce_spec.split(":") + ["-1"]
     if len(range_parts) % 2:
         raise ValueError(
-            'all_reduce_spec not well formed: %s' % all_reduce_spec)
+            "all_reduce_spec not well formed: %s" % all_reduce_spec)
     limit = 0
     spec = []
     alg = None
@@ -125,26 +124,26 @@ def parse_all_reduce_spec(all_reduce_spec):
                     AllReduceSpecTuple(alg=alg, shards=shards, limit=limit))
             except ValueError:
                 raise ValueError(
-                    'all_reduce_spec (%s) contains non-integer range %s' %
+                    "all_reduce_spec (%s) contains non-integer range %s" %
                     (all_reduce_spec, range_part))
         else:
             alg = range_part
-            alg_parts = range_part.split('#')
+            alg_parts = range_part.split("#")
             alg = alg_parts[0]
             if len(alg_parts) > 1:
                 try:
                     shards = int(alg_parts[1])
                 except ValueError:
                     raise ValueError(
-                        'all_reduce_spec (%s) contains non-integer '
-                        'shards %s' % all_reduce_spec, alg_parts[1])
+                        "all_reduce_spec (%s) contains non-integer "
+                        "shards %s" % all_reduce_spec, alg_parts[1])
             else:
                 shards = 1
             if alg not in [
-                    'nccl', 'nccl/xring', 'nccl/rechd', 'nccl/pscpu', 'xring',
-                    'pscpu', 'psgpu', 'pscpu/pscpu'
+                    "nccl", "nccl/xring", "nccl/rechd", "nccl/pscpu", "xring",
+                    "pscpu", "psgpu", "pscpu/pscpu"
             ]:
-                raise ValueError('all_reduce_spec (%s) contains invalid alg %s'
+                raise ValueError("all_reduce_spec (%s) contains invalid alg %s"
                                  % (all_reduce_spec, alg))
     return spec
 
@@ -153,19 +152,19 @@ def build_all_reduce_device_prefixes(job_name, num_tasks):
     """Build list of device prefix names for all_reduce.
 
   Args:
-    job_name: 'worker', 'ps' or 'localhost'.
+    job_name: "worker", "ps" or "localhost".
     num_tasks: number of jobs across which device names should be generated.
 
   Returns:
      A list of device name prefix strings. Each element spells out the full
      host name without adding the device.
-     e.g. '/job:worker/task:0'
+     e.g. "/job:worker/task:0"
   """
-    if job_name != 'localhost':
-        return ['/job:%s/task:%d' % (job_name, d) for d in range(0, num_tasks)]
+    if job_name != "localhost":
+        return ["/job:%s/task:%d" % (job_name, d) for d in range(0, num_tasks)]
     else:
         assert num_tasks == 1
-        return ['/job:%s' % job_name]
+        return ["/job:%s" % job_name]
 
 
 def group_device_names(devices, group_size):
@@ -187,7 +186,7 @@ def group_device_names(devices, group_size):
     num_devices = len(devices)
     if group_size > num_devices:
         raise ValueError(
-            'only %d devices, but group_size=%d' % (num_devices, group_size))
+            "only %d devices, but group_size=%d" % (num_devices, group_size))
     num_groups = (
         num_devices // group_size + (1 if
                                      (num_devices % group_size != 0) else 0))
@@ -304,29 +303,30 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
                                 aux_devices=None,
                                 num_shards=1):
     """Apply all-reduce algorithm over specified gradient tensors."""
-    with tf.name_scope('allreduce'):
+    with tf.name_scope("allreduce"):
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         scaled_grads = [g for g, _ in grad_and_vars]
-        if alg == 'nccl':
-            summed_grads = nccl.all_sum(scaled_grads)
-        elif alg == 'simple':
+        if alg == "nccl":
+            from tensorflow.python.ops import nccl_ops
+            summed_grads = nccl_ops.all_sum(scaled_grads)
+        elif alg == "simple":
             summed_grads = build_reduce_sum(scaled_grads)
-        elif alg == 'trivial':
+        elif alg == "trivial":
             summed_grads = build_trivial_sum(scaled_grads)
-        elif alg == 'xring':
+        elif alg == "xring":
             summed_grads = all_reduce.build_ring_all_reduce(
                 scaled_grads, num_workers, num_shards, gpu_indices, tf.add)
-        elif alg == 'nccl/xring':
+        elif alg == "nccl/xring":
             summed_grads = all_reduce.build_nccl_then_ring(
                 scaled_grads, num_shards, tf.add)
-        elif alg == 'nccl/rechd':
+        elif alg == "nccl/rechd":
             summed_grads = all_reduce.build_nccl_then_recursive_hd(
                 scaled_grads, tf.add)
-        elif alg == 'nccl/pscpu':
+        elif alg == "nccl/pscpu":
             summed_grads = all_reduce.build_nccl_then_shuffle(
                 scaled_grads, aux_devices, tf.add, tf.add_n)
-        elif alg == 'pscpu/pscpu':
+        elif alg == "pscpu/pscpu":
             summed_grads = all_reduce.build_shuffle_then_shuffle(
                 scaled_grads,
                 aux_devices,
@@ -334,11 +334,11 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
                 # for the second level.
                 [aux_devices[0]],
                 tf.add_n)
-        elif alg in ['pscpu', 'psgpu']:
+        elif alg in ["pscpu", "psgpu"]:
             summed_grads = all_reduce.build_shuffle_all_reduce(
                 scaled_grads, aux_devices, tf.add_n)
         else:
-            raise ValueError('unsupported all_reduce alg: ', alg)
+            raise ValueError("unsupported all_reduce alg: ", alg)
 
         result = []
         for (_, v), g in zip(grad_and_vars, summed_grads):
@@ -385,17 +385,17 @@ def sum_gradients_all_reduce(dev_prefixes,
   Returns:
     list of reduced tensors, packing values
   """
-    alg_contains_shuffle = contains_any(alg, ['pscpu', 'psgpu'])
-    is_hierarchical = '/' in alg
-    if 'pscpu' in alg:
-        aux_devices = [prefix + '/cpu:0' for prefix in dev_prefixes]
-    elif 'psgpu' in alg:
+    alg_contains_shuffle = contains_any(alg, ["pscpu", "psgpu"])
+    is_hierarchical = "/" in alg
+    if "pscpu" in alg:
+        aux_devices = [prefix + "/cpu:0" for prefix in dev_prefixes]
+    elif "psgpu" in alg:
         aux_devices = [
-            prefix + '/gpu:%d' % i for i in range(len(gpu_indices))
+            prefix + "/gpu:%d" % i for i in range(len(gpu_indices))
             for prefix in dev_prefixes
         ]
     else:
-        aux_devices = ['/job:localhost/cpu:0']
+        aux_devices = ["/job:localhost/cpu:0"]
     aux_device_groups = group_device_names(
         aux_devices, num_shards if alg_contains_shuffle else 1)
     group_index = 0
@@ -406,8 +406,8 @@ def sum_gradients_all_reduce(dev_prefixes,
     else:
         packing = None
     new_tower_grads = []
-    if alg == 'better':
-        raw_devices = ['/gpu:%i' % (i) for i in gpu_indices]
+    if alg == "better":
+        raw_devices = ["/gpu:%i" % (i) for i in gpu_indices]
         agg_grads = aggregate_gradients_using_copy_with_device_selection(
             tower_grads, raw_devices)
         for arr in tower_grads:
@@ -427,12 +427,12 @@ def sum_gradients_all_reduce(dev_prefixes,
 
 
 def print_stats(sizes):
-    def sizeof_fmt(num, suffix='B'):
-        for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+    def sizeof_fmt(num, suffix="B"):
+        for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
             if abs(num) < 1024.0:
                 return "%3.1f%s%s" % (num, unit, suffix)
             num /= 1024.0
-        return "%.1f%s%s" % (num, 'Yi', suffix)
+        return "%.1f%s%s" % (num, "Yi", suffix)
 
     stats = {
         "avg": np.mean(sizes),
@@ -482,7 +482,7 @@ def extract_ranges(index_list, range_size_limit=32):
     return ranges, singles
 
 
-GradPackTuple = pycoll.namedtuple('GradPackTuple', 'indices vars shapes')
+GradPackTuple = pycoll.namedtuple("GradPackTuple", "indices vars shapes")
 
 
 def pack_range(key, packing, grad_vars, rng):
@@ -503,7 +503,7 @@ def pack_range(key, packing, grad_vars, rng):
     members = []
     variables = []
     restore_shapes = []
-    with tf.name_scope('pack'):
+    with tf.name_scope("pack"):
         for g, v in to_pack:
             variables.append(v)
             restore_shapes.append(g.shape)
@@ -531,7 +531,7 @@ def unpack_grad_tuple(gv, gpt):
   """
     elt_widths = [x.num_elements() for x in gpt.shapes]
     with tf.device(gv[0][0].device):
-        with tf.name_scope('unpack'):
+        with tf.name_scope("unpack"):
             splits = tf.split(gv[0], elt_widths)
             unpacked_gv = []
             for idx, s in enumerate(splits):
@@ -595,9 +595,9 @@ def pack_small_tensors(tower_grads, max_bytes=0):
                 "https://github.com/ray-project/ray/issues/3136")
             new_gv_list = []
             for r in small_ranges:
-                key = '%d:%d' % (dev_idx, len(new_gv_list))
+                key = "%d:%d" % (dev_idx, len(new_gv_list))
                 new_gv_list.append((pack_range(key, packing, gv_list, r),
-                                    'packing_var_placeholder'))
+                                    "packing_var_placeholder"))
             for i in large_indices:
                 new_gv_list.append(gv_list[i])
             new_tower_grads.append(new_gv_list)
@@ -627,7 +627,7 @@ def unpack_small_tensors(tower_grads, packing):
     for dev_idx, gv_list in enumerate(tower_grads):
         new_gv_list = gv_list[num_packed:]
         for i in xrange(0, num_packed):
-            k = '%d:%d' % (dev_idx, i)
+            k = "%d:%d" % (dev_idx, i)
             gpt = packing[k]
             gv = unpack_grad_tuple(gv_list[i], gpt)
             for gi, idx in enumerate(gpt.indices):

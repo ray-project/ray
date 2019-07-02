@@ -6,8 +6,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import tensorflow as tf
+
+import ray
+import ray.experimental.tf_utils
 
 
 def get_batch(data, batch_index, batch_size):
@@ -34,8 +36,8 @@ def conv2d(x, W):
 
 
 def max_pool_2x2(x):
-    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
-                          padding="SAME")
+    return tf.nn.max_pool(
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
 
 def cnn_setup(x, y, keep_prob, lr, stddev):
@@ -59,8 +61,8 @@ def cnn_setup(x, y, keep_prob, lr, stddev):
     W_fc2 = weight([fc_hidden, 10], stddev)
     b_fc2 = bias([10])
     y_conv = tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y * tf.log(y_conv),
-                                   reduction_indices=[1]))
+    cross_entropy = tf.reduce_mean(
+        -tf.reduce_sum(y * tf.log(y_conv), reduction_indices=[1]))
     correct_pred = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))
     return (tf.train.AdamOptimizer(lr).minimize(cross_entropy),
             tf.reduce_mean(tf.cast(correct_pred, tf.float32)), cross_entropy)
@@ -69,8 +71,12 @@ def cnn_setup(x, y, keep_prob, lr, stddev):
 # Define a remote function that takes a set of hyperparameters as well as the
 # data, consructs and trains a network, and returns the validation accuracy.
 @ray.remote
-def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
-                                   validation_images, validation_labels,
+def train_cnn_and_compute_accuracy(params,
+                                   steps,
+                                   train_images,
+                                   train_labels,
+                                   validation_images,
+                                   validation_labels,
                                    weights=None):
     # Extract the hyperparameters from the params dictionary.
     learning_rate = params["learning_rate"]
@@ -90,7 +96,8 @@ def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
         with tf.Session() as sess:
             # Use the TensorFlowVariables utility. This is only necessary if we
             # want to set and get the weights.
-            variables = ray.experimental.TensorFlowVariables(loss, sess)
+            variables = ray.experimental.tf_utils.TensorFlowVariables(
+                loss, sess)
             # Initialize the network weights.
             sess.run(tf.global_variables_initializer())
             # If some network weights were passed in, set those.
@@ -102,12 +109,19 @@ def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
                 image_batch = get_batch(train_images, i, batch_size)
                 label_batch = get_batch(train_labels, i, batch_size)
                 # Do one step of training.
-                sess.run(train_step, feed_dict={x: image_batch, y: label_batch,
-                                                keep_prob: keep})
+                sess.run(
+                    train_step,
+                    feed_dict={
+                        x: image_batch,
+                        y: label_batch,
+                        keep_prob: keep
+                    })
             # Training is done, so compute the validation accuracy and the
             # current weights and return.
-            totalacc = accuracy.eval(feed_dict={x: validation_images,
-                                                y: validation_labels,
-                                                keep_prob: 1.0})
+            totalacc = accuracy.eval(feed_dict={
+                x: validation_images,
+                y: validation_labels,
+                keep_prob: 1.0
+            })
             new_weights = variables.get_weights()
     return float(totalacc), new_weights

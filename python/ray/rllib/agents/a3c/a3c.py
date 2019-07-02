@@ -2,12 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
-from ray.rllib.agents.agent import Agent, with_common_config
+from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -27,7 +25,7 @@ DEFAULT_CONFIG = with_common_config({
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
@@ -38,41 +36,32 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class A3CAgent(Agent):
-    """A3C implementations in TensorFlow and PyTorch."""
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.a3c.a3c_torch_policy import \
+            A3CTorchPolicy
+        return A3CTorchPolicy
+    else:
+        return A3CTFPolicy
 
-    _agent_name = "A3C"
-    _default_config = DEFAULT_CONFIG
-    _policy_graph = A3CPolicyGraph
 
-    @override(Agent)
-    def _init(self):
-        if self.config["use_pytorch"]:
-            from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
-                A3CTorchPolicyGraph
-            policy_cls = A3CTorchPolicyGraph
-        else:
-            policy_cls = self._policy_graph
+def validate_config(config):
+    if config["entropy_coeff"] < 0:
+        raise DeprecationWarning("entropy_coeff must be >= 0")
+    if config["sample_async"] and config["use_pytorch"]:
+        raise ValueError(
+            "The sample_async option is not supported with use_pytorch: "
+            "Multithreading can be lead to crashes if used with pytorch.")
 
-        self.local_evaluator = self.make_local_evaluator(
-            self.env_creator, policy_cls)
-        self.remote_evaluators = self.make_remote_evaluators(
-            self.env_creator, policy_cls, self.config["num_workers"])
-        self.optimizer = self._make_optimizer()
 
-    @override(Agent)
-    def _train(self):
-        prev_steps = self.optimizer.num_steps_sampled
-        start = time.time()
-        while time.time() - start < self.config["min_iter_time_s"]:
-            self.optimizer.step()
-        result = self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"])
-        result.update(timesteps_this_iter=self.optimizer.num_steps_sampled -
-                      prev_steps)
-        return result
+def make_async_optimizer(workers, config):
+    return AsyncGradientsOptimizer(workers, **config["optimizer"])
 
-    def _make_optimizer(self):
-        return AsyncGradientsOptimizer(self.local_evaluator,
-                                       self.remote_evaluators,
-                                       self.config["optimizer"])
+
+A3CTrainer = build_trainer(
+    name="A3C",
+    default_config=DEFAULT_CONFIG,
+    default_policy=A3CTFPolicy,
+    get_policy_class=get_policy_class,
+    validate_config=validate_config,
+    make_policy_optimizer=make_async_optimizer)

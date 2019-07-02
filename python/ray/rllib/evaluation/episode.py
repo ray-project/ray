@@ -7,15 +7,13 @@ import random
 
 import numpy as np
 
-from ray.rllib.env.async_vector_env import _DUMMY_AGENT_ID
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class MultiAgentEpisode(object):
     """Tracks the current state of a (possibly multi-agent) episode.
-
-    The APIs in this class should be considered experimental, but we should
-    avoid changing things for the sake of changing them since users may
-    depend on them for custom metrics or advanced algorithms.
 
     Attributes:
         new_batch_builder (func): Create a new MultiAgentSampleBatchBuilder.
@@ -29,7 +27,7 @@ class MultiAgentEpisode(object):
         user_data (dict): Dict that you can use for temporary storage.
 
     Use case 1: Model-based rollouts in multi-agent:
-        A custom compute_actions() function in a policy graph can inspect the
+        A custom compute_actions() function in a policy can inspect the
         current episode state and perform a number of rollouts based on the
         policies and state of other agents in the environment.
 
@@ -60,14 +58,29 @@ class MultiAgentEpisode(object):
         self._agent_to_policy = {}
         self._agent_to_rnn_state = {}
         self._agent_to_last_obs = {}
+        self._agent_to_last_raw_obs = {}
         self._agent_to_last_info = {}
         self._agent_to_last_action = {}
         self._agent_to_last_pi_info = {}
         self._agent_to_prev_action = {}
         self._agent_reward_history = defaultdict(list)
 
+    @DeveloperAPI
+    def soft_reset(self):
+        """Clears rewards and metrics, but retains RNN and other state.
+
+        This is used to carry state across multiple logical episodes in the
+        same env (i.e., if `soft_horizon` is set).
+        """
+        self.length = 0
+        self.episode_id = random.randrange(2e9)
+        self.total_reward = 0.0
+        self.agent_rewards = defaultdict(float)
+        self._agent_reward_history = defaultdict(list)
+
+    @DeveloperAPI
     def policy_for(self, agent_id=_DUMMY_AGENT_ID):
-        """Returns the policy graph for the specified agent.
+        """Returns the policy for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
         agent to a policy for the duration of the episode.
@@ -77,16 +90,25 @@ class MultiAgentEpisode(object):
             self._agent_to_policy[agent_id] = self._policy_mapping_fn(agent_id)
         return self._agent_to_policy[agent_id]
 
+    @DeveloperAPI
     def last_observation_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
 
+    @DeveloperAPI
+    def last_raw_obs_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the last un-preprocessed obs for the specified agent."""
+
+        return self._agent_to_last_raw_obs.get(agent_id)
+
+    @DeveloperAPI
     def last_info_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last info for the specified agent."""
 
         return self._agent_to_last_info.get(agent_id)
 
+    @DeveloperAPI
     def last_action_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last action for the specified agent, or zeros."""
 
@@ -97,6 +119,7 @@ class MultiAgentEpisode(object):
             flat = _flatten_action(policy.action_space.sample())
             return np.zeros_like(flat)
 
+    @DeveloperAPI
     def prev_action_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the previous action for the specified agent."""
 
@@ -106,6 +129,7 @@ class MultiAgentEpisode(object):
             # We're at t=0, so return all zeros.
             return np.zeros_like(self.last_action_for(agent_id))
 
+    @DeveloperAPI
     def prev_reward_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the previous reward for the specified agent."""
 
@@ -116,6 +140,7 @@ class MultiAgentEpisode(object):
             # We're at t=0, so there is no previous reward, just return zero.
             return 0.0
 
+    @DeveloperAPI
     def rnn_state_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last RNN state for the specified agent."""
 
@@ -124,6 +149,7 @@ class MultiAgentEpisode(object):
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
 
+    @DeveloperAPI
     def last_pi_info_for(self, agent_id=_DUMMY_AGENT_ID):
         """Returns the last info object for the specified agent."""
 
@@ -143,10 +169,16 @@ class MultiAgentEpisode(object):
     def _set_last_observation(self, agent_id, obs):
         self._agent_to_last_obs[agent_id] = obs
 
+    def _set_last_raw_obs(self, agent_id, obs):
+        self._agent_to_last_raw_obs[agent_id] = obs
+
     def _set_last_info(self, agent_id, info):
         self._agent_to_last_info[agent_id] = info
 
     def _set_last_action(self, agent_id, action):
+        if agent_id in self._agent_to_last_action:
+            self._agent_to_prev_action[agent_id] = \
+                self._agent_to_last_action[agent_id]
         self._agent_to_last_action[agent_id] = action
 
     def _set_last_pi_info(self, agent_id, pi_info):

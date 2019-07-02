@@ -6,10 +6,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/status.h"
 #include "ray/raylet/task_spec.h"
-#include "ray/status.h"
 
+using ray::ActorCheckpointID;
 using ray::ActorID;
+using ray::ClientID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
@@ -28,7 +30,7 @@ class RayletConnection {
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   ///        additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a
+  /// \param job_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
   RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
@@ -64,10 +66,10 @@ class RayletClient {
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const UniqueID &client_id,
-               bool is_worker, const JobID &driver_id, const Language &language);
+  RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+               bool is_worker, const JobID &job_id, const Language &language);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -123,12 +125,12 @@ class RayletClient {
 
   /// Push an error to the relevant driver.
   ///
-  /// \param The ID of the job that the error is for.
+  /// \param The ID of the job_id that the error is for.
   /// \param The type of the error.
   /// \param The error message.
   /// \param The timestamp of the error.
   /// \return ray::Status.
-  ray::Status PushError(const JobID &job_id, const std::string &type,
+  ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
   /// Store some profile events in the GCS.
@@ -142,23 +144,49 @@ class RayletClient {
   /// \param object_ids A list of ObjectsIDs to be deleted.
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
+  /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
+                          bool deleteCreatingTasks);
+
+  /// Request raylet backend to prepare a checkpoint for an actor.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the new checkpoint (output parameter).
+  /// \return ray::Status.
+  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
+                                     ActorCheckpointID &checkpoint_id);
+
+  /// Notify raylet backend that an actor was resumed from a checkpoint.
+  ///
+  /// \param actor_id ID of the actor.
+  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
+  /// \return ray::Status.
+  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
+                                               const ActorCheckpointID &checkpoint_id);
+
+  /// Sets a resource with the specified capacity and client id
+  /// \param resource_name Name of the resource to be set
+  /// \param capacity Capacity of the resource
+  /// \param client_Id ClientID where the resource is to be set
+  /// \return ray::Status
+  ray::Status SetResource(const std::string &resource_name, const double capacity,
+                          const ray::ClientID &client_Id);
 
   Language GetLanguage() const { return language_; }
 
-  JobID GetClientID() const { return client_id_; }
+  ClientID GetClientID() const { return client_id_; }
 
-  JobID GetDriverID() const { return driver_id_; }
+  JobID GetJobID() const { return job_id_; }
 
   bool IsWorker() const { return is_worker_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const UniqueID client_id_;
+  const ClientID client_id_;
   const bool is_worker_;
-  const JobID driver_id_;
+  const JobID job_id_;
   const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

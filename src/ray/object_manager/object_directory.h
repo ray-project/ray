@@ -7,10 +7,12 @@
 #include <unordered_set>
 #include <vector>
 
+#include "plasma/client.h"
+
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/client.h"
-#include "ray/id.h"
 #include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/status.h"
 
 namespace ray {
 
@@ -49,8 +51,7 @@ class ObjectDirectoryInterface {
 
   /// Callback for object location notifications.
   using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
-                                              const std::unordered_set<ray::ClientID> &,
-                                              bool has_been_created)>;
+                                              const std::unordered_set<ray::ClientID> &)>;
 
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
@@ -108,9 +109,11 @@ class ObjectDirectoryInterface {
   ///
   /// \param object_id The object id that was removed from the store.
   /// \param client_id The client id corresponding to this node.
+  /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                          const ClientID &client_id) = 0;
+  virtual ray::Status ReportObjectRemoved(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
   /// Get local client id
   ///
@@ -157,8 +160,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectAdded(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                  const ClientID &client_id) override;
+  ray::Status ReportObjectRemoved(
+      const ObjectID &object_id, const ClientID &client_id,
+      const object_manager::protocol::ObjectInfoT &object_info) override;
 
   ray::ClientID GetLocalClientID() override;
 
@@ -174,12 +178,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
-    /// This flag will get set to true if the object has ever been created. It
+    /// This flag will get set to true if received any notification of the object.
+    /// It means current_object_locations is up-to-date with GCS. It
     /// should never go back to false once set to true. If this is true, and
     /// the current_object_locations is empty, then this means that the object
-    /// does not exist on any nodes due to eviction (rather than due to the
-    /// object never getting created, for instance).
-    bool has_been_created;
+    /// does not exist on any nodes due to eviction or the object never getting created.
+    bool subscribed;
   };
 
   /// Reference to the event loop.
@@ -188,9 +192,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
-  /// Map from object ID to the number of times it's been evicted on this
-  /// node before.
-  std::unordered_map<ObjectID, int> object_evictions_;
 };
 
 }  // namespace ray
