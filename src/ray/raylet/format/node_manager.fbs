@@ -131,12 +131,11 @@ table RegisterClientRequest {
   // True if the client is a worker and false if the client is a driver.
   is_worker: bool;
   // The ID of the worker or driver.
-  client_id: string;
+  worker_id: string;
   // The process ID of this worker.
   worker_pid: long;
-  // The driver ID. This is non-nil if the client is a driver.
-  // TODO(qwang): rename this to driver_task_id.
-  driver_id: string;
+  // The job ID if the client is a driver, otherwise it should be NIL.
+  job_id: string;
   // Language of this worker.
   language: Language;
 }

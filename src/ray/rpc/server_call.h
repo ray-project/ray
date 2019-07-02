@@ -59,6 +59,10 @@ class ServerCall {
   /// Get the factory that created this `ServerCall`.
   virtual const ServerCallFactory &GetFactory() const = 0;
 
+  /// Finish the `ServerCall`.
+  virtual void Finish(Status status) = 0;
+
+  /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
 
@@ -113,7 +117,14 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    io_service_.post([this] { HandleRequestImpl(); });
+    if (!io_service_.stopped()) {
+      io_service_.post([this] { HandleRequestImpl(); });
+    } else {
+      // Handle service for rpc call has stopped, we must handle the call here
+      // to send reply and remove it from cq
+      RAY_LOG(DEBUG) << "Handle service has been closed.";
+      Finish(Status::Invalid("HandleServiceClosed"));
+    }
   }
 
   void HandleRequestImpl() {
@@ -123,19 +134,19 @@ class ServerCallImpl : public ServerCall {
                                                    // When the handler is done with the
                                                    // request, tell gRPC to finish this
                                                    // request.
-                                                   SendReply(status);
+                                                   Finish(status);
                                                  });
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
- private:
   /// Tell gRPC to finish this request.
-  void SendReply(Status status) {
+  void Finish(Status status) override {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 
+ private:
   /// State of this call.
   ServerCallState state_;
 
