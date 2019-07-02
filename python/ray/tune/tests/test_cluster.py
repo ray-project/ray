@@ -365,6 +365,7 @@ ray.init(redis_address="{redis_address}")
 
 tune.run(
     "PG",
+    name="experiment",
     config=dict(env="CartPole-v1"),
     stop=dict(training_iteration=10),
     local_dir="{checkpoint_dir}",
@@ -453,6 +454,7 @@ ray.init(redis_address="{redis_address}")
 
 tune.run(
     {fail_class},
+    name="experiment",
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
