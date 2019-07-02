@@ -43,7 +43,10 @@ class CoreWorker {
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
+  CoreWorkerTaskExecutionInterface &Execution() {
+    RAY_CHECK(task_execution_interface_ != nullptr);
+    return *task_execution_interface_;
+  }
 
  private:
   /// Type of this worker.
@@ -68,7 +71,8 @@ class CoreWorker {
   CoreWorkerObjectInterface object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  CoreWorkerTaskExecutionInterface task_execution_interface_;
+  /// This is only available if it's not a driver.
+  std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
 };
 
 }  // namespace ray

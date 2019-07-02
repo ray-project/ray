@@ -47,9 +47,4 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   done_callback(status);
 }
 
-Status CoreWorkerRayletTaskReceiver::SetTaskHandler(const TaskHandler &callback) {
-  task_handler_ = callback;
-  return Status::OK();
-}
-
 }  // namespace ray
