@@ -85,10 +85,10 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
-  std::string driver_id_str = driver_id.Binary();
-  driver_id_str.resize(Size());
-  return TaskID::FromBinary(driver_id_str);
+TaskID ComputeDriverTaskId(const JobID &job_id) {
+  std::string job_id_str = job_id.Binary();
+  job_id_str.resize(TaskID::Size());
+  return TaskID::FromBinary(job_id_str);
 }
 
 TaskID ObjectID::TaskId() const {

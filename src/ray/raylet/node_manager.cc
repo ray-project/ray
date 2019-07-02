@@ -853,11 +853,11 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
     // Register the new driver.
-    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->worker_id());
+    const JobID job_id = from_flatbuf<JobID>(*message->worker_id());
     // Compute a dummy driver task id from a given driver.
-    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
+    const TaskID driver_task_id = ComputeDriverTaskId(job_id);
     worker->AssignTaskId(driver_task_id);
-    worker->AssignJobId(from_flatbuf<JobID>(*message->job_id()));
+    worker->AssignJobId(job_id);
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
   }

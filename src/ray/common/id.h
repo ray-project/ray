@@ -72,7 +72,6 @@ class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
-  static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -149,6 +148,12 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 // Restore the compiler alignment to defult (8 bytes).
 #pragma pack(pop)
+
+/// Compute the root task ID of a driver.
+///
+/// \param job_id The job ID associated to the driver.
+/// \return The root task ID for the driver.
+TaskID ComputeDriverTaskId(const JobID &job_id);
 
 /// Generate a task ID from the given info.
 ///
