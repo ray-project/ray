@@ -144,15 +144,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const rpc::PrepareActorCheckpointRequest &request,
       rpc::PrepareActorCheckpointReply *reply,
       rpc::RequestDoneCallback done_callback) override;
-  /// Handle a `NotifyActorResumedFromCheckpointReply` request.
+  /// Handle a `NotifyActorResumedFromCheckpoint` request.
   void HandleNotifyActorResumedFromCheckpointRequest(
       const rpc::NotifyActorResumedFromCheckpointRequest &request,
       rpc::NotifyActorResumedFromCheckpointReply *reply,
       rpc::RequestDoneCallback done_callback) override;
-  /// Handle a `SetResourceReply` request.
+  /// Handle a `SetResource` request.
   void HandleSetResourceRequest(const rpc::SetResourceRequest &request,
                                 rpc::SetResourceReply *reply,
                                 rpc::RequestDoneCallback done_callback) override;
+  /// Handle a `Heartbeat` request.
+  void HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
+                              rpc::HeartbeatReply *reply,
+                              rpc::RequestDoneCallback done_callback) override;
 
  private:
   bool WorkerIsDead(const WorkerID &worker_id);

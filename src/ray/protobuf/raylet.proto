@@ -115,6 +115,10 @@ message SetResourceRequest {
   // Client ID where this resource will be set
   bytes client_id = 3;
 }
+message HeartbeatRequest {
+  bytes worker_id = 1;
+  bool is_worker = 2;
+}
 
 // Service reply.
 message RegisterClientReply {
@@ -154,7 +158,8 @@ message NotifyActorResumedFromCheckpointReply {
 }
 message SetResourceReply {
 }
-
+message HeartbeatReply {
+}
 
 // Service interface.
 service RayletService {
@@ -195,4 +200,6 @@ service RayletService {
   rpc NotifyActorResumedFromCheckpoint(NotifyActorResumedFromCheckpointRequest) returns (NotifyActorResumedFromCheckpointReply);
   // Set dynamic custom resource
   rpc SetResource(SetResourceRequest) returns (SetResourceReply);
+  // Worker heartbeat message.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
 }

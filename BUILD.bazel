@@ -627,7 +627,8 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"],
+    deps = ["//:raylet_lib",
+    ],
 )
 
 cc_binary(
@@ -636,7 +637,7 @@ cc_binary(
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
         "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
         "src/ray/common/id.h",
-        "src/ray/raylet/raylet_client.h",
+        "src/ray/rpc/raylet/raylet_client.h",
         "src/ray/util/logging.h",
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({

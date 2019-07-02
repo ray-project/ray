@@ -49,6 +49,9 @@ class Worker {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
+  int HeartbeatTimeout() { return ++heartbeat_timeout_times_; }
+  void ClearHeartbeat() { heartbeat_timeout_times_ = 0; }
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
@@ -63,7 +66,7 @@ class Worker {
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// Whether the worker is dead.
-  bool dead_;
+  // bool dead_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
@@ -74,6 +77,7 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
+  int heartbeat_timeout_times_;
 };
 
 }  // namespace raylet

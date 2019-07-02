@@ -398,6 +398,27 @@ void WorkerPool::RecordMetrics() const {
   }
 }
 
+void WorkerPool::GetDeadWorkers(int timeout_times_limit,
+                                std::vector<std::shared_ptr<Worker>> &dead_worker) {
+  for (const auto &entry : states_by_lang_) {
+    // Worker heartbeat.
+    for (const auto &worker_pair : entry.second.registered_workers) {
+      auto &worker = worker_pair.second;
+      if (worker->HeartbeatTimeout() >= timeout_times_limit) {
+        dead_worker.emplace_back(worker);
+      }
+    }
+
+    // Driver heartbeat.
+    for (const auto &driver_pair : entry.second.registered_drivers) {
+      auto &driver = driver_pair.second;
+      if (driver->HeartbeatTimeout() >= timeout_times_limit) {
+        dead_worker.emplace_back(driver);
+      }
+    }
+  }
+}
+
 }  // namespace raylet
 
 }  // namespace ray

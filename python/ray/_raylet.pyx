@@ -24,8 +24,8 @@ from ray.includes.common cimport (
 )
 from ray.includes.libraylet cimport (
     CRayletClient,
-    GCSProfileEventT,
-    GCSProfileTableDataT,
+    PbProfileEvent,
+    PbProfileTableData,
     ResourceMappingType,
     WaitResultPair,
 )
@@ -219,14 +219,14 @@ cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
     def __cinit__(self, raylet_socket,
-                  ClientID client_id,
+                  WorkerID worker_id,
                   c_bool is_worker,
                   JobID job_id):
         # We know that we are using Python, so just skip the language
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(
-            raylet_socket.encode("ascii"), client_id.native(), is_worker,
+            raylet_socket.encode("ascii"), worker_id.native(), is_worker,
             job_id.native(), LANGUAGE_PYTHON))
 
     def disconnect(self):
@@ -244,9 +244,6 @@ cdef class RayletClient:
         with nogil:
             check_status(self.client.get().GetTask(&task_spec))
         return Task.make(task_spec)
-
-    def task_done(self):
-        check_status(self.client.get().TaskDone())
 
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
@@ -303,50 +300,46 @@ cdef class RayletClient:
     def push_profile_events(self, component_type, UniqueID component_id,
                             node_ip_address, profile_data):
         cdef:
-            GCSProfileTableDataT profile_info
-            GCSProfileEventT *profile_event
+            PbProfileTableData profile_info
+            PbProfileEvent *profile_event
             c_string event_type
 
         if len(profile_data) == 0:
             return  # Short circuit if there are no profile events.
 
-        profile_info.component_type = component_type.encode("ascii")
-        profile_info.component_id = component_id.binary()
-        profile_info.node_ip_address = node_ip_address.encode("ascii")
+        profile_info.set_component_type(component_type.encode("ascii"))
+        profile_info.set_component_id(component_id.binary())
+        profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
 
         for py_profile_event in profile_data:
-            profile_event = new GCSProfileEventT()
             if not isinstance(py_profile_event, dict):
                 raise TypeError(
                     "Incorrect type for a profile event. Expected dict "
                     "instead of '%s'" % str(type(py_profile_event)))
+            profile_event = profile_info.add_profile_events()
             # TODO(rkn): If the dictionary is formatted incorrectly, that
             # could lead to errors. E.g., if any of the strings are empty,
             # that will cause segfaults in the node manager.
             for key_string, event_data in py_profile_event.items():
                 if key_string == "event_type":
-                    profile_event.event_type = event_data.encode("ascii")
-                    if profile_event.event_type.length() == 0:
+                    ev_type = event_data.encode("ascii")
+                    profile_event.set_event_type(ev_type)
+                    if ev_type.length() == 0:
                         raise ValueError(
                             "'event_type' should not be a null string.")
                 elif key_string == "start_time":
-                    profile_event.start_time = float(event_data)
+                    profile_event.set_start_time(float(event_data))
                 elif key_string == "end_time":
-                    profile_event.end_time = float(event_data)
+                    profile_event.set_end_time(float(event_data))
                 elif key_string == "extra_data":
-                    profile_event.extra_data = event_data.encode("ascii")
-                    if profile_event.extra_data.length() == 0:
+                    ev_data = event_data.encode("ascii")
+                    profile_event.set_extra_data(ev_data)
+                    if ev_data.length() == 0:
                         raise ValueError(
                             "'extra_data' should not be a null string.")
                 else:
                     raise ValueError(
                         "Unknown profile event key '%s'" % key_string)
-            # Note that profile_info.profile_events is a vector of unique
-            # pointers, so profile_event will be deallocated when profile_info
-            # goes out of scope. "emplace_back" of vector has not been
-            # supported by Cython
-            profile_info.profile_events.push_back(
-                unique_ptr[GCSProfileEventT](profile_event))
 
         check_status(self.client.get().PushProfileEvents(profile_info))
 
@@ -378,7 +371,11 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetClientID().Binary())
+        return WorkerID(self.client.get().GetWorkerID().Binary())
+
+    @property
+    def worker_id(self):
+        return WorkerID(self.client.get().GetWorkerID().Binary())
 
     @property
     def job_id(self):

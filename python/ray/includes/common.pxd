@@ -91,16 +91,16 @@ cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
     cdef cppclass GCSArg "Arg":
         pass
 
-    cdef cppclass CLanguage "Language":
+    cdef cppclass CLanguage "::Language":
         pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
-    cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
+    cdef CLanguage LANGUAGE_PYTHON "::Language::PYTHON"
+    cdef CLanguage LANGUAGE_CPP "::Language::CPP"
+    cdef CLanguage LANGUAGE_JAVA "::Language::JAVA"
 
 
 cdef extern from "ray/raylet/scheduling_resources.h" \

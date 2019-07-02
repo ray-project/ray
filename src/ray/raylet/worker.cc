@@ -14,12 +14,12 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language)
     : worker_id_(worker_id),
       pid_(pid),
       language_(language),
-      dead_(false),
+      // dead_(false),
       blocked_(false) {}
 
-void Worker::MarkDead() { dead_ = true; }
+// void Worker::MarkDead() { dead_ = true; }
 
-bool Worker::IsDead() const { return dead_; }
+// bool Worker::IsDead() const { return dead_; }
 
 void Worker::MarkBlocked() { blocked_ = true; }
 

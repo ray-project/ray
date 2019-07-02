@@ -44,7 +44,7 @@ inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
     JNIEnv *env, jclass, jstring sockName, jbyteArray workerId, jboolean isWorker,
     jbyteArray jobId) {
-  UniqueIdFromJByteArray<ClientID> worker_id(env, workerId);
+  UniqueIdFromJByteArray<WorkerID> worker_id(env, workerId);
   UniqueIdFromJByteArray<JobID> job_id(env, jobId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
   auto raylet_client = new RayletClient(nativeString, worker_id.GetId(), isWorker,

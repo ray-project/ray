@@ -125,6 +125,15 @@ class WorkerPool {
   /// Record metrics.
   void RecordMetrics() const;
 
+  /// Get the workers that have timed out.
+  ///
+  /// \param timeout_times_limit Set the timeout times,
+  ///        a worker will be marked as dead if its timeout times is larger than this
+  ///        value.
+  /// \param dead_workers Workers that have been dead.
+  void GetDeadWorkers(int timeout_times_limit,
+                      std::vector<std::shared_ptr<Worker>> &dead_workers);
+
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and

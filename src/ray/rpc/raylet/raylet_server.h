@@ -72,6 +72,9 @@ class RayletServiceHandler {
   virtual void HandleSetResourceRequest(const SetResourceRequest &request,
                                         SetResourceReply *reply,
                                         RequestDoneCallback done_callback) = 0;
+  virtual void HandleHeartbeatRequest(const HeartbeatRequest &request,
+                                      HeartbeatReply *reply,
+                                      RequestDoneCallback done_callback) = 0;
 };
 
 /// The `GrpcService` for `RayletGrpcService`.
@@ -222,6 +225,15 @@ class RayletGrpcService : public GrpcService {
             &RayletServiceHandler::HandleSetResourceRequest, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(set_resource_call_factory), 10);
+
+    // Initialize the factory for `Heartbeat` requests.
+    std::unique_ptr<ServerCallFactory> heartbeat_call_factory(
+        new ServerCallFactoryImpl<RayletService, RayletServiceHandler, HeartbeatRequest,
+                                  HeartbeatReply>(
+            service_, &RayletService::AsyncService::RequestHeartbeat, service_handler_,
+            &RayletServiceHandler::HandleHeartbeatRequest, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(heartbeat_call_factory), 10);
   }
 
  private:

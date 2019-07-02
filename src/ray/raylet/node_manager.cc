@@ -266,7 +266,9 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       for (const auto &worker : workers) {
         // Mark the worker as dead so further messages from it are ignored
         // (except DisconnectClient).
-        worker->MarkDead();
+        // worker->MarkDead();
+        // Worker dies because driver exits, treat it as intentional disconnect.
+        ProcessDisconnectClientMessage(worker->GetWorkerID(), true);
         // Then kill the worker process.
         KillWorker(worker);
       }
@@ -322,6 +324,16 @@ void NodeManager::Heartbeat() {
     DumpDebugState();
     RecordMetrics();
     last_debug_dump_at_ms_ = now_ms;
+  }
+
+  // Add worker heartbeat timeout times.
+  std::vector<std::shared_ptr<Worker>> dead_workers;
+  worker_pool_.GetDeadWorkers(RayConfig::instance().worker_heartbeat_timeout_times(),
+                              dead_workers);
+  if (!dead_workers.empty()) {
+    for (const auto &worker : dead_workers) {
+      ProcessDisconnectClientMessage(worker->GetWorkerID());
+    }
   }
 
   // Reset the timer.
@@ -735,8 +747,13 @@ void NodeManager::DispatchTasks(
 
 bool NodeManager::WorkerIsDead(const WorkerID &worker_id) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(worker_id);
-  if (registered_worker && registered_worker->IsDead()) {
+  if (registered_worker) {
     return true;
+  } else {
+    registered_worker = worker_pool_.GetRegisteredWorker(worker_id);
+    if (registered_worker) {
+      return true;
+    }
   }
   return false;
 }
@@ -755,11 +772,8 @@ void NodeManager::HandleRegisterClientRequest(const rpc::RegisterClientRequest &
     worker_pool_.RegisterWorker(worker_id, std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
-    // Register the new driver. Note that here the driver_id in RegisterClientRequest
-    // message is actually the ID of the driver task, while client_id represents the
-    // real driver ID, which can associate all the tasks/actors for a given driver,
-    // which is set to the worker ID.
-    auto driver_task_id = TaskID::GetDriverTaskID(worker_id);
+    // Register the new driver.
+    auto driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(JobID::FromBinary(request.job_id()));
     worker_pool_.RegisterDriver(worker_id, std::move(worker));
@@ -949,24 +963,12 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
         rpc::IdVectorToProtobuf<ObjectID, rpc::WaitReply>(remaining, *reply,
                                                           &rpc::WaitReply::add_remaining);
 
-        // Send reply to finish this wait request.
+        // Send reply to finish this wait request. Dead worker message would be handled in
+        // heartbeat.
         done_callback(Status::OK());
         if (client_blocked) {
           HandleTaskUnblocked(worker_id, current_task_id);
         }
-        /*
-        if (status.ok()) {
-            // The client is unblocked now because the wait call has returned.
-            if (client_blocked) {
-                HandleTaskUnblocked(client, current_task_id);
-            }
-        } else {
-            // We failed to write to the client, so disconnect the client.
-            RAY_LOG(WARNING)
-                    << "Failed to send WaitReply to client, so disconnecting client";
-            // We failed to send the reply to the client, so disconnect the worker.
-            ProcessDisconnectClientMessage(client);
-        }*/
       });
   RAY_CHECK_OK(status);
 }
@@ -1112,6 +1114,22 @@ void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &reques
   done_callback(Status::OK());
 }
 
+/// Handle a `Heartbeat` request.
+void NodeManager::HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
+                                         rpc::HeartbeatReply *reply,
+                                         rpc::RequestDoneCallback done_callback) {
+  bool is_worker = request.is_worker();
+  const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  std::shared_ptr<Worker> worker = nullptr;
+  if (is_worker) {
+    worker = worker_pool_.GetRegisteredWorker(worker_id);
+  } else {
+    worker = worker_pool_.GetRegisteredDriver(worker_id);
+  }
+  worker->ClearHeartbeat();
+  done_callback(Status::OK());
+}
+
 /*
 void NodeManager::ProcessClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
@@ -1204,10 +1222,11 @@ from_flatbuf<ObjectID>(*message->object_ids());
 
 
 void NodeManager::ProcessRegisterClientRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t
-*message_data) { auto message =
-flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  client->SetClientID(from_flatbuf<ClientID>(*message->client_id()));
+
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+  client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
+
   auto worker =
       std::make_shared<Worker>(message->worker_pid(), message->language(),
 client); if (message->is_worker()) {
@@ -1215,18 +1234,12 @@ client); if (message->is_worker()) {
     worker_pool_.RegisterWorker(std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
-    // Register the new driver. Note that here the driver_id in
-RegisterClientRequest
-    // message is actually the ID of the driver task, while client_id represents
-the
-    // real driver ID, which can associate all the tasks/actors for a given
-driver,
-    // which is set to the worker ID.
-    // TODO(qwang): Use driver_task_id instead here.
-    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->driver_id());
-    TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
+    // Register the new driver.
+    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->worker_id());
+    // Compute a dummy driver task id from a given driver.
+    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
     worker->AssignTaskId(driver_task_id);
-    worker->AssignJobId(from_flatbuf<JobID>(*message->client_id()));
+    worker->AssignJobId(from_flatbuf<JobID>(*message->job_id()));
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
   }
@@ -1292,6 +1305,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
     } else {
       RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
                     << "been disconnected.";
+      return;
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
@@ -1299,7 +1313,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
   if (worker) {
-    if (is_worker && worker->IsDead()) {
+    if (is_worker) {
       // Don't need to unblock the client if it's a worker and is already dead.
       // Because in this case, its task is already cleaned up.
       RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
@@ -1308,18 +1322,20 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
         // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        HandleTaskUnblocked(worker->GetWorkerID(), task_id);
+        HandleTaskUnblocked(worker_id, task_id);
       }
     }
   }
 
   if (is_worker) {
+    /*
     // The client is a worker.
     if (worker->IsDead()) {
       // If the worker was killed by us because the driver exited,
       // treat it as intentionally disconnected.
       intentional_disconnect = true;
     }
+    */
 
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.IsNil()) {
@@ -1331,7 +1347,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
     const TaskID &task_id = worker->GetAssignedTaskId();
     // If the worker was running a task, clean up the task and push an error to
     // the driver, unless the worker is already dead.
-    if (!task_id.IsNil() && !worker->IsDead()) {
+    if (!task_id.IsNil()) {
       // If the worker was an actor, the task was already cleaned up in
       // `HandleDisconnectedActor`.
       if (actor_id.IsNil()) {
