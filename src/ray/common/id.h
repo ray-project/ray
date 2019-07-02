@@ -72,7 +72,7 @@ class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
-  static TaskID GetDriverTaskID(const WorkerID &driver_id);
+  static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -158,6 +158,14 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 /// \return The task ID generated from the given info.
 const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
                             int parent_task_counter);
+
+/// Compute the next actor handle ID of a new actor handle during a fork operation.
+///
+/// \param actor_handle_id The actor handle ID of original actor.
+/// \param num_forks The count of forks of original actor.
+/// \return The next actor handle ID generated from the given info.
+const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
+                                             int64_t num_forks);
 
 template <typename T>
 BaseID<T>::BaseID() {

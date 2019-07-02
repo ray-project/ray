@@ -844,7 +844,7 @@ void NodeManager::ProcessClientMessage(
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  client->SetClientID(from_flatbuf<ClientID>(*message->client_id()));
+  client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
   auto worker =
       std::make_shared<Worker>(message->worker_pid(), message->language(), client);
   if (message->is_worker()) {
@@ -852,15 +852,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker_pool_.RegisterWorker(std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
-    // Register the new driver. Note that here the driver_id in RegisterClientRequest
-    // message is actually the ID of the driver task, while client_id represents the
-    // real driver ID, which can associate all the tasks/actors for a given driver,
-    // which is set to the worker ID.
-    // TODO(qwang): Use driver_task_id instead here.
-    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->driver_id());
-    TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
+    // Register the new driver.
+    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->worker_id());
+    // Compute a dummy driver task id from a given driver.
+    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
     worker->AssignTaskId(driver_task_id);
-    worker->AssignJobId(from_flatbuf<JobID>(*message->client_id()));
+    worker->AssignJobId(from_flatbuf<JobID>(*message->job_id()));
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
   }
@@ -1937,12 +1934,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     worker.AssignActorId(actor_id);
     // Notify the other node managers that the actor has been created.
     auto new_actor_data = CreateActorTableDataFromCreationTask(task);
+    // Lookup the parent actor id
     auto parent_task_id = task.GetTaskSpecification().ParentTaskId();
-    // Retrieve the task spec in order to populate the parent actor task.
-    //FinishAssignedActorTaskHelper(actor_id, new_actor_data, resumed_from_checkpoint);
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    //ExtendActorFrontier(task, actor_id, actor_handle_id);
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         //success_callback
@@ -1955,10 +1948,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
           Task parent_task(*message);
           new_actor_data.set_parent_actor_id(parent_task.GetTaskSpecification().ActorId().Binary());
           FinishAssignedActorTaskHelper(actor_id, new_actor_data, resumed_from_checkpoint);
-          // The actor was not resumed from a checkpoint. We extend the actor's
-          // frontier as usual since there is no frontier to restore.
-          if(!resumed_from_checkpoint)
+          if(!resumed_from_checkpoint){
+            // The actor was not resumed from a checkpoint. We extend the actor's
+            // frontier as usual since there is no frontier to restore.
             ExtendActorFrontier(task, actor_id, actor_handle_id);
+          }
         },
         //failure_callback
         [this, task, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
@@ -1975,10 +1969,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
           Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
           new_actor_data.set_parent_actor_id(parent_task.GetTaskSpecification().ActorId().Binary());
           FinishAssignedActorTaskHelper(actor_id, new_actor_data, resumed_from_checkpoint);
-          // The actor was not resumed from a checkpoint. We extend the actor's
-          // frontier as usual since there is no frontier to restore.
-          if(!resumed_from_checkpoint)
+          if(!resumed_from_checkpoint){
+            // The actor was not resumed from a checkpoint. We extend the actor's
+            // frontier as usual since there is no frontier to restore.
             ExtendActorFrontier(task, actor_id, actor_handle_id);
+          }
         }));
   }
   else if (!resumed_from_checkpoint) {
