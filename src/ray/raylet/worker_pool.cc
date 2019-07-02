@@ -48,8 +48,8 @@ WorkerPool::WorkerPool(
     : num_workers_per_process_(num_workers_per_process),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)),
-      last_warning_multiple_(0) {
+      last_warning_multiple_(0),
+      gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -319,13 +319,13 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
-std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForDriver(
-    const DriverID &driver_id) const {
+std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
+    const JobID &job_id) const {
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
-      if (worker->GetAssignedDriverId() == driver_id) {
+      if (worker->GetAssignedJobId() == job_id) {
         workers.push_back(worker);
       }
     }
@@ -355,7 +355,7 @@ void WorkerPool::WarnAboutSize() {
                     << "(see https://github.com/ray-project/ray/issues/3644) for "
                     << "some a discussion of workarounds.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        DriverID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+        JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
   }
 }
 
