@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import click
 import logging
-import os
 import time
 
 from ray.tune.error import TuneError
@@ -220,7 +219,8 @@ def run(run_or_experiment,
             export_formats=export_formats,
             max_failures=max_failures,
             restore=restore,
-            log_sys_usage=log_sys_usage)
+            log_sys_usage=log_sys_usage,
+        )
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 

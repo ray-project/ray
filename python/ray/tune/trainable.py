@@ -88,8 +88,7 @@ class Trainable(object):
         self._restored = False
         self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
-        self._track_sys_usage = config["log_sys_usage"] if "log_sys_usage" in config else True
-        self.monitor = UtilMonitor()
+        self._monitor = UtilMonitor(start=config.get("log_sys_usage", True))
 
     @classmethod
     def default_resource_request(cls, config):
@@ -208,6 +207,10 @@ class Trainable(object):
             time_since_restore=self._time_since_restore,
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
+
+        monitor_data = self._monitor.get_data()
+        if monitor_data:
+            result.update(monitor_data)
 
         self._log_result(result)
 
@@ -446,10 +449,6 @@ class Trainable(object):
         Args:
             result (dict): Training result returned by _train().
         """
-
-        if self._track_sys_usage:
-            result.update(self.monitor.get_data())
-
         self._result_logger.on_result(result)
 
     def _stop(self):

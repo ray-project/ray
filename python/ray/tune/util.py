@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import base64
 import copy
@@ -11,6 +13,20 @@ from collections import defaultdict
 from threading import Thread
 
 import numpy as np
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
+    logging.warning("System performance monitoring not available."
+                    "Install psutil package.")
+
+try:
+    import GPUtil
+except ImportError:
+    GPUtil = None
+    logging.warning("GPU system monitoring not available."
+                    "Install gputil package.")
 
 import ray
 
@@ -25,48 +41,36 @@ class UtilMonitor(Thread):
 
     It keeps track of CPU, RAM, GPU, VRAM usage (each gpu separately) by
     pinging for information every x seconds in a separate thread.
+
+    Requires psutil and GPUtil to be installed. Can be disabled
+    by setting `tune.run(log_sys_usage=False)`.
     """
-    def __init__(self, delay=0.7):
 
-        try:
-            global psutil
-            import psutil
-            self.has_psutil = True
-        except ImportError:
-            self.has_psutil = False
-            logging.warning("System performance monitoring will not be available."
-                            "Install psutil package.")
-
-        try:
-            global GPUtil
-            import GPUtil
-            self.has_gputil = True
-        except ImportError:
-            logging.warning("System performance monitoring will not be available."
-                            "Install gputil package.")
-            self.has_gputil = False
-
-        if not self.has_gputil and not self.has_psutil:
-            self.stopped = True
+    def __init__(self, start=True, delay=0.7):
+        self.stopped = True
+        if GPUtil is None and psutil is None:
             return
 
         super(UtilMonitor, self).__init__()
-        self.stopped = False
         self.delay = delay  # Time between calls to GPUtil
         self.values = defaultdict(list)
         self.lock = threading.Lock()
         self.daemon = True
-        self.start()
+        if start:
+            self.start()
 
-    def read_utilization(self):
+    def _read_utilization(self):
         with self.lock:
-            if self.has_psutil:
-                self.values["cpu"].append(float(psutil.cpu_percent(interval=None)))
-                self.values["ram"].append(float(getattr(psutil.virtual_memory(), 'percent')))
-            if self.has_gputil:
+            if psutil is not None:
+                self.values["cpu"].append(
+                    float(psutil.cpu_percent(interval=None)))
+                self.values["ram"].append(
+                    float(getattr(psutil.virtual_memory(), "percent")))
+            if GPUtil is not None:
                 for gpu in GPUtil.getGPUs():
                     self.values["gpu" + str(gpu.id)].append(float(gpu.load))
-                    self.values["vram" + str(gpu.id)].append(float(gpu.memoryUtil))
+                    self.values["vram" + str(gpu.id)].append(
+                        float(gpu.memoryUtil))
 
     def get_data(self):
         if self.stopped:
@@ -76,15 +80,22 @@ class UtilMonitor(Thread):
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
                 val.clear()
-        return {"perf": {k: np.mean(v) for k, v in ret_values.items() if len(v) > 0}}
+        return {
+            "perf": {
+                k: np.mean(v)
+                for k, v in ret_values.items() if len(v) > 0
+            }
+        }
 
     def run(self):
+        self.stopped = False
         while not self.stopped:
-            self.read_utilization()
+            self._read_utilization()
             time.sleep(self.delay)
 
     def stop(self):
         self.stopped = True
+
 
 def pin_in_object_store(obj):
     """Pin an object in the object store.

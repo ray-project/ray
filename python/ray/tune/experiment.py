@@ -91,13 +91,14 @@ class Experiment(object):
         if custom_loggers:
             _raise_deprecation_note("custom_loggers", "loggers", soft=False)
 
-        config['log_sys_usage'] = log_sys_usage
+        config = config or {}
+        config["log_sys_usage"] = log_sys_usage
 
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
             "stop": stop or {},
-            "config": config or {},
+            "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
