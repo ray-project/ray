@@ -8,14 +8,7 @@ GcsClientImpl::GcsClientImpl(ClientOption option, ClientInfo info,
                              boost::asio::io_service *io_service)
     : option_(std::move(option)), info_(std::move(info)), io_service_(io_service) {}
 
-GcsClientImpl::~GcsClientImpl() {
-  RAY_CHECK(!is_connected_);
-  if (!thread_pool_.empty()) {
-    delete io_service_;
-    io_service_ = nullptr;
-    thread_pool_.clear();
-  }
-}
+GcsClientImpl::~GcsClientImpl() { RAY_CHECK(!is_connected_); }
 
 Status GcsClientImpl::Connect() {
   if (is_connected_) {
@@ -63,6 +56,13 @@ void GcsClientImpl::Disconnect() {
     }
 
     RAY_CHECK(io_service_->stopped());
+
+    async_gcs_client_.reset();
+
+    delete io_service_;
+    io_service_ = nullptr;
+
+    thread_pool_.clear();
   }
   is_connected_ = false;
   RAY_LOG(INFO) << "GCS Client Disconnect";

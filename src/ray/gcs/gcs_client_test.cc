@@ -107,7 +107,7 @@ class GcsClientTest : public ::testing::Test {
   std::atomic<int> pending_count_{0};
 };
 
-TEST_F(GcsClientTest, ActorAccessorTest) {
+TEST_F(GcsClientTest, ActorStateAccessor) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   size_t log_length = 0;
   // add
@@ -142,7 +142,7 @@ TEST_F(GcsClientTest, ActorAccessorTest) {
   WaitPendingDone(timeout);
 }
 
-TEST_F(GcsClientTest, DISABLED_TaskAccessorTest) {
+TEST_F(GcsClientTest, DISABLED_TaskStateAccessor) {
   // Task data is not stable yet(use both fbs and pb)
   TaskStateAccessor &task_accessor = gcs_client_->Tasks();
   // add
@@ -160,7 +160,7 @@ TEST_F(GcsClientTest, DISABLED_TaskAccessorTest) {
   WaitPendingDone(timeout);
 }
 
-TEST_F(GcsClientTest, NodeAccessorTest) {
+TEST_F(GcsClientTest, NodeStateAccessor) {
   NodeStateAccessor &node_accessor = gcs_client_->Nodes();
   for (const auto &elem : node_datas_) {
     const auto &node = elem.second;
@@ -181,7 +181,7 @@ TEST_F(GcsClientTest, NodeAccessorTest) {
   }
 }
 
-TEST_F(GcsClientTest, ActorAccessorTest_Subscribe) {
+TEST_F(GcsClientTest, ActorStateAccessor_Subscribe) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   std::chrono::milliseconds timeout(10000);
   // sub
