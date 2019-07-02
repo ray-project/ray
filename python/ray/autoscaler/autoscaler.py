@@ -670,7 +670,9 @@ class StandardAutoscaler(object):
                 nodes = self.workers()
                 if nodes:
                     self.provider.terminate_nodes(nodes)
-                logger.error("StandardAutoscaler: terminated {} node(s)".format(len(nodes)))
+                logger.error(
+                    "StandardAutoscaler: terminated {} node(s)".format(
+                        len(nodes)))
             except Exception:
                 traceback.print_exc()
 

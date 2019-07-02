@@ -141,6 +141,7 @@ install:
   - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
+  - ./ci/suppress_output ./ci/travis/setup-bazel-cache.sh
   - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
   - ./ci/suppress_output ./ci/travis/install-ray.sh
@@ -214,3 +215,7 @@ deploy:
     on:
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+
+cache:
+  directories:
+    - $HOME/ray-bazel-cache
