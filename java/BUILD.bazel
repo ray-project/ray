@@ -50,6 +50,7 @@ define_java_module(
 define_java_module(
     name = "runtime",
     additional_srcs = [
+        ":generate_java_gcs_fbs",
         ":gcs_java_proto",
     ],
     additional_resources = [
@@ -153,6 +154,36 @@ java_proto_compile(
     deps = ["@//:gcs_proto"],
 )
 
+flatbuffers_generated_files = [
+    "Arg.java",
+    "Language.java",
+    "TaskInfo.java",
+    "ResourcePair.java",
+]
+
+flatbuffer_java_library(
+    name = "java_gcs_fbs",
+    srcs = ["//:gcs_fbs_file"],
+    outs = flatbuffers_generated_files,
+    out_prefix = "",
+)
+
+genrule(
+    name = "generate_java_gcs_fbs",
+    srcs = [":java_gcs_fbs"],
+    outs = [
+        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generated_files
+    ],
+    cmd = """
+        for f in $(locations //java:java_gcs_fbs); do
+            chmod +w $$f
+            mv -f $$f $(@D)/runtime/src/main/java/org/ray/runtime/generated
+        done
+        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $(@D)/..
+    """,
+    local = 1,
+)
+
 filegroup(
     name = "java_native_deps",
     srcs = [
@@ -169,6 +200,7 @@ genrule(
     name = "gen_maven_deps",
     srcs = [
         ":gcs_java_proto",
+        ":generate_java_gcs_fbs",
         ":java_native_deps",
         ":copy_pom_file",
     ],
@@ -191,6 +223,10 @@ genrule(
         for f in $(locations //java:gcs_java_proto); do
             unzip $$f
             mv org/ray/runtime/generated/* $$GENERATED_DIR
+        done
+        # Copy flatbuffers-generated files
+        for f in $(locations //java:generate_java_gcs_fbs); do
+            cp $$f $$GENERATED_DIR
         done
         echo $$(date) > $@
     """,

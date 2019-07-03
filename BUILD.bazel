@@ -649,6 +649,12 @@ filegroup(
     visibility = ["//java:__subpackages__"],
 )
 
+filegroup(
+    name = "gcs_fbs_file",
+    srcs = ["src/ray/gcs/format/gcs.fbs"],
+    visibility = ["//java:__subpackages__"],
+)
+
 flatbuffer_py_library(
     name = "python_node_manager_fbs",
     srcs = [
