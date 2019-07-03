@@ -45,6 +45,7 @@ class Task : public rpc::MessageWrapper<rpc::Task> {
     this->message_unique_ptr.reset(new rpc::Task(task.GetMessage()));
     this->message_ = message_unique_ptr.get();
 //    this->task_spec_ = std::move(TaskSpecification(message_->task_spec()));
+// XXX
     return *this;
   }
 

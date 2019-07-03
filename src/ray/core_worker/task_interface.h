@@ -9,9 +9,12 @@
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/task.h"
+#include "ray/raylet/task_spec.h"
 #include "ray/rpc/util.h"
 
 namespace ray {
+
+using rpc::Language;
 
 class CoreWorker;
 
@@ -45,7 +48,7 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const ::Language actor_language,
+              const Language actor_language,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   ActorHandle(const ActorHandle &other);
@@ -57,7 +60,7 @@ class ActorHandle {
   ray::ActorHandleID ActorHandleID() const;
 
   /// Language of the actor.
-  ::Language ActorLanguage() const;
+  Language ActorLanguage() const;
 
   // Function descriptor of actor creation task.
   std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
@@ -148,12 +151,11 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// Build the arguments for a task spec.
-  ///
-  /// \param[in] args Arguments of a task.
-  /// \return Arguments as required by task spec.
-  std::vector<std::shared_ptr<raylet::TaskArgument>> BuildTaskArguments(
-      const std::vector<TaskArg> &args);
+  std::unique_ptr<rpc::TaskSpec> CreateCommonTaskSpecMessage(
+      const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      std::vector<ObjectID> *return_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
