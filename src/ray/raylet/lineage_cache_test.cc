@@ -126,12 +126,16 @@ class LineageCacheTest : public ::testing::Test {
 
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
-  rpc::Task task_message;
+  rpc::TaskSpec task_spec_message;
+  BuildCommonTaskSpec(task_spec_message, Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                      TaskID::FromRandom(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
-    task_message.mutable_task_spec()->add_args()->add_object_ids(arg.Binary());
+    task_spec_message.add_args()->add_object_ids(arg.Binary());
   }
-  task_message.mutable_task_spec()->set_num_returns(num_returns);
-  return Task(task_message);
+  rpc::TaskExecutionSpec execution_spec_message;
+  execution_spec_message.set_num_forwards(1);
+  return Task(TaskSpecification(task_spec_message),
+              TaskExecutionSpecification(execution_spec_message));
 }
 
 /// Helper method to create a Lineage object with a single task.

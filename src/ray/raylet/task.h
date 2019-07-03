@@ -23,10 +23,14 @@ class Task {
  public:
   explicit Task(const rpc::Task &message)
       : task_spec_(message.task_spec()),
-        task_execution_spec_(message.task_execution_spec()) {}
+        task_execution_spec_(message.task_execution_spec()) {
+    ComputeDependencies();
+  }
 
   Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
-      : task_spec_(std::move(task_spec)), task_execution_spec_(std::move(task_execution_spec)) {}
+      : task_spec_(std::move(task_spec)), task_execution_spec_(std::move(task_execution_spec)) {
+    ComputeDependencies();
+  }
 
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
@@ -53,6 +57,8 @@ class Task {
   void CopyTaskExecutionSpec(const Task &task);
 
  private:
+  void ComputeDependencies();
+
   /// Task specification object, consisting of immutable information about this
   /// task determined at submission time. Includes resource demand, object
   /// dependencies, etc.
@@ -60,6 +66,10 @@ class Task {
   /// Task execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time..
   TaskExecutionSpecification task_execution_spec_;
+  /// A cached copy of the task's object dependencies, including arguments from
+  /// the TaskSpecification and execution dependencies from the
+  /// TaskExecutionSpecification.
+  std::vector<ObjectID> dependencies_;
 };
 
 }  // namespace raylet
