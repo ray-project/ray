@@ -10,6 +10,7 @@ import yaml
 import ray
 from ray.tests.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
@@ -71,6 +72,17 @@ def create_parser(parser_creator=None):
         default="default",
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
+    parser.add_argument(
+        "--local-dir",
+        default=DEFAULT_RESULTS_DIR,
+        type=str,
+        help="Local dir to save training results to. Defaults to '{}'.".format(
+            DEFAULT_RESULTS_DIR))
+    parser.add_argument(
+        "--upload-dir",
+        default="",
+        type=str,
+        help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
         "--resume",
         action="store_true",
