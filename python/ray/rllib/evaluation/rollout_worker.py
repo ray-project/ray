@@ -96,8 +96,9 @@ class RolloutWorker(EvaluatorInterface):
     @DeveloperAPI
     @classmethod
     def as_remote(cls, num_cpus=None, num_gpus=None, resources=None):
-        return ray.remote(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources)(cls)
+        return ray.remote(num_cpus=num_cpus,
+                          num_gpus=num_gpus,
+                          resources=resources)(cls)
 
     @DeveloperAPI
     def __init__(self,
@@ -267,10 +268,9 @@ class RolloutWorker(EvaluatorInterface):
                 clip_rewards = True
 
             def wrap(env):
-                env = wrap_deepmind(
-                    env,
-                    dim=model_config.get("dim"),
-                    framestack=model_config.get("framestack"))
+                env = wrap_deepmind(env,
+                                    dim=model_config.get("dim"),
+                                    framestack=model_config.get("framestack"))
                 if monitor_path:
                     env = _monitor(env, monitor_path)
                 return env
@@ -303,9 +303,8 @@ class RolloutWorker(EvaluatorInterface):
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
                 else:
-                    self.tf_sess = tf.Session(
-                        config=tf.ConfigProto(
-                            gpu_options=tf.GPUOptions(allow_growth=True)))
+                    self.tf_sess = tf.Session(config=tf.ConfigProto(
+                        gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
@@ -388,20 +387,19 @@ class RolloutWorker(EvaluatorInterface):
                 soft_horizon=soft_horizon)
             self.sampler.start()
         else:
-            self.sampler = SyncSampler(
-                self.async_env,
-                self.policy_map,
-                policy_mapping_fn,
-                self.preprocessors,
-                self.filters,
-                clip_rewards,
-                unroll_length,
-                self.callbacks,
-                horizon=episode_horizon,
-                pack=pack_episodes,
-                tf_sess=self.tf_sess,
-                clip_actions=clip_actions,
-                soft_horizon=soft_horizon)
+            self.sampler = SyncSampler(self.async_env,
+                                       self.policy_map,
+                                       policy_mapping_fn,
+                                       self.preprocessors,
+                                       self.filters,
+                                       clip_rewards,
+                                       unroll_length,
+                                       self.callbacks,
+                                       horizon=episode_horizon,
+                                       pack=pack_episodes,
+                                       tf_sess=self.tf_sess,
+                                       clip_actions=clip_actions,
+                                       soft_horizon=soft_horizon)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
@@ -531,8 +529,8 @@ class RolloutWorker(EvaluatorInterface):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "apply_gradients")
                 outputs = {
-                    pid: self.policy_map[pid]._build_apply_gradients(
-                        builder, grad)
+                    pid:
+                    self.policy_map[pid]._build_apply_gradients(builder, grad)
                     for pid, grad in grads.items()
                 }
                 return {k: builder.get(v) for k, v in outputs.items()}
@@ -751,7 +749,8 @@ def _validate_multiagent_config(policy, allow_none_graph=False):
         if not isinstance(v, (tuple, list)) or len(v) != 4:
             raise ValueError(
                 "policy values must be tuples/lists of "
-                "(cls or None, obs_space, action_space, config), got {}".format(v))
+                "(cls or None, obs_space, action_space, config), got {}".
+                format(v))
         if allow_none_graph and v[0] is None:
             pass
         elif not issubclass(v[0], Policy):
