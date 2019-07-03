@@ -1,6 +1,6 @@
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
-from libc.stdint cimport uint8_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, int64_t
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:
@@ -78,10 +78,21 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CFunctionID FromBinary(const c_string &binary)
 
-    cdef cppclass CJobID "ray::JobID"(CUniqueID):
+    cdef cppclass CJobID "ray::JobID"(CBaseID[CJobID]):
 
         @staticmethod
         CJobID FromBinary(const c_string &binary)
+
+        @staticmethod
+        const CJobID Nil()
+
+        @staticmethod
+        size_t Size()
+
+        @staticmethod
+        CJobID FromInt(int32_t value)
+
+        CWorkerID DriverId() const;
 
     cdef cppclass CTaskID "ray::TaskID"(CBaseID[CTaskID]):
 

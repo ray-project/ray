@@ -80,8 +80,12 @@ class JobID : public BaseID<JobID> {
   // job id to driver id and not embed job id to worker id yet.
   static JobID FromDriverId(const WorkerID &driver_id);
 
+  static JobID FromInt(int32_t value);
+
   JobID() : BaseID() {}
   static size_t Size() { return kJobIDSize; }
+
+  WorkerID DriverId() const;
 
  private:
   uint8_t id_[kJobIDSize];

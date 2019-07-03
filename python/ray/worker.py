@@ -1711,27 +1711,38 @@ def connect(node,
 
     worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
 
+    # Create a Redis client to primary.
+    # The Redis client can safely be shared between threads. However, that is
+    # not true of Redis pubsub clients. See the documentation at
+    # https://github.com/andymccurdy/redis-py#thread-safety.
+    worker.redis_client = node.create_redis_client()
+
     # Initialize some fields.
     if mode is WORKER_MODE:
+        # We should not specify the job_id if it's `WORKER_MODE`.
+        assert job_id is None
+        worker.current_job_id = JobID.nil()
+
+        # TODO(qwang): Rename this to `worker_id`
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = JobID.from_random()
+            counter = int(worker.redis_client.incr("JobCounter"))
+            job_id = JobID.from_int(int(worker.redis_client.incr("JobCounter")))
 
         if not isinstance(job_id, JobID):
             raise TypeError("The type of given job id must be JobID.")
 
-        worker.worker_id = job_id.binary()
+        worker.current_job_id = job_id
 
-    # When tasks are executed on remote workers in the context of multiple
-    # drivers, the current job ID is used to keep track of which driver is
-    # responsible for the task so that error messages will be propagated to
-    # the correct driver.
-    if mode != WORKER_MODE:
-        worker.current_job_id = JobID(worker.worker_id)
+        # When tasks are executed on remote workers in the context of multiple
+        # drivers, the current job ID is used to keep track of which job is
+        # responsible for the task so that error messages will be propagated to
+        # the correct driver.
+        worker.worker_id = job_id.driver_id().binary()
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1743,12 +1754,6 @@ def connect(node,
     # create_worker or to start the worker service.
     if mode == LOCAL_MODE:
         return
-
-    # Create a Redis client.
-    # The Redis client can safely be shared between threads. However, that is
-    # not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1828,6 +1833,7 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
+    # TODO(qwang): Remove this
     job_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
@@ -1860,6 +1866,7 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
+            # TODO(qwang): Refine here, do not use job id str
             TaskID(job_id_str[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
@@ -1892,7 +1899,7 @@ def connect(node,
         node.raylet_socket_name,
         ClientID(worker.worker_id),
         (mode == WORKER_MODE),
-        JobID(job_id_str),
+        worker.current_job_id,
     )
 
     # Start the import thread
