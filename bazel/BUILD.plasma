@@ -1,5 +1,7 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
+COPTS = ["-DARROW_USE_GLOG"]
+
 java_library(
     name = "org_apache_arrow_arrow_plasma",
     srcs = glob(["java/plasma/src/main/java/**/*.java"]),
@@ -23,6 +25,7 @@ java_binary(
 
 cc_library(
     name = "arrow",
+    copts = COPTS,
     srcs = [
         "cpp/src/arrow/buffer.cc",
         "cpp/src/arrow/io/interfaces.cc",
@@ -60,11 +63,13 @@ cc_library(
     strip_include_prefix = "cpp/src",
     deps = [
         "@boost//:filesystem",
+        "@com_github_google_glog//:glog",
     ],
 )
 
 cc_library(
     name = "plasma_client",
+    copts = COPTS,
     srcs = [
         "cpp/src/plasma/client.cc",
         "cpp/src/plasma/common.cc",
@@ -93,6 +98,7 @@ cc_library(
         ":arrow",
         ":common_fbs",
         ":plasma_fbs",
+        "@com_github_google_glog//:glog",
     ],
 )
 
@@ -150,6 +156,7 @@ filegroup(
 
 cc_library(
     name = "plasma_lib",
+    copts = COPTS,
     srcs = [
         "cpp/src/plasma/dlmalloc.cc",
         "cpp/src/plasma/events.cc",
@@ -174,7 +181,8 @@ cc_library(
         "cpp/src/plasma/thirdparty/dlmalloc.c",
     ],
     strip_include_prefix = "cpp/src",
-    deps = [":plasma_client"],
+    deps = [":plasma_client",
+        "@com_github_google_glog//:glog",],
 )
 
 cc_binary(
