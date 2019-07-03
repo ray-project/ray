@@ -90,6 +90,7 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
+            sort=["status"],
             info_keys=("status", ),
             filter_op="status == TERMINATED")
     lines = output.captured

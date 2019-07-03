@@ -163,8 +163,10 @@ def list_trials(experiment_path,
         checkpoints_df = checkpoints_df[filtered_index]
 
     if sort:
-        if sort not in checkpoints_df:
-            raise KeyError("{} not in: {}".format(sort, list(checkpoints_df)))
+        for key in sort:
+            if key not in checkpoints_df:
+                raise KeyError("{} not in: {}".format(key,
+                                                      list(checkpoints_df)))
         ascending = not desc
         checkpoints_df = checkpoints_df.sort_values(
             by=sort, ascending=ascending)
