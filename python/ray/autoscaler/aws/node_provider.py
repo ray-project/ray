@@ -5,14 +5,18 @@ from __future__ import print_function
 import random
 import threading
 from collections import defaultdict
+import logging
 
 import boto3
+import botocore
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
+
+logger = logging.getLogger(__name__)
 
 
 def to_aws_format(tags):
@@ -204,15 +208,30 @@ class AWSNodeProvider(NodeProvider):
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
-        subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-        self.subnet_idx += 1
-        conf.update({
-            "MinCount": 1,
-            "MaxCount": count,
-            "SubnetId": subnet_id,
-            "TagSpecifications": tag_specs
-        })
-        self.ec2.create_instances(**conf)
+
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                logger.info(
+                    "create_instances: Trying with {}.".format(subnet_id))
+                self.subnet_idx += 1
+                conf.update({
+                    "MinCount": 1,
+                    "MaxCount": count,
+                    "SubnetId": subnet_id,
+                    "TagSpecifications": tag_specs
+                })
+                self.ec2.create_instances(**conf)
+                break
+            except botocore.exceptions.ClientError as exc:
+                if attempt == max_retries:
+                    logger.error(
+                        "create_instances: Max attempts ({}) exceeded.".format(
+                            max_retries))
+                    raise exc
+                else:
+                    logger.error(exc)
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
