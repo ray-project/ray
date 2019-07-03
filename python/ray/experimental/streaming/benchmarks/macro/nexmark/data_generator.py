@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import deque
 import logging
 import time
 
@@ -15,8 +14,9 @@ from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# A stream replayer that reads Nexmark events from files and
-# replays them at given rates
+
+# A stream replayer that reads Nexmark events
+# from files and replays them at given rates
 class NexmarkEventGenerator(object):
     def __init__(self, event_file, event_type, event_rate,
                        sample_period=1000, max_records=-1,
@@ -28,12 +28,13 @@ class NexmarkEventGenerator(object):
         assert event_type in ["Auction","Bid","Person"]
         self.events = []
         self.omit_extra_field = omit_extra
+
         # Used for event replaying
-        self.total_count = 0
-        self.count = 0
-        self.period = sample_period
-        self.start = 0
-        self.done = False
+        self.total_count = 0  # Total number of records emmitted so far
+        self.count = 0        # Number of records emmitted since last sampling
+        self.period = sample_period  # The latency sampling period
+        self.start = 0        # Start timestamp of the generator
+        self.done = False     # Denotes whetehr the source is exhausted or not
 
     # Parses a nexmark event log and creates an event object
     def __create_event(self, event, omit_extra_field=False):
@@ -60,7 +61,7 @@ class NexmarkEventGenerator(object):
     # Loads input file
     def init(self):
         # Load all events from the input file in memory
-        logger.info("Loading input file...")
+        logger.info("Loading input file in memory...")
         records = 0
         with open(self.event_file, "r") as ef:
             for event in ef:
@@ -110,17 +111,23 @@ class NexmarkEventGenerator(object):
             event["system_time"] = time.time()
         return event
 
+    # Closes the generator
+    def close(self):
+        pass
+
     # Drains the data generator as fast as possible and
-    # returns the total number of records
+    # returns the total number of records emitted
     def drain(self):
-        self.event_rate = float("inf")  # Set source rate to unbounded
+        # Set source rate to unbounded
+        self.event_rate = float("inf")
         records = 0
         while self.get_next() is not None:
             records += 1
         return records
 
-# A custom sink used to measure processing latency
-class LatencySink(object):
+
+# A custom sink used to measure end-to-end processing latency
+class EventLatencySink(object):
     def __init__(self):
         self.state = []
 
@@ -133,7 +140,7 @@ class LatencySink(object):
             # TODO (john): Clock skew might distort elapsed time
             self.state.append(time.time() - generation_time)
 
-    # Evicts next record
+    # Evicts next batch of records
     def evict_batch(self, batch):
         for record in batch:
             if record["event_type"] == "Watermark":
@@ -143,6 +150,10 @@ class LatencySink(object):
                 # TODO (john): Clock skew might distort elapsed time
                 self.state.append(time.time() - generation_time)
 
+    # Initializes the sink
+    def init(self):
+        pass
+        
     # Closes the sink
     def close(self):
         pass

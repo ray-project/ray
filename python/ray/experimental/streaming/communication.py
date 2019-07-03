@@ -24,11 +24,11 @@ LOGGING_PERIOD = 100000  # Log throughput every 100K records
 def _generate_uuid():
     return str(uuid.uuid4())
 
-# Forward and broadcast stream partitioning strategies
-forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
-
 # Round robin and rescale partitioning strategies (default)
 round_robin_strategies = [PStrategy.RoundRobin, PStrategy.Rescale]
+
+# Forward and broadcast stream partitioning strategies
+forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
 
 # Used to choose output channel in case of hash-based shuffling
 # TODO (john): Replace pickle
@@ -496,7 +496,6 @@ class DataOutput(object):
             self.__log(batch_size=1)
 
     def _push_batch(self, record_batch, input_channel_id=None):
-        # assert input_channel_id == -1
         assert isinstance(record_batch, list)
         # Simple forwarding
         for channel in self.forward_channels:
@@ -596,7 +595,7 @@ class DataOutput(object):
 
     # Broadcasts a watermark to all output channels
     def __broadcast_watermark(self, watermark):
-        """Pushes a watermark to the output but does not necessarily flush."""
+        """Pushes a watermark downstream."""
         for channel in self.forward_channels:
             channel.queue.push_next(watermark)
         for channels in self.shuffle_channels:

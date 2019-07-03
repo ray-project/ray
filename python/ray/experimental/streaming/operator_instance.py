@@ -8,36 +8,25 @@ import msgpack
 import sys
 import time
 import types
-import os
 
 import ray
-import ray.experimental.signal as signal
 import ray.cloudpickle as pickle
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
-from ray.experimental import named_actors
+import ray.experimental.signal as signal
 
+from ray.experimental import named_actors
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Auction
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Bid
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Person
+from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
 
-# TODO: Set this in the Source args.
-CHECKPOINT_INTERVAL = 1000
 
-#
-# Each Ray actor corresponds to an operator instance in the physical dataflow
-# Actors communicate using batched queues as data channels (no standing TCP
-# connections)
-# Currently, batched queues are based on Eric's implementation (see:
-# batched_queue.py)
-
+# Used for attribute selection in Reduce
 def _identity(element):
     return element
-
 
 # Signal denoting that a streaming actor finished processing
 # and returned after all its input channels have been closed
@@ -45,7 +34,7 @@ class ActorExit(signal.Signal):
     def __init__(self, value=None):
         self.value = value
 
-# Signal denoting that a streaming actor started spinning
+# Signal denoting that a streaming data source started emitting records
 class ActorStart(signal.Signal):
     def __init__(self, value=None):
         self.value = value
@@ -54,15 +43,15 @@ class OperatorInstance(object):
     """A streaming operator instance.
 
     Attributes:
-        instance_id (UUID): The id of the instance.
+        instance_id (str(UUID)): The id of the instance.
+        operator_metadata (Operator): The operator metadata (see: operator.py)
         input (DataInput): The input gate that manages input channels of
         the instance (see: DataInput in communication.py).
-        input (DataOutput): The output gate that manages output channels of
+        output (DataOutput): The output gate that manages output channels of
         the instance (see: DataOutput in communication.py).
-        config (EnvironmentConfig): The environment's configuration.
+        checkpoint_dir (str): The checkpoint directory
     """
-    # TODO (john): Keep all operator metadata and environment's configuration
-    # for debugging purposes
+
     def __init__(self,
                  instance_id,
                  operator_metadata,
@@ -70,14 +59,15 @@ class OperatorInstance(object):
                  output_gate,
                  checkpoint_dir):
         self.metadata = operator_metadata
-        self.key_index = None       # Index for key selection
-        self.key_attribute = None   # Attribute name for key selection
-        self.instance_id = instance_id
+        self.instance_id = instance_id  # (Operator id, local instance id)
         self.input = input_gate
         self.output = output_gate
-        self.this_actor = None  # A handle to self
+        self.this_actor = None      # An actor handle to self
 
-        self.num_records_seen = 0
+        self.key_index = None       # Index for key selection
+        self.key_attribute = None   # Attribute name for key selection
+
+        self.num_records_seen = 0   # Number of records seen by the instance
 
         # Logging-related attributes
         self.logging = self.metadata.logging
@@ -97,7 +87,7 @@ class OperatorInstance(object):
     def _register_handle(self, actor_handle):
         self.this_actor = actor_handle
 
-    # Used to register the handle of a destination actor to a channel
+    # Registers the handle of a destination actor to a channel
     def _register_destination_handle(self, actor_handle, channel_id):
         for channel in self.output.forward_channels:
             if channel.id == channel_id:
@@ -124,15 +114,25 @@ class OperatorInstance(object):
                     channel.register_destination_actor(actor_handle)
                     return
 
-    def register_upstream_actor_handle_ids(self, upstream_actor_handle_ids):
+    # Registers the handle of an upstream actor
+    def _register_upstream_actor_handle_ids(self, upstream_actor_handle_ids):
         self._ray_upstream_actor_handle_ids = upstream_actor_handle_ids
 
-    # Returns the logged rates (if any)
-    def logs(self):
-        return (self.instance_id, self.input.rates,
-                self.output.rates)
+    def _apply(self, record):
+        raise Exception("OperatorInstances must implement _apply()")
 
+    def _apply_batch(self, batch):
+        raise Exception("OperatorInstances must implement _apply_batch()")
+
+    # Applies the per-record operator logic to a batch of records
     def apply(self, batch, channel_id):
+        """ Applies the per-record operator logic to a batch of records.
+
+        Attributes:
+            batch (list): The batch of input records
+            channel_id (str(UUID)): The id of the input 'channel' the batch
+            comes from.
+        """
         for record in batch:
             if record is None:
                 if self.input._close_channel(channel_id):
@@ -144,14 +144,20 @@ class OperatorInstance(object):
                 # not push a record to the downstream actors.
                 self._apply(record)
 
+    # Applies the user-defined operator logic to a batch of records
     def apply_batch(self, batch, channel_id):
+        """ Applies the user-defined operator logic to a batch of records.
+
+        Attributes:
+            batch (list): The batch of input records
+            channel_id (str(UUID)): The id of the input 'channel' the batch
+            comes from.
+        """
         self._apply_batch(batch)
 
-    def _apply(self, record):
-        raise Exception("OperatorInstances must implement _apply()")
-
-    def _apply_batch(self, batch):
-        raise Exception("OperatorInstances must implement _apply_batch()")
+    # Returns the logged rates (if any)
+    def logs(self):
+        return (self.instance_id, self.input.rates, self.output.rates)
 
 # A monitoring actor used to keep track of the execution's progress
 @ray.remote
@@ -237,9 +243,6 @@ class Map(OperatorInstance):
 
     A map produces exactly one output record for each record in
     the input stream.
-
-    Attributes:
-        map_fn (function): The user-defined function.
     """
 
     def __init__(self, instance_id, operator_metadata, input_gate,
@@ -247,12 +250,10 @@ class Map(OperatorInstance):
         OperatorInstance.__init__(self, instance_id,
                                   operator_metadata, input_gate, output_gate,
                                   checkpoint_dir)
+        # The user-defined map function
         self.map_fn = operator_metadata.logic
 
-    # Task-based map execution on a set of records
-    def _apply(self, record):
-        self.output._push(self.map_fn(record))
-
+    # Applies map logic on a batch of records
     def _apply_batch(self, batch):
         self.output._push_batch(self.map_fn(batch))
 
@@ -262,11 +263,8 @@ class FlatMap(OperatorInstance):
     """A map operator instance that applies a user-defined
     stream transformation.
 
-    A flatmap produces one or more output records for each record in
+    A flatmap produces zero or more output records for each record in
     the input stream.
-
-    Attributes:
-        flatmap_fn (function): The user-defined function.
     """
 
     def __init__(self, instance_id, operator_metadata, input_gate,
@@ -274,36 +272,12 @@ class FlatMap(OperatorInstance):
         OperatorInstance.__init__(self, instance_id,
                                   operator_metadata, input_gate, output_gate,
                                   checkpoint_dir)
+        # The user-defined flatmap function
         self.flatmap_fn = operator_metadata.logic
 
-    # Task-based flatmap execution on a set of records
-    def _apply(self, record):
-        self.output._push_all(self.flatmap_fn(record), event=self.num_records_seen)
-
-# Filter actor
-@ray.remote
-class Filter(OperatorInstance):
-    """A filter operator instance that applies a user-defined filter to
-    each record of the stream.
-
-    Output records are those that pass the filter, i.e. those for which
-    the filter function returns True.
-
-    Attributes:
-        filter_fn (function): The user-defined boolean function.
-    """
-
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
-                                  checkpoint_dir)
-        self.filter_fn = operator_metadata.logic
-
-    # Task-based filter execution on a set of batches
-    def _apply(self, record):
-        if self.filter_fn(record):
-            self.output._push(record, event=self.num_records_seen)
+    # Applies flatmap logic on a batch of records
+    def _apply(self, batch):
+        self.output._push_all(self.flatmap_fn(batch))
 
 # Union actor
 @ray.remote
@@ -312,13 +286,14 @@ class Union(OperatorInstance):
 
     # Task-based union execution on a set of batches
     def _apply(self, record):
-        # logger.debug("UNION %s", record)
-        self.output._push(record, event=self.num_records_seen)
+        self.output._push(record)
 
 # Join actor
 @ray.remote
 class Join(OperatorInstance):
-    """A join operator instance that joins two streams."""
+    """A join operator instance that joins two streams based on a user-defined
+    logic.
+    """
 
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate, checkpoint_dir):
@@ -507,29 +482,6 @@ class EventTimeWindow(OperatorInstance):
         else:  # It is a data record
             self.__assign(record)
 
-# Inspect actor
-@ray.remote
-class Inspect(OperatorInstance):
-    """A inspect operator instance that inspects the content of the stream.
-
-    Inspect is useful for printing the records in the stream.
-
-    Attributes:
-         inspect_fn (function): The user-defined inspect logic.
-    """
-
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                   operator_metadata, input_gate, output_gate,
-                                   checkpoint_dir)
-        self.inspect_fn = operator_metadata.logic
-
-    # Task-based inspect execution on a set of batches
-    def _apply(self, record):
-        self.inspect_fn(record)
-        self.output._push(record, event=self.num_records_seen)
-
 # Reduce actor
 @ray.remote
 class Reduce(OperatorInstance):
@@ -579,7 +531,7 @@ class Reduce(OperatorInstance):
             self.state[key] = new_value
         except KeyError:  # Key does not exist in state
             self.state.setdefault(key, new_value)
-        self.output._push((_time, key, new_value), event=self.num_records_seen)
+        self.output._push((_time, key, new_value))
 
 
 @ray.remote
@@ -611,17 +563,26 @@ class KeyBy(OperatorInstance):
     # Task-based keyby execution on a set of batches
     def _apply(self, record):
         key = self.key_selector(record)
-        self.output._push((key,record), event=self.num_records_seen)
+        self.output._push((key,record))
 
 # A custom source actor
 @ray.remote
 class Source(OperatorInstance):
+    """A source emitting records.
+
+    A user-defined source must implement the following methods:
+    - init()
+    - get_next()
+    - get_next_batch()
+    - close()
+    """
+
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
+        OperatorInstance.__init__(self, instance_id, operator_metadata,
+                                  input_gate, output_gate,
                                   checkpoint_dir)
-        # The user-defined source with a get_next_batch() method
+
         _, local_instance_id = instance_id
         source_objects = operator_metadata.sources
         # Distinguish between single- and multi-instance sources
@@ -630,7 +591,7 @@ class Source(OperatorInstance):
         self.source.init()  # Initialize the source
         self.watermark_interval = operator_metadata.watermark_interval
         self.max_event_time = 0  # Max event timestamp seen so far
-        self.batch_size = operator_metadata.batch_size
+
 
     def __watermark(self, record_batch):
         """Generates one or more watermarks.
@@ -646,8 +607,8 @@ class Source(OperatorInstance):
         for record in record_batch:
             try:
                 event_time = record["dateTime"]
-            except AttributeError:
-                raise Exception("No event time found.")
+            except AttributeError as e:
+                raise Exception(e)
             max_timestamp = max(event_time, self.max_event_time)
         if (max_timestamp >=
                 self.max_event_time + self.watermark_interval):
@@ -663,22 +624,28 @@ class Source(OperatorInstance):
             # Update max event time seen so far
             self.max_event_time = max_timestamp
 
-    # Starts the source by calling get_next() repeatedly
+    # Starts the source
     def start(self):
         signal.send(ActorStart(self.instance_id))
         self.start_time = time.time()
+        batch_size = operator_metadata.batch_size
         while True:
-            record_batch = self.source.get_next_batch(self.batch_size)
+            record_batch = self.source.get_next_batch(batch_size)
             if record_batch is None:  # Source is exhausted
                 logger.info("Source throuhgput: {}".format(
                             self.num_records_seen / (
                             time.time() - self.start_time)))
                 self.output._flush(close=True)  # Flush and close output
                 signal.send(ActorExit(self.instance_id))  # Send exit signal
+                try:
+                    self.source.close()
+                except AttributeError as e:
+                    raise Exception(e)
                 return
             self.output._push_batch(record_batch, -1)
             # TODO (john): Handle the case a record does not have event time
-            # logger.debug("Source watermark: {}. Last record time: {}".format(
+            # logger.debug(
+            #   "Source watermark: {}. Last record time: {}".format(
             #         self.max_event_time, record_batch[-1]["dateTime"]))
             if self.watermark_interval > 0:  # Watermarks are activated
                 self.__watermark(record_batch)
@@ -691,77 +658,37 @@ class Source(OperatorInstance):
 # A custom sink actor
 @ray.remote
 class Sink(OperatorInstance):
+    """A dataflow sink.
+
+    A user-defined source must implement the following methods:
+    - init()
+    - evict()
+    - evict_batch()
+    - close()
+    """
+
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
+        OperatorInstance.__init__(self, instance_id, operator_metadata,
+                                  input_gate, output_gate,
                                   checkpoint_dir)
-        # The user-defined sink with an evict() method
-        self.state = operator_metadata.sink
-        # TODO (john): Fixme
-        # self.checkpoint_tracker = named_actors.get_actor("checkpoint_tracker")
+        # The user-defined sink
+        self.sink = operator_metadata.sink
+        self.sink.init()  # Initialize the sink
 
-    # Task-based sink execution on a set of batches
+    # Task-based sink execution on a record
     def _apply(self, record):
         # logger.debug("SINK %s", record)
-        self.state.evict(record)
+        self.sink.evict(record)
 
-    # Task-based sink execution on a set of batches
+    # Task-based sink execution on a batch of records
     def _apply_batch(self, batch):
         # logger.debug("SINK %s", record)
-        self.state.evict_batch(batch)
+        self.sink.evict_batch(batch)
 
-    # Returns the sink's state
+    # Returns the local state of the sink instance
     def state(self):
         try:  # There might be no 'get_state()' method implemented
-            return (self.instance_id, self.state.get_state())
-        except AttributeError:
-            return None
-
-
-# A sink actor that writes records to a distributed text file
-@ray.remote
-class WriteTextFile(OperatorInstance):
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
-                                  checkpoint_dir)
-        # Common prefix for all instances of the sink as given by the user
-        prefix = operator_metadata.filename_prefix
-        # Suffix of self's filename
-        operator_id, local_instance_id = instance_id
-        suffix = str(operator_id) + "_" + str(local_instance_id)
-        self.filename = prefix + "_" + suffix
-        # TODO (john): Handle possible exception here
-        self.writer = open(self.filename, "w")
-        # User-defined logic applied to each record (optional)
-        self.logic = operator_metadata.logic
-
-    # Applies logic (if any) and writes result to a text file
-    def _put_next(self, record):
-        if self.logic is None:
-            self.writer.write(str(record) + "\n")
-        else:
-            self.writer.write(str(self.logic(record)) + "\n")
-
-    # Task-based sink execution on a set of batches
-    def _apply(self, record):
-        self._put_next(record, event=self.num_records_seen)
-
-# TODO (john): Time window actor (uses system time)
-@ray.remote
-class TimeWindow(OperatorInstance):
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
-                                  checkpoint_dir)
-        # The length of the window in ms
-        self.length = operator_metadata.length
-        self.state = []
-        self.start = time.time()
-
-    # Task-based time window execution
-    def apply(self, batches, channel_id, _source_operator_id):
-        raise NotImplementedError
+            return (self.instance_id, self.sink.get_state())
+        except AttributeError as e:
+            raise Exception(e)
