@@ -69,7 +69,8 @@ class UtilMonitor(Thread):
                     float(getattr(psutil.virtual_memory(), "percent")))
             if GPUtil is not None:
                 for gpu in GPUtil.getGPUs():
-                    self.values["gpu_util_percent" + str(gpu.id)].append(float(gpu.load))
+                    self.values["gpu_util_percent" + str(gpu.id)].append(
+                        float(gpu.load))
                     self.values["vram_util_percent" + str(gpu.id)].append(
                         float(gpu.memoryUtil))
 
