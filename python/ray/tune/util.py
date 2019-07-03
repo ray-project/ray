@@ -81,7 +81,7 @@ class UtilMonitor(Thread):
         with self.lock:
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
-                val.clear()
+                del val[:]
         return {
             "perf": {
                 k: np.mean(v)
