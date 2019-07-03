@@ -28,6 +28,16 @@ class FullyConnectedNetwork(Model):
             i = 1
             last_layer = inputs
             for size in hiddens:
+                # skip final linear layer
+                if options.get("no_final_linear") and i == len(hiddens):
+                    output = tf.layers.dense(
+                        last_layer,
+                        num_outputs,
+                        kernel_initializer=normc_initializer(1.0),
+                        activation=activation,
+                        name="fc_out")
+                    return output, output
+
                 label = "fc{}".format(i)
                 last_layer = tf.layers.dense(
                     last_layer,
@@ -36,11 +46,11 @@ class FullyConnectedNetwork(Model):
                     activation=activation,
                     name=label)
                 i += 1
-            label = "fc_out"
+
             output = tf.layers.dense(
                 last_layer,
                 num_outputs,
                 kernel_initializer=normc_initializer(0.01),
                 activation=None,
-                name=label)
+                name="fc_out")
             return output, last_layer
