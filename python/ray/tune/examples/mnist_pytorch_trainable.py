@@ -50,6 +50,11 @@ parser.add_argument(
     default=False,
     help="disables CUDA training")
 parser.add_argument(
+    "--redis-address",
+    default=None,
+    type=str,
+    help="The Redis address of the cluster.")
+parser.add_argument(
     "--seed",
     type=int,
     default=1,
@@ -169,14 +174,13 @@ if __name__ == "__main__":
     datasets.MNIST("~/data", train=True, download=True)
     args = parser.parse_args()
 
-    import numpy as np
     import ray
     from ray import tune
     from ray.tune.schedulers import HyperBandScheduler
 
-    ray.init()
+    ray.init(redis_address=args.redis_address)
     sched = HyperBandScheduler(
-        time_attr="training_iteration", reward_attr="neg_mean_loss")
+        time_attr="training_iteration", metric="mean_loss", mode="min")
     tune.run(
         TrainMNIST,
         scheduler=sched,
@@ -193,9 +197,7 @@ if __name__ == "__main__":
             "checkpoint_at_end": True,
             "config": {
                 "args": args,
-                "lr": tune.sample_from(
-                    lambda spec: np.random.uniform(0.001, 0.1)),
-                "momentum": tune.sample_from(
-                    lambda spec: np.random.uniform(0.1, 0.9)),
+                "lr": tune.uniform(0.001, 0.1),
+                "momentum": tune.uniform(0.1, 0.9),
             }
         })

@@ -2,8 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import numpy as np
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 def normc_initializer(std=1.0):
@@ -25,8 +27,11 @@ def conv2d(x,
            filter_size=(3, 3),
            stride=(1, 1),
            pad="SAME",
-           dtype=tf.float32,
+           dtype=None,
            collections=None):
+    if dtype is None:
+        dtype = tf.float32
+
     with tf.variable_scope(name):
         stride_shape = [1, stride[0], stride[1], 1]
         filter_shape = [

@@ -4,10 +4,10 @@ from __future__ import print_function
 
 from ray.rllib.agents.dqn.apex import ApexTrainer
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG
-from ray.rllib.utils import renamed_class
+from ray.rllib.utils import renamed_agent
 
-DQNAgent = renamed_class(DQNTrainer)
-ApexAgent = renamed_class(ApexTrainer)
+DQNAgent = renamed_agent(DQNTrainer)
+ApexAgent = renamed_agent(ApexTrainer)
 
 __all__ = [
     "DQNAgent", "ApexAgent", "ApexTrainer", "DQNTrainer", "DEFAULT_CONFIG"

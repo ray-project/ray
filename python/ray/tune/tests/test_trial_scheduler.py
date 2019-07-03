@@ -135,32 +135,42 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.PAUSE)
 
-    def testAlternateMetrics(self):
-        def result2(t, rew):
-            return dict(training_iteration=t, neg_mean_loss=rew)
-
+    def _test_metrics(self, result_func, metric, mode):
         rule = MedianStoppingRule(
             grace_period=0,
             min_samples_required=1,
             time_attr="training_iteration",
-            reward_attr="neg_mean_loss")
+            metric=metric,
+            mode=mode)
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
         for i in range(10):
             self.assertEqual(
-                rule.on_trial_result(None, t1, result2(i, i * 100)),
+                rule.on_trial_result(None, t1, result_func(i, i * 100)),
                 TrialScheduler.CONTINUE)
         for i in range(5):
             self.assertEqual(
-                rule.on_trial_result(None, t2, result2(i, 450)),
+                rule.on_trial_result(None, t2, result_func(i, 450)),
                 TrialScheduler.CONTINUE)
-        rule.on_trial_complete(None, t1, result2(10, 1000))
+        rule.on_trial_complete(None, t1, result_func(10, 1000))
         self.assertEqual(
-            rule.on_trial_result(None, t2, result2(5, 450)),
+            rule.on_trial_result(None, t2, result_func(5, 450)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t2, result2(6, 0)),
+            rule.on_trial_result(None, t2, result_func(6, 0)),
             TrialScheduler.CONTINUE)
+
+    def testAlternateMetrics(self):
+        def result2(t, rew):
+            return dict(training_iteration=t, neg_mean_loss=rew)
+
+        self._test_metrics(result2, "neg_mean_loss", "max")
+
+    def testAlternateMetricsMin(self):
+        def result2(t, rew):
+            return dict(training_iteration=t, mean_loss=-rew)
+
+        self._test_metrics(result2, "mean_loss", "min")
 
 
 class _MockTrialExecutor(TrialExecutor):
@@ -495,14 +505,9 @@ class HyperbandSuite(unittest.TestCase):
             TrialScheduler.PAUSE,
             sched.on_trial_result(mock_runner, t, result(new_units, 12)))
 
-    def testAlternateMetrics(self):
-        """Checking that alternate metrics will pass."""
-
-        def result2(t, rew):
-            return dict(time_total_s=t, neg_mean_loss=rew)
-
+    def _test_metrics(self, result_func, metric, mode):
         sched = HyperBandScheduler(
-            time_attr="time_total_s", reward_attr="neg_mean_loss")
+            time_attr="time_total_s", metric=metric, mode=mode)
         stats = self.default_statistics()
 
         for i in range(stats["max_trials"]):
@@ -518,12 +523,28 @@ class HyperbandSuite(unittest.TestCase):
 
         # Provides results from 0 to 8 in order, keeping the last one running
         for i, trl in enumerate(big_bracket.current_trials()):
-            action = sched.on_trial_result(runner, trl, result2(1, i))
+            action = sched.on_trial_result(runner, trl, result_func(1, i))
             runner.process_action(trl, action)
 
         new_length = len(big_bracket.current_trials())
         self.assertEqual(action, TrialScheduler.CONTINUE)
         self.assertEqual(new_length, self.downscale(current_length, sched))
+
+    def testAlternateMetrics(self):
+        """Checking that alternate metrics will pass."""
+
+        def result2(t, rew):
+            return dict(time_total_s=t, neg_mean_loss=rew)
+
+        self._test_metrics(result2, "neg_mean_loss", "max")
+
+    def testAlternateMetricsMin(self):
+        """Checking that alternate metrics will pass."""
+
+        def result2(t, rew):
+            return dict(time_total_s=t, mean_loss=-rew)
+
+        self._test_metrics(result2, "mean_loss", "min")
 
     def testJumpingTime(self):
         sched, mock_runner = self.schedulerSetup(81)
@@ -606,6 +627,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             time_attr="training_iteration",
             perturbation_interval=10,
             resample_probability=resample_prob,
+            quantile_fraction=0.25,
             hyperparam_mutations={
                 "id_factor": [100],
                 "float_factor": lambda: 100.0,
@@ -1015,14 +1037,12 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
 
-    def testAlternateMetrics(self):
-        def result2(t, rew):
-            return dict(training_iteration=t, neg_mean_loss=rew)
-
+    def _test_metrics(self, result_func, metric, mode):
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,
             time_attr="training_iteration",
-            reward_attr="neg_mean_loss",
+            metric=metric,
+            mode=mode,
             brackets=1)
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
@@ -1030,19 +1050,31 @@ class AsyncHyperBandSuite(unittest.TestCase):
         scheduler.on_trial_add(None, t2)
         for i in range(10):
             self.assertEqual(
-                scheduler.on_trial_result(None, t1, result2(i, i * 100)),
+                scheduler.on_trial_result(None, t1, result_func(i, i * 100)),
                 TrialScheduler.CONTINUE)
         for i in range(5):
             self.assertEqual(
-                scheduler.on_trial_result(None, t2, result2(i, 450)),
+                scheduler.on_trial_result(None, t2, result_func(i, 450)),
                 TrialScheduler.CONTINUE)
-        scheduler.on_trial_complete(None, t1, result2(10, 1000))
+        scheduler.on_trial_complete(None, t1, result_func(10, 1000))
         self.assertEqual(
-            scheduler.on_trial_result(None, t2, result2(5, 450)),
+            scheduler.on_trial_result(None, t2, result_func(5, 450)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            scheduler.on_trial_result(None, t2, result2(6, 0)),
+            scheduler.on_trial_result(None, t2, result_func(6, 0)),
             TrialScheduler.CONTINUE)
+
+    def testAlternateMetrics(self):
+        def result2(t, rew):
+            return dict(training_iteration=t, neg_mean_loss=rew)
+
+        self._test_metrics(result2, "neg_mean_loss", "max")
+
+    def testAlternateMetricsMin(self):
+        def result2(t, rew):
+            return dict(training_iteration=t, mean_loss=-rew)
+
+        self._test_metrics(result2, "mean_loss", "min")
 
 
 if __name__ == "__main__":

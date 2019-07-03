@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+message ForwardTaskRequest {
+  // The ID of the task to be forwarded.
+  bytes task_id = 1;
+  // The tasks in the uncommitted lineage of the forwarded task. This
+  // should include task_id.
+  // TODO(hchen): Currently, `uncommitted_tasks` are represented as
+  // flatbutters-serialized bytes. This is because the flatbuffers-defined Task data
+  // structure is being used in many places. We should move Task and all related data
+  // strucutres to protobuf.
+  repeated bytes uncommitted_tasks = 2;
+}
+
+message ForwardTaskReply {
+}
+
+// Service for inter-node-manager communication.
+service NodeManagerService {
+  // Forward a task and its uncommitted lineage to the remote node manager.
+  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
+}

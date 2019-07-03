@@ -21,7 +21,6 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
-from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +95,7 @@ class Trainable(object):
         allocation, so the user does not need to.
         """
 
-        return Resources(cpu=1, gpu=0)
+        return None
 
     @classmethod
     def resource_help(cls, config):

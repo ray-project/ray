@@ -7,6 +7,7 @@ import org.ray.api.Checkpointable;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.Checkpointable.CheckpointContext;
 import org.ray.api.exception.RayTaskException;
+import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.RayFunction;
@@ -80,18 +81,18 @@ public class Worker {
    */
   public void execute(TaskSpec spec) {
     LOGGER.debug("Executing task {}", spec);
-    UniqueId returnId = spec.returnIds[0];
+    ObjectId returnId = spec.returnIds[0];
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
       RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(spec.driverId, spec.getJavaFunctionDescriptor());
+          .getFunction(spec.jobId, spec.getJavaFunctionDescriptor());
       // Set context
       runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
 
       if (spec.isActorCreationTask()) {
-        currentActorId = returnId;
+        currentActorId = new UniqueId(returnId.getBytes());
       }
 
       // Get local actor object and arguments.
@@ -119,7 +120,7 @@ public class Worker {
         }
         runtime.put(returnId, result);
       } else {
-        maybeLoadCheckpoint(result, returnId);
+        maybeLoadCheckpoint(result, new UniqueId(returnId.getBytes()));
         currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", spec.taskId);

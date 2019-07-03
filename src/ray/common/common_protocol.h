@@ -5,7 +5,7 @@
 
 #include <unordered_map>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
 #include "ray/util/logging.h"
 
 /// Convert an unique ID to a flatbuffer string.
@@ -104,15 +104,13 @@ string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 template <typename ID>
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
                                                     ID id) {
-  return fbb.CreateString(reinterpret_cast<const char *>(id.data()), sizeof(ID));
+  return fbb.CreateString(reinterpret_cast<const char *>(id.Data()), id.Size());
 }
 
 template <typename ID>
 ID from_flatbuf(const flatbuffers::String &string) {
-  ID id;
-  RAY_CHECK(string.size() == sizeof(ID));
-  memcpy(id.mutable_data(), string.data(), sizeof(ID));
-  return id;
+  RAY_CHECK(string.size() == ID::Size());
+  return ID::FromBinary(string.str());
 }
 
 template <typename ID>
@@ -129,13 +127,14 @@ template <typename ID>
 const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string) {
   const auto &ids = string_from_flatbuf(string);
   std::vector<ID> ret;
-  RAY_CHECK(ids.size() % kUniqueIDSize == 0);
-  auto count = ids.size() / kUniqueIDSize;
+  size_t id_size = ID::Size();
+  RAY_CHECK(ids.size() % id_size == 0);
+  auto count = ids.size() / id_size;
 
   for (size_t i = 0; i < count; ++i) {
-    auto pos = static_cast<size_t>(kUniqueIDSize * i);
-    const auto &id = ids.substr(pos, kUniqueIDSize);
-    ret.push_back(ID::from_binary(id));
+    auto pos = static_cast<size_t>(id_size * i);
+    const auto &id = ids.substr(pos, id_size);
+    ret.push_back(ID::FromBinary(id));
   }
 
   return ret;
@@ -146,7 +145,7 @@ flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
   std::string result;
   for (const auto &id : ids) {
-    result += id.binary();
+    result += id.Binary();
   }
 
   return fbb.CreateString(result);

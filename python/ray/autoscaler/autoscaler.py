@@ -10,6 +10,7 @@ import math
 import os
 import subprocess
 import threading
+import traceback
 import time
 from collections import defaultdict
 
@@ -158,7 +159,16 @@ class LoadMetrics(object):
 
     def update(self, ip, static_resources, dynamic_resources):
         self.static_resources_by_ip[ip] = static_resources
-        self.dynamic_resources_by_ip[ip] = dynamic_resources
+        # We are not guaranteed to have a corresponding dynamic resource for
+        # every static resource because dynamic resources are based on the
+        # available resources in the heartbeat, which does not exist if it is
+        # zero. Thus, we have to update dynamic resources here.
+        dynamic_resources_update = dynamic_resources.copy()
+        for resource_name, capacity in static_resources.items():
+            if resource_name not in dynamic_resources_update:
+                dynamic_resources_update[resource_name] = 0.0
+        self.dynamic_resources_by_ip[ip] = dynamic_resources_update
+
         now = time.time()
         if ip not in self.last_used_time_by_ip or \
                 static_resources != dynamic_resources:
@@ -651,6 +661,22 @@ class StandardAutoscaler(object):
 
         return "{}/{} target nodes{}".format(
             len(nodes), self.target_num_workers(), suffix)
+
+    def kill_workers(self):
+        logger.error("StandardAutoscaler: kill_workers triggered")
+
+        while True:
+            try:
+                nodes = self.workers()
+                if nodes:
+                    self.provider.terminate_nodes(nodes)
+                logger.error(
+                    "StandardAutoscaler: terminated {} node(s)".format(
+                        len(nodes)))
+            except Exception:
+                traceback.print_exc()
+
+            time.sleep(10)
 
 
 def typename(v):

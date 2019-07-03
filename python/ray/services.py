@@ -101,7 +101,7 @@ def get_address_info_from_redis_helper(redis_address,
     # Redis) must have run "CONFIG SET protected-mode no".
     redis_client = create_redis_client(redis_address, password=redis_password)
 
-    client_table = ray.experimental.state.parse_client_table(redis_client)
+    client_table = ray.state._parse_client_table(redis_client)
     if len(client_table) == 0:
         raise Exception(
             "Redis has started but no raylets have registered yet.")
@@ -1063,6 +1063,7 @@ def start_raylet(redis_address,
                  plasma_store_name,
                  worker_path,
                  temp_dir,
+                 session_dir,
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
@@ -1088,6 +1089,7 @@ def start_raylet(redis_address,
         worker_path (str): The path of the Python file that new worker
             processes will execute.
         temp_dir (str): The path of the temporary directory Ray will use.
+        session_dir (str): The path of this session.
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
         resources: The custom resources allocated for this raylet.
@@ -1145,7 +1147,7 @@ def start_raylet(redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
-            os.path.join(temp_dir, "sockets"),
+            session_dir,
         )
     else:
         java_worker_command = ""
@@ -1192,6 +1194,7 @@ def start_raylet(redis_address,
         "--java_worker_command={}".format(java_worker_command),
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
+        "--session_dir={}".format(session_dir),
     ]
     process_info = start_ray_process(
         command,
@@ -1212,7 +1215,7 @@ def build_java_worker_command(
         plasma_store_name,
         raylet_name,
         redis_password,
-        temp_dir,
+        session_dir,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1223,13 +1226,14 @@ def build_java_worker_command(
            to.
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
-        temp_dir (str): The path of the temporary directory Ray will use.
+        session_dir (str): The path of this session.
     Returns:
         The command string for starting Java worker.
     """
     assert java_worker_options is not None
 
-    command = "java ".format(java_worker_options)
+    command = "java "
+
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
 
@@ -1244,13 +1248,14 @@ def build_java_worker_command(
         command += "-Dray.redis.password={} ".format(redis_password)
 
     command += "-Dray.home={} ".format(RAY_HOME)
-    # TODO(suquark): We should use temp_dir as the input of a java worker.
-    command += "-Dray.log-dir={} ".format(os.path.join(temp_dir, "sockets"))
+    command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
 
     if java_worker_options:
         # Put `java_worker_options` in the last, so it can overwrite the
         # above options.
         command += java_worker_options + " "
+
+    command += "RAY_WORKER_OPTION_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command
@@ -1562,7 +1567,7 @@ def start_raylet_monitor(redis_address,
         "--config_list={}".format(config_str),
     ]
     if redis_password:
-        command += [redis_password]
+        command += ["--redis_password={}".format(redis_password)]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET_MONITOR,

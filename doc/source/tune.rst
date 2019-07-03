@@ -7,9 +7,9 @@ Tune: Scalable Hyperparameter Search
 
 Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
 
-You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tune.ipynb>`__.
+You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tutorial.ipynb>`__.
 
-(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTune.ipynb>`__.
+(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTutorial.ipynb>`__.
 
 
 Features
@@ -27,7 +27,7 @@ Features
 
 *  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_ or `Nevergrad with HyperBand`_.
 
-*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `parallel coordinates (Plot.ly) <https://plot.ly/python/parallel-coordinates-plot/>`__, and `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__.
+*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__ and `rllab's VisKit <https://github.com/vitchyr/viskit>`__.
 
 *  Scale to running on a large distributed cluster without changing your code.
 
@@ -90,6 +90,12 @@ For the function you wish to tune, pass in a ``reporter`` object:
     )
 
 Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
+
+Contribute to Tune
+------------------
+
+Take a look at our `Contributor Guide <tune-contrib.html>`__ for guidelines on contributing.
+
 
 Citing Tune
 -----------

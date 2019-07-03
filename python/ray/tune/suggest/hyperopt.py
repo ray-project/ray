@@ -15,6 +15,8 @@ except ImportError:
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
+logger = logging.getLogger(__name__)
+
 
 class HyperOptSearch(SuggestionAlgorithm):
     """A wrapper around HyperOpt to provide trial suggestions.
@@ -30,8 +32,9 @@ class HyperOptSearch(SuggestionAlgorithm):
             parameters generated in the variant generation process.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want hyperopt to run first to help the TPE algorithm
@@ -52,21 +55,38 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'activation': 0, # The index of "relu"
         >>> }]
         >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss",
+        >>>     space, max_concurrent=4, metric="mean_loss", mode="min",
         >>>     points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
                  space,
                  max_concurrent=10,
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  points_to_evaluate=None,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
         from hyperopt.fmin import generate_trials_to_calculate
         assert type(max_concurrent) is int and max_concurrent > 0
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+
         self._max_concurrent = max_concurrent
-        self._reward_attr = reward_attr
+        self._metric = metric
+        # hyperopt internally minimizes, so "max" => -1
+        if mode == "max":
+            self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:
@@ -151,7 +171,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         del self._live_trial_mapping[trial_id]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": -result[self._reward_attr], "status": "ok"}
+        return {"loss": self._metric_op * result[self._metric], "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
         if trial_id not in self._live_trial_mapping:

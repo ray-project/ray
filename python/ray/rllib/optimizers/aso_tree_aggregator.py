@@ -22,15 +22,14 @@ logger = logging.getLogger(__name__)
 class TreeAggregator(Aggregator):
     """A hierarchical experiences aggregator.
 
-    The given set of remote evaluators is divided into subsets and assigned to
+    The given set of remote workers is divided into subsets and assigned to
     one of several aggregation workers. These aggregation workers collate
     experiences into batches of size `train_batch_size` and we collect them
     in this class when `iter_train_batches` is called.
     """
 
     def __init__(self,
-                 local_evaluator,
-                 remote_evaluators,
+                 workers,
                  num_aggregation_workers,
                  max_sample_requests_in_flight_per_worker=2,
                  replay_proportion=0.0,
@@ -38,8 +37,7 @@ class TreeAggregator(Aggregator):
                  train_batch_size=500,
                  sample_batch_size=50,
                  broadcast_interval=5):
-        self.local_evaluator = local_evaluator
-        self.remote_evaluators = remote_evaluators
+        self.workers = workers
         self.num_aggregation_workers = num_aggregation_workers
         self.max_sample_requests_in_flight_per_worker = \
             max_sample_requests_in_flight_per_worker
@@ -48,7 +46,8 @@ class TreeAggregator(Aggregator):
         self.sample_batch_size = sample_batch_size
         self.train_batch_size = train_batch_size
         self.broadcast_interval = broadcast_interval
-        self.broadcasted_weights = ray.put(local_evaluator.get_weights())
+        self.broadcasted_weights = ray.put(
+            workers.local_worker().get_weights())
         self.num_batches_processed = 0
         self.num_broadcasts = 0
         self.num_sent_since_broadcast = 0
@@ -58,26 +57,27 @@ class TreeAggregator(Aggregator):
         """Deferred init so that we can pass in previously created workers."""
 
         assert len(aggregators) == self.num_aggregation_workers, aggregators
-        if len(self.remote_evaluators) < self.num_aggregation_workers:
+        if len(self.workers.remote_workers()) < self.num_aggregation_workers:
             raise ValueError(
                 "The number of aggregation workers should not exceed the "
                 "number of total evaluation workers ({} vs {})".format(
-                    self.num_aggregation_workers, len(self.remote_evaluators)))
+                    self.num_aggregation_workers,
+                    len(self.workers.remote_workers())))
 
-        assigned_evaluators = collections.defaultdict(list)
-        for i, ev in enumerate(self.remote_evaluators):
-            assigned_evaluators[i % self.num_aggregation_workers].append(ev)
+        assigned_workers = collections.defaultdict(list)
+        for i, ev in enumerate(self.workers.remote_workers()):
+            assigned_workers[i % self.num_aggregation_workers].append(ev)
 
-        self.workers = aggregators
-        for i, worker in enumerate(self.workers):
-            worker.init.remote(
-                self.broadcasted_weights, assigned_evaluators[i],
-                self.max_sample_requests_in_flight_per_worker,
-                self.replay_proportion, self.replay_buffer_num_slots,
-                self.train_batch_size, self.sample_batch_size)
+        self.aggregators = aggregators
+        for i, agg in enumerate(self.aggregators):
+            agg.init.remote(self.broadcasted_weights, assigned_workers[i],
+                            self.max_sample_requests_in_flight_per_worker,
+                            self.replay_proportion,
+                            self.replay_buffer_num_slots,
+                            self.train_batch_size, self.sample_batch_size)
 
         self.agg_tasks = TaskPool()
-        for agg in self.workers:
+        for agg in self.aggregators:
             agg.set_weights.remote(self.broadcasted_weights)
             self.agg_tasks.add(agg, agg.get_train_batches.remote())
 
@@ -96,7 +96,8 @@ class TreeAggregator(Aggregator):
 
     @override(Aggregator)
     def broadcast_new_weights(self):
-        self.broadcasted_weights = ray.put(self.local_evaluator.get_weights())
+        self.broadcasted_weights = ray.put(
+            self.workers.local_worker().get_weights())
         self.num_sent_since_broadcast = 0
         self.num_broadcasts += 1
 
@@ -112,8 +113,8 @@ class TreeAggregator(Aggregator):
         }
 
     @override(Aggregator)
-    def reset(self, remote_evaluators):
-        raise NotImplementedError("changing number of remote evaluators")
+    def reset(self, remote_workers):
+        raise NotImplementedError("changing number of remote workers")
 
     @staticmethod
     def precreate_aggregators(n):
@@ -125,16 +126,16 @@ class AggregationWorker(AggregationWorkerBase):
     def __init__(self):
         self.initialized = False
 
-    def init(self, initial_weights_obj_id, remote_evaluators,
+    def init(self, initial_weights_obj_id, remote_workers,
              max_sample_requests_in_flight_per_worker, replay_proportion,
              replay_buffer_num_slots, train_batch_size, sample_batch_size):
         """Deferred init that assigns sub-workers to this aggregator."""
 
-        logger.info("Assigned evaluators {} to aggregation worker {}".format(
-            remote_evaluators, self))
-        assert remote_evaluators
+        logger.info("Assigned workers {} to aggregation worker {}".format(
+            remote_workers, self))
+        assert remote_workers
         AggregationWorkerBase.__init__(
-            self, initial_weights_obj_id, remote_evaluators,
+            self, initial_weights_obj_id, remote_workers,
             max_sample_requests_in_flight_per_worker, replay_proportion,
             replay_buffer_num_slots, train_batch_size, sample_batch_size)
         self.initialized = True

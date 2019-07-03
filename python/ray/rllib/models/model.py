@@ -5,11 +5,13 @@ from __future__ import print_function
 from collections import OrderedDict
 
 import gym
-import tensorflow as tf
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 @PublicAPI
@@ -159,7 +161,7 @@ class Model(object):
         You can find an runnable example in examples/custom_loss.py.
 
         Arguments:
-            policy_loss (Tensor): scalar policy loss from the policy graph.
+            policy_loss (Tensor): scalar policy loss from the policy.
             loss_inputs (dict): map of input placeholders for rollout data.
 
         Returns:

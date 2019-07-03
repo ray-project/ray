@@ -165,9 +165,10 @@ class NodeUpdater(object):
                 logger.debug("NodeUpdater: "
                              "{}: Waiting for SSH...".format(self.node_id))
 
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "uptime", connect_timeout=5, redirect=redirect)
+                # Setting redirect=False allows the user to see errors like
+                # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
+                # for Unix domain socket.
+                self.ssh_cmd("uptime", connect_timeout=5, redirect=False)
 
                 return True
 
@@ -183,25 +184,9 @@ class NodeUpdater(object):
 
         return False
 
-    def do_update(self):
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
-
-        deadline = time.time() + NODE_START_WAIT_S
-        self.set_ssh_ip_if_required()
-
-        # Wait for SSH access
-        with LogTimer("NodeUpdater: " "{}: Got SSH".format(self.node_id)):
-            ssh_ok = self.wait_for_ssh(deadline)
-            assert ssh_ok, "Unable to SSH to node"
-
+    def sync_file_mounts(self, sync_cmd):
         # Rsync file mounts
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
-            logger.info("NodeUpdater: "
-                        "{}: Syncing {} to {}...".format(
-                            self.node_id, local_path, remote_path))
             assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
@@ -217,7 +202,23 @@ class NodeUpdater(object):
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
                         redirect=redirect,
                     )
-                    self.rsync_up(local_path, remote_path, redirect=redirect)
+                    sync_cmd(local_path, remote_path, redirect=redirect)
+
+    def do_update(self):
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
+
+        deadline = time.time() + NODE_START_WAIT_S
+        self.set_ssh_ip_if_required()
+
+        # Wait for SSH access
+        with LogTimer("NodeUpdater: " "{}: Got SSH".format(self.node_id)):
+            ssh_ok = self.wait_for_ssh(deadline)
+            assert ssh_ok, "Unable to SSH to node"
+
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
+        self.sync_file_mounts(self.rsync_up)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
@@ -225,17 +226,18 @@ class NodeUpdater(object):
 
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.initialization_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.initialization_commands:
+                self.ssh_cmd(cmd)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.setup_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.setup_commands:
+                self.ssh_cmd(cmd)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
+        logger.info("NodeUpdater: "
+                    "{}: Syncing {} to {}...".format(self.node_id, source,
+                                                     target))
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [
@@ -247,6 +249,9 @@ class NodeUpdater(object):
             stderr=redirect or sys.stderr)
 
     def rsync_down(self, source, target, redirect=None, check_error=True):
+        logger.info("NodeUpdater: "
+                    "{}: Syncing {} from {}...".format(self.node_id, source,
+                                                       target))
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [

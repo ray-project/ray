@@ -33,6 +33,13 @@ enum class TaskState {
   // The task is an actor method and is waiting to learn where the actor was
   // created.
   WAITING_FOR_ACTOR_CREATION,
+  // Swap queue for tasks that are in between states. This can happen when a
+  // task is removed from one queue, and an async callback is responsible for
+  // re-queuing the task. For example, a READY task that has just been assigned
+  // to a worker will get moved to the SWAP queue while waiting for a response
+  // from the worker. If the worker accepts the task, the task will be added to
+  // the RUNNING queue, else it will be returned to READY.
+  SWAP,
   // The number of task queues. All states that precede this enum must have an
   // associated TaskQueue in SchedulingQueue. All states that succeed
   // this enum do not have an associated TaskQueue, since the tasks
@@ -142,9 +149,13 @@ class SchedulingQueue {
   /// Create a scheduling queue.
   SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
     for (const auto &task_state : {
-             TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
-             TaskState::RUNNING, TaskState::INFEASIBLE,
+             TaskState::PLACEABLE,
+             TaskState::WAITING,
+             TaskState::READY,
+             TaskState::RUNNING,
+             TaskState::INFEASIBLE,
              TaskState::WAITING_FOR_ACTOR_CREATION,
+             TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
@@ -272,11 +283,11 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
-  /// \brief Get all the task IDs for a driver.
+  /// \brief Get all the task IDs for a job.
   ///
-  /// \param driver_id All the tasks that have the given driver_id are returned.
-  /// \return All the tasks that have the given driver ID.
-  std::unordered_set<TaskID> GetTaskIdsForDriver(const DriverID &driver_id) const;
+  /// \param job_id All the tasks that have the given job_id are returned.
+  /// \return All the tasks that have the given job ID.
+  std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
 
   /// \brief Get all the task IDs for an actor.
   ///

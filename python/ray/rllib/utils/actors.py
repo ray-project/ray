@@ -58,15 +58,15 @@ class TaskPool(object):
                 remaining.append((worker, obj_id))
         self._fetching = remaining
 
-    def reset_evaluators(self, evaluators):
-        """Notify that some evaluators may be removed."""
+    def reset_workers(self, workers):
+        """Notify that some workers may be removed."""
         for obj_id, ev in self._tasks.copy().items():
-            if ev not in evaluators:
+            if ev not in workers:
                 del self._tasks[obj_id]
                 del self._objects[obj_id]
         ok = []
         for ev, obj_id in self._fetching:
-            if ev in evaluators:
+            if ev in workers:
                 ok.append((ev, obj_id))
         self._fetching = ok
 

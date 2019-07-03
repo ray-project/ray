@@ -26,8 +26,10 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
-import tensorflow as tf
 import vtrace
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 def _shaped_arange(*shape):

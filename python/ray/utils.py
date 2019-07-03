@@ -51,7 +51,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker, error_type, message, driver_id=None):
+def push_error_to_driver(worker, error_type, message, job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -59,19 +59,19 @@ def push_error_to_driver(worker, error_type, message, driver_id=None):
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
-    worker.raylet_client.push_error(driver_id, error_type, message,
-                                    time.time())
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
+    worker.raylet_client.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
                                        error_type,
                                        message,
-                                       driver_id=None):
+                                       job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -84,19 +84,20 @@ def push_error_to_driver_through_redis(redis_client,
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
+    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command("RAY.TABLE_APPEND",
-                                 ray.gcs_utils.TablePrefix.ERROR_INFO,
-                                 ray.gcs_utils.TablePubsub.ERROR_INFO,
-                                 driver_id.binary(), error_data)
+    redis_client.execute_command(
+        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
+        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
+        error_data)
 
 
 def is_cython(obj):
@@ -214,6 +215,10 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
 
 def binary_to_object_id(binary_object_id):
     return ray.ObjectID(binary_object_id)
+
+
+def binary_to_task_id(binary_task_id):
+    return ray.TaskID(binary_task_id)
 
 
 def binary_to_hex(identifier):
@@ -439,7 +444,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
-        driver_id=worker.task_driver_id)
+        job_id=worker.current_job_id)
 
 
 class _ThreadSafeProxy(object):
@@ -500,25 +505,7 @@ def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
 
 
-def try_to_create_directory(directory_path):
-    """Attempt to create a directory that is globally readable/writable.
-
-    Args:
-        directory_path: The path of the directory to create.
-    """
-    logger = logging.getLogger("ray")
-    directory_path = os.path.expanduser(directory_path)
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise e
-            logger.warning(
-                "Attempted to create '{}', but the directory already "
-                "exists.".format(directory_path))
-        # Change the log directory permissions so others can use it. This is
-        # important when multiple people are using the same machine.
+def try_make_directory_shared(directory_path):
     try:
         os.chmod(directory_path, 0o0777)
     except OSError as e:
@@ -531,3 +518,28 @@ def try_to_create_directory(directory_path):
             pass
         else:
             raise
+
+
+def try_to_create_directory(directory_path, warn_if_exist=True):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+        warn_if_exist (bool): Warn if the directory already exists.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+            if warn_if_exist:
+                logger.warning(
+                    "Attempted to create '{}', but the directory already "
+                    "exists.".format(directory_path))
+
+    # Change the log directory permissions so others can use it. This is
+    # important when multiple people are using the same machine.
+    try_make_directory_shared(directory_path)

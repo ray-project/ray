@@ -5,7 +5,6 @@ from __future__ import print_function
 import gym
 import logging
 import numpy as np
-import tensorflow as tf
 from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
@@ -22,6 +21,9 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +149,8 @@ class ModelCatalog(object):
         elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
             if torch:
                 raise NotImplementedError
-            return MultiCategorical, int(sum(action_space.nvec))
+            return partial(MultiCategorical, input_lens=action_space.nvec), \
+                int(sum(action_space.nvec))
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
