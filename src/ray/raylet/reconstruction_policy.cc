@@ -165,9 +165,47 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
 bool ReconstructionPolicy::CheckExpiredTask(const Task &task,
                                             int64_t lease_actor_version) {
   if (task.GetTaskSpecification().IsActorTask()) {
-    // TODO(swang): Get the actor version from the registry.
-    return true;
+    // The task is an actor task. Check its version against the executed
+    // version, according to the task lease table, and the current version of
+    // the actor, according to the actor table. This will determine whether:
+    //   (1) the actor is still alive and may execute the task.
+    //   (2) the actor executed the task but its result has been evicted.
+    //   (3) the actor died, most likely before it could execute the task. Note
+    //       that there is a corner case where the actor died before it
+    //       recorded that it executed the task, so it is possible that the
+    //       task actually did execute.
+    if (lease_actor_version < task.GetTaskExecutionSpec().ActorVersion()) {
+      auto it = actor_registry_.find(task.GetTaskSpecification().ActorId());
+      if (it == actor_registry_.end()) {
+        // We do not have any information about the actor's current status. Try
+        // again later.
+        return false;
+      } else {
+        if (it->second.GetActorVersion() > task.GetTaskExecutionSpec().ActorVersion()) {
+          // Case (3). The actor has been restarted since the task was
+          // submitted. If the return values are no longer available, the task
+          // should be marked as failed.
+          return true;
+        } else if (it->second.GetState() == ActorTableData::DEAD) {
+          // Case (3). The actor has died. If the return values are no longer
+          // available, the task should be marked as failed.
+          return true;
+        } else {
+          // Case (1). The actor is still alive and has either executed the
+          // task or could execute the task. Wait for a notification about
+          // either the actor's death or the task's execution.
+          return false;
+        }
+      }
+    } else {
+      // Case (2). The requested task has already executed or failed, but we
+      // haven't received the objects yet. Return true to check whether the
+      // objects were evicted.
+      return true;
+    }
   } else {
+    // The task is a normal task and its lease was not renewed. If its return
+    // values are no longer available, the task has failed.
     return true;
   }
 }
