@@ -29,7 +29,7 @@ class TestGcs : public ::testing::Test {
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
                                                     /*is_test_client=*/true);
-    job_id_ = JobID::FromRandom();
+    job_id_ = JobID::FromInt(1);
   }
 
   virtual ~TestGcs() {
@@ -560,7 +560,7 @@ void TestLogSubscribeAll(const JobID &job_id,
                          std::shared_ptr<gcs::AsyncGcsClient> client) {
   std::vector<JobID> job_ids;
   for (int i = 0; i < 3; i++) {
-    job_ids.emplace_back(JobID::FromRandom());
+    job_ids.emplace_back(JobID::FromInt(1));
   }
   // Callback for a notification.
   auto notification_callback = [job_ids](gcs::AsyncGcsClient *client, const JobID &id,
@@ -759,14 +759,14 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 void TestLogSubscribeId(const JobID &job_id,
                         std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a log entry.
-  JobID job_id1 = JobID::FromRandom();
+  JobID job_id1 = JobID::FromInt(1);
   std::vector<std::string> job_ids1 = {"abc", "def", "ghi"};
   auto data1 = std::make_shared<JobTableData>();
   data1->set_job_id(job_ids1[0]);
   RAY_CHECK_OK(client->job_table().Append(job_id, job_id1, data1, nullptr));
 
   // Add a log entry at a second key.
-  JobID job_id2 = JobID::FromRandom();
+  JobID job_id2 = JobID::FromInt(1);
   std::vector<std::string> job_ids2 = {"jkl", "mno", "pqr"};
   auto data2 = std::make_shared<JobTableData>();
   data2->set_job_id(job_ids2[0]);
@@ -984,7 +984,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 void TestLogSubscribeCancel(const JobID &job_id,
                             std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a log entry.
-  JobID random_job_id = JobID::FromRandom();
+  JobID random_job_id = JobID::FromInt(1);
   std::vector<std::string> job_ids = {"jkl", "mno", "pqr"};
   auto data = std::make_shared<JobTableData>();
   data->set_job_id(job_ids[0]);

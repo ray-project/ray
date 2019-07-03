@@ -59,13 +59,11 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-  // TODO(qwang): Move this definition out of this class declaration.
-  static UniqueID FromRandom() {
-    return BaseID<UniqueID>::FromRandom();
-  }
+  static UniqueID FromRandom() { return BaseID<UniqueID>::FromRandom(); }
+
+  static size_t Size() { return kUniqueIDSize; }
 
   UniqueID() : BaseID(){}
-  static size_t Size() { return kUniqueIDSize; }
 
  protected:
   UniqueID(const std::string &binary);
@@ -82,8 +80,9 @@ class JobID : public BaseID<JobID> {
 
   static JobID FromInt(int32_t value);
 
-  JobID() : BaseID() {}
   static size_t Size() { return kJobIDSize; }
+
+  JobID() : BaseID() {}
 
   WorkerID DriverId() const;
 
@@ -96,9 +95,7 @@ class TaskID : public BaseID<TaskID> {
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
-  static TaskID FromRandom() {
-    return BaseID<TaskID>::FromRandom();
-  }
+  static TaskID FromRandom() { return BaseID<TaskID>::FromRandom(); }
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -106,9 +103,7 @@ class TaskID : public BaseID<TaskID> {
 
 class ObjectID : public BaseID<ObjectID> {
  public:
-  static ObjectID FromRandom() {
-    return BaseID<ObjectID>::FromRandom();
-  }
+  static ObjectID FromRandom() { return BaseID<ObjectID>::FromRandom(); }
 
   ObjectID() : BaseID() {}
   static size_t Size() { return kUniqueIDSize; }
