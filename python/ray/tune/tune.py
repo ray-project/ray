@@ -223,6 +223,8 @@ def run(run_or_experiment,
         verbose=bool(verbose > 1),
         trial_executor=trial_executor)
 
+    runner.add_experiment(experiment)
+
     if verbose:
         print(runner.debug_string(max_debug=99999))
 
