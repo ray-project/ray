@@ -69,20 +69,19 @@ public class Worker {
          String storeSocket, String rayletSocket, UniqueId jobId) {
     this.runtime = runtime;
     this.functionManager = functionManager;
+    WorkerMode workerMode = runtime.getRayConfig().workerMode;
+    UniqueId workerId = workerMode == WorkerMode.DRIVER ? jobId : UniqueId.randomId();
+    boolean isWorker = runtime.getRayConfig().workerMode == WorkerMode.WORKER;
     switch (runtime.getRayConfig().runMode) {
       case SINGLE_PROCESS:
-        nativeCoreWorker = nativeInitSingleProcessMode(runtime.getRayConfig().workerMode.value(),
+        nativeCoreWorker = nativeInitSingleProcessMode(workerMode.value(), workerId.getBytes(),
             jobId.getBytes());
         rayletClient = new MockRayletClient();
         break;
       case CLUSTER:
-        UniqueId workerId = UniqueId.randomId();
-        boolean isWorker = runtime.getRayConfig().workerMode == WorkerMode.WORKER;
-        rayletClient = new RayletClientImpl(rayletSocket, workerId,
-            isWorker, isWorker ? UniqueId.NIL : workerId);
-        nativeCoreWorker = nativeInitClusterMode(runtime.getRayConfig().workerMode.value(),
-            storeSocket, (RayletClientImpl) rayletClient,
-            jobId.getBytes());
+        rayletClient = new RayletClientImpl(rayletSocket, workerId, isWorker, jobId);
+        nativeCoreWorker = nativeInitClusterMode(workerMode.value(), storeSocket,
+            (RayletClientImpl) rayletClient, workerId.getBytes(), jobId.getBytes());
         break;
       default:
         throw new UnsupportedOperationException("Unknown run mode: " + runtime.getRayConfig().runMode);
@@ -238,12 +237,11 @@ public class Worker {
     return rayletClient;
   }
 
-  private static native long nativeInitClusterMode(int workerMode,
-                                                   String storeSocket,
-                                                   RayletClientImpl rayletClient,
+  private static native long nativeInitClusterMode(int workerMode, String storeSocket,
+                                                   RayletClientImpl rayletClient, byte[] workerId,
                                                    byte[] jobId);
 
-  private static native long nativeInitSingleProcessMode(int workerMode,
+  private static native long nativeInitSingleProcessMode(int workerMode, byte[] workerId,
                                                          byte[] jobId);
 
   private static native void nativeRunCoreWorker(long nativeCoreWorker, Worker worker);

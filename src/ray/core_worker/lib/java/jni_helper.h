@@ -52,6 +52,9 @@ extern jmethodID java_ray_object_proxy_init;
 extern jfieldID java_ray_object_proxy_data;
 extern jfieldID java_ray_object_proxy_metadata;
 
+extern jclass java_raylet_client_impl_class;
+extern jfieldID java_raylet_client_impl_client;
+
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
     jclass exception_class = env->FindClass("org/ray/api/exception/RayException");
@@ -223,6 +226,11 @@ inline jobject ToJavaRayObjectProxy(JNIEnv *env,
   auto java_obj = env->NewObject(java_ray_object_proxy_class, java_ray_object_proxy_init,
                                  java_data, java_metadata);
   return java_obj;
+}
+
+inline std::shared_ptr<RayletClient> ToRayletClient(JNIEnv *env, jobject raylet_client) {
+  return *reinterpret_cast<std::shared_ptr<RayletClient> *>(
+      env->GetLongField(raylet_client, java_raylet_client_impl_client));
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_HELPER_H

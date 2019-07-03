@@ -53,7 +53,8 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
+                             const JobID &job_id)
     : worker_type(worker_type),
       // TODO(qwang): Assign the driver id to worker id
       // once we treat driver id as a special worker id.

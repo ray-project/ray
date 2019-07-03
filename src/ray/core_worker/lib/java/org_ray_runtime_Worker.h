@@ -11,11 +11,19 @@ extern "C" {
 #define org_ray_runtime_Worker_NUM_ACTOR_CHECKPOINTS_TO_KEEP 20L
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    nativeCreateCoreWorker
- * Signature: (ILjava/lang/String;Ljava/lang/String;[B)J
+ * Method:    nativeInitClusterMode
+ * Signature: (ILjava/lang/String;Lorg/ray/runtime/raylet/RayletClientImpl;[B[B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeCreateCoreWorker(
-    JNIEnv *, jclass, jint, jstring, jstring, jbyteArray);
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInitClusterMode(
+    JNIEnv *, jclass, jint, jstring, jobject, jbyteArray, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_Worker
+ * Method:    nativeInitSingleProcessMode
+ * Signature: (I[B[B)J
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInitSingleProcessMode(
+    JNIEnv *, jclass, jint, jbyteArray, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_Worker

@@ -44,8 +44,7 @@ CoreWorker CoreWorker::CreateForClusterMode(const enum WorkerType worker_type,
 
 CoreWorker CreateForSingleProcessMode(const WorkerType worker_type,
                                       const ::Language language,
-                                      const WorkerID &worker_id,
-                                      const JobID &job_id) {
+                                      const WorkerID &worker_id, const JobID &job_id) {
   auto worker_context = std::make_shared<WorkerContext>(worker_type, worker_id, job_id);
   auto mock_transport = std::make_shared<CoreWorkerMockTaskSubmitterReceiver>();
   auto mock_store_provider = std::make_shared<CoreWorkerMockStoreProvider>();

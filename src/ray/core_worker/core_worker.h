@@ -32,8 +32,7 @@ class CoreWorker {
                                          const ::Language language,
                                          const std::string &store_socket,
                                          std::shared_ptr<RayletClient> raylet_client,
-                                         const WorkerID &worker_id,
-                                         const JobID &job_id);
+                                         const WorkerID &worker_id, const JobID &job_id);
 
   static CoreWorker CreateForSingleProcessMode(const WorkerType worker_type,
                                                const ::Language language,

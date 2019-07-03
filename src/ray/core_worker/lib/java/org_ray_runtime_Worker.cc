@@ -11,27 +11,50 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    nativeCreateCoreWorker
- * Signature: (Ljava/lang/String;Ljava/lang/String;[B)J
+ * Method:    nativeInitClusterMode
+ * Signature: (ILjava/lang/String;Lorg/ray/runtime/raylet/RayletClientImpl;[B[B)J
  */
-// JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeCreateCoreWorker(
-//     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
-//     jbyteArray jobId) {
-//   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
-//   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
-//   UniqueIdFromJByteArray<ray::JobID> job_id(env, jobId);
-//   try {
-//     auto core_worker = new ray::CoreWorker(static_cast<ray::WorkerType>(workerMode),
-//                                            ::Language::JAVA, native_store_socket,
-//                                            native_raylet_socket, job_id.GetId());
-//     return reinterpret_cast<jlong>(core_worker);
-//   } catch (const std::exception &e) {
-//     std::ostringstream oss;
-//     oss << "Failed to construct core worker: " << e.what();
-//     ThrowRayExceptionIfNotOK(env, ray::Status::Invalid(oss.str()));
-//     return 0;  // To make compiler no complain
-//   }
-// }
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInitClusterMode(
+    JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jobject rayletClient,
+    jbyteArray workerId, jbyteArray jobId) {
+  auto native_store_socket = JavaStringToNativeString(env, storeSocket);
+  auto native_raylet_client = ToRayletClient(env, rayletClient);
+  UniqueIdFromJByteArray<ray::WorkerID> worker_id(env, workerId);
+  UniqueIdFromJByteArray<ray::JobID> job_id(env, jobId);
+  try {
+    auto core_worker = new ray::CoreWorker(ray::CoreWorker::CreateForClusterMode(
+        static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
+        native_raylet_client, worker_id.GetId(), job_id.GetId()));
+    return reinterpret_cast<jlong>(core_worker);
+  } catch (const std::exception &e) {
+    std::ostringstream oss;
+    oss << "Failed to construct core worker: " << e.what();
+    ThrowRayExceptionIfNotOK(env, ray::Status::Invalid(oss.str()));
+    return 0;  // To make compiler no complain
+  }
+}
+
+/*
+ * Class:     org_ray_runtime_Worker
+ * Method:    nativeInitSingleProcessMode
+ * Signature: (I[B[B)J
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInitSingleProcessMode(
+    JNIEnv *env, jclass, jint workerMode, jbyteArray workerId, jbyteArray jobId) {
+  UniqueIdFromJByteArray<ray::WorkerID> worker_id(env, workerId);
+  UniqueIdFromJByteArray<ray::JobID> job_id(env, jobId);
+  try {
+    auto core_worker = new ray::CoreWorker(ray::CoreWorker::CreateForSingleProcessMode(
+        static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, worker_id.GetId(),
+        job_id.GetId()));
+    return reinterpret_cast<jlong>(core_worker);
+  } catch (const std::exception &e) {
+    std::ostringstream oss;
+    oss << "Failed to construct core worker: " << e.what();
+    ThrowRayExceptionIfNotOK(env, ray::Status::Invalid(oss.str()));
+    return 0;  // To make compiler no complain
+  }
+}
 
 /*
  * Class:     org_ray_runtime_Worker

@@ -41,6 +41,9 @@ jmethodID java_ray_object_proxy_init;
 jfieldID java_ray_object_proxy_data;
 jfieldID java_ray_object_proxy_metadata;
 
+jclass java_raylet_client_impl_class;
+jfieldID java_raylet_client_impl_client;
+
 jint JNI_VERSION = JNI_VERSION_1_8;
 
 #define LOAD_CLASS(variable_name, class_name)                     \
@@ -116,6 +119,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_object_proxy_metadata =
       env->GetFieldID(java_ray_object_proxy_class, "metadata", "[B");
 
+  LOAD_CLASS(java_raylet_client_impl_class, "org/ray/runtime/raylet/RayletClientImpl");
+  java_raylet_client_impl_client =
+      env->GetFieldID(java_raylet_client_impl_class, "client", "J");
+
   return JNI_VERSION;
 }
 
@@ -133,4 +140,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_task_options_proxy_class);
   env->DeleteGlobalRef(java_actor_creation_options_proxy_class);
   env->DeleteGlobalRef(java_ray_object_proxy_class);
+  env->DeleteGlobalRef(java_raylet_client_impl_class);
 }
