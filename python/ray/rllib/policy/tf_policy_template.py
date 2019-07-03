@@ -42,9 +42,8 @@ def build_tf_policy(name,
     the running of `loss_fn` in later functions such as `stats_fn`.
 
     In eager mode (experimental), the following functions will be run
-    repeatedly on each eager execution:
-        - loss_fn
-        - stats_fn
+    repeatedly on each eager execution: loss_fn, stats_fn
+
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
     be created in make_model (if defined).
