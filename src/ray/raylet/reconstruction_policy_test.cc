@@ -15,6 +15,7 @@ namespace ray {
 namespace raylet {
 
 using rpc::TaskLeaseData;
+static const int64_t kMaxReconstructions = 100;
 
 class MockObjectDirectory : public ObjectDirectoryInterface {
  public:
@@ -94,6 +95,16 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
     if (subscribed_tasks_.count(task_id) == 1) {
       notification_callback_(nullptr, task_id, *task_lease_data);
     }
+  }
+
+  void MarkTaskFinished(const TaskID &task_id, int64_t actor_version) {
+    auto task_lease_data = std::make_shared<TaskLeaseData>();
+    task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
+    task_lease_data->set_acquired_at(current_sys_time_ms());
+    // A task lease with timeout -1 indicates a finished task.
+    task_lease_data->set_timeout(-1);
+    task_lease_data->set_actor_version(actor_version);
+    Add(JobID::Nil(), task_id, task_lease_data);
   }
 
   Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
@@ -278,6 +289,17 @@ static inline Task AddEmptyTask(std::unordered_map<TaskID, TaskTableData> &task_
   return task;
 }
 
+static inline void AddActorRegistration(
+    std::unordered_map<ActorID, ActorRegistration> &actor_registry,
+    const ActorID &actor_id, int64_t actor_version) {
+  actor_registry.erase(actor_id);
+  ActorTableData actor_data;
+  actor_data.set_actor_id(actor_id.Binary());
+  actor_data.set_max_reconstructions(kMaxReconstructions);
+  actor_data.set_remaining_reconstructions(kMaxReconstructions - actor_version);
+  actor_registry.emplace(actor_id, ActorRegistration(actor_data));
+}
+
 TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
   Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
   TaskID task_id = task.GetTaskSpecification().TaskId();
@@ -295,6 +317,59 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered again.
   ASSERT_EQ(reconstructed_tasks_[task_id], 2);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionActorTask) {
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/true);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
+
+  // Listen for an object.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // We have no information yet about the actor. Check that reconstruction is
+  // not triggered.
+
+  // Add an actor registration with the same version as the submitted task.
+  AddActorRegistration(mock_actor_registry_, task.GetTaskSpecification().ActorId(), 0);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // The actor is still alive and has not acknowledged the task's execution
+  // yet. Check that reconstruction is not triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Increment the actor's version to simulate restarting the actor before it
+  // executed the task.
+  AddActorRegistration(mock_actor_registry_, task.GetTaskSpecification().ActorId(), 1);
+  // Run the test again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction gets triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionLostActor) {
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/true);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
+
+  // Add an actor registration with the same version as the submitted task.
+  AddActorRegistration(mock_actor_registry_, task.GetTaskSpecification().ActorId(), 0);
+  // Listen for an object.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // We have no information yet about the actor. Check that reconstruction is
+  // not triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Mark the actor as dead.
+  AddActorRegistration(mock_actor_registry_, task.GetTaskSpecification().ActorId(),
+                       kMaxReconstructions);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // The actor has died. Make sure reconstruction was triggered.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
@@ -318,6 +393,38 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was
   // evicted.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 1);
+}
+
+TEST_F(ReconstructionPolicyTest, TestReconstructionEvictedActorObject) {
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/true);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
+  mock_object_directory_->SetObjectLocations(object_id, {ClientID::FromRandom()});
+
+  // Listen for both objects.
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  // Run the test for longer than the reconstruction timeout.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was not triggered, since the objects still
+  // exist on a live node.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Simulate evicting one of the objects.
+  mock_object_directory_->SetObjectLocations(object_id,
+                                             std::unordered_set<ray::ClientID>());
+  // Run the test again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was not triggered, since the task was not
+  // executed yet.
+  ASSERT_EQ(reconstructed_tasks_[task_id], 0);
+
+  // Simulate finishing the task.
+  mock_gcs_.MarkTaskFinished(task_id, /*actor_version=*/0);
+  // Run the test again.
+  Run(reconstruction_timeout_ms_ * 1.1);
+  // Check that reconstruction was triggered, since one of the objects was
+  // evicted but the task has finished.
   ASSERT_EQ(reconstructed_tasks_[task_id], 1);
 }
 
