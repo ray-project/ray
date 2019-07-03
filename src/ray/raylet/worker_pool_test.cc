@@ -115,10 +115,9 @@ static inline TaskSpecification ExampleTaskSpec(
   } else if (!actor_creation_id.IsNil()) {
     message->set_type(rpc::TaskType::ACTOR_CREATION_TASK);
     message->mutable_actor_creation_task_spec()->set_actor_id(actor_creation_id.Binary());
-    std::copy(dynamic_worker_options.begin(), dynamic_worker_options.end(),
-              message->mutable_actor_creation_task_spec()
-                  ->mutable_dynamic_worker_options()
-                  ->begin());
+    for (const auto &option : dynamic_worker_options) {
+      message->mutable_actor_creation_task_spec()->add_dynamic_worker_options(option);
+    }
   } else {
     message->set_type(rpc::TaskType::NORMAL_TASK);
   }
