@@ -8,7 +8,8 @@
 
 namespace ray {
 
-class CoreWorkerMockTaskSubmitterReceiver : public CoreWorkerTaskSubmitter, public CoreWorkerTaskReceiver {
+class CoreWorkerMockTaskSubmitterReceiver : public CoreWorkerTaskSubmitter,
+                                            public CoreWorkerTaskReceiver {
  public:
   static CoreWorkerMockTaskSubmitterReceiver &Instance();
 
@@ -30,7 +31,10 @@ class CoreWorkerMockTaskSubmitterReceiver : public CoreWorkerTaskSubmitter, publ
 
   std::list<std::shared_ptr<TaskSpec>> ready_tasks_;
 
-  std::unordered_map<ObjectID, std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>>> waiting_tasks_;
+  std::unordered_map<
+      ObjectID,
+      std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>>>
+      waiting_tasks_;
 
   std::mutex mutex_;
 

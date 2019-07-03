@@ -86,7 +86,9 @@ void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
   GetThreadContext().SetCurrentTask(spec);
 }
 
-const ActorID &WorkerContext::GetCurrentActorID() const { return GetThreadContext().GetCurrentActorID(); }
+const ActorID &WorkerContext::GetCurrentActorID() const {
+  return GetThreadContext().GetCurrentActorID();
+}
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {

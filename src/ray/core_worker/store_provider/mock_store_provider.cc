@@ -5,9 +5,7 @@ namespace ray {
 
 CoreWorkerMockStoreProvider::CoreWorkerMockStoreProvider() {}
 
-CoreWorkerMockStoreProvider &CoreWorkerMockStoreProvider::Instance() {
-  return instance_;
-}
+CoreWorkerMockStoreProvider &CoreWorkerMockStoreProvider::Instance() { return instance_; }
 
 Status CoreWorkerMockStoreProvider::Put(const RayObject &object,
                                         const ObjectID &object_id) {
@@ -81,10 +79,10 @@ Status CoreWorkerMockStoreProvider::Wait(const std::vector<ObjectID> &object_ids
 
 Status CoreWorkerMockStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
                                            bool local_only, bool delete_creating_tasks) {
-    std::lock_guard<std::mutex> guard(mutex_);
-    for (size_t i = 0; i < object_ids.size(); i++) {
-      pool_.erase(object_ids[i]);
-    }
+  std::lock_guard<std::mutex> guard(mutex_);
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    pool_.erase(object_ids[i]);
+  }
 }
 
 bool CoreWorkerMockStoreProvider::IsObjectReady(const ObjectID &object_id) {

@@ -18,10 +18,12 @@ Status CoreWorkerMockTaskSubmitterReceiver::SubmitTask(const TaskSpec &task) {
     ready_tasks_.emplace_back(task_ptr);
   } else {
     for (auto &object_id : unready_objects) {
-      auto wrapped_task = std::make_shared<std::pair<std::shared_ptr<TaskSpec>, size_t>>(task_ptr, unready_objects.size());
+      auto wrapped_task = std::make_shared<std::pair<std::shared_ptr<TaskSpec>, size_t>>(
+          task_ptr, unready_objects.size());
       auto it = waiting_tasks_.find(object_id);
       if (it == waiting_tasks_.end()) {
-        std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>> set;
+        std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>>
+            set;
         set.insert(wrapped_task);
         waiting_tasks_.emplace(object_id, set);
       } else {
@@ -46,7 +48,8 @@ Status CoreWorkerMockTaskSubmitterReceiver::GetTasks(std::vector<TaskSpec> *task
 void CoreWorkerMockTaskSubmitterReceiver::OnObjectPut(const ObjectID &object_id) {
   auto it = waiting_tasks_.find(object_id);
   if (it != waiting_tasks_.end()) {
-    std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>> tasks = it->second;
+    std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>>
+        tasks = it->second;
     waiting_tasks_.erase(it);
     for (auto &wrapped_task : tasks) {
       wrapped_task->second--;
@@ -57,7 +60,8 @@ void CoreWorkerMockTaskSubmitterReceiver::OnObjectPut(const ObjectID &object_id)
   }
 }
 
-std::unordered_set<ObjectID> CoreWorkerMockTaskSubmitterReceiver::GetUnreadyObjects(const TaskSpec &task) {
+std::unordered_set<ObjectID> CoreWorkerMockTaskSubmitterReceiver::GetUnreadyObjects(
+    const TaskSpec &task) {
   std::unordered_set<ObjectID> unready_objects;
   auto &task_spec = task.GetTaskSpecification();
   for (int64_t i = 0; i < task_spec.NumArgs(); i++) {
