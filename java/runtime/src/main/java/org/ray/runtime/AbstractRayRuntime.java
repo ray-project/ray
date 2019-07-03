@@ -23,7 +23,7 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
-import org.ray.runtime.generated.Gcs.Language;
+import org.ray.runtime.generated.Language;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.util.StringUtil;
@@ -167,7 +167,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayActor<T>) createActor(Language.JAVA, functionDescriptor, args, options);
   }
 
-  private RayActorImpl createActor(Language language, FunctionDescriptor functionDescriptor,
+  private RayActorImpl createActor(int language, FunctionDescriptor functionDescriptor,
                                    Object[] args, ActorCreationOptions options) {
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
         language != Language.JAVA);

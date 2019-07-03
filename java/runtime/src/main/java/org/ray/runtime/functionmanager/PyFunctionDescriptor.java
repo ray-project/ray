@@ -2,7 +2,7 @@ package org.ray.runtime.functionmanager;
 
 import java.util.Arrays;
 import java.util.List;
-import org.ray.runtime.generated.Gcs.Language;
+import org.ray.runtime.generated.Language;
 
 /**
  * Represents metadata of a Python function.
@@ -32,7 +32,7 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
   }
 
   @Override
-  public Language getLanguage() {
+  public int getLanguage() {
     return Language.PYTHON;
   }
 }

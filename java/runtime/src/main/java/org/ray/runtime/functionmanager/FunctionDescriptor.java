@@ -1,7 +1,6 @@
 package org.ray.runtime.functionmanager;
 
 import java.util.List;
-import org.ray.runtime.generated.Gcs.Language;
 
 /**
  * Base interface of a Ray task's function descriptor.
@@ -12,5 +11,5 @@ import org.ray.runtime.generated.Gcs.Language;
 public interface FunctionDescriptor {
   List<String> toList();
 
-  Language getLanguage();
+  int getLanguage();
 }

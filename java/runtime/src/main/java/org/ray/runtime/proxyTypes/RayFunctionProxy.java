@@ -10,7 +10,7 @@ public class RayFunctionProxy {
 
   public RayFunctionProxy(FunctionDescriptor functionDescriptor) {
     Preconditions.checkNotNull(functionDescriptor);
-    language = functionDescriptor.getLanguage().getNumber();
+    language = functionDescriptor.getLanguage();
     this.functionDescriptor = functionDescriptor.toList();
   }
 }

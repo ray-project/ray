@@ -9,7 +9,7 @@ import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.generated.Gcs.Language;
+import org.ray.runtime.generated.Language;
 
 public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
   /**
@@ -39,8 +39,8 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
     return new UniqueId(nativeGetActorHandleId(nativeActorHandle));
   }
 
-  public Language getLanguage() {
-    return Language.forNumber(nativeGetLanguage(nativeActorHandle));
+  public int getLanguage() {
+    return nativeGetLanguage(nativeActorHandle);
   }
 
   @Override
