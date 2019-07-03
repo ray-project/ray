@@ -7,6 +7,7 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
+#include "ray/gcs/format/gcs_generated.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -22,7 +23,7 @@ class CoreWorker {
   /// \param[in] langauge Language of this worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  CoreWorker(const WorkerType worker_type, const ray::rpc::Language language,
+  CoreWorker(const WorkerType worker_type, const ::Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id = JobID::Nil());
 
@@ -30,7 +31,7 @@ class CoreWorker {
   enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  ray::rpc::Language Language() const { return language_; }
+  ::Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -49,22 +50,13 @@ class CoreWorker {
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const ray::rpc::Language language_;
-
-  /// Plasma store socket name.
-  const std::string store_socket_;
+  const ::Language language_;
 
   /// raylet socket name.
   const std::string raylet_socket_;
 
   /// Worker context.
   WorkerContext worker_context_;
-
-  /// Plasma store client.
-  plasma::PlasmaClient store_client_;
-
-  /// Mutex to protect store_client_.
-  std::mutex store_client_mutex_;
 
   /// Raylet client.
   RayletClient raylet_client_;
@@ -77,10 +69,6 @@ class CoreWorker {
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
   CoreWorkerTaskExecutionInterface task_execution_interface_;
-
-  friend class CoreWorkerTaskInterface;
-  friend class CoreWorkerObjectInterface;
-  friend class CoreWorkerTaskExecutionInterface;
 };
 
 }  // namespace ray
