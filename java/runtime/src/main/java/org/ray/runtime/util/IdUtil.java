@@ -155,7 +155,7 @@ public class IdUtil {
 
 
   /**
-   * Compute the driver id from a given job.
+   * Compute the driver id from the given job.
    */
   public static UniqueId computeDriverId(JobId jobId) {
     byte[] bytes = new byte[UniqueId.LENGTH];

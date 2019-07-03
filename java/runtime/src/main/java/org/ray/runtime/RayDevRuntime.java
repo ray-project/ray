@@ -1,5 +1,6 @@
 package org.ray.runtime;
 
+import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
@@ -13,9 +14,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private MockObjectStore store;
 
+  private Long jobCounter = 0L;
+
   @Override
   public void start() {
     store = new MockObjectStore(this);
+    if (rayConfig.getJobId() == JobId.NIL) {
+      rayConfig.setJobId(nextJobId());
+    }
+    workerContext = new WorkerContext(rayConfig.workerMode, rayConfig.getJobId(), rayConfig.runMode);
     objectStoreProxy = new ObjectStoreProxy(this, null);
     rayletClient = new MockRayletClient(this, rayConfig.numberExecThreadsForDevRuntime);
   }
@@ -32,5 +39,9 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @Override
   public Worker getWorker() {
     return ((MockRayletClient) rayletClient).getCurrentWorker();
+  }
+
+  private JobId nextJobId() {
+    return JobId.fromLong(jobCounter++);
   }
 }
