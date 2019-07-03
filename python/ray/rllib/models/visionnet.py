@@ -33,6 +33,19 @@ class VisionNetwork(Model):
                     padding="same",
                     name="conv{}".format(i))
             out_size, kernel, stride = filters[-1]
+
+            # skip final linear layer
+            if options.get("no_final_linear"):
+                fc_out = tf.layers.conv2d(
+                    inputs,
+                    num_outputs,
+                    kernel,
+                    stride,
+                    activation=activation,
+                    padding="valid",
+                    name="fc_out")
+                return flatten(fc_out), flatten(fc_out)
+
             fc1 = tf.layers.conv2d(
                 inputs,
                 out_size,
