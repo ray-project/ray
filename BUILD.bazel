@@ -57,6 +57,16 @@ cc_proto_library(
     deps = ["worker_proto"],
 )
 
+proto_library(
+    name = "core_worker_proto",
+    srcs = ["src/ray/protobuf/core_worker.proto"],
+)
+
+cc_proto_library(
+    name = "core_worker_cc_proto",
+    deps = ["core_worker_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -274,6 +284,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
         ":raylet_lib",
