@@ -2,7 +2,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/task_interface.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
@@ -92,22 +91,19 @@ std::vector<ray::ActorHandleID> ActorHandle::NewActorHandles() const {
 
 void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 
-CoreWorkerTaskInterface::CoreWorkerTaskInterface(WorkerContext &worker_context,
-                                                 RayletClient &raylet_client)
-    : worker_context_(worker_context) {
-  task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
-                           std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-                               new CoreWorkerRayletTaskSubmitter(raylet_client)));
-}
+CoreWorkerTaskInterface::CoreWorkerTaskInterface(
+    std::shared_ptr<WorkerContext> worker_context,
+    std::shared_ptr<CoreWorkerRayletTaskSubmitter> task_submitter)
+    : worker_context_(worker_context), task_submitter_(task_submitter) {}
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const std::vector<TaskArg> &args,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
   auto &context = worker_context_;
-  auto next_task_index = context.GetNextTaskIndex();
-  const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
-                                      context.GetCurrentTaskID(), next_task_index);
+  auto next_task_index = context->GetNextTaskIndex();
+  const auto task_id = GenerateTaskId(context->GetCurrentJobID(),
+                                      context->GetCurrentTaskID(), next_task_index);
 
   auto num_returns = task_options.num_returns;
   (*return_ids).resize(num_returns);
@@ -117,14 +113,14 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
 
   auto task_arguments = BuildTaskArguments(args);
 
-  ray::raylet::TaskSpecification spec(context.GetCurrentJobID(),
-                                      context.GetCurrentTaskID(), next_task_index,
+  ray::raylet::TaskSpecification spec(context->GetCurrentJobID(),
+                                      context->GetCurrentTaskID(), next_task_index,
                                       task_arguments, num_returns, task_options.resources,
                                       function.language, function.function_descriptor);
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitter_->SubmitTask(task);
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -132,9 +128,9 @@ Status CoreWorkerTaskInterface::CreateActor(
     const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
   auto &context = worker_context_;
-  auto next_task_index = context.GetNextTaskIndex();
-  const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
-                                      context.GetCurrentTaskID(), next_task_index);
+  auto next_task_index = context->GetNextTaskIndex();
+  const auto task_id = GenerateTaskId(context->GetCurrentJobID(),
+                                      context->GetCurrentTaskID(), next_task_index);
 
   std::vector<ObjectID> return_ids;
   return_ids.push_back(ObjectID::ForTaskReturn(task_id, 1));
@@ -150,7 +146,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   // Note that the caller is supposed to specify required placement resources
   // correctly via actor_creation_options.resources.
   ray::raylet::TaskSpecification spec(
-      context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
+      context->GetCurrentJobID(), context->GetCurrentTaskID(), next_task_index,
       actor_creation_id, ObjectID::Nil(), actor_creation_options.max_reconstructions,
       ActorID::Nil(), ActorHandleID::Nil(), 0, {}, task_arguments, 1,
       actor_creation_options.resources, actor_creation_options.resources,
@@ -159,7 +155,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 
   std::vector<ObjectID> execution_dependencies;
   TaskSpec task(std::move(spec), execution_dependencies);
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitter_->SubmitTask(task);
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -168,9 +164,9 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
   auto &context = worker_context_;
-  auto next_task_index = context.GetNextTaskIndex();
-  const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
-                                      context.GetCurrentTaskID(), next_task_index);
+  auto next_task_index = context->GetNextTaskIndex();
+  const auto task_id = GenerateTaskId(context->GetCurrentJobID(),
+                                      context->GetCurrentTaskID(), next_task_index);
 
   // add one for actor cursor object id.
   auto num_returns = task_options.num_returns + 1;
@@ -187,7 +183,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
 
   ray::raylet::TaskSpecification spec(
-      context.GetCurrentJobID(), context.GetCurrentTaskID(), next_task_index,
+      context->GetCurrentJobID(), context->GetCurrentTaskID(), next_task_index,
       ActorID::Nil(), actor_creation_dummy_object_id, 0, actor_handle.ActorID(),
       actor_handle.ActorHandleID(), actor_handle.IncreaseTaskCounter(),
       actor_handle.NewActorHandles(), task_arguments, num_returns, task_options.resources,
@@ -203,8 +199,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   guard.unlock();
 
   TaskSpec task(std::move(spec), execution_dependencies);
-  auto status =
-      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  auto status = task_submitter_->SubmitTask(task);
 
   // remove cursor from return ids.
   (*return_ids).pop_back();

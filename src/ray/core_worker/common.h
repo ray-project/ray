@@ -103,9 +103,9 @@ class TaskSpec {
   std::vector<ObjectID> dependencies_;
 };
 
-enum class StoreProviderType { PLASMA };
+enum class StoreProviderType { PLASMA, MOCK };
 
-enum class TaskTransportType { RAYLET };
+enum class TaskTransportType { RAYLET, MOCK };
 
 }  // namespace ray
 

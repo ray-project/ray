@@ -1,24 +1,21 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    WorkerContext &worker_context, RayletClient &raylet_client,
-    CoreWorkerObjectInterface &object_interface)
-    : worker_context_(worker_context), object_interface_(object_interface) {
-  task_receivers.emplace(static_cast<int>(TaskTransportType::RAYLET),
-                         std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-                             new CoreWorkerRayletTaskReceiver(raylet_client)));
-}
+    std::shared_ptr<WorkerContext> worker_context,
+    std::shared_ptr<CoreWorkerObjectInterface> object_interface,
+    std::shared_ptr<CoreWorkerTaskReceiver> task_receiver)
+    : worker_context_(worker_context),
+      object_interface_(object_interface),
+      task_receiver_(task_receiver) {}
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   while (true) {
     std::vector<TaskSpec> tasks;
-    auto status =
-        task_receivers[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(&tasks);
+    auto status = task_receiver_->GetTasks(&tasks);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Getting task failed with error: "
                      << ray::Status::IOError(status.message());
@@ -27,7 +24,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
 
     for (const auto &task : tasks) {
       const auto &spec = task.GetTaskSpecification();
-      worker_context_.SetCurrentTask(spec);
+      worker_context_->SetCurrentTask(spec);
 
       RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
 
@@ -89,7 +86,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
+  auto status = object_interface_->Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];

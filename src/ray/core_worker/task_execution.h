@@ -20,9 +20,10 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
-                                   RayletClient &raylet_client,
-                                   CoreWorkerObjectInterface &object_interface);
+  CoreWorkerTaskExecutionInterface(
+      std::shared_ptr<WorkerContext> worker_context,
+      std::shared_ptr<CoreWorkerObjectInterface> object_interface,
+      std::shared_ptr<CoreWorkerTaskReceiver> task_receiver);
 
   /// The callback provided app-language workers that executes tasks.
   ///
@@ -51,12 +52,12 @@ class CoreWorkerTaskExecutionInterface {
                               std::vector<std::shared_ptr<RayObject>> *args);
 
   /// Reference to the parent CoreWorker's context.
-  WorkerContext &worker_context_;
+  std::shared_ptr<WorkerContext> worker_context_;
   /// Reference to the parent CoreWorker's objects interface.
-  CoreWorkerObjectInterface &object_interface_;
+  std::shared_ptr<CoreWorkerObjectInterface> object_interface_;
 
-  /// All the task task receivers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers;
+  /// The task receivers.
+  std::shared_ptr<CoreWorkerTaskReceiver> task_receiver_;
 };
 
 }  // namespace ray

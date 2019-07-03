@@ -13,7 +13,7 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, RayletClient &raylet_client)
+    const std::string &store_socket, std::shared_ptr<RayletClient> raylet_client)
     : raylet_client_(raylet_client) {
   auto status = store_client_.Connect(store_socket);
   if (!status.ok()) {

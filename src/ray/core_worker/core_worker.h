@@ -27,27 +27,30 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id = JobID::Nil());
 
+  CoreWorker(const ::Language language, std::shared_ptr<WorkerContext> worker_context,
+             std::shared_ptr<CoreWorkerTaskInterface> task_interface,
+             std::shared_ptr<CoreWorkerObjectInterface> object_interface,
+             std::shared_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface);
+
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
   ::Language Language() const { return language_; }
 
-  WorkerContext &Context() { return worker_context_; }
-
-  RayletClient &Raylet() { return raylet_client_; }
+  WorkerContext &Context() { return *worker_context_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
-  CoreWorkerTaskInterface &Tasks() { return task_interface_; }
+  CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
-  CoreWorkerObjectInterface &Objects() { return object_interface_; }
+  CoreWorkerObjectInterface &Objects() { return *object_interface_; }
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
+  CoreWorkerTaskExecutionInterface &Execution() { return *task_execution_interface_; }
 
  private:
   /// Type of this worker.
@@ -56,23 +59,17 @@ class CoreWorker {
   /// Language of this worker.
   const ::Language language_;
 
-  /// raylet socket name.
-  const std::string raylet_socket_;
-
   /// Worker context.
-  WorkerContext worker_context_;
-
-  /// Raylet client.
-  RayletClient raylet_client_;
+  std::shared_ptr<WorkerContext> worker_context_;
 
   /// The `CoreWorkerTaskInterface` instance.
-  CoreWorkerTaskInterface task_interface_;
+  std::shared_ptr<CoreWorkerTaskInterface> task_interface_;
 
   /// The `CoreWorkerObjectInterface` instance.
-  CoreWorkerObjectInterface object_interface_;
+  std::shared_ptr<CoreWorkerObjectInterface> object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  CoreWorkerTaskExecutionInterface task_execution_interface_;
+  std::shared_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
 };
 
 }  // namespace ray

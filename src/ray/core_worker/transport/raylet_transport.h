@@ -14,7 +14,7 @@ namespace ray {
 
 class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerRayletTaskSubmitter(RayletClient &raylet_client);
+  CoreWorkerRayletTaskSubmitter(std::shared_ptr<RayletClient> raylet_client);
 
   /// Submit a task for execution to raylet.
   ///
@@ -24,19 +24,19 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 
  private:
   /// Raylet client.
-  RayletClient &raylet_client_;
+  std::shared_ptr<RayletClient> raylet_client_;
 };
 
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver {
  public:
-  CoreWorkerRayletTaskReceiver(RayletClient &raylet_client);
+  CoreWorkerRayletTaskReceiver(std::shared_ptr<RayletClient> raylet_client);
 
   // Get tasks for execution from raylet.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
 
  private:
   /// Raylet client.
-  RayletClient &raylet_client_;
+  std::shared_ptr<RayletClient> raylet_client_;
 };
 
 }  // namespace ray
