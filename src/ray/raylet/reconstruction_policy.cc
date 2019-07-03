@@ -13,7 +13,8 @@ ReconstructionPolicy::ReconstructionPolicy(
     gcs::PubsubInterface<TaskID> &task_lease_pubsub,
     const gcs::TableInterface<TaskID, TaskTableData> &task_table,
     std::shared_ptr<ObjectDirectoryInterface> object_directory,
-    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log)
+    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
+    const std::unordered_map<ActorID, ActorRegistration> &actor_registry)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
@@ -21,7 +22,8 @@ ReconstructionPolicy::ReconstructionPolicy(
       task_lease_pubsub_(task_lease_pubsub),
       task_table_(task_table),
       object_directory_(std::move(object_directory)),
-      task_reconstruction_log_(task_reconstruction_log) {}
+      task_reconstruction_log_(task_reconstruction_log),
+      actor_registry_(actor_registry) {}
 
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,

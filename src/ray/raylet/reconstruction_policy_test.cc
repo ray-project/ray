@@ -74,9 +74,13 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
 };
 
 class MockGcs : public gcs::PubsubInterface<TaskID>,
-                public ray::gcs::LogInterface<TaskID, TaskReconstructionData> {
+                public ray::gcs::LogInterface<TaskID, TaskReconstructionData>,
+                public gcs::TableInterface<TaskID, TaskTableData> {
  public:
-  MockGcs() : notification_callback_(nullptr), failure_callback_(nullptr){};
+  MockGcs(const std::unordered_map<TaskID, TaskTableData> &task_table)
+      : notification_callback_(nullptr),
+        failure_callback_(nullptr),
+        task_table_(task_table){};
 
   void Subscribe(const gcs::TaskLeaseTable::WriteCallback &notification_callback,
                  const gcs::TaskLeaseTable::FailureCallback &failure_callback) {
@@ -131,16 +135,35 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
     return Status::OK();
   }
 
+  Status Lookup(
+      const JobID &job_id, const TaskID &id,
+      const gcs::TableInterface<TaskID, TaskTableData>::Callback &lookup,
+      const gcs::TableInterface<TaskID, TaskTableData>::FailureCallback &failure) const {
+    auto it = task_table_.find(id);
+    if (it == task_table_.end()) {
+      failure(nullptr, id);
+    } else {
+      lookup(nullptr, id, it->second);
+    }
+    return Status::OK();
+  }
+
   MOCK_METHOD4(
       Append,
       ray::Status(
           const JobID &, const TaskID &, std::shared_ptr<TaskReconstructionData> &,
           const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
 
+  MOCK_METHOD4(
+      Add, ray::Status(
+               const JobID &, const TaskID &, std::shared_ptr<TaskTableData> &,
+               const ray::gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &));
+
  private:
   gcs::TaskLeaseTable::WriteCallback notification_callback_;
   gcs::TaskLeaseTable::FailureCallback failure_callback_;
   std::unordered_map<TaskID, std::shared_ptr<TaskLeaseData>> task_lease_table_;
+  const std::unordered_map<TaskID, TaskTableData> &task_table_;
   std::unordered_set<TaskID> subscribed_tasks_;
   std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
       task_reconstruction_log_;
@@ -150,23 +173,25 @@ class ReconstructionPolicyTest : public ::testing::Test {
  public:
   ReconstructionPolicyTest()
       : io_service_(),
-        mock_gcs_(),
+        mock_gcs_(mock_task_table_),
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
+        mock_actor_registry_(),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
             io_service_,
             [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
-            reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
-            mock_object_directory_, mock_gcs_)),
+            reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_, mock_gcs_,
+            mock_object_directory_, mock_gcs_, mock_actor_registry_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
                const TaskLeaseData &task_lease) {
-          reconstruction_policy_->HandleTaskLeaseNotification(task_id,
-                                                              task_lease.timeout());
+          reconstruction_policy_->HandleTaskLeaseNotification(
+              task_id, task_lease.timeout(), task_lease.actor_version());
         },
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id) {
-          reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
+          reconstruction_policy_->HandleTaskLeaseNotification(
+              task_id, /*lease_timeout_ms=*/0, /*lease_actor_version=*/-1);
         });
   }
 
@@ -216,17 +241,47 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
+  std::unordered_map<TaskID, TaskTableData> mock_task_table_;
   MockGcs mock_gcs_;
   std::shared_ptr<MockObjectDirectory> mock_object_directory_;
+  std::unordered_map<ActorID, ActorRegistration> mock_actor_registry_;
   uint64_t reconstruction_timeout_ms_;
   std::shared_ptr<ReconstructionPolicy> reconstruction_policy_;
   bool timer_canceled_;
   std::unordered_map<TaskID, int> reconstructed_tasks_;
 };
 
+static inline Task AddEmptyTask(std::unordered_map<TaskID, TaskTableData> &task_table,
+                                int num_returns, bool actor_task) {
+  std::unordered_map<std::string, double> required_resources;
+  std::vector<std::shared_ptr<TaskArgument>> task_arguments;
+  std::vector<std::string> function_descriptor(3);
+  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
+                                num_returns, required_resources, Language::PYTHON,
+                                function_descriptor);
+  if (actor_task) {
+    spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, ActorID::FromRandom(),
+                             ObjectID::FromRandom(), 100, ActorID::FromRandom(),
+                             ActorHandleID::FromRandom(), 0, {}, task_arguments,
+                             num_returns, required_resources, required_resources,
+                             Language::PYTHON, function_descriptor);
+  }
+  auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
+  execution_spec.IncrementNumForwards();
+  Task task = Task(execution_spec, spec);
+
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  TaskTableData data;
+  data.set_task(task.Serialize());
+  task_table[task_id] = data;
+
+  return task;
+}
+
 TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -243,8 +298,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
   mock_object_directory_->SetObjectLocations(object_id, {ClientID::FromRandom()});
 
   // Listen for both objects.
@@ -266,8 +322,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
   ClientID client_id = ClientID::FromRandom();
   mock_object_directory_->SetObjectLocations(object_id, {client_id});
 
@@ -290,9 +347,10 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
 
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // Create two object IDs produced by the same task.
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id1 = ObjectID::ForTaskReturn(task_id, 1);
-  ObjectID object_id2 = ObjectID::ForTaskReturn(task_id, 2);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/2, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id1 = task.GetTaskSpecification().ReturnId(0);
+  ObjectID object_id2 = task.GetTaskSpecification().ReturnId(1);
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id1);
@@ -310,8 +368,9 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
   // Run the test for much longer than the reconstruction timeout.
   int64_t test_period = 2 * reconstruction_timeout_ms_;
 
@@ -336,8 +395,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -363,8 +423,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -389,8 +450,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  Task task = AddEmptyTask(mock_task_table_, /*num_returns=*/1, /*actor_task=*/false);
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  ObjectID object_id = task.GetTaskSpecification().ReturnId(0);
 
   // Log a reconstruction attempt to simulate a different node attempting the
   // reconstruction first. This should suppress this node's first attempt at

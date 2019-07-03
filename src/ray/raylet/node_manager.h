@@ -496,15 +496,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingQueue local_queues_;
   /// The scheduling policy in effect for this raylet.
   SchedulingPolicy scheduling_policy_;
+  /// A mapping from actor ID to registration information about that actor
+  /// (including which node manager owns it).
+  std::unordered_map<ActorID, ActorRegistration> actor_registry_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
-  /// A mapping from actor ID to registration information about that actor
-  /// (including which node manager owns it).
-  std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.

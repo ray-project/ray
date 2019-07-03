@@ -10,6 +10,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/tables.h"
 #include "ray/protobuf/gcs.pb.h"
+#include "ray/raylet/actor_registration.h"
 #include "ray/raylet/task.h"
 #include "ray/util/util.h"
 
@@ -50,7 +51,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
       const gcs::TableInterface<TaskID, TaskTableData> &task_table,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
-      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
+      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
+      const std::unordered_map<ActorID, ActorRegistration> &actor_registry);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -168,7 +170,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   const gcs::TableInterface<TaskID, TaskTableData> &task_table_;
   /// The object directory used to lookup object locations.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
+  /// The log that keeps track of resubmitted tasks.
   gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
+  /// The local cache of the GCS actor table.
+  const std::unordered_map<ActorID, ActorRegistration> &actor_registry_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };

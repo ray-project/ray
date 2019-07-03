@@ -94,6 +94,13 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
 
   const int NumTaskAdds() const { return num_task_adds_; }
 
+  MOCK_CONST_METHOD4(
+      Lookup,
+      ray::Status(
+          const JobID &, const TaskID &,
+          const ray::gcs::TableInterface<TaskID, TaskTableData>::Callback &,
+          const ray::gcs::TableInterface<TaskID, TaskTableData>::FailureCallback &));
+
  private:
   std::unordered_map<TaskID, std::shared_ptr<TaskTableData>> task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
