@@ -276,8 +276,9 @@ def list_experiments(project_path,
         info_df = info_df[filtered_index]
 
     if sort:
-        if sort not in info_df:
-            raise KeyError("{} not in: {}".format(sort, list(info_df)))
+        for key in sort:
+            if key not in info_df:
+                raise KeyError("{} not in: {}".format(key, list(info_df)))
         ascending = not desc
         info_df = info_df.sort_values(by=sort, ascending=ascending)
 
