@@ -83,9 +83,6 @@ class Task : public rpc::MessageWrapper<rpc::Task> {
   TaskExecutionSpecification task_execution_spec_;
 };
 
-std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
-                                  const TaskSpecification *task_spec);
-
 }  // namespace raylet
 
 }  // namespace ray
