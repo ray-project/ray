@@ -31,6 +31,23 @@ class Task : public rpc::MessageWrapper<rpc::Task> {
         task_spec_(message_->task_spec()),
         task_execution_spec_(*message_->mutable_task_execution_spec()) {}
 
+  Task(const Task &task)
+      : MessageWrapper(task),
+        task_spec_(message_->task_spec()),
+        task_execution_spec_(*message_->mutable_task_execution_spec()) {}
+
+  Task(Task &&task) noexcept
+      : MessageWrapper(std::move(task)),
+        task_spec_(message_->task_spec()),
+        task_execution_spec_(*message_->mutable_task_execution_spec()) {}
+
+  Task &operator=(const Task &task) {
+    this->message_unique_ptr.reset(new rpc::Task(task.GetMessage()));
+    this->message_ = message_unique_ptr.get();
+//    this->task_spec_ = std::move(TaskSpecification(message_->task_spec()));
+    return *this;
+  }
+
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
   ///

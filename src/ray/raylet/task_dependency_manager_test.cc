@@ -67,21 +67,13 @@ class TaskDependencyManagerTest : public ::testing::Test {
 };
 
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
-                               int64_t num_returns) {
-  std::unordered_map<std::string, double> required_resources;
-  std::vector<std::shared_ptr<TaskArgument>> task_arguments;
-  for (auto &argument : arguments) {
-    std::vector<ObjectID> references = {argument};
-    task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
+                               uint64_t num_returns) {
+  std::unique_ptr<rpc::Task> task_message(new rpc::Task);
+  for (const auto &arg : arguments) {
+    task_message->mutable_task_spec()->add_args()->add_object_ids(arg.Binary());
   }
-  std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
-                                num_returns, required_resources, Language::PYTHON,
-                                function_descriptor);
-  auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
-  execution_spec.IncrementNumForwards();
-  Task task = Task(execution_spec, spec);
-  return task;
+  task_message->mutable_task_spec()->set_num_returns(num_returns);
+  return Task(std::move(task_message));
 }
 
 std::vector<Task> MakeTaskChain(int chain_size,

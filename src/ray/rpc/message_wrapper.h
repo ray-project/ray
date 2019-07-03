@@ -29,6 +29,9 @@ class MessageWrapper {
   MessageWrapper(const MessageWrapper<Message> &from)
       : MessageWrapper(std::unique_ptr<Message>(new Message(from.GetMessage()))) {}
 
+  MessageWrapper(MessageWrapper<Message> &&from) noexcept
+      : MessageWrapper(std::move(from.message_unique_ptr)) {}
+
   const Message &GetMessage() const { return *message_; }
 
   const std::string Serialize() const {
@@ -50,7 +53,7 @@ class ConstMessageWrapper {
   }
 
   explicit ConstMessageWrapper(std::unique_ptr<const Message> message)
-  : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {
+      : message_unique_ptr(std::move(message)), message_(message_unique_ptr.get()) {
     RAY_CHECK(message_ != nullptr);
   }
 
@@ -66,9 +69,7 @@ class ConstMessageWrapper {
 
   const Message &GetMessage() const { return *message_; }
 
-  const std::string Serialize() const {
-    return message_->SerializeAsString();
-  }
+  const std::string Serialize() const { return message_->SerializeAsString(); }
 
  protected:
   std::unique_ptr<const Message> message_unique_ptr;

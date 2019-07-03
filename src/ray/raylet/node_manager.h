@@ -48,7 +48,7 @@ struct NodeManagerConfig {
   /// worker pool.
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
-  std::unordered_map<Language, std::vector<std::string>, std::hash<int>> worker_commands;;
+  WorkerCommandMap worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.

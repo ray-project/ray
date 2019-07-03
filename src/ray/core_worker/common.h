@@ -5,7 +5,6 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/gcs/format/gcs_generated.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/raylet/task_spec.h"
 
