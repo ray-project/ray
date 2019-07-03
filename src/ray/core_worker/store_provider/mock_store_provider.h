@@ -6,17 +6,16 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/store_provider/store_provider.h"
+#include "ray/core_worker/transport/mock_transport.h"
 
 namespace ray {
 
-class CoreWorker;
+class CoreWorkerMockTaskSubmitterReceiver;
 
 /// The class provides implementations for local memory store, which is used for single
 /// process mode.
 class CoreWorkerMockStoreProvider : public CoreWorkerStoreProvider {
  public:
-  static CoreWorkerMockStoreProvider &Instance();
-
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] object The ray object.
@@ -58,16 +57,17 @@ class CoreWorkerMockStoreProvider : public CoreWorkerStoreProvider {
 
   bool IsObjectReady(const ObjectID &object_id);
 
+  void SetMockTransport(
+      std::shared_ptr<CoreWorkerMockTaskSubmitterReceiver> mock_transport);
+
  private:
-  CoreWorkerMockStoreProvider();
-
-  static CoreWorkerMockStoreProvider instance_;
-
   std::unordered_map<ObjectID, RayObject> pool_;
 
   std::mutex mutex_;
 
   const int64_t get_check_interval_ms_ = 100;
+
+  std::shared_ptr<CoreWorkerMockTaskSubmitterReceiver> mock_transport_;
 };
 
 }  // namespace ray

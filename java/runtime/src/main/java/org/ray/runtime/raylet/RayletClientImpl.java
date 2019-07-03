@@ -6,27 +6,30 @@ import org.ray.api.id.UniqueId;
 public class RayletClientImpl implements RayletClient {
 
   /**
-   * The pointer to c++'s core worker.
+   * The pointer to c++'s raylet client.
    */
-  private long nativeCoreWorker;
+  private long client;
 
-  public RayletClientImpl(long nativeCoreWorker) {
-    this.nativeCoreWorker = nativeCoreWorker;
+  // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
+  public RayletClientImpl(String rayletSocketName, UniqueId clientId, boolean isWorker,
+                          UniqueId jobId) {
+    this.client = nativeInit(rayletSocketName, clientId.getBytes(), isWorker,
+        jobId.getBytes());
   }
 
   @Override
   public UniqueId prepareCheckpoint(UniqueId actorId) {
-    return new UniqueId(nativePrepareCheckpoint(nativeCoreWorker, actorId.getBytes()));
+    return new UniqueId(nativePrepareCheckpoint(client, actorId.getBytes()));
   }
 
   @Override
   public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
-    nativeNotifyActorResumedFromCheckpoint(nativeCoreWorker, actorId.getBytes(), checkpointId.getBytes());
+    nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
 
   public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    nativeSetResource(nativeCoreWorker, resourceName, capacity, nodeId.getBytes());
+    nativeSetResource(client, resourceName, capacity, nodeId.getBytes());
   }
 
   /// Native method declarations.
@@ -42,11 +45,14 @@ public class RayletClientImpl implements RayletClient {
   /// 5) vim $Dir/src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc
   /// 6) popd
 
-  private static native byte[] nativePrepareCheckpoint(long nativeCoreWorker, byte[] actorId);
+  private static native long nativeInit(String rayletSocketName, byte[] workerId,
+                                        boolean isWorker, byte[] driverTaskId);
 
-  private static native void nativeNotifyActorResumedFromCheckpoint(long nativeCoreWorker, byte[] actorId,
+  private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId);
+
+  private static native void nativeNotifyActorResumedFromCheckpoint(long conn, byte[] actorId,
                                                                     byte[] checkpointId);
 
-  private static native void nativeSetResource(long nativeCoreWorker, String resourceName, double capacity,
+  private static native void nativeSetResource(long conn, String resourceName, double capacity,
                                                byte[] nodeId) throws RayException;
 }

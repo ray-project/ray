@@ -4,15 +4,16 @@
 #include <list>
 #include <unordered_set>
 
+#include "ray/core_worker/store_provider/mock_store_provider.h"
 #include "ray/core_worker/transport/transport.h"
 
 namespace ray {
 
+class CoreWorkerMockStoreProvider;
+
 class CoreWorkerMockTaskSubmitterReceiver : public CoreWorkerTaskSubmitter,
                                             public CoreWorkerTaskReceiver {
  public:
-  static CoreWorkerMockTaskSubmitterReceiver &Instance();
-
   /// Submit a task for execution to raylet.
   ///
   /// \param[in] task The task spec to submit.
@@ -24,9 +25,10 @@ class CoreWorkerMockTaskSubmitterReceiver : public CoreWorkerTaskSubmitter,
 
   void OnObjectPut(const ObjectID &object_id);
 
- private:
-  CoreWorkerMockTaskSubmitterReceiver();
+  void SetMockStoreProvider(
+      std::shared_ptr<CoreWorkerMockStoreProvider> mock_store_provider);
 
+ private:
   std::unordered_set<ObjectID> GetUnreadyObjects(const TaskSpec &task);
 
   std::list<std::shared_ptr<TaskSpec>> ready_tasks_;
@@ -38,7 +40,7 @@ class CoreWorkerMockTaskSubmitterReceiver : public CoreWorkerTaskSubmitter,
 
   std::mutex mutex_;
 
-  static CoreWorkerMockTaskSubmitterReceiver instance_;
+  std::shared_ptr<CoreWorkerMockStoreProvider> mock_store_provider_;
 };
 
 }  // namespace ray

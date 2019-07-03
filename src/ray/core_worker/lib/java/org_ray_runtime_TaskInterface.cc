@@ -15,7 +15,7 @@ inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject rayFunction) {
   JavaStringListToNativeStringVector(
       env, env->GetObjectField(rayFunction, java_ray_function_proxy_function_descriptor),
       &function_descriptor);
-  ray::RayFunction ray_function{static_cast<ray::rpc::Language>((int)env->GetIntField(
+  ray::RayFunction ray_function{static_cast<::Language>((int)env->GetIntField(
                                     rayFunction, java_ray_function_proxy_language)),
                                 function_descriptor};
   return ray_function;

@@ -76,7 +76,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     // TODO(zhijunfu): can call `fetchOrReconstruct` in batches as an optimization.
-    RAY_CHECK_OK(raylet_client_.FetchOrReconstruct(unready_ids, fetch_only, task_id));
+    RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
 
     // Get the objects from the object store, and parse the result.
     int64_t get_timeout;
@@ -147,7 +147,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   if (was_blocked) {
-    RAY_CHECK_OK(raylet_client_.NotifyUnblocked(task_id));
+    RAY_CHECK_OK(raylet_client_->NotifyUnblocked(task_id));
   }
 
   return Status::OK();
@@ -158,8 +158,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
-  auto status = raylet_client_.Wait(object_ids, num_objects, timeout_ms, false, task_id,
-                                    &result_pair);
+  auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms, false, task_id,
+                                     &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
     ready_ids.insert(entry);
@@ -179,7 +179,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
 Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
                                              bool local_only,
                                              bool delete_creating_tasks) {
-  return raylet_client_.FreeObjects(object_ids, local_only, delete_creating_tasks);
+  return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
 }
 
 }  // namespace ray

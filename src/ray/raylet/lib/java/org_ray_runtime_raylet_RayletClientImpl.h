@@ -9,6 +9,14 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeInit
+ * Signature: (Ljava/lang/String;[BZ[B)J
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
+    JNIEnv *, jclass, jstring, jbyteArray, jboolean, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativePrepareCheckpoint
  * Signature: (J[B)[B
  */

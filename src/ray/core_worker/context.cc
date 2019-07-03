@@ -53,13 +53,19 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id)
     : worker_type(worker_type),
       // TODO(qwang): Assign the driver id to worker id
       // once we treat driver id as a special worker id.
-      worker_id(worker_type == WorkerType::DRIVER ? WorkerID::FromBinary(job_id.Binary())
-                                                  : WorkerID::FromRandom()),
-      current_job_id(worker_type == WorkerType::DRIVER ? job_id : JobID::Nil()) {
+      worker_id(worker_id),
+      current_job_id(job_id) {
+  if (worker_type == WorkerType::DRIVER) {
+    RAY_CHECK(!job_id.IsNil());
+    RAY_CHECK(worker_id == job_id);
+  } else {
+    RAY_CHECK(!worker_id.IsNil());
+    RAY_CHECK(job_id.IsNil());
+  }
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).

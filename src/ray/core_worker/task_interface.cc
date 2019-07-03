@@ -93,7 +93,7 @@ void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     std::shared_ptr<WorkerContext> worker_context,
-    std::shared_ptr<CoreWorkerRayletTaskSubmitter> task_submitter)
+    std::shared_ptr<CoreWorkerTaskSubmitter> task_submitter)
     : worker_context_(worker_context), task_submitter_(task_submitter) {}
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,

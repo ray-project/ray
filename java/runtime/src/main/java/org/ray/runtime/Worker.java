@@ -11,10 +11,12 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.proxyTypes.RayObjectProxy;
+import org.ray.runtime.raylet.MockRayletClient;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
@@ -67,12 +69,27 @@ public class Worker {
          String storeSocket, String rayletSocket, UniqueId jobId) {
     this.runtime = runtime;
     this.functionManager = functionManager;
-    nativeCoreWorker = nativeCreateCoreWorker(runtime.getRayConfig().workerMode.value(), storeSocket, rayletSocket,
-        jobId.getBytes());
+    switch (runtime.getRayConfig().runMode) {
+      case SINGLE_PROCESS:
+        nativeCoreWorker = nativeInitSingleProcessMode(runtime.getRayConfig().workerMode.value(),
+            jobId.getBytes());
+        rayletClient = new MockRayletClient();
+        break;
+      case CLUSTER:
+        UniqueId workerId = UniqueId.randomId();
+        boolean isWorker = runtime.getRayConfig().workerMode == WorkerMode.WORKER;
+        rayletClient = new RayletClientImpl(rayletSocket, workerId,
+            isWorker, isWorker ? UniqueId.NIL : workerId);
+        nativeCoreWorker = nativeInitClusterMode(runtime.getRayConfig().workerMode.value(),
+            storeSocket, (RayletClientImpl) rayletClient,
+            jobId.getBytes());
+        break;
+      default:
+        throw new UnsupportedOperationException("Unknown run mode: " + runtime.getRayConfig().runMode);
+    }
     workerContext = new WorkerContext(nativeCoreWorker);
     objectInterface = new ObjectInterface(nativeCoreWorker, workerContext);
     taskInterface = new TaskInterface(nativeCoreWorker);
-    rayletClient = new RayletClientImpl(nativeCoreWorker);
   }
 
   // This method is required by JNI
@@ -221,8 +238,13 @@ public class Worker {
     return rayletClient;
   }
 
-  private static native long nativeCreateCoreWorker(int workerMode, String storeSocket,
-                                                    String rayletSocket, byte[] jobId);
+  private static native long nativeInitClusterMode(int workerMode,
+                                                   String storeSocket,
+                                                   RayletClientImpl rayletClient,
+                                                   byte[] jobId);
+
+  private static native long nativeInitSingleProcessMode(int workerMode,
+                                                         byte[] jobId);
 
   private static native void nativeRunCoreWorker(long nativeCoreWorker, Worker worker);
 

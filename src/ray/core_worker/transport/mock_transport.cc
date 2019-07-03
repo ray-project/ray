@@ -1,14 +1,7 @@
 
 #include "ray/core_worker/transport/mock_transport.h"
-#include "ray/core_worker/store_provider/mock_store_provider.h"
 
 namespace ray {
-
-CoreWorkerMockTaskSubmitterReceiver::CoreWorkerMockTaskSubmitterReceiver() {}
-
-CoreWorkerMockTaskSubmitterReceiver &CoreWorkerMockTaskSubmitterReceiver::Instance() {
-  return instance_;
-}
 
 Status CoreWorkerMockTaskSubmitterReceiver::SubmitTask(const TaskSpec &task) {
   std::lock_guard<std::mutex> guard(mutex_);
@@ -31,6 +24,8 @@ Status CoreWorkerMockTaskSubmitterReceiver::SubmitTask(const TaskSpec &task) {
       }
     }
   }
+
+  return Status::OK();
 }
 
 Status CoreWorkerMockTaskSubmitterReceiver::GetTasks(std::vector<TaskSpec> *tasks) {
@@ -60,6 +55,12 @@ void CoreWorkerMockTaskSubmitterReceiver::OnObjectPut(const ObjectID &object_id)
   }
 }
 
+void CoreWorkerMockTaskSubmitterReceiver::SetMockStoreProvider(
+    std::shared_ptr<CoreWorkerMockStoreProvider> mock_store_provider) {
+  RAY_CHECK(!mock_store_provider_);
+  mock_store_provider_ = mock_store_provider;
+}
+
 std::unordered_set<ObjectID> CoreWorkerMockTaskSubmitterReceiver::GetUnreadyObjects(
     const TaskSpec &task) {
   std::unordered_set<ObjectID> unready_objects;
@@ -68,7 +69,7 @@ std::unordered_set<ObjectID> CoreWorkerMockTaskSubmitterReceiver::GetUnreadyObje
     if (task_spec.ArgByRef(i)) {
       for (int64_t j = 0; j < task_spec.ArgIdCount(i); j++) {
         ObjectID object_id = task_spec.ArgId(i, j);
-        if (!CoreWorkerMockStoreProvider::Instance().IsObjectReady(object_id)) {
+        if (!mock_store_provider_->IsObjectReady(object_id)) {
           unready_objects.insert(object_id);
         }
       }

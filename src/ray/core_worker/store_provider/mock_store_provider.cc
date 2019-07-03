@@ -1,17 +1,12 @@
 #include "ray/core_worker/store_provider/mock_store_provider.h"
-#include "ray/core_worker/transport/mock_transport.h"
 
 namespace ray {
-
-CoreWorkerMockStoreProvider::CoreWorkerMockStoreProvider() {}
-
-CoreWorkerMockStoreProvider &CoreWorkerMockStoreProvider::Instance() { return instance_; }
 
 Status CoreWorkerMockStoreProvider::Put(const RayObject &object,
                                         const ObjectID &object_id) {
   std::lock_guard<std::mutex> guard(mutex_);
   pool_.emplace(object_id, object);
-  CoreWorkerMockTaskSubmitterReceiver::Instance().OnObjectPut(object_id);
+  mock_transport_->OnObjectPut(object_id);
   return Status::OK();
 }
 
@@ -83,11 +78,18 @@ Status CoreWorkerMockStoreProvider::Delete(const std::vector<ObjectID> &object_i
   for (size_t i = 0; i < object_ids.size(); i++) {
     pool_.erase(object_ids[i]);
   }
+
+  return Status::OK();
 }
 
 bool CoreWorkerMockStoreProvider::IsObjectReady(const ObjectID &object_id) {
   std::lock_guard<std::mutex> guard(mutex_);
   return pool_.find(object_id) != pool_.end();
+}
+
+void CoreWorkerMockStoreProvider::SetMockTransport(
+    std::shared_ptr<CoreWorkerMockTaskSubmitterReceiver> mock_transport) {
+  mock_transport_ = mock_transport;
 }
 
 }  // namespace ray
