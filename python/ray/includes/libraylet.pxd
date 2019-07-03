@@ -18,6 +18,7 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
     CObjectID,
     CTaskID,
+    CUniqueID,
 )
 from ray.includes.task cimport CTaskSpecification
 
@@ -61,7 +62,7 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
                         WaitResultPair *result)
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
-        CRayStatus PushProfileEvents(const PbProfileTableData &profile_events)
+        CRayStatus PushProfileEvents(PbProfileTableData *profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
                                c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,

@@ -801,6 +801,7 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
 void NodeManager::HandleDisconnectClientRequest(
     const rpc::DisconnectClientRequest &request, rpc::DisconnectClientReply *reply,
     rpc::RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Handle disconnect client request.";
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   bool intentional_disconnect = request.intentional();
 
@@ -812,6 +813,7 @@ void NodeManager::HandleDisconnectClientRequest(
 void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::GetTaskReply *reply,
                                        rpc::RequestDoneCallback done_callback) {
+  RAY_LOG(INFO) << "Get task request.";
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker);
@@ -1120,6 +1122,7 @@ void NodeManager::HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
                                          rpc::RequestDoneCallback done_callback) {
   bool is_worker = request.is_worker();
   const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  RAY_LOG(INFO) << "Handle heartbeat request, worker id: " << worker_id;
   std::shared_ptr<Worker> worker = nullptr;
   if (is_worker) {
     worker = worker_pool_.GetRegisteredWorker(worker_id);
@@ -2220,8 +2223,8 @@ bool NodeManager::AssignTask(const Task &task) {
   // object dependencies.
   RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
 
-  // Connection to worker client has been closed, grpc framework cannot handle this
-  // error at present.
+  // TODO(jzh):Connection to worker client has been closed, grpc framework cannot handle
+  // this error at present.
   /*
   RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
   // We failed to send the task to the worker, so disconnect the worker.

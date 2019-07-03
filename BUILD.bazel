@@ -140,12 +140,16 @@ cc_grpc_library(
 # Raylet rpc server and client.
 cc_library(
     name = "raylet_rpc",
-    hdrs = glob([
+    srcs = glob([
         "src/ray/rpc/raylet/*.cc",
+    ]),
+    hdrs = glob([
         "src/ray/rpc/raylet/*.h",
+        "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
     deps = [
+        ":node_manager_fbs",
         ":grpc_common_lib",
         ":raylet_cc_grpc",
         ":ray_common",
@@ -627,8 +631,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib",
-    ],
+    deps = ["//:raylet_lib",],
 )
 
 cc_binary(

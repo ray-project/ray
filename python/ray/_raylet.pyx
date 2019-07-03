@@ -300,13 +300,15 @@ cdef class RayletClient:
     def push_profile_events(self, component_type, UniqueID component_id,
                             node_ip_address, profile_data):
         cdef:
-            PbProfileTableData profile_info
+            PbProfileTableData* profile_info
             PbProfileEvent *profile_event
             c_string event_type
 
         if len(profile_data) == 0:
             return  # Short circuit if there are no profile events.
 
+        # The profile table data object would be deleted by protobuf itself
+        profile_info = new PbProfileTableData()
         profile_info.set_component_type(component_type.encode("ascii"))
         profile_info.set_component_id(component_id.binary())
         profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
@@ -324,7 +326,7 @@ cdef class RayletClient:
                 if key_string == "event_type":
                     ev_type = event_data.encode("ascii")
                     profile_event.set_event_type(ev_type)
-                    if ev_type.length() == 0:
+                    if len(ev_type) == 0:
                         raise ValueError(
                             "'event_type' should not be a null string.")
                 elif key_string == "start_time":
@@ -334,7 +336,7 @@ cdef class RayletClient:
                 elif key_string == "extra_data":
                     ev_data = event_data.encode("ascii")
                     profile_event.set_extra_data(ev_data)
-                    if ev_data.length() == 0:
+                    if len(ev_data) == 0:
                         raise ValueError(
                             "'extra_data' should not be a null string.")
                 else:

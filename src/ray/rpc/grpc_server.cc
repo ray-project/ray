@@ -9,7 +9,7 @@ void GrpcServer::Run() {
   std::string server_address;
   // Set unix domain socket or tcp address
   if (!unix_socket_path_.empty()) {
-    server_address = "unix:" + unix_socket_path_;
+    server_address = "unix://" + unix_socket_path_;
   } else {
     server_address = "0.0.0.0:" + std::to_string(port_);
   }
@@ -19,7 +19,7 @@ void GrpcServer::Run() {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
   if (services_.size() == 0) {
-    RAY_LOG(WARNING) << "No service is found when start grpc server.";
+    RAY_LOG(WARNING) << "No service is found when start " << name_ << " grpc server.";
   }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
@@ -29,7 +29,9 @@ void GrpcServer::Run() {
   cq_ = builder.AddCompletionQueue();
   // Build and start server.
   server_ = builder.BuildAndStart();
-  RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
+  RAY_LOG(INFO) << name_
+                << " server started, input listening server address: " << server_address
+                << ", actually listening port: " << port_;
 
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_and_concurrencies_) {

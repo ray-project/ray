@@ -10,8 +10,8 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "ray/common/status.h"
-#include "ray/raylet/task_spec.h"
+#include "src/ray/common/status.h"
+#include "src/ray/raylet/task_spec.h"
 #include "src/ray/protobuf/raylet.grpc.pb.h"
 #include "src/ray/protobuf/raylet.pb.h"
 #include "src/ray/rpc/client_call.h"
@@ -109,7 +109,7 @@ class RayletClient {
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return void.
-  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
+  ray::Status PushProfileEvents(ProfileTableData *profile_events);
 
   /// Free a list of objects from object stores.
   ///
@@ -156,6 +156,12 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
+  /// Try to register client in raylet, if failed we would retry serveral time to reconnect.
+  /// We need this because raylet client may start before raylet server.
+  ///
+  /// \param times Retry times.
+  void TryRegisterClient(int times);
+
   ray::Status RegisterClient();
 
   void Heartbeat();

@@ -444,7 +444,7 @@ class ResourceIdSet {
       flatbuffers::FlatBufferBuilder &fbb) const;
 
  private:
-  /// A mapping from reosurce name to a set of resource IDs for that resource.
+  /// A mapping from resource name to a set of resource IDs for that resource.
   std::unordered_map<std::string, ResourceIds> available_resources_;
 };
 

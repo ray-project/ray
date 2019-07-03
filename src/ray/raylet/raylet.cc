@@ -22,7 +22,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       object_manager_(main_service, object_manager_config, object_directory_),
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
                     object_directory_),
-      raylet_server_("raylet", socket_name),
+      raylet_server_("Raylet", socket_name),
       raylet_service_(main_service, node_manager_) {
   raylet_server_.RegisterService(raylet_service_);
   raylet_server_.Run();
