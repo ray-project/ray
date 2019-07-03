@@ -799,7 +799,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::PushProfileEventsRequest: {
     auto fbs_message = flatbuffers::GetRoot<flatbuffers::String>(message_data);
     rpc::ProfileTableData profile_table_data;
-    RAY_CHECK(profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size()));
+    RAY_CHECK(
+        profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size()));
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
@@ -1034,17 +1035,17 @@ void NodeManager::ProcessDisconnectClientMessage(
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  std::unique_ptr<rpc::Task> task_message(new rpc::Task);
+  rpc::Task task_message;
+  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
+      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
   for (const auto &dependency :
        string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
-    task_message->mutable_task_execution_spec()->add_dependencies(dependency);
+    task_message.mutable_task_execution_spec()->add_dependencies(dependency);
   }
-  RAY_CHECK(task_message->mutable_task_spec()->ParseFromArray(
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(Task(std::move(task_message)), Lineage());
+  SubmitTask(Task(task_message), Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1211,8 +1212,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
-    std::unique_ptr<rpc::Task> message_copy(new rpc::Task(request.uncommitted_tasks(i)));
-    Task task(std::move(message_copy));
+    Task task(request.uncommitted_tasks(i));
     RAY_CHECK(uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
@@ -2224,7 +2224,11 @@ void NodeManager::ForwardTask(
   rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
   for (auto &task_entry : uncommitted_lineage.GetEntries()) {
-    request.add_uncommitted_tasks()->CopyFrom(task_entry.second.TaskData().GetMessage());
+    auto task = request.add_uncommitted_tasks();
+    task->mutable_task_spec()->CopyFrom(
+        task_entry.second.TaskData().GetTaskSpecification().GetMessage());
+    task->mutable_task_execution_spec()->CopyFrom(
+        task_entry.second.TaskData().GetTaskExecutionSpec().GetMessage());
   }
 
   // Move the FORWARDING task to the SWAP queue so that we remember that we

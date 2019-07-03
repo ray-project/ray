@@ -23,25 +23,14 @@ using rpc::TaskExecutionSpec;
 /// TaskSpecification that is determined at submission time.
 class TaskExecutionSpecification : public MessageWrapper<TaskExecutionSpec> {
  public:
-  explicit TaskExecutionSpecification(TaskExecutionSpec &message)
-      : MessageWrapper(message) {
-    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
-  }
-
-  explicit TaskExecutionSpecification(std::unique_ptr<TaskExecutionSpec> message)
+  explicit TaskExecutionSpecification(TaskExecutionSpec message)
       : MessageWrapper(std::move(message)) {
-    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
+    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_.dependencies());
   }
 
-  explicit TaskExecutionSpecification(const std::string &serialized_binary)
+  explicit TaskExecutionSpecification(const std::string serialized_binary)
       : MessageWrapper(serialized_binary) {
-    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
-  }
-
-  void Reset(TaskExecutionSpec &message) {
-    message_unique_ptr.reset(nullptr);
-    message_ = &message;
-    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_->dependencies());
+    dependencies_ = IdVectorFromProtobuf<ObjectID>(message_.dependencies());
   }
 
   /// Get the task's execution dependencies.

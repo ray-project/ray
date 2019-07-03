@@ -19,35 +19,14 @@ namespace raylet {
 /// resource demands). The task's specification contains both immutable fields,
 /// determined at submission time, and mutable fields, determined at execution
 /// time.
-class Task : public rpc::MessageWrapper<rpc::Task> {
+class Task {
  public:
-  explicit Task(rpc::Task &message)
-      : MessageWrapper(message),
-        task_spec_(message_->task_spec()),
-        task_execution_spec_(*message_->mutable_task_execution_spec()) {}
+  explicit Task(const rpc::Task &message)
+      : task_spec_(message.task_spec()),
+        task_execution_spec_(message.task_execution_spec()) {}
 
-  explicit Task(std::unique_ptr<rpc::Task> message)
-      : MessageWrapper(std::move(message)),
-        task_spec_(message_->task_spec()),
-        task_execution_spec_(*message_->mutable_task_execution_spec()) {}
-
-  Task(const Task &task)
-      : MessageWrapper(task),
-        task_spec_(message_->task_spec()),
-        task_execution_spec_(*message_->mutable_task_execution_spec()) {}
-
-  Task(Task &&task) noexcept
-      : MessageWrapper(std::move(task)),
-        task_spec_(message_->task_spec()),
-        task_execution_spec_(*message_->mutable_task_execution_spec()) {}
-
-  Task &operator=(const Task &task) {
-    this->message_unique_ptr.reset(new rpc::Task(task.GetMessage()));
-    this->message_ = message_unique_ptr.get();
-//    this->task_spec_ = std::move(TaskSpecification(message_->task_spec()));
-// XXX
-    return *this;
-  }
+  Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
+      : task_spec_(std::move(task_spec)), task_execution_spec_(std::move(task_execution_spec)) {}
 
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.

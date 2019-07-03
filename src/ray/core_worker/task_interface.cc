@@ -98,20 +98,20 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(WorkerContext &worker_context,
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
-std::unique_ptr<rpc::TaskSpec> CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
+rpc::TaskSpec CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
-  std::unique_ptr<rpc::TaskSpec> message(new rpc::TaskSpec);
+  rpc::TaskSpec message;
   auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
-  raylet::BuildCommonTaskSpec(*message, function.language, function.function_descriptor,
+  raylet::BuildCommonTaskSpec(message, function.language, function.function_descriptor,
                               context.GetCurrentJobID(), context.GetCurrentTaskID(),
                               next_task_index, num_returns,
                               required_resources, required_placement_resources);
   for (const auto &arg : args) {
-    auto message_arg = message->add_args();
+    auto message_arg = message.add_args();
     if (arg.IsPassedByReference()) {
       message_arg->add_object_ids(arg.GetReference().Binary());
     } else {
@@ -119,7 +119,7 @@ std::unique_ptr<rpc::TaskSpec> CoreWorkerTaskInterface::CreateCommonTaskSpecMess
     }
   }
 
-  auto task_id = TaskID::FromBinary(message->task_id());
+  auto task_id = TaskID::FromBinary(message.task_id());
   (*return_ids).resize(num_returns);
   for (int i = 0; i < num_returns; i++) {
     (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
@@ -133,7 +133,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            std::vector<ObjectID> *return_ids) {
   auto task_spec_message = CreateCommonTaskSpecMessage(
       function, args, task_options.num_returns, task_options.resources, {}, return_ids);
-  TaskSpec task(raylet::TaskSpecification(std::move(task_spec_message)), {});
+  TaskSpec task(raylet::TaskSpecification(task_spec_message), {});
   return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
@@ -147,7 +147,7 @@ Status CoreWorkerTaskInterface::CreateActor(
                                   actor_creation_options.resources, &return_ids);
 
   ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
-  raylet::BuildActorCreationTaskSpec(*task_spec_message, actor_id,
+  raylet::BuildActorCreationTaskSpec(task_spec_message, actor_id,
                                      actor_creation_options.max_reconstructions, {});
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
@@ -155,7 +155,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
-  TaskSpec task(raylet::TaskSpecification(std::move(task_spec_message)), {});
+  TaskSpec task(raylet::TaskSpecification(task_spec_message), {});
   return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
@@ -170,14 +170,14 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       function, args, num_returns, task_options.resources, {}, return_ids);
   auto actor_creation_dummy_object_id =
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
-  raylet::BuildActorTaskSpec(*task_spec_message, actor_handle.ActorID(),
+  raylet::BuildActorTaskSpec(task_spec_message, actor_handle.ActorID(),
                              actor_handle.ActorHandleID(), actor_creation_dummy_object_id,
                              actor_handle.IncreaseTaskCounter(),
                              actor_handle.NewActorHandles());
 
   std::vector<ObjectID> execution_dependencies;
   execution_dependencies.push_back(actor_handle.ActorCursor());
-  TaskSpec task(raylet::TaskSpecification(std::move(task_spec_message)),
+  TaskSpec task(raylet::TaskSpecification(task_spec_message),
                 execution_dependencies);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);

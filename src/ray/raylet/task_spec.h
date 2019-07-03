@@ -19,7 +19,7 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ConstMessageWrapper;
+using rpc::MessageWrapper;
 using rpc::Language;
 using rpc::TaskType;
 
@@ -28,23 +28,18 @@ using rpc::TaskType;
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// TaskExecutionSpecification that may change at execution time.
-class TaskSpecification : public ConstMessageWrapper<rpc::TaskSpec> {
+class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Deserialize a task specification from a flatbuffer.
   ///
   /// \param string A serialized task specification flatbuffer.
-  explicit TaskSpecification(const rpc::TaskSpec &message)
-      : ConstMessageWrapper(message) {
-    ComputeResources();
-  }
-
-  explicit TaskSpecification(std::unique_ptr<const rpc::TaskSpec> message)
-      : ConstMessageWrapper(std::move(message)) {
+  explicit TaskSpecification(rpc::TaskSpec message)
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
   explicit TaskSpecification(const std::string &serialized_binary)
-      : ConstMessageWrapper(serialized_binary) {
+      : MessageWrapper(serialized_binary) {
     ComputeResources();
   }
 

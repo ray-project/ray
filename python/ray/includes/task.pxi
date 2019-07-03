@@ -207,12 +207,12 @@ cdef class TaskExecutionSpec:
 
     def __init__(self, execution_dependencies):
         cdef:
-            RpcTaskExecutionSpec *message = new RpcTaskExecutionSpec()
+            RpcTaskExecutionSpec message;
 
         for dependency in execution_dependencies:
             message.add_dependencies(
                 (<ObjectID?>dependency).binary())
-        self.c_spec.reset(new CTaskExecutionSpec(unique_ptr[RpcTaskExecutionSpec](message)))
+        self.c_spec.reset(new CTaskExecutionSpec(message))
 
     @staticmethod
     def from_string(const c_string& string):
@@ -240,11 +240,7 @@ cdef class Task:
         unique_ptr[CTask] c_task
 
     def __init__(self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
-        cdef:
-            RpcTask *message = new RpcTask()
-        message.mutable_task_spec().CopyFrom(task_spec.task_spec.get().GetMessage())
-        message.mutable_task_execution_spec().CopyFrom(task_execution_spec.c_spec.get().GetMessage())
-        self.c_task.reset(new CTask(unique_ptr[RpcTask](message)))
+        self.c_task.reset(new CTask(task_spec.task_spec.get()[0], task_execution_spec.c_spec.get()[0]))
 
 
 def generate_gcs_task_table_data(TaskSpec task_spec):

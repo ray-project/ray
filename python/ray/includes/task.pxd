@@ -91,7 +91,7 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
 
 cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
     cdef cppclass CTaskExecutionSpec "ray::raylet::TaskExecutionSpecification":
-        CTaskExecutionSpec(unique_ptr[RpcTaskExecutionSpec] message)
+        CTaskExecutionSpec(RpcTaskExecutionSpec message)
         CTaskExecutionSpec(const c_string &serialized_binary)
         const RpcTaskExecutionSpec &GetMessage()
         c_vector[CObjectID] ExecutionDependencies()
@@ -99,5 +99,4 @@ cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogi
 
 cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
     cdef cppclass CTask "ray::raylet::Task":
-        CTask(unique_ptr[RpcTask] message)
-        c_string Serialize()
+        CTask(CTaskSpec task_spec, CTaskExecutionSpec task_execution_spec)

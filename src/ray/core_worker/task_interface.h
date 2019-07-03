@@ -151,7 +151,7 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  std::unique_ptr<rpc::TaskSpec> CreateCommonTaskSpecMessage(
+  rpc::TaskSpec CreateCommonTaskSpecMessage(
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,

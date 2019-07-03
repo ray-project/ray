@@ -9,11 +9,11 @@ const std::vector<ObjectID> &TaskExecutionSpecification::ExecutionDependencies()
 }
 
 size_t TaskExecutionSpecification::NumForwards() const {
-  return message_->num_forwards();
+  return message_.num_forwards();
 }
 
 void TaskExecutionSpecification::IncrementNumForwards() {
-  message_->set_num_forwards(message_->num_forwards() + 1);
+  message_.set_num_forwards(message_.num_forwards() + 1);
 }
 
 }  // namespace raylet

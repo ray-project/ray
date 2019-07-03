@@ -17,9 +17,7 @@ const std::vector<ObjectID> &Task::GetDependencies() const {
 }
 
 void Task::CopyTaskExecutionSpec(const Task &task) {
-  message_->mutable_task_execution_spec()->CopyFrom(
-      task.GetTaskExecutionSpec().GetMessage());
-  task_execution_spec_.Reset(*message_->mutable_task_execution_spec());
+  task_execution_spec_ = task.task_execution_spec_;
 }
 
 }  // namespace raylet
