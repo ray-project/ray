@@ -6,12 +6,12 @@
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    CoreWorker &core_worker)
-    : core_worker_(core_worker) {
-  task_receivers.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(core_worker_.raylet_client_)));
+    WorkerContext &worker_context, RayletClient &raylet_client,
+    CoreWorkerObjectInterface &object_interface)
+    : worker_context_(worker_context), object_interface_(object_interface) {
+  task_receivers.emplace(static_cast<int>(TaskTransportType::RAYLET),
+                         std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+                             new CoreWorkerRayletTaskReceiver(raylet_client)));
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
@@ -27,10 +27,9 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
 
     for (const auto &task : tasks) {
       const auto &spec = task.GetTaskSpecification();
-      core_worker_.worker_context_.SetCurrentTask(spec);
+      worker_context_.SetCurrentTask(spec);
 
-      ray::rpc::Language language = ToRpcTaskLanguage(spec.GetLanguage());
-      RayFunction func{language, spec.FunctionDescriptor()};
+      RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
 
       std::vector<std::shared_ptr<RayObject>> args;
       RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
@@ -90,7 +89,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = core_worker_.object_interface_.Get(object_ids_to_fetch, -1, &results);
+  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];

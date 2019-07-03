@@ -5,6 +5,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/task.h"
@@ -50,7 +51,7 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const ray::rpc::Language actor_language,
+              const ::Language actor_language,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   ActorHandle(const ActorHandle &other);
@@ -62,7 +63,7 @@ class ActorHandle {
   ray::ActorHandleID ActorHandleID() const;
 
   /// Language of the actor.
-  ray::rpc::Language ActorLanguage() const;
+  ::Language ActorLanguage() const;
 
   // Function descriptor of actor creation task.
   std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
@@ -116,7 +117,7 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(CoreWorker &core_worker);
+  CoreWorkerTaskInterface(WorkerContext &worker_context, RayletClient &raylet_client);
 
   /// Submit a normal task.
   ///
@@ -153,16 +154,15 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
-
- private:
   /// Build the arguments for a task spec.
   ///
   /// \param[in] args Arguments of a task.
   /// \return Arguments as required by task spec.
   std::vector<std::shared_ptr<raylet::TaskArgument>> BuildTaskArguments(
       const std::vector<TaskArg> &args);
+
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
 
   /// All the task submitters supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;

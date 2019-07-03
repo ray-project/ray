@@ -272,8 +272,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     cluster.wait_for_nodes()
 
     dirpath = str(tmpdir)
-    runner = TrialRunner(
-        BasicVariantGenerator(), metadata_checkpoint_dir=dirpath)
+    runner = TrialRunner(BasicVariantGenerator(), local_checkpoint_dir=dirpath)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -295,7 +294,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     ray.shutdown()
 
     cluster = _start_new_cluster()
-    runner = TrialRunner.restore(dirpath)
+    runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
     runner.step()  # start
     runner.step()  # start2
 
@@ -377,18 +376,19 @@ tune.run_experiments(
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
-    metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
+    local_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(100):
-        if TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner.restore(metadata_checkpoint_dir)
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration"):
                 break
         time.sleep(0.3)
 
-    if not TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
+    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -469,18 +469,19 @@ tune.run_experiments(
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
-    metadata_checkpoint_dir = os.path.join(dirpath, "experiment")
+    local_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
-        if TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner.restore(metadata_checkpoint_dir)
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration") == 3:
                 break
         time.sleep(0.2)
 
-    if not TrialRunner.checkpoint_exists(metadata_checkpoint_dir):
+    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -489,7 +490,8 @@ tune.run_experiments(
     Experiment._register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
-    runner = TrialRunner.restore(metadata_checkpoint_dir)
+    runner = TrialRunner(
+        resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING
