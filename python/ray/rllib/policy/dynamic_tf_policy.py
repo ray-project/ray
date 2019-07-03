@@ -23,12 +23,19 @@ logger = logging.getLogger(__name__)
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
+    This class also supports eager execution if config["use_eager"] is True.
+    Eager execution is implemented using a py_function op inside graph mode.
+
     Initialization of this class occurs in two phases.
       * Phase 1: the model is created and model variables are initialized.
       * Phase 2: a fake batch of data is created, sent to the trajectory
         postprocessor, and then used to create placeholders for the loss
         function. The loss and stats functions are initialized with these
         placeholders.
+
+    Initialization defines the static graph. When using eager execution, a
+    corresponding imperative py_function is also generated as an embedded op
+    inside the static graph.
     """
 
     def __init__(self,
@@ -40,8 +47,10 @@ class DynamicTFPolicy(TFPolicy):
                  update_ops_fn=None,
                  grad_stats_fn=None,
                  before_loss_init=None,
-                 make_action_sampler=None,
+                 make_model=None,
+                 action_sampler_fn=None,
                  existing_inputs=None,
+                 existing_model=None,
                  get_batch_divisibility_req=None,
                  obs_include_prev_action_reward=True):
         """Initialize a dynamic TF policy.
@@ -60,17 +69,32 @@ class DynamicTFPolicy(TFPolicy):
                 overriding the update ops to run when applying gradients
             before_loss_init (func): optional function to run prior to loss
                 init that takes the same arguments as __init__
-            make_action_sampler (func): optional function that returns a
-                tuple of action and action prob tensors. The function takes
-                (policy, input_dict, obs_space, action_space, config) as its
-                arguments
+            make_model (func): optional function that returns a ModelV2 object
+                given (policy, obs_space, action_space, config).
+                All policy variables should be created in this function. If not
+                specified, a default model will be created.
+            action_sampler_fn (func): optional function that returns a
+                tuple of action and action prob tensors given
+                (policy, model, input_dict, obs_space, action_space, config).
+                If not specified, a default action distribution will be used.
             existing_inputs (OrderedDict): when copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
+            existing_model (ModelV2): when copying a policy, this specifies
+                an existing model to clone and share weights with
             get_batch_divisibility_req (func): optional function that returns
                 the divisibility requirement for sample batches
             obs_include_prev_action_reward (bool): whether to include the
                 previous action and reward in the model input
+
+        Attributes:
+            config: config of the policy
+            model: model instance, if any
+            model_out: output tensors of the model
+            action_dist: action distribution of the model, if any
+            state_in: state input tensors, if any
+            state_out: state output tensors, if any
+            seq_lens: tensor of sequence lengths
         """
         self.config = config
         self._loss_fn = loss_fn
@@ -104,40 +128,47 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
+        self.seq_lens = tf.placeholder(
+            dtype=tf.int32, shape=[None], name="seq_lens")
 
-        # Create the model network and action outputs
-        if make_action_sampler:
-            assert not existing_inputs, \
-                "Cloning not supported with custom action sampler"
-            self.model = None
-            self.dist_class = None
-            self.action_dist = None
-            action_sampler, action_prob = make_action_sampler(
-                self, self.input_dict, obs_space, action_space, config)
+        # Setup model
+        self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+            action_space, self.config["model"])
+        if existing_model:
+            self.model = existing_model
+        elif make_model:
+            self.model = make_model(self, obs_space, action_space, config)
         else:
-            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                action_space, self.config["model"])
-            if existing_inputs:
-                existing_state_in = [
-                    v for k, v in existing_inputs.items()
-                    if k.startswith("state_in_")
-                ]
-                if existing_state_in:
-                    existing_seq_lens = existing_inputs["seq_lens"]
-                else:
-                    existing_seq_lens = None
-            else:
-                existing_state_in = []
-                existing_seq_lens = None
-            self.model = ModelCatalog.get_model(
-                self.input_dict,
+            self.model = ModelCatalog.get_model_v2(
                 obs_space,
                 action_space,
                 logit_dim,
                 self.config["model"],
-                state_in=existing_state_in,
-                seq_lens=existing_seq_lens)
-            self.action_dist = self.dist_class(self.model.outputs)
+                framework="tf")
+        if existing_inputs:
+            self.state_in = [
+                v for k, v in existing_inputs.items()
+                if k.startswith("state_in_")
+            ]
+            if self.state_in:
+                self.seq_lens = existing_inputs["seq_lens"]
+        else:
+            self.state_in = [
+                tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
+                for s in self.model.get_initial_state()
+            ]
+        self.model_out, self.state_out = self.model(
+            self.input_dict, self.state_in, self.seq_lens)
+
+        # Setup action sampler
+        if action_sampler_fn:
+            self.action_dist = None
+            self.dist_class = None
+            action_sampler, action_prob = action_sampler_fn(
+                self, self.model, self.input_dict, obs_space, action_space,
+                config)
+        else:
+            self.action_dist = self.dist_class(self.model_out)
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
 
@@ -158,11 +189,11 @@ class DynamicTFPolicy(TFPolicy):
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
-            state_inputs=self.model and self.model.state_in,
-            state_outputs=self.model and self.model.state_out,
+            state_inputs=self.state_in,
+            state_outputs=self.state_out,
             prev_action_input=prev_actions,
             prev_reward_input=prev_rewards,
-            seq_lens=self.model and self.model.seq_lens,
+            seq_lens=self.seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req)
 
@@ -195,11 +226,6 @@ class DynamicTFPolicy(TFPolicy):
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
 
-        if self.config["use_eager"]:
-            raise ValueError(
-                "eager not implemented for multi-GPU, try setting "
-                "`simple_optimizer: true`")
-
         # Note that there might be RNN state inputs at the end of the list
         if self._state_inputs:
             num_state_inputs = len(self._state_inputs) + 1
@@ -227,12 +253,18 @@ class DynamicTFPolicy(TFPolicy):
             self.observation_space,
             self.action_space,
             self.config,
-            existing_inputs=input_dict)
+            existing_inputs=input_dict,
+            existing_model=self.model)
 
         loss = instance._do_loss_init(input_dict)
-        TFPolicy._initialize_loss(
-            instance, loss, [(k, existing_inputs[i])
-                             for i, (k, _) in enumerate(self._loss_inputs)])
+        loss_inputs = [(k, existing_inputs[i])
+                       for i, (k, _) in enumerate(self._loss_inputs)]
+
+        if self.config["use_eager"]:
+            loss, new_stats = instance._gen_eager_loss_op(loss_inputs)
+            instance._stats_fetches = new_stats
+
+        TFPolicy._initialize_loss(instance, loss, loss_inputs)
         if instance._grad_stats_fn:
             instance._stats_fetches.update(
                 instance._grad_stats_fn(instance, instance._grads))
@@ -241,7 +273,7 @@ class DynamicTFPolicy(TFPolicy):
     @override(Policy)
     def get_initial_state(self):
         if self.model:
-            return self.model.state_init
+            return self.model.get_initial_state()
         else:
             return []
 
@@ -321,31 +353,8 @@ class DynamicTFPolicy(TFPolicy):
         # and non-eager tensors, so losses that read non-eager tensors through
         # `policy` need to use `policy.convert_to_eager(tensor)`.
         if self.config["use_eager"]:
-            if not self.model:
-                raise ValueError("eager not implemented in this case")
-            graph_tensors = list(self._needs_eager_conversion)
-
-            def gen_loss(model_outputs, *args):
-                # fill in the batch tensor dict with eager ensors
-                eager_inputs = dict(
-                    zip([k for (k, v) in loss_inputs],
-                        args[:len(loss_inputs)]))
-                # fill in the eager versions of all accessed graph tensors
-                self._eager_tensors = dict(
-                    zip(graph_tensors, args[len(loss_inputs):]))
-                # patch the action dist to use eager mode tensors
-                self.action_dist.inputs = model_outputs
-                return self._loss_fn(self, eager_inputs)
-
-            # TODO(ekl) also handle the stats funcs
-            loss = tf.py_function(
-                gen_loss,
-                # cast works around TypeError: Cannot convert provided value
-                # to EagerTensor. Provided value: 0.0 Requested dtype: int64
-                [self.model.outputs] + [
-                    tf.cast(v, tf.float32) for (k, v) in loss_inputs
-                ] + [tf.cast(t, tf.float32) for t in graph_tensors],
-                tf.float32)
+            loss, new_stats = self._gen_eager_loss_op(loss_inputs)
+            self._stats_fetches = new_stats
 
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
@@ -359,3 +368,36 @@ class DynamicTFPolicy(TFPolicy):
         if self._update_ops_fn:
             self._update_ops = self._update_ops_fn(self)
         return loss
+
+    def _gen_eager_loss_op(self, loss_inputs):
+        graph_tensors = list(self._needs_eager_conversion)
+        stat_items = list(self._stats_fetches.items())
+
+        def gen_loss(model_outputs, *args):
+            # fill in the batch tensor dict with eager ensors
+            eager_inputs = dict(
+                zip([k for (k, v) in loss_inputs], args[:len(loss_inputs)]))
+            # fill in the eager versions of all accessed graph tensors
+            self._eager_tensors = dict(
+                zip(graph_tensors, args[len(loss_inputs):]))
+            # patch the action dist to use eager mode tensors
+            self.action_dist.inputs = model_outputs
+            loss = self._loss_fn(self, eager_inputs)
+            if self._stats_fn:
+                stats = self._stats_fn(self, eager_inputs)
+            return [loss] + [stats[k] for (k, v) in stat_items]
+
+        eager_out = tf.py_function(
+            gen_loss,
+            # cast works around TypeError: Cannot convert provided value
+            # to EagerTensor. Provided value: 0.0 Requested dtype: int64
+            [self.model_out] + [
+                tf.cast(v, tf.float32) for (k, v) in loss_inputs
+            ] + [tf.cast(t, tf.float32) for t in graph_tensors],
+            Tout=[tf.float32] + [v.dtype for (k, v) in stat_items])
+        stats = {
+            k: stat_tensor
+            for (stat_tensor, (k, v)) in zip(eager_out[1:], stat_items)
+        }
+
+        return eager_out[0], stats
