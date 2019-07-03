@@ -7,11 +7,15 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    plasma::PlasmaClient &store_client, std::mutex &store_client_mutex,
-    RayletClient &raylet_client)
-    : store_client_(store_client),
-      store_client_mutex_(store_client_mutex),
-      raylet_client_(raylet_client) {}
+    const std::string &store_socket, RayletClient &raylet_client)
+    : raylet_client_(raylet_client) {
+  auto status = store_client_.Connect(store_socket);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
+                   << " core worker: " << status.message();
+    throw std::runtime_error(status.message());
+  }
+}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {

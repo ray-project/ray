@@ -237,7 +237,7 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
     Args:
         local_dir: Source directory for syncing.
         remote_dir: Target directory for syncing. If None,
-            returns NoopSyncer.
+            returns BaseSyncer with noop.
         sync_function (func | str): Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults rsync.

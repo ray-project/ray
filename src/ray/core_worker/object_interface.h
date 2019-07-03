@@ -6,6 +6,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
@@ -16,7 +17,8 @@ class CoreWorkerStoreProvider;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(CoreWorker &core_worker);
+  CoreWorkerObjectInterface(WorkerContext &worker_context, RayletClient &raylet_client,
+                            const std::string &store_socket);
 
   /// Put an object into object store.
   ///
@@ -62,8 +64,10 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
+  /// Reference to the parent CoreWorker's raylet client.
+  RayletClient &raylet_client_;
 
   /// All the store providers supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
