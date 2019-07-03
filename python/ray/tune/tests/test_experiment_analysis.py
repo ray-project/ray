@@ -114,8 +114,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         runner_data = self.ea.runner_data()
 
         self.assertTrue(isinstance(runner_data, dict))
-        self.assertTrue("_metadata_checkpoint_dir" in runner_data)
-        self.assertEqual(runner_data["_metadata_checkpoint_dir"],
+        self.assertTrue("_local_checkpoint_dir" in runner_data)
+        self.assertEqual(runner_data["_local_checkpoint_dir"],
                          os.path.expanduser(self.test_path))
 
     def testBestLogdir(self):
