@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import traceback
+import random
 
 # Ray modules
 import pyarrow
@@ -1711,38 +1712,40 @@ def connect(node,
 
     worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
 
-    # Create a Redis client to primary.
-    # The Redis client can safely be shared between threads. However, that is
-    # not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
+    if mode is not LOCAL_MODE:
+        # Create a Redis client to primary.
+        # The Redis client can safely be shared between threads. However, that is
+        # not true of Redis pubsub clients. See the documentation at
+        # https://github.com/andymccurdy/redis-py#thread-safety.
+        worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
     if mode is WORKER_MODE:
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
-        worker.current_job_id = JobID.nil()
-
-        # TODO(qwang): Rename this to `worker_id`
+        job_id = JobID.nil()
+        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
+    elif mode is LOCAL_MODE:
+        # Code path of local mode
+        if job_id is None:
+            job_id = JobID.from_int(random.randint(1, 100000))
+        worker.worker_id = job_id.driver_id().binary()
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            counter = int(worker.redis_client.incr("JobCounter"))
             job_id = JobID.from_int(int(worker.redis_client.incr("JobCounter")))
-
-        if not isinstance(job_id, JobID):
-            raise TypeError("The type of given job id must be JobID.")
-
-        worker.current_job_id = job_id
-
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
         # the correct driver.
         worker.worker_id = job_id.driver_id().binary()
+
+    if not isinstance(job_id, JobID):
+        raise TypeError("The type of given job id must be JobID.")
+    worker.current_job_id = job_id
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
