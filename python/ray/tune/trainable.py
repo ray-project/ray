@@ -66,6 +66,7 @@ class Trainable(object):
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        log_sys_usage = config.get("log_sys_usage", False)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -88,7 +89,7 @@ class Trainable(object):
         self._restored = False
         self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
-        self._monitor = UtilMonitor(start=config.get("log_sys_usage", True))
+        self._monitor = UtilMonitor(start=log_sys_usage)
 
     @classmethod
     def default_resource_request(cls, config):

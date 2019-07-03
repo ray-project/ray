@@ -37,8 +37,8 @@ class UtilMonitor(Thread):
     It keeps track of CPU, RAM, GPU, VRAM usage (each gpu separately) by
     pinging for information every x seconds in a separate thread.
 
-    Requires psutil and GPUtil to be installed. Can be disabled
-    by setting `tune.run(log_sys_usage=False)`.
+    Requires psutil and GPUtil to be installed. Can be enabled with
+    tune.run(config={"log_sys_usage": True}).
     """
 
     def __init__(self, start=True, delay=0.7):

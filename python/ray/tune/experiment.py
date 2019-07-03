@@ -78,7 +78,6 @@ class Experiment(object):
                  repeat=None,
                  trial_resources=None,
                  custom_loggers=None,
-                 log_sys_usage=True,
                  sync_function=None):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
@@ -90,7 +89,6 @@ class Experiment(object):
                 "sync_function", "sync_to_driver", soft=False)
 
         config = config or {}
-        config["log_sys_usage"] = log_sys_usage
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
