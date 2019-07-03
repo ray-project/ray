@@ -20,7 +20,6 @@ public class BaseTest {
   public void setUpBase(Method method) {
     LOGGER.info("===== Running test: "
         + method.getDeclaringClass().getName() + "." + method.getName());
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     Ray.init();
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(

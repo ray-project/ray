@@ -3,6 +3,8 @@ package org.ray.api.test;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import javax.xml.bind.DatatypeConverter;
+
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
