@@ -1940,7 +1940,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     auto parent_task_id = task_spec.ParentTaskId();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
-        //success_callback
+        /*success_callback=*/
         [this, dummy_object, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
            (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id,
                const TaskTableData &parent_task_data) mutable {
@@ -1957,7 +1957,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
           new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
           FinishAssignedActorCreationTask(actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint, dummy_object);
         },
-        //failure_callback
+        /*failure_callback=*/
         [this, dummy_object, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
             (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id) mutable {
           // The parent task was not in the GCS task table. It must therefore be in the
@@ -1986,7 +1986,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   }
 }
 
-void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id, const ActorHandleID &actor_handle_id){
+void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
+                           const ActorID &actor_id, const ActorHandleID &actor_handle_id){
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   // Extend the actor's frontier to include the executed task.
@@ -2008,7 +2009,9 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object, const ActorI
   HandleObjectLocal(dummy_object);
 }
 
-void NodeManager::FinishAssignedActorCreationTask(const ActorID& actor_id, const ActorHandleID &actor_handle_id, const ActorTableData new_actor_data, bool resumed_from_checkpoint, const ObjectID &dummy_object) {
+void NodeManager::FinishAssignedActorCreationTask(const ActorID& actor_id,
+                  const ActorHandleID &actor_handle_id, const ActorTableData new_actor_data,
+                  bool resumed_from_checkpoint, const ObjectID &dummy_object) {
   // Notify the other node managers that the actor has been created.
   if (resumed_from_checkpoint) {
     // This actor was resumed from a checkpoint. In this case, we first look
