@@ -146,27 +146,15 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
 }
 
 JobID JobID::FromDriverId(const WorkerID &driver_id) {
-  // TODO(qwang): RAY_CHECK driver id format
-  // return JobID::FromBinary(driver_id_str.data(), JobID::Size());
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return JobID::FromBinary(driver_id_str);
 }
 
-// TODO(qwang): Test this and java
 JobID JobID::FromInt(int32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(std::string(reinterpret_cast<const char *>(data.data()), data.size()));
-
-//  SHA256_CTX ctx;
-//  sha256_init(&ctx);
-//  sha256_update(&ctx, reinterpret_cast<const BYTE *>(&value), sizeof(value));
-//
-//  BYTE buff[DIGEST_SIZE];
-//  sha256_final(&ctx, buff);
-//  RAY_CHECK(DIGEST_SIZE >= JobID::Size());
-//  return JobID::FromBinary(std::string(buff, buff + JobID::Size()));
 }
 
 WorkerID JobID::DriverId() const {

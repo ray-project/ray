@@ -1836,8 +1836,6 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
-    # TODO(qwang): Remove this
-    job_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1869,8 +1867,8 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            # TODO(qwang): Refine here, do not use job id str
-            TaskID(job_id_str[:TaskID.size()]),  # parent_task_id.
+            # TODO(qwang): Should this be a random ID?
+            TaskID(_random_string()[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
