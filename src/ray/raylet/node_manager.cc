@@ -742,7 +742,9 @@ void NodeManager::DispatchTasks(
   // Move the ASSIGNED task to the SWAP queue so that we remember that we have
   // it queued locally. Once the GetTaskReply has been sent, the task will get
   // re-queued, depending on whether the message succeeded or not.
-  local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
+
+  // Task will be removed in AssignTask
+  // local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
 }
 
 bool NodeManager::WorkerIsDead(const WorkerID &worker_id) {
@@ -785,7 +787,7 @@ void NodeManager::HandleRegisterClientRequest(const rpc::RegisterClientRequest &
 void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::RequestDoneCallback done_callback) {
-  RAY_LOG(INFO) << "Handle submit request.";
+  RAY_LOG(INFO) << "Handle submit task request.";
 
   TaskExecutionSpecification task_execution_spec(
       rpc::IdVectorFromProtobuf<ObjectID>(request.execution_dependencies()));
@@ -1208,19 +1210,7 @@ from_flatbuf<ObjectID>(*message->object_ids());
       gcs_client_->raylet_task_table().Delete(JobID::Nil(), creating_task_ids);
     }
   } break;
-  case protocol::MessageType::PrepareActorCheckpointRequest: {
-    ProcessPrepareActorCheckpointRequest(client, message_data);
-  } break;
-  case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
-    ProcessNotifyActorResumedFromCheckpoint(message_data);
-  } break;
 
-  default:
-    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
-  }
-
-  // Listen for more messages.
-  client->ProcessMessages();
 }
 
 
@@ -1429,18 +1419,6 @@ void NodeManager::ProcessGetTaskMessage(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
   DispatchTasks(local_queues_.GetReadyTasksWithResources());
-}
-
-void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
-  // Read the task submitted by the client.
-  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  TaskExecutionSpecification task_execution_spec(
-      from_flatbuf<ObjectID>(*message->execution_dependencies()););
-  TaskSpecification task_spec(*message->task_spec());
-  Task task(task_execution_spec, task_spec);
-  // Submit the task to the raylet. Since the task was submitted
-  // locally, there is no uncommitted lineage.
-  SubmitTask(task, Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1862,7 +1840,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
-  RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
+  RAY_LOG(INFO) << "Submitting task: task_id=" << task_id
                  << ", actor_id=" << spec.ActorId()
                  << ", actor_creation_id=" << spec.ActorCreationId()
                  << ", actor_handle_id=" << spec.ActorHandleId()
@@ -2164,17 +2142,18 @@ bool NodeManager::AssignTask(const Task &task) {
   RAY_CHECK(request != get_task_requests_.end());
 
   rpc::GetTaskReply *reply = request->second.first;
-  reply->set_task_spec(spec.SerializeAsString());
+  reply->set_task_spec(spec.SpecToString());
   rpc::RequestDoneCallback callback = request->second.second;
   // Send reply to raylet client.
   callback(Status::OK());
   get_task_requests_.erase(request);
 
   const auto &task_id = spec.TaskId();
-  // Remove the ASSIGNED task from the SWAP queue.
+  // Remove the ASSIGNED task from the READY queue.
   TaskState state;
   auto assigned_task = local_queues_.RemoveTask(task_id, &state);
-  RAY_CHECK(state == TaskState::SWAP);
+  RAY_LOG(INFO) << "task state: " << static_cast<int>(state);
+  RAY_CHECK(state == TaskState::READY);
 
   // TODO(jzh): Should check whether we have sent get task reply success.
   // spec = assigned_task.GetTaskSpecification();
@@ -2223,8 +2202,8 @@ bool NodeManager::AssignTask(const Task &task) {
   // object dependencies.
   RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
 
-  // TODO(jzh):Connection to worker client has been closed, grpc framework cannot handle
-  // this error at present.
+  // TODO(jzh):Connection to worker client has been closed and send reply failed,
+  // grpc framework cannot handle this error at present.
   /*
   RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
   // We failed to send the task to the worker, so disconnect the worker.

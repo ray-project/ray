@@ -29,19 +29,16 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 }
 
 void RayletClient::TryRegisterClient(int times) {
-  auto st = RegisterClient();
-  if (!st.ok()) {
-    if (times > 0) {
-      heartbeat_timer_.expires_from_now(boost::posix_time::milliseconds(300));
-      heartbeat_timer_.async_wait([this, times](const boost::system::error_code &error) {
-        TryRegisterClient(times - 1);
-      });
-    } else {
-      RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_;
+  // We should block here until register success.
+  for (int i = 0;i<times;i++) {
+    auto st = RegisterClient();
+    if (st.ok()) {
+      Heartbeat();
+      return;
     }
-  } else {
-    Heartbeat();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
+  RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_;
 }
 
 RayletClient::~RayletClient() {
@@ -74,7 +71,8 @@ ray::Status RayletClient::Disconnect() {
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                                      const ray::raylet::TaskSpecification &task_spec) {
   SubmitTaskRequest submit_task_request;
-  submit_task_request.set_task_spec(task_spec.SerializeAsString());
+  std::string spec_str = task_spec.SpecToString();
+  submit_task_request.set_task_spec(spec_str);
   IdVectorToProtobuf<ObjectID, SubmitTaskRequest>(
       execution_dependencies, submit_task_request,
       &SubmitTaskRequest::add_execution_dependencies);
