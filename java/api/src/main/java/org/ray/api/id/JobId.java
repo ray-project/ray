@@ -10,7 +10,12 @@ import java.util.Random;
  * Represents the id of a Ray job.
  */
 public class JobId extends BaseId implements Serializable {
+
+  // Note that the max value of a job id is NIL which value is (2^32 - 1).
+  public static final Long MAX_VALUE = (long) Math.pow(2, 32) - 1;
+
   public static final int LENGTH = 4;
+
   public static final JobId NIL = genNil();
 
   /**
@@ -34,11 +39,15 @@ public class JobId extends BaseId implements Serializable {
     return new JobId(byteBuffer2Bytes(bb));
   }
 
-  public static JobId fromLong(Long num) {
+  public static JobId fromLong(Long value) {
+    if (value > MAX_VALUE) {
+      throw new IllegalArgumentException("Invalid value for a job id.");
+    }
+
     byte[] bytes = new byte[JobId.LENGTH];
     ByteBuffer wbb = ByteBuffer.wrap(bytes);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    wbb.putInt(num.intValue());
+    wbb.putInt(value.intValue());
     return new JobId(bytes);
   }
 
@@ -48,17 +57,6 @@ public class JobId extends BaseId implements Serializable {
   private static JobId genNil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
-    return new JobId(b);
-  }
-
-  /**
-   *
-   * @return
-   */
-  // TODO(qwang): Remove this method.
-  public static JobId randomId() {
-    byte[] b = new byte[LENGTH];
-    new Random().nextBytes(b);
     return new JobId(b);
   }
 

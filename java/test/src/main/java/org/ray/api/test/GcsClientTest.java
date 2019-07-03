@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.TestUtils;
+import org.ray.api.id.JobId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RayConfig;
@@ -39,4 +40,17 @@ public class GcsClientTest extends BaseTest {
     Assert.assertEquals(allNodeInfo.get(0).resources.get("A"), 8.0);
   }
 
+  @Test
+  public void testNextJob() {
+    TestUtils.skipTestUnderSingleProcess();
+    RayConfig config = ((AbstractRayRuntime)Ray.internal()).getRayConfig();
+    // The value of job id of this driver in cluster should be `1L`.
+    Assert.assertEquals(config.getJobId(), JobId.fromLong(1L));
+
+    GcsClient gcsClient = ((AbstractRayRuntime)Ray.internal()).getGcsClient();
+    for (Long i  = 2L; i < 100L; ++i) {
+      Assert.assertEquals(gcsClient.nextJobId(), JobId.fromLong(i));
+    }
+
+  }
 }

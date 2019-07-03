@@ -4,6 +4,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
+import java.util.Random;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
@@ -120,7 +121,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
-    JobId jobId = JobId.randomId();
+    JobId jobId = JobId.fromLong(new Random().nextLong());
     final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
     final String jobResourcePath = resourcePath + "/" + jobId.toString();
     File jobResourceDir = new File(jobResourcePath);
