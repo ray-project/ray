@@ -63,7 +63,7 @@ class UniqueID : public BaseID<UniqueID> {
 
   static size_t Size() { return kUniqueIDSize; }
 
-  UniqueID() : BaseID(){}
+  UniqueID() : BaseID() {}
 
  protected:
   UniqueID(const std::string &binary);

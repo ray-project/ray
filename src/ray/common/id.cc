@@ -154,14 +154,16 @@ JobID JobID::FromDriverId(const WorkerID &driver_id) {
 JobID JobID::FromInt(int32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
-  return JobID::FromBinary(std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+  return JobID::FromBinary(
+      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
 WorkerID JobID::DriverId() const {
   std::vector<uint8_t> data(WorkerID::Size(), 0);
   std::memcpy(data.data(), this->Data(), JobID::Size());
   std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xff);
-  return WorkerID::FromBinary(std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+  return WorkerID::FromBinary(
+      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \

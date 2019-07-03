@@ -4,7 +4,6 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import java.util.Random;
 
 /**
  * Represents the id of a Ray job.
@@ -19,7 +18,7 @@ public class JobId extends BaseId implements Serializable {
   public static final JobId NIL = genNil();
 
   /**
-   * Constructor
+   * Create a JobID instance according to the given bytes.
    */
   private JobId(byte[] id) {
     super(id);
@@ -52,7 +51,7 @@ public class JobId extends BaseId implements Serializable {
   }
 
   /**
-   * generate a nil JobId.
+   * Generate a nil JobId.
    */
   private static JobId genNil() {
     byte[] b = new byte[LENGTH];

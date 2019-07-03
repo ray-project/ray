@@ -1,7 +1,6 @@
 package org.ray.api.runtimecontext;
 
 import java.util.List;
-
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 

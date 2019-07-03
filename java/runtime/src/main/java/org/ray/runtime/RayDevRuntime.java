@@ -22,7 +22,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
     if (rayConfig.getJobId() == JobId.NIL) {
       rayConfig.setJobId(nextJobId());
     }
-    workerContext = new WorkerContext(rayConfig.workerMode, rayConfig.getJobId(), rayConfig.runMode);
+    workerContext = new WorkerContext(rayConfig.workerMode,
+        rayConfig.getJobId(), rayConfig.runMode);
     objectStoreProxy = new ObjectStoreProxy(this, null);
     rayletClient = new MockRayletClient(this, rayConfig.numberExecThreadsForDevRuntime);
   }
