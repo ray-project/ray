@@ -147,6 +147,7 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
 
 JobID JobID::FromDriverId(const WorkerID &driver_id) {
   // TODO(qwang): RAY_CHECK driver id format
+  // return JobID::FromBinary(driver_id_str.data(), JobID::Size());
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return JobID::FromBinary(driver_id_str);
