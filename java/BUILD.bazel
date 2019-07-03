@@ -50,7 +50,10 @@ define_java_module(
 define_java_module(
     name = "runtime",
     additional_srcs = [
-        ":copy_proto",
+        ":all_java_proto",
+    ],
+    exlcude_srcs = [
+        "runtime/src/main/java/org/ray/runtime/generated/*.java",
     ],
     additional_resources = [
         ":java_native_deps",
@@ -179,34 +182,11 @@ filegroup(
     ],
 )
 
-genrule(
-    name = "copy_proto",
-    srcs = [
-        ":all_java_proto",
-    ],
-    # NOTE(hchen): This rule is added to `runtime` lib's `srcs` to make sure we run it
-    # before compiling the `runtime` lib. However, in bazel, a `java_library` only accepts
-    # `.java` or `.srcjar` as its `srcs`. Thus this rule generates an empty `.java` file.
-    outs = ["copy_proto_out.java"],
-    cmd = """
-        set -x
-        WORK_DIR=$$(pwd)
-        # Copy protobuf-generated files.
-        rm -rf $$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
-        for f in $(locations //java:all_java_proto); do
-            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/java/runtime/src/main/java
-        done
-        touch $@
-    """,
-    local = 1,
-    tags = ["no-cache"],
-)
-
 # Generates the depedencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":copy_proto",
+        ":all_java_proto",
         ":java_native_deps",
         ":copy_pom_file",
         "@plasma//:org_apache_arrow_arrow_plasma",
@@ -215,6 +195,11 @@ genrule(
     cmd = """
         set -x
         WORK_DIR=$$(pwd)
+        # Copy protobuf-generated files.
+        rm -rf $$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        for f in $(locations //java:all_java_proto); do
+            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/java/runtime/src/main/java
+        done
         # Copy native dependecies.
         NATIVE_DEPS_DIR=$$WORK_DIR/java/runtime/native_dependencies/
         rm -rf $$NATIVE_DEPS_DIR

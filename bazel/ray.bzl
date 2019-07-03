@@ -13,12 +13,14 @@ def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_p
         includes = includes,
     )
 
-def define_java_module(name, additional_srcs = [], additional_resources = [], define_test_lib = False, test_deps = [], **kwargs):
+def define_java_module(name, additional_srcs = [], exlcude_srcs = [],
+    additional_resources = [], define_test_lib = False, test_deps = [], **kwargs):
     lib_name = "org_ray_ray_" + name
     pom_file_targets = [lib_name]
     native.java_library(
         name = lib_name,
-        srcs = additional_srcs + native.glob([name + "/src/main/java/**/*.java"]),
+        srcs = additional_srcs + native.glob(
+            [name + "/src/main/java/**/*.java"], exclude=exlcude_srcs),
         resources = native.glob([name + "/src/main/resources/**"]) + additional_resources,
         **kwargs
     )
