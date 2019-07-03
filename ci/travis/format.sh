@@ -19,8 +19,8 @@ fi
 FLAKE8_VERSION=$(python -c "import flake8, sys; print(flake8.__version__); sys.stdout.flush()")
 YAPF_VERSION=$(python -c "import yapf, sys; print(yapf.__version__); sys.stdout.flush()")
 
-if [[ $FLAKE8_VERSION != "3.6.0" ]]; then
-  echo "Please install flake8==3.6.0. You currently are using $FLAKE8_VERSION."
+if [[ $FLAKE8_VERSION != "3.7.7" ]]; then
+  echo "Please install flake8==3.7.7. You currently are using $FLAKE8_VERSION."
   exit 1
 fi
 
