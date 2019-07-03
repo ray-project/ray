@@ -4,8 +4,10 @@ namespace ray {
 
 namespace raylet {
 
-const std::vector<ObjectID> &TaskExecutionSpecification::ExecutionDependencies() const {
-  return dependencies_;
+using rpc::IdVectorFromProtobuf;
+
+const std::vector<ObjectID> TaskExecutionSpecification::ExecutionDependencies() const {
+  return IdVectorFromProtobuf<ObjectID>(message_.dependencies());
 }
 
 size_t TaskExecutionSpecification::NumForwards() const {
