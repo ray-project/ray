@@ -18,6 +18,12 @@ done
 # Wait for all of the nodes to be up.
 wait
 
+status=$?
+if [ $status != 0 ]; then
+    echo "Some update processes failed with $status"
+    exit 1
+fi
+
 # Start the workloads running.
 for workload_file in "$ROOT_DIR"/workloads/*; do
   file_name=$(basename -- "$workload_file")
