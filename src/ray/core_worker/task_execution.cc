@@ -10,10 +10,12 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     std::shared_ptr<CoreWorkerTaskReceiver> task_receiver)
     : worker_context_(worker_context),
       object_interface_(object_interface),
-      task_receiver_(task_receiver) {}
+      task_receiver_(task_receiver),
+      running_(false) {}
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
-  while (true) {
+  running_ = true;
+  while (running_) {
     std::vector<TaskSpec> tasks;
     auto status = task_receiver_->GetTasks(&tasks);
     if (!status.ok()) {
@@ -56,9 +58,10 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
     }
   }
 
-  // should never reach here.
   return Status::OK();
 }
+
+Status CoreWorkerTaskExecutionInterface::Stop() { running_ = false; }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
     const raylet::TaskSpecification &spec,

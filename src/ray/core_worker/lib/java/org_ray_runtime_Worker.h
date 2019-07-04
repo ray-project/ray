@@ -35,6 +35,14 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(JNIEnv *,
 
 /*
  * Class:     org_ray_runtime_Worker
+ * Method:    nativeStopCoreWorker
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeStopCoreWorker(JNIEnv *, jclass,
+                                                                        jlong);
+
+/*
+ * Class:     org_ray_runtime_Worker
  * Method:    nativeGetTaskReturnId
  * Signature: ([BJ)[B
  */

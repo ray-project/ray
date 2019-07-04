@@ -35,9 +35,13 @@ class CoreWorkerTaskExecutionInterface {
                            const std::vector<std::shared_ptr<RayObject>> &args,
                            const TaskInfo &task_info, int num_returns)>;
 
-  /// Start receving and executes tasks in a infinite loop.
+  /// Start receving and executes tasks in a loop.
   /// \return Status.
   Status Run(const TaskExecutor &executor);
+
+  /// Stop the run loop.
+  /// \return Status.
+  Status Stop();
 
  private:
   /// Build arguments for task executor. This would loop through all the arguments
@@ -58,6 +62,9 @@ class CoreWorkerTaskExecutionInterface {
 
   /// The task receivers.
   std::shared_ptr<CoreWorkerTaskReceiver> task_receiver_;
+
+  /// A flag to make the loop stop.
+  std::atomic<bool> running_;
 };
 
 }  // namespace ray

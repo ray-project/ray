@@ -96,6 +96,18 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
 
 /*
  * Class:     org_ray_runtime_Worker
+ * Method:    nativeStopCoreWorker
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeStopCoreWorker(
+    JNIEnv *env, jclass o, jlong nativeCoreWorker) {
+  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker);
+  auto status = core_worker->Execution().Stop();
+  ThrowRayExceptionIfNotOK(env, status);
+}
+
+/*
+ * Class:     org_ray_runtime_Worker
  * Method:    nativeGetTaskReturnId
  * Signature: ([BJ)[B
  */

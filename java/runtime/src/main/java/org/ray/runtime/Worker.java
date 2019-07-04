@@ -65,13 +65,12 @@ public class Worker {
    */
   private long lastCheckpointTimestamp = 0;
 
-  Worker(AbstractRayRuntime runtime, FunctionManager functionManager,
+  Worker(WorkerMode workerMode, AbstractRayRuntime runtime, FunctionManager functionManager,
          String storeSocket, String rayletSocket, UniqueId jobId) {
     this.runtime = runtime;
     this.functionManager = functionManager;
-    WorkerMode workerMode = runtime.getRayConfig().workerMode;
     UniqueId workerId = workerMode == WorkerMode.DRIVER ? jobId : UniqueId.randomId();
-    boolean isWorker = runtime.getRayConfig().workerMode == WorkerMode.WORKER;
+    boolean isWorker = workerMode == WorkerMode.WORKER;
     switch (runtime.getRayConfig().runMode) {
       case SINGLE_PROCESS:
         nativeCoreWorker = nativeInitSingleProcessMode(workerMode.value(), workerId.getBytes(),
@@ -221,6 +220,10 @@ public class Worker {
     nativeRunCoreWorker(nativeCoreWorker, this);
   }
 
+  public void stop() {
+    nativeStopCoreWorker(nativeCoreWorker);
+  }
+
   public ObjectInterface getObjectInterface() {
     return objectInterface;
   }
@@ -245,6 +248,8 @@ public class Worker {
                                                          byte[] jobId);
 
   private static native void nativeRunCoreWorker(long nativeCoreWorker, Worker worker);
+
+  private static native void nativeStopCoreWorker(long nativeCoreWorker);
 
   private static native byte[] nativeGetTaskReturnId(byte[] taskId, long returnIndex);
 }

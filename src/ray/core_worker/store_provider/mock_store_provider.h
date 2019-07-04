@@ -10,7 +10,7 @@
 
 namespace ray {
 
-class CoreWorkerMockTaskSubmitterReceiver;
+class CoreWorkerMockTaskPool;
 
 /// The class provides implementations for local memory store, which is used for single
 /// process mode.
@@ -57,8 +57,7 @@ class CoreWorkerMockStoreProvider : public CoreWorkerStoreProvider {
 
   bool IsObjectReady(const ObjectID &object_id);
 
-  void SetMockTransport(
-      std::shared_ptr<CoreWorkerMockTaskSubmitterReceiver> mock_transport);
+  void SetMockTaskPool(std::shared_ptr<CoreWorkerMockTaskPool> mock_task_pool);
 
  private:
   std::unordered_map<ObjectID, RayObject> pool_;
@@ -67,7 +66,7 @@ class CoreWorkerMockStoreProvider : public CoreWorkerStoreProvider {
 
   const int64_t get_check_interval_ms_ = 100;
 
-  std::shared_ptr<CoreWorkerMockTaskSubmitterReceiver> mock_transport_;
+  std::shared_ptr<CoreWorkerMockTaskPool> mock_task_pool_;
 };
 
 }  // namespace ray

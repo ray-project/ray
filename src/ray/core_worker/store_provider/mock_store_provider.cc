@@ -6,7 +6,7 @@ Status CoreWorkerMockStoreProvider::Put(const RayObject &object,
                                         const ObjectID &object_id) {
   std::lock_guard<std::mutex> guard(mutex_);
   pool_.emplace(object_id, object);
-  mock_transport_->OnObjectPut(object_id);
+  mock_task_pool_->OnObjectPut(object_id);
   return Status::OK();
 }
 
@@ -87,9 +87,9 @@ bool CoreWorkerMockStoreProvider::IsObjectReady(const ObjectID &object_id) {
   return pool_.find(object_id) != pool_.end();
 }
 
-void CoreWorkerMockStoreProvider::SetMockTransport(
-    std::shared_ptr<CoreWorkerMockTaskSubmitterReceiver> mock_transport) {
-  mock_transport_ = mock_transport;
+void CoreWorkerMockStoreProvider::SetMockTaskPool(
+    std::shared_ptr<CoreWorkerMockTaskPool> mock_task_pool) {
+  mock_task_pool_ = mock_task_pool;
 }
 
 }  // namespace ray

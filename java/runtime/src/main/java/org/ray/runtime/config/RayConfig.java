@@ -62,7 +62,7 @@ public class RayConfig {
   public final int numberExecThreadsForDevRuntime;
 
   private void validate() {
-    if (workerMode == WorkerMode.WORKER) {
+    if (workerMode == WorkerMode.WORKER && runMode == RunMode.CLUSTER) {
       Preconditions.checkArgument(redisAddress != null,
           "Redis address must be set in worker mode.");
     }

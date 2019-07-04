@@ -42,20 +42,22 @@ CoreWorker CoreWorker::CreateForClusterMode(const enum WorkerType worker_type,
                     task_execution_interface);
 }
 
-CoreWorker CreateForSingleProcessMode(const WorkerType worker_type,
-                                      const ::Language language,
-                                      const WorkerID &worker_id, const JobID &job_id) {
+CoreWorker CoreWorker::CreateForSingleProcessMode(const enum WorkerType worker_type,
+                                                  const ::Language language,
+                                                  const WorkerID &worker_id,
+                                                  const JobID &job_id) {
   auto worker_context = std::make_shared<WorkerContext>(worker_type, worker_id, job_id);
-  auto mock_transport = std::make_shared<CoreWorkerMockTaskSubmitterReceiver>();
+  auto mock_task_pool = std::make_shared<CoreWorkerMockTaskPool>();
   auto mock_store_provider = std::make_shared<CoreWorkerMockStoreProvider>();
-  mock_transport->SetMockStoreProvider(mock_store_provider);
-  mock_store_provider->SetMockTransport(mock_transport);
-  auto task_interface =
-      std::make_shared<CoreWorkerTaskInterface>(worker_context, mock_transport);
+  mock_task_pool->SetMockStoreProvider(mock_store_provider);
+  mock_store_provider->SetMockTaskPool(mock_task_pool);
+  auto task_interface = std::make_shared<CoreWorkerTaskInterface>(
+      worker_context, std::make_shared<CoreWorkerMockTaskSubmitter>(mock_task_pool));
   auto object_interface =
       std::make_shared<CoreWorkerObjectInterface>(worker_context, mock_store_provider);
   auto task_execution_interface = std::make_shared<CoreWorkerTaskExecutionInterface>(
-      worker_context, object_interface, mock_transport);
+      worker_context, object_interface,
+      std::make_shared<CoreWorkerMockTaskReceiver>(worker_context, mock_task_pool));
   return CoreWorker(language, worker_context, task_interface, object_interface,
                     task_execution_interface);
 }

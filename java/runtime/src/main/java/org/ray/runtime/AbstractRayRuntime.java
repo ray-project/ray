@@ -1,7 +1,15 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -27,34 +35,89 @@ import org.ray.runtime.generated.Language;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.util.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Core functionality to implement Ray APIs.
  */
 public abstract class AbstractRayRuntime implements RayRuntime {
-  protected RayConfig rayConfig;
-  protected Worker worker;
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
+
+  protected final InheritableThreadLocal<RayConfig> rayConfig = new InheritableThreadLocal<>();
+  protected final InheritableThreadLocal<Worker> worker = new InheritableThreadLocal<>();
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
   protected GcsClient gcsClient;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
-    this.rayConfig = rayConfig;
+    this.rayConfig.set(rayConfig);
     functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
+  }
+
+  static {
+    try {
+      LOGGER.debug("Loading native libraries.");
+      // Load native libraries.
+      String[] libraries = new String[] {"core_worker_library_java"};
+      for (String library : libraries) {
+        String fileName = System.mapLibraryName(library);
+        // Copy the file from resources to a temp dir, and load the native library.
+        File file = File.createTempFile(fileName, "");
+        file.deleteOnExit();
+        InputStream in = RayNativeRuntime.class.getResourceAsStream("/" + fileName);
+        Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
+        Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
+        System.load(file.getAbsolutePath());
+      }
+      LOGGER.debug("Native libraries loaded.");
+    } catch (IOException e) {
+      throw new RuntimeException("Couldn't load native libraries.", e);
+    }
+  }
+
+  private void resetLibraryPath() {
+    if (rayConfig.get().libraryPath.isEmpty()) {
+      return;
+    }
+
+    String path = System.getProperty("java.library.path");
+    if (Strings.isNullOrEmpty(path)) {
+      path = "";
+    } else {
+      path += ":";
+    }
+    path += String.join(":", rayConfig.get().libraryPath);
+
+    // This is a hack to reset library path at runtime,
+    // see https://stackoverflow.com/questions/15409223/.
+    System.setProperty("java.library.path", path);
+    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
+    final Field sysPathsField;
+    try {
+      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
+      sysPathsField.setAccessible(true);
+      sysPathsField.set(null, null);
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      LOGGER.error("Failed to set library path.", e);
+    }
   }
 
   /**
    * Start runtime.
    */
-  public abstract void start() throws Exception;
+  public void start() {
+    // Reset library path at runtime.
+    resetLibraryPath();
+  }
 
   @Override
   public abstract void shutdown();
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = worker.getObjectInterface().put(obj);
+    ObjectId objectId = worker.get().getObjectInterface().put(obj);
     return new RayObjectImpl<>(objectId);
   }
 
@@ -66,7 +129,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    List<GetResult<T>> results = worker.getObjectInterface().get(objectIds, -1);
+    List<GetResult<T>> results = worker.get().getObjectInterface().get(objectIds, -1);
     // Check exceptions before Preconditions.checkState(result.exists)
     Optional<RayException> exception =
         results.stream().filter(result -> result.exception != null)
@@ -83,7 +146,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    worker.getObjectInterface().delete(objectIds, localOnly, deleteCreatingTasks);
+    worker.get().getObjectInterface().delete(objectIds, localOnly, deleteCreatingTasks);
   }
 
   @Override
@@ -92,7 +155,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     if (nodeId == null) {
       nodeId = UniqueId.NIL;
     }
-    worker.getRayletClient().setResource(resourceName, capacity, nodeId);
+    worker.get().getRayletClient().setResource(resourceName, capacity, nodeId);
   }
 
   @Override
@@ -104,7 +167,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());
 
-    List<Boolean> ready = worker.getObjectInterface().wait(ids, numReturns, timeoutMs);
+    List<Boolean> ready = worker.get().getObjectInterface().wait(ids, numReturns, timeoutMs);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -122,7 +185,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func)
+        functionManager.getFunction(worker.get().getWorkerContext().getCurrentJobId(), func)
             .functionDescriptor;
     return call(functionDescriptor, args, options);
   }
@@ -132,16 +195,16 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     RayActorImpl actorImpl = (RayActorImpl) actor;
     Preconditions.checkState(actorImpl.getLanguage() == Language.JAVA);
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func)
+        functionManager.getFunction(worker.get().getWorkerContext().getCurrentJobId(), func)
             .functionDescriptor;
     return call(actorImpl, functionDescriptor, args);
   }
 
   private RayObject call(FunctionDescriptor functionDescriptor,
                          Object[] args, CallOptions options) {
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker.get(), args,
         functionDescriptor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitTask(functionDescriptor,
+    List<ObjectId> returnIds = worker.get().getTaskInterface().submitTask(functionDescriptor,
         functionArgs, 1, options);
     return new RayObjectImpl(returnIds.get(0));
   }
@@ -149,9 +212,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject call(RayActorImpl rayActorImpl, FunctionDescriptor functionDescriptor,
                          Object[] args) {
     Preconditions.checkState(rayActorImpl.getLanguage() == functionDescriptor.getLanguage());
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker.get(), args,
         rayActorImpl.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActorImpl,
+    List<ObjectId> returnIds = worker.get().getTaskInterface().submitActorTask(rayActorImpl,
         functionDescriptor, functionArgs, 1 /* core worker will plus it by 1, so put 1 here */,
         null);
     return new RayObjectImpl(returnIds.get(0));
@@ -161,7 +224,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
                                      Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), actorFactoryFunc)
+        functionManager.getFunction(worker.get().getWorkerContext().getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
     //noinspection unchecked
     return (RayActor<T>) createActor(Language.JAVA, functionDescriptor, args, options);
@@ -169,12 +232,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayActorImpl createActor(int language, FunctionDescriptor functionDescriptor,
                                    Object[] args, ActorCreationOptions options) {
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker, args,
+    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(worker.get(), args,
         language != Language.JAVA);
     if (language != Language.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
-    RayActorImpl actor = worker.getTaskInterface().createActor(functionDescriptor, functionArgs,
+    RayActorImpl actor = worker.get().getTaskInterface().createActor(functionDescriptor, functionArgs,
         options);
     Preconditions.checkState(actor.getLanguage() == language);
     return actor;
@@ -219,15 +282,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   public void loop() {
-    worker.loop();
+    worker.get().loop();
   }
 
   public Worker getWorker() {
-    return worker;
+    return worker.get();
   }
 
   public RayConfig getRayConfig() {
-    return rayConfig;
+    return rayConfig.get();
   }
 
   public RuntimeContext getRuntimeContext() {
