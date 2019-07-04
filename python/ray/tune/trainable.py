@@ -66,7 +66,7 @@ class Trainable(object):
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
-        log_sys_usage = config.get("log_sys_usage", False)
+        log_sys_usage = self.config.get("log_sys_usage", False)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
