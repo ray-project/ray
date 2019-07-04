@@ -322,8 +322,8 @@ class Trainable(object):
         self._episodes_total = metadata["episodes_total"]
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
-            with open(os.path.join(
-                    checkpoint_dir, "checkpoint"), "rb") as loaded_state:
+            with open(os.path.join(checkpoint_dir, "checkpoint"),
+                      "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
             self._restore(checkpoint_dict)
         else:
