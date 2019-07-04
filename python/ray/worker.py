@@ -1876,7 +1876,8 @@ def connect(node,
 
         # Add the driver task to the task table.
         ray.state.state._execute_command(
-            driver_task_spec.task_id(), "RAY.TABLE_ADD",
+            driver_task_spec.task_id(),
+            "RAY.TABLE_ADD",
             ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
             ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
             driver_task_spec.task_id().binary(),

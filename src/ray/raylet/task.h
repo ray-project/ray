@@ -28,7 +28,8 @@ class Task {
   }
 
   Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
-      : task_spec_(std::move(task_spec)), task_execution_spec_(std::move(task_execution_spec)) {
+      : task_spec_(std::move(task_spec)),
+        task_execution_spec_(std::move(task_execution_spec)) {
     ComputeDependencies();
   }
 
