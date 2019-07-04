@@ -11,9 +11,9 @@ from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import override
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.agents.dqn.dqn_policy import _scope_vars
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.tf_ops import scope_vars
 
 tf = try_import_tf()
 
@@ -103,7 +103,7 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
             }, observation_space, action_space, logit_dim,
                                                 self.config["model"])
             logits = self.model.outputs
-            self.p_func_vars = _scope_vars(scope.name)
+            self.p_func_vars = scope_vars(scope.name)
 
         # Action outputs
         action_dist = dist_cls(logits)
@@ -116,7 +116,7 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
         # v network evaluation
         with tf.variable_scope(VALUE_SCOPE) as scope:
             state_values = self.model.value_function()
-            self.v_func_vars = _scope_vars(scope.name)
+            self.v_func_vars = scope_vars(scope.name)
         self.v_loss = self._build_value_loss(state_values, self.cum_rew_t)
         self.p_loss = self._build_policy_loss(state_values, self.cum_rew_t,
                                               logits, self.act_t, action_space)

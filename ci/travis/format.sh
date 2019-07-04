@@ -5,6 +5,12 @@
 # Cause the script to exit if a single command fails
 set -eo pipefail
 
+ver=$(yapf --version)
+if ! echo $ver | grep -q 0.23.0; then
+    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver"
+    exit 1
+fi
+
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 
@@ -17,7 +23,7 @@ if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
 fi
 
 # Only fetch master since that's the branch we're diffing against.
-git fetch upstream master
+git fetch upstream master || true
 
 YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"
