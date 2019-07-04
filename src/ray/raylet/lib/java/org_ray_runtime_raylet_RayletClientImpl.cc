@@ -66,7 +66,6 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != nullptr) {
     UniqueIdFromJByteArray<ObjectID> cursor_id(env, cursorId);
-    std::cout << "jni " << cursor_id.GetId();
     execution_dependencies.push_back(cursor_id.GetId());
   }
 
