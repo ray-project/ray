@@ -9,8 +9,16 @@ namespace ray {
 
 namespace gcs {
 
+/// \class ClientOption
+/// GCS client's options(configuration items), such as service address, service password.
 class ClientOption {
  public:
+  /// Constructor of ClientOption.
+  ///
+  /// \param ip GCS service ip
+  /// \param port GCS service port
+  /// \param password GCS service password
+  /// \param is_test_client Is test client
   ClientOption(const std::string &ip, int port, const std::string &password,
                bool is_test_client = false)
       : server_ip_(ip),
@@ -24,7 +32,11 @@ class ClientOption {
 #endif
   }
 
-  /// This constructor is only used for testing(test of RedisGcsClient).
+  /// This constructor is only used for testing(RedisGcsClient's test).
+  ///
+  /// \param ip Gcs service ip
+  /// \param port Gcs service port
+  /// \param command_type Command type of RedisGcsClient
   ClientOption(const std::string &ip, int port, CommandType command_type)
       : server_ip_(ip),
         server_port_(port),
@@ -45,6 +57,11 @@ class ClientOption {
   bool is_test_client_{false};
 };
 
+/// \class ClientInfo
+/// Information of GCS client, such as client id.
+/// Only if it's raylet'client, it should contain much more information included by
+/// ClientTableData:
+/// node manager's address, object manager's port and so on.
 class ClientInfo {
  public:
   /// Constructor for worker, raylet monitor
@@ -58,13 +75,16 @@ class ClientInfo {
     id_ = ClientID::FromBinary(client_data.client_id());
   }
 
-  const ClientID &GetClientID() const { return id_; }
+  const ClientID &GetClientID() const {
+    RAY_DCHECK(!id_.IsNil());
+    return id_;
+  }
 
-  bool IsRaylet() { return !!client_data_; }
+  bool IsRaylet() { return client_data_.is_initialized(); }
 
  private:
   ClientID id_;
-  // for raylet register to gcs and do heartbeat
+  // raylet will register this message to gcs(will do heartbeat after register)
   boost::optional<ClientTableData> client_data_;
 };
 

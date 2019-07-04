@@ -19,6 +19,7 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
+ friend class ActorStateAccessor;
  public:
   /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
@@ -41,7 +42,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   // TODO: Some API for getting the error on the driver
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
-  ActorTable &actor_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
@@ -75,7 +75,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  bool is_connected_{false};
+  /// Use method Actors() instead
+  ActorTable &actor_table();
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

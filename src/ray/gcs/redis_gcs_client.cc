@@ -72,8 +72,6 @@ namespace gcs {
 
 RedisGcsClient::RedisGcsClient(const ClientOption &option, const ClientInfo &info)
     : GcsClientInterface(option, info) {
-  option_ = option;
-  info_ = info;
 }
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
@@ -145,6 +143,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 }
 
 void RedisGcsClient::Disconnect() {
+  RAY_CHECK(is_connected_);
+  is_connected_ = false;
   // TODO(micafan) Call the client table's Disconnect here. Synchronous disconnect
   // is better.
 }
