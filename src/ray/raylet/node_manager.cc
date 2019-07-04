@@ -1872,9 +1872,9 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 }
 
-ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &task) {
-  RAY_CHECK(task.GetTaskSpecification().IsActorCreationTask());
-  auto actor_id = task.GetTaskSpecification().ActorCreationId();
+ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec) {
+  RAY_CHECK(task_spec.IsActorCreationTask());
+  auto actor_id = task_spec.ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
   ActorTableData new_actor_data;
   // TODO(swang): If this is an actor that was reconstructed, and previous
@@ -1886,14 +1886,14 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &tas
     // change even if the actor fails or is reconstructed.
     new_actor_data.set_actor_id(actor_id.Binary());
     new_actor_data.set_actor_creation_dummy_object_id(
-        task.GetTaskSpecification().ActorDummyObject().Binary());
-    new_actor_data.set_job_id(task.GetTaskSpecification().JobId().Binary());
+        task_spec.ActorDummyObject().Binary());
+    new_actor_data.set_job_id(task_spec.JobId().Binary());
     new_actor_data.set_max_reconstructions(
-        task.GetTaskSpecification().MaxActorReconstructions());
+        task_spec.MaxActorReconstructions());
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     new_actor_data.set_remaining_reconstructions(
-        task.GetTaskSpecification().MaxActorReconstructions());
+        task_spec.MaxActorReconstructions());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -1929,21 +1929,19 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     actor_id = task_spec.ActorId();
     actor_handle_id = task_spec.ActorHandleId();
   }
-  const auto dummy_object = task_spec.ActorDummyObject();
 
   if (task_spec.IsActorCreationTask()) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
-    // Notify the other node managers that the actor has been created.
-    auto new_actor_data = CreateActorTableDataFromCreationTask(task);
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
+    RAY_CHECK(actor_handle_id.IsNil());
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         /*success_callback=*/
-        [this, dummy_object, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
+        [this, task_spec, resumed_from_checkpoint]
            (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id,
-               const TaskTableData &parent_task_data) mutable {
+               const TaskTableData &parent_task_data) {
           // The task was in the GCS task table. Use the stored task spec to
           // get the parent actor id.
           auto message = flatbuffers::GetRoot<protocol::Task>(parent_task_data.task().data());
@@ -1954,35 +1952,36 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
           } else{
             parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
-          new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
-          FinishAssignedActorCreationTask(actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint, dummy_object);
+          FinishAssignedActorCreationTask(parent_actor_id, task_spec, resumed_from_checkpoint);
         },
         /*failure_callback=*/
-        [this, dummy_object, actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint]
-            (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id) mutable {
-          // The parent task was not in the GCS task table. It must therefore be in the
+        [this, task_spec, resumed_from_checkpoint]
+            (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id) {
+          // The parent task was not in the GCS task table. It should most likely be in the
           // lineage cache.
-          RAY_CHECK(lineage_cache_.ContainsTask(parent_task_id))
-              << "Task metadata not found in either GCS or lineage cache. It may have been "
-                 "evicted "
-              << "by the redis LRU configuration. Consider increasing the memory "
-                 "allocation via "
-              << "ray.init(redis_max_memory=<max_memory_bytes>).";
-          // Use a copy of the cached task spec to get the parent actor id.
-          Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
-          ActorID parent_actor_id;
-          if (parent_task.GetTaskSpecification().IsActorCreationTask()){
-            parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+          ActorID parent_actor_id = ActorID::Nil();
+          if(lineage_cache_.ContainsTask(parent_task_id)){
+            // Use a copy of the cached task spec to get the parent actor id.
+            Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
+            if (parent_task.GetTaskSpecification().IsActorCreationTask()){
+              parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+            } else{
+              parent_actor_id = parent_task.GetTaskSpecification().ActorId();
+            }
           } else{
-            parent_actor_id = parent_task.GetTaskSpecification().ActorId();
+            RAY_LOG(WARNING)
+                << "Task metadata not found in either GCS or lineage cache. It may have been "
+                   "evicted "
+                << "by the redis LRU configuration. Consider increasing the memory "
+                   "allocation via "
+                << "ray.init(redis_max_memory=<max_memory_bytes>).";
           }
-          new_actor_data.set_parent_actor_id(parent_task.GetTaskSpecification().ActorId().Binary());
-          FinishAssignedActorCreationTask(actor_id, actor_handle_id, new_actor_data, resumed_from_checkpoint, dummy_object);
+          FinishAssignedActorCreationTask(parent_actor_id, task_spec, resumed_from_checkpoint);
         }));
   } else if (!resumed_from_checkpoint) {
     // The actor was not resumed from a checkpoint. We extend the actor's
     // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(dummy_object, actor_id, actor_handle_id);
+    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, actor_handle_id);
   }
 }
 
@@ -2009,10 +2008,12 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
   HandleObjectLocal(dummy_object);
 }
 
-void NodeManager::FinishAssignedActorCreationTask(const ActorID& actor_id,
-                  const ActorHandleID &actor_handle_id, const ActorTableData new_actor_data,
-                  bool resumed_from_checkpoint, const ObjectID &dummy_object) {
+void NodeManager::FinishAssignedActorCreationTask(const ActorID& parent_actor_id, 
+                  const TaskSpecification& task_spec, bool resumed_from_checkpoint) {
   // Notify the other node managers that the actor has been created.
+  ActorID actor_id = task_spec.ActorCreationId();
+  auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
+  new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
   if (resumed_from_checkpoint) {
     // This actor was resumed from a checkpoint. In this case, we first look
     // up the checkpoint in GCS and use it to restore the actor registration
@@ -2063,7 +2064,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID& actor_id,
   if(!resumed_from_checkpoint){
     // The actor was not resumed from a checkpoint. We extend the actor's
     // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(dummy_object, actor_id, actor_handle_id);
+    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, ActorHandleID::Nil());
   }
 }
 
