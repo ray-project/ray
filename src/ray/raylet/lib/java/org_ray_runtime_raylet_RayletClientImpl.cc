@@ -68,7 +68,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
     execution_dependencies.push_back(cursor_id.GetId());
   }
 
-  jbyte* data = env->GetByteArrayElements(taskSpec, NULL);
+  jbyte *data = env->GetByteArrayElements(taskSpec, NULL);
   jsize size = env->GetArrayLength(taskSpec);
   ray::rpc::TaskSpec task_spec_message;
   task_spec_message.ParseFromArray(data, size);
@@ -94,21 +94,16 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
     return nullptr;
   }
 
-  // We serialize the task specification using flatbuffers and then parse the
-  // resulting string. This awkwardness is due to the fact that the Java
-  // implementation does not use the underlying C++ TaskSpecification class.
-  auto task_message = spec->Serialize();
+  // Serialize the task spec and copy to Java byte array.
+  auto task_data = spec->Serialize();
 
-  jbyteArray result;
-  result = env->NewByteArray(task_message.size());
+  jbyteArray result = env->NewByteArray(task_data.size());
   if (result == nullptr) {
     return nullptr; /* out of memory error thrown */
   }
 
-  // move from task spec structure to the java structure
-  env->SetByteArrayRegion(
-      result, 0, task_message.size(),
-      reinterpret_cast<const jbyte *>(task_message.data()));
+  env->SetByteArrayRegion(result, 0, task_data.size(),
+                          reinterpret_cast<const jbyte *>(task_data.data()));
 
   return result;
 }

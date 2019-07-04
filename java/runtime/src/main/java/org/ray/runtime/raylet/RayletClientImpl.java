@@ -32,15 +32,6 @@ public class RayletClientImpl implements RayletClient {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayletClientImpl.class);
 
-  private static final int TASK_SPEC_BUFFER_SIZE = 2 * 1024 * 1024;
-
-  /**
-   * Direct buffers that are used to hold flatbuffer-serialized task specs.
-   */
-  private static ThreadLocal<ByteBuffer> taskSpecBuffer = ThreadLocal.withInitial(() ->
-      ByteBuffer.allocateDirect(TASK_SPEC_BUFFER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
-  );
-
   /**
    * The pointer to c++'s raylet client.
    */
@@ -101,8 +92,7 @@ public class RayletClientImpl implements RayletClient {
   public TaskSpec getTask() {
     byte[] bytes = nativeGetTask(client);
     assert (null != bytes);
-    ByteBuffer bb = ByteBuffer.wrap(bytes);
-    return parseTaskSpecFromProtobuf(bb);
+    return parseTaskSpecFromProtobuf(bytes);
   }
 
   @Override
@@ -144,10 +134,13 @@ public class RayletClientImpl implements RayletClient {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
-  private static TaskSpec parseTaskSpecFromProtobuf(ByteBuffer bb) {
+  /**
+   * Parse `TaskSpec` protobuf bytes.
+   */
+  private static TaskSpec parseTaskSpecFromProtobuf(byte[] bytes) {
     Common.TaskSpec taskSpec;
     try {
-      taskSpec = Common.TaskSpec.parseFrom(bb);
+      taskSpec = Common.TaskSpec.parseFrom(bytes);
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Invalid protobuf data.");
     }
@@ -179,9 +172,9 @@ public class RayletClientImpl implements RayletClient {
     Preconditions.checkArgument(taskSpec.getLanguage() == Common.Language.JAVA);
     Preconditions.checkArgument(taskSpec.getFunctionDescriptorCount() == 3);
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
-        taskSpec.getFunctionDescriptor(0).toStringUtf8(),
-        taskSpec.getFunctionDescriptor(1).toStringUtf8(),
-        taskSpec.getFunctionDescriptor(2).toStringUtf8()
+        taskSpec.getFunctionDescriptor(0).toString(Charset.defaultCharset()),
+        taskSpec.getFunctionDescriptor(1).toString(Charset.defaultCharset()),
+        taskSpec.getFunctionDescriptor(2).toString(Charset.defaultCharset())
     );
 
     // Parse ActorCreationTaskSpec.
@@ -209,7 +202,7 @@ public class RayletClientImpl implements RayletClient {
           .fromByteBuffer(actorTaskSpec.getActorHandleId().asReadOnlyByteBuffer());
       actorCounter = (int) actorTaskSpec.getActorCounter();
       newActorHandles = actorTaskSpec.getNewActorHandlesList().stream()
-          .map(bytes -> UniqueId.fromByteBuffer(bytes.asReadOnlyByteBuffer()))
+          .map(byteString -> UniqueId.fromByteBuffer(byteString.asReadOnlyByteBuffer()))
           .toArray(UniqueId[]::new);
     }
 
@@ -218,6 +211,9 @@ public class RayletClientImpl implements RayletClient {
         args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
+  /**
+   * Convert a `TaskSpec` to protobuf-serialized bytes.
+   */
   private static byte[] convertTaskSpecToProtobuf(TaskSpec task) {
     // Set common fields.
     Common.TaskSpec.Builder builder = Common.TaskSpec.newBuilder()
@@ -312,9 +308,9 @@ public class RayletClientImpl implements RayletClient {
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
       boolean isWorker, byte[] driverTaskId);
 
-  private static native void nativeSubmitTask(long client, byte[] cursorId, byte[] taskSpec) throws RayException;
+  private static native void nativeSubmitTask(long client, byte[] cursorId, byte[] taskSpec)
+      throws RayException;
 
-  // return TaskInfo (in FlatBuffer)
   private static native byte[] nativeGetTask(long client) throws RayException;
 
   private static native void nativeDestroy(long client) throws RayException;
