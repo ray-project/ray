@@ -10,10 +10,11 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid, const Language &language,
+Worker::Worker(pid_t pid, const Language &language, int port,
                std::shared_ptr<LocalClientConnection> connection)
     : pid_(pid),
       language_(language),
+      port_(port),
       connection_(connection),
       dead_(false),
       blocked_(false) {}
@@ -31,6 +32,8 @@ bool Worker::IsBlocked() const { return blocked_; }
 pid_t Worker::Pid() const { return pid_; }
 
 Language Worker::GetLanguage() const { return language_; }
+
+int Worker::Port() const { return port_; }
 
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
