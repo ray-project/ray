@@ -488,7 +488,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
     CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "",
-                           raylet_socket_names_[0], JobID::JobID::FromInt(1));
+                           raylet_socket_names_[0], JobID::FromInt(1));
   } catch (const std::exception &e) {
     std::cout << "Caught exception when constructing core worker: " << e.what();
   }
