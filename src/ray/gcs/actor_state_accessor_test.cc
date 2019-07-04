@@ -1,50 +1,46 @@
-#include "ray/gcs/gcs_client.h"
 #include <atomic>
 #include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 #include "gtest/gtest.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
 namespace gcs {
 
-class GcsClientTest : public ::testing::Test {
+class ActorStateAccessorTest : public ::testing::Test {
  public:
-  GcsClientTest() {}
+  ActorStateAccessorTest() : option_("127.0.0.1", 6379, "", true), info_() {}
 
   virtual void SetUp() {
-    InitClientOption();
-    InitClientInfo();
     GenTestData();
 
-    gcs_client_.reset(new GcsClient(option_, info_));
-    RAY_CHECK_OK(gcs_client_->Connect());
+    gcs_client_.reset(new AsyncGcsClient(option_, info_));
+    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+
+    work_thread.reset(new std::thread([this] {
+      std::auto_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(io_service_));
+      io_service_.run();
+    }));
   }
 
   virtual void TearDown() {
     gcs_client_->Disconnect();
+
+    io_service_.stop();
+    work_thread->join();
+    work_thread.reset();
+
     gcs_client_.reset();
 
     ClearTestData();
   }
 
  protected:
-  void InitClientOption() {
-    option_.server_list_.emplace_back(std::make_pair("127.0.0.1", 6379));
-    option_.test_mode_ = true;
-  }
-
-  void InitClientInfo() {
-    info_.type_ = ClientInfo::ClientType::kClientTypeRayletMonitor;
-    info_.id_ = ClientID::FromRandom();
-  }
-
-  void GenTestData() {
-    GenActorData();
-    GenTaskData();
-    GenNodeData();
-  }
+  void GenTestData() { GenActorData(); }
 
   void GenActorData() {
     for (size_t i = 0; i < 2; ++i) {
@@ -58,27 +54,7 @@ class GcsClientTest : public ::testing::Test {
     }
   }
 
-  void GenTaskData() {
-    for (size_t i = 0; i < 2; ++i) {
-      std::shared_ptr<TaskTableData> task = std::make_shared<TaskTableData>();
-      task->set_task("task" + std::to_string(i));
-      TaskID task_id = TaskID::FromRandom();
-      task_datas_[task_id] = task;
-    }
-  }
-
-  void GenNodeData() {
-    std::shared_ptr<ClientTableData> node = std::make_shared<ClientTableData>();
-    node->set_client_id(info_.id_.Binary());
-    node->set_node_manager_address("127.0.0.1:20000");
-    node_datas_[info_.id_] = node;
-  }
-
-  void ClearTestData() {
-    actor_datas_.clear();
-    task_datas_.clear();
-    node_datas_.clear();
-  }
+  void ClearTestData() { actor_datas_.clear(); }
 
   void WaitPendingDone(std::chrono::milliseconds timeout) {
     WaitPendingDone(pending_count_, timeout);
@@ -97,17 +73,17 @@ class GcsClientTest : public ::testing::Test {
  protected:
   ClientOption option_;
   ClientInfo info_;
+  std::unique_ptr<AsyncGcsClient> gcs_client_;
 
-  std::unique_ptr<GcsClient> gcs_client_;
+  boost::asio::io_service io_service_;
+  std::unique_ptr<std::thread> work_thread;
 
   std::unordered_map<ActorID, std::shared_ptr<ActorTableData>> actor_datas_;
-  std::unordered_map<TaskID, std::shared_ptr<TaskTableData>> task_datas_;
-  std::unordered_map<ClientID, std::shared_ptr<ClientTableData>> node_datas_;
 
   std::atomic<int> pending_count_{0};
 };
 
-TEST_F(GcsClientTest, ActorStateAccessor) {
+TEST_F(ActorStateAccessorTest, AddAndGet) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   size_t log_length = 0;
   // add
@@ -142,46 +118,7 @@ TEST_F(GcsClientTest, ActorStateAccessor) {
   WaitPendingDone(timeout);
 }
 
-TEST_F(GcsClientTest, DISABLED_TaskStateAccessor) {
-  // Task data is not stable yet(use both fbs and pb)
-  TaskStateAccessor &task_accessor = gcs_client_->Tasks();
-  // add
-  for (const auto &elem : task_datas_) {
-    const auto &task = elem.second;
-    JobID job_id = JobID::FromRandom();
-    ++pending_count_;
-    task_accessor.AsyncAdd(job_id, elem.first, task, [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    });
-  }
-
-  std::chrono::milliseconds timeout(2000);
-  WaitPendingDone(timeout);
-}
-
-TEST_F(GcsClientTest, NodeStateAccessor) {
-  NodeStateAccessor &node_accessor = gcs_client_->Nodes();
-  for (const auto &elem : node_datas_) {
-    const auto &node = elem.second;
-    RAY_CHECK_OK(node_accessor.Register(*node));
-  }
-
-  std::chrono::milliseconds wait_time(500);
-  std::this_thread::sleep_for(wait_time);
-
-  std::unordered_map<ClientID, ClientTableData> all_nodes;
-  RAY_CHECK_OK(node_accessor.GetAll(&all_nodes));
-  ASSERT_GE(all_nodes.size(), node_datas_.size());
-  for (const auto &elem : node_datas_) {
-    const auto it = all_nodes.find(elem.first);
-    if (it == all_nodes.end()) {
-      RAY_LOG(ERROR) << "GCS response timeout!";
-    }
-  }
-}
-
-TEST_F(GcsClientTest, ActorStateAccessor_Subscribe) {
+TEST_F(ActorStateAccessorTest, Subscribe) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   std::chrono::milliseconds timeout(10000);
   // sub

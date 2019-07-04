@@ -56,8 +56,12 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
+    gcs::ClientOption client_option("127.0.0.1", 6379, /*password*/ "", true);
+    rpc::ClientTableData server_info;
+    server_info.set_client_id(ClientID::FromRandom().Binary());
+    gcs::ClientInfo client_info(server_info);
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+        new gcs::AsyncGcsClient(client_option, client_info));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -66,8 +70,11 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
+    rpc::ClientTableData server_info2;
+    server_info2.set_client_id(ClientID::FromRandom().Binary());
+    gcs::ClientInfo client_info2(server_info2);
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+        new gcs::AsyncGcsClient(client_option, client_info2));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
@@ -136,17 +143,16 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.client_id);
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-            num_connected_clients += 1;
-          }
-          if (num_connected_clients == 2) {
-            StartTests();
-          }
-        });
+    gcs_client_1->client_table().RegisterClientAddedCallback([this](
+        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      ClientID parsed_id = ClientID::FromBinary(data.client_id);
+      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+        num_connected_clients += 1;
+      }
+      if (num_connected_clients == 2) {
+        StartTests();
+      }
+    });
   }
 
   void StartTests() {

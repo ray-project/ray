@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "ray/common/client_connection.h"
-#include "ray/gcs/client.h"
 #include "ray/gcs/format/util.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
 

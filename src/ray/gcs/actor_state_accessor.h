@@ -9,7 +9,7 @@ namespace ray {
 
 namespace gcs {
 
-class GcsClientImpl;
+class AsyncGcsClient;
 
 /// \class ActorStateAccessor
 /// ActorStateAccessor class encapsulates the implementation details of
@@ -17,7 +17,7 @@ class GcsClientImpl;
 /// determined at submission time, and mutable fields which determined at runtime).
 class ActorStateAccessor {
  public:
-  ActorStateAccessor(GcsClientImpl &client_impl);
+  ActorStateAccessor(AsyncGcsClient &client_impl);
 
   ~ActorStateAccessor() {}
 
@@ -96,8 +96,13 @@ class ActorStateAccessor {
       const JobID &job_id, const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback);
 
+  /// Get debug string.
+  ///
+  /// \return string
+  std::string DebugString() const;
+
  private:
-  GcsClientImpl &client_impl_;
+  AsyncGcsClient &client_impl_;
 };
 
 }  // namespace gcs

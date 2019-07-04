@@ -6,7 +6,8 @@ extern "C" {
 }
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/client_def.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -27,8 +28,11 @@ static inline void flushall_redis(void) {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
-                                                    /*is_test_client=*/true);
+    ClientOption option("127.0.0.1", 6379, command_type_);
+    ClientTableData client_data;
+    client_data.set_client_id(ClientID::FromRandom().Binary());
+    ClientInfo info(client_data);
+    client_ = std::make_shared<gcs::AsyncGcsClient>(option, info);
     job_id_ = JobID::FromRandom();
   }
 
@@ -58,13 +62,14 @@ class TestGcsWithAsio : public TestGcs {
  public:
   TestGcsWithAsio(CommandType command_type)
       : TestGcs(command_type), io_service_(), work_(io_service_) {
-    RAY_CHECK_OK(client_->Attach(io_service_));
+    RAY_CHECK_OK(client_->Connect(io_service_));
   }
 
   TestGcsWithAsio() : TestGcsWithAsio(CommandType::kRegular) {}
 
   ~TestGcsWithAsio() {
     // Destroy the client first since it has a reference to the event loop.
+    client_->Disconnect();
     client_.reset();
   }
   void Start() override { io_service_.run(); }
@@ -1364,7 +1369,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
   auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id,
                                        const std::vector<std::string> &callback_data) {
-    for (int i = 0; i < callback_data.size(); ++i) {
+    for (size_t i = 0; i < callback_data.size(); ++i) {
       // All deleting keys exist in this argument even if the key doesn't exist.
       ASSERT_EQ(callback_data[i], delete_keys[i]);
     }

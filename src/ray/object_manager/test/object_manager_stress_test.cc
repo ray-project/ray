@@ -40,12 +40,10 @@ class MockServer {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
-  ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
+  ~MockServer() {}
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
-
     auto object_manager_port = config_.object_manager_port;
     ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
     client_info.set_node_manager_address("127.0.0.1");
@@ -102,8 +100,14 @@ class TestObjectManagerBase : public ::testing::Test {
     int push_timeout_ms = 10000;
 
     // start first server
+    gcs::ClientOption client_option("127.0.0.1", 6379, /*password*/ "",
+                                    /*is_test_client=*/true);
+    rpc::ClientTableData server_info;
+    server_info.set_client_id(ClientID::FromRandom().Binary());
+    gcs::ClientInfo client_info(server_info);
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+        new gcs::AsyncGcsClient(client_option, client_info));
+    RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
@@ -114,8 +118,12 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
+    rpc::ClientTableData server_info2;
+    server_info2.set_client_id(ClientID::FromRandom().Binary());
+    gcs::ClientInfo client_info2(server_info2);
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+        new gcs::AsyncGcsClient(client_option, client_info2));
+    RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
@@ -134,6 +142,9 @@ class TestObjectManagerBase : public ::testing::Test {
     arrow::Status client1_status = client1.Disconnect();
     arrow::Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
+
+    gcs_client_1->Disconnect();
+    gcs_client_2->Disconnect();
 
     this->server1.reset();
     this->server2.reset();
@@ -209,17 +220,16 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableData &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.client_id());
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-            num_connected_clients += 1;
-          }
-          if (num_connected_clients == 2) {
-            StartTests();
-          }
-        });
+    gcs_client_1->client_table().RegisterClientAddedCallback([this](
+        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      ClientID parsed_id = ClientID::FromBinary(data.client_id());
+      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+        num_connected_clients += 1;
+      }
+      if (num_connected_clients == 2) {
+        StartTests();
+      }
+    });
   }
 
   void StartTests() {

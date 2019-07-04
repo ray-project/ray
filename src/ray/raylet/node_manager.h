@@ -320,11 +320,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param actor_id The actor ID of the actor whose state was updated.
   /// \param data Data to publish.
-  /// \param failure_callback An optional callback to call if the publish is
+  /// \param tolerate_failure If tolerate update failure, if not will call Log Fatal
+  /// when update failed.
   /// unsuccessful.
-  void PublishActorStateTransition(
-      const ActorID &actor_id, const ActorTableData &data,
-      const ray::gcs::ActorTable::WriteCallback &failure_callback);
+  void PublishActorStateTransition(const ActorID &actor_id, const ActorTableData &data,
+                                   bool tolerate_failure);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.

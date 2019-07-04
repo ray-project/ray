@@ -1,4 +1,4 @@
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
@@ -70,50 +70,60 @@ namespace ray {
 
 namespace gcs {
 
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, CommandType command_type,
-                               bool is_test_client = false,
-                               const std::string &password = "") {
+AsyncGcsClient::AsyncGcsClient(const ClientOption &option, const ClientInfo &info)
+    : GcsClientInterface(option, info) {
+  option_ = option;
+  info_ = info;
+}
+
+Status AsyncGcsClient::Connect(boost::asio::io_service &io_service) {
+  RAY_CHECK(!is_connected_);
+
+  if (option_.server_ip_.empty()) {
+    RAY_LOG(ERROR) << "connect failed, gcs service address is empty.";
+    return Status::Invalid("gcs service address is invalid!");
+  }
+
   primary_context_ = std::make_shared<RedisContext>();
 
   RAY_CHECK_OK(
-      primary_context_->Connect(address, port, /*sharding=*/true, /*password=*/password));
+      primary_context_->Connect(option_.server_ip_, option_.server_port_,
+                                /*sharding=*/true, /*password=*/option_.password_));
 
-  if (!is_test_client) {
+  if (!option_.is_test_client_) {
     // Moving sharding into constructor defaultly means that sharding = true.
     // This design decision may worth a look.
     std::vector<std::string> addresses;
     std::vector<int> ports;
     GetRedisShards(primary_context_->sync_context(), addresses, ports);
-    if (addresses.size() == 0 || ports.size() == 0) {
-      addresses.push_back(address);
-      ports.push_back(port);
+    if (addresses.size() == 0) {
+      RAY_CHECK(ports.empty());
+      addresses.push_back(option_.server_ip_);
+      ports.push_back(option_.server_port_);
     }
 
-    // Populate shard_contexts.
     for (size_t i = 0; i < addresses.size(); ++i) {
+      // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>());
-    }
-
-    RAY_CHECK(shard_contexts_.size() == addresses.size());
-    for (size_t i = 0; i < addresses.size(); ++i) {
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
-                                               /*password=*/password));
+                                               /*password=*/option_.password_));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(address, port, /*sharding=*/true,
-                                             /*password=*/password));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(option_.server_ip_, option_.server_port_,
+                                              /*sharding=*/true,
+                                              /*password=*/option_.password_));
   }
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
-  client_table_.reset(new ClientTable({primary_context_}, this, client_id));
+  client_table_.reset(new ClientTable({primary_context_}, this, info_.GetClientID()));
   error_table_.reset(new ErrorTable({primary_context_}, this));
   job_table_.reset(new JobTable({primary_context_}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this));
-  raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type));
+  raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this,
+                                                 option_.command_type_));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
@@ -121,45 +131,23 @@ AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
-  command_type_ = command_type;
 
-  // TODO(swang): Call the client table's Connect() method here. To do this,
-  // we need to make sure that we are attached to an event loop first. This
-  // currently isn't possible because the aeEventLoop, which we use for
-  // testing, requires us to connect to Redis first.
+  actor_accessor_.reset(new ActorStateAccessor(*this));
+
+  Status status = Attach(io_service);
+  // TODO(swang or micafan): Call the client table's Connect() method here.
+  // Will do it in next PR(ClientTable). And synchronous connect is better.
+
+  is_connected_ = status.ok() ? true : false;
+  RAY_LOG(INFO) << "RedisGcsClient Connect status=" << status << " client_id="
+    << info_.GetClientID();
+  return status;
 }
 
-#if RAY_USE_NEW_GCS
-// Use of kChain currently only applies to Table::Add which affects only the
-// task table, and when RAY_USE_NEW_GCS is set at compile time.
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false,
-                               const std::string &password = "")
-    : AsyncGcsClient(address, port, client_id, CommandType::kChain, is_test_client,
-                     password) {}
-#else
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const ClientID &client_id, bool is_test_client = false,
-                               const std::string &password = "")
-    : AsyncGcsClient(address, port, client_id, CommandType::kRegular, is_test_client,
-                     password) {}
-#endif  // RAY_USE_NEW_GCS
-
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               CommandType command_type)
-    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type) {}
-
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               CommandType command_type, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::FromRandom(), command_type,
-                     is_test_client) {}
-
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port,
-                               const std::string &password = "")
-    : AsyncGcsClient(address, port, ClientID::FromRandom(), false, password) {}
-
-AsyncGcsClient::AsyncGcsClient(const std::string &address, int port, bool is_test_client)
-    : AsyncGcsClient(address, port, ClientID::FromRandom(), is_test_client) {}
+void AsyncGcsClient::Disconnect() {
+  // TODO(micafan) Call the client table's Disconnect here. Synchronous disconnect
+  // is better.
+}
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.

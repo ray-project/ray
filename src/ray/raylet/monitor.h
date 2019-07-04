@@ -5,7 +5,7 @@
 #include <unordered_set>
 
 #include "ray/common/id.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 

@@ -1,14 +1,13 @@
 #include "ray/gcs/actor_state_accessor.h"
 #include <boost/none.hpp>
-#include "ray/gcs/client.h"
-#include "ray/gcs/gcs_client_impl.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 namespace gcs {
 
-ActorStateAccessor::ActorStateAccessor(GcsClientImpl &client_impl)
+ActorStateAccessor::ActorStateAccessor(AsyncGcsClient &client_impl)
     : client_impl_(client_impl) {}
 
 Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id,
@@ -19,14 +18,14 @@ Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id
     callback(Status::OK(), data);
   };
 
-  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  ActorTable &actor_table = client_impl_.actor_table();
   return actor_table.Lookup(job_id, actor_id, on_done);
 }
 
 Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id,
                                     std::shared_ptr<ActorTableData> data_ptr,
                                     size_t log_length, const StatusCallback &callback) {
-  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  ActorTable &actor_table = client_impl_.actor_table();
   if (callback != nullptr) {
     auto on_success = [callback, data_ptr](
         AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
@@ -61,14 +60,14 @@ Status ActorStateAccessor::AsyncSubscribe(
     }
   };
 
-  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  ActorTable &actor_table = client_impl_.actor_table();
   return actor_table.Subscribe(job_id, client_id, on_subscribe, on_done);
 }
 
 Status ActorStateAccessor::RequestNotifications(const JobID &job_id,
                                                 const ActorID &actor_id,
                                                 const ClientID &client_id) {
-  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  ActorTable &actor_table = client_impl_.actor_table();
   actor_table.RequestNotifications(job_id, actor_id, client_id);
   return Status::OK();
 }
@@ -76,7 +75,7 @@ Status ActorStateAccessor::RequestNotifications(const JobID &job_id,
 Status ActorStateAccessor::CancelNotifications(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ClientID &client_id) {
-  ActorTable &actor_table = client_impl_.AsyncClient().actor_table();
+  ActorTable &actor_table = client_impl_.actor_table();
   actor_table.CancelNotifications(job_id, actor_id, client_id);
   return Status::OK();
 }
@@ -96,9 +95,13 @@ Status ActorStateAccessor::AsyncGetCheckpointIds(
     callback(Status::KeyError("JobID or ActorID not exist."), std::move(result));
   };
 
-  ActorCheckpointIdTable &checkpoint_id_table =
-      client_impl_.AsyncClient().actor_checkpoint_id_table();
+  ActorCheckpointIdTable &checkpoint_id_table = client_impl_.actor_checkpoint_id_table();
   return checkpoint_id_table.Lookup(job_id, actor_id, on_success, on_failure);
+}
+
+std::string ActorStateAccessor::DebugString() const {
+  ActorTable &actor_table = client_impl_.actor_table();
+  return actor_table.DebugString();
 }
 
 }  // namespace gcs

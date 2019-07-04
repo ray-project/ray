@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/raylet/raylet.h"
@@ -36,6 +37,24 @@ static std::vector<std::string> parse_worker_command(std::string worker_command)
   std::vector<std::string> result(std::istream_iterator<std::string>{iss},
                                   std::istream_iterator<std::string>());
   return result;
+}
+
+ray::rpc::ClientTableData PopulateRayletInfo(
+    const ray::ObjectManagerConfig &object_manager_config,
+    const ray::raylet::NodeManagerConfig &node_manager_config) {
+  ray::rpc::ClientTableData raylet_info;
+  ray::ClientID client_id = ray::ClientID::FromRandom();
+  raylet_info.set_client_id(client_id.Binary());
+  raylet_info.set_node_manager_address(FLAGS_node_ip_address);
+  raylet_info.set_raylet_socket_name(FLAGS_raylet_socket_name);
+  raylet_info.set_object_store_socket_name(object_manager_config.store_socket_name);
+  raylet_info.set_object_manager_port(FLAGS_object_manager_port);
+  raylet_info.set_node_manager_port(FLAGS_node_manager_port);
+  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
+    raylet_info.add_resources_total_label(resource_pair.first);
+    raylet_info.add_resources_total_capacity(resource_pair.second);
+  }
+  return raylet_info;
 }
 
 int main(int argc, char *argv[]) {
@@ -159,10 +178,14 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service main_service;
 
   //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port,
-                                                               redis_password);
-  RAY_LOG(DEBUG) << "Initializing GCS client "
-                 << gcs_client->client_table().GetLocalClientId();
+  ray::gcs::ClientOption client_option(redis_address, redis_port, redis_password);
+  ray::rpc::ClientTableData raylet_info =
+      std::move(PopulateRayletInfo(object_manager_config, node_manager_config));
+  ray::gcs::ClientInfo client_info(raylet_info);
+  auto gcs_client =
+      std::make_shared<ray::gcs::AsyncGcsClient>(client_option, client_info);
+  RAY_LOG(DEBUG) << "Initializing GCS client " << gcs_client->GetClientID();
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
       main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
@@ -173,7 +196,7 @@ int main(int argc, char *argv[]) {
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
-                     const boost::system::error_code &error, int signal_number) {
+      const boost::system::error_code &error, int signal_number) {
     auto shutdown_callback = [&server, &main_service]() {
       server.reset();
       main_service.stop();

@@ -2,7 +2,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/util.h"
 #include "ray/util/util.h"
 
@@ -635,8 +635,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableData &data) {
   auto connected_client_id = ClientID::FromBinary(data.client_id());
-  RAY_CHECK(client_id_ == connected_client_id)
-      << connected_client_id << " " << client_id_;
+  RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
+                                               << client_id_;
 }
 
 const ClientID &ClientTable::GetLocalClientId() const { return client_id_; }
@@ -665,8 +665,8 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
 
     // Callback for a notification from the client table.
     auto notification_callback = [this](
-                                     AsyncGcsClient *client, const UniqueID &log_key,
-                                     const std::vector<ClientTableData> &notifications) {
+        AsyncGcsClient *client, const UniqueID &log_key,
+        const std::vector<ClientTableData> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       std::unordered_map<std::string, ClientTableData> connected_nodes;
       std::unordered_map<std::string, ClientTableData> disconnected_nodes;
@@ -758,8 +758,8 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
-                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
-                             const ActorCheckpointIdData &data) {
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
         std::make_shared<ActorCheckpointIdData>(data);
     copy->add_timestamps(current_sys_time_ms());
@@ -776,7 +776,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, job_id, actor_id](
-                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());

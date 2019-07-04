@@ -11,7 +11,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 
 namespace ray {

@@ -16,10 +16,12 @@ using OptionalItemCallback =
     std::function<void(Status status, boost::optional<Data> datum)>;
 
 template <typename Data>
-using MultiItemCallback = std::function<void(Status status, std::vector<Data> datums)>;
+using MultiItemCallback =
+    std::function<void(Status status, const std::vector<Data> &datums)>;
 
 template <typename ID, typename Data>
-using SubscribeCallback = std::function<void(ID id, std::vector<Data> datums)>;
+using SubscribeCallback =
+    std::function<void(const ID &id, const std::vector<Data> &datums)>;
 
 }  // namespace gcs
 

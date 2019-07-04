@@ -17,10 +17,11 @@ namespace raylet {
 /// the client table, which broadcasts the event to all other Raylets.
 Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
                  int redis_port, const std::string &redis_password)
-    : gcs_client_(redis_address, redis_port, redis_password),
+    : gcs_client_(gcs::ClientOption(redis_address, redis_port, redis_password),
+                  gcs::ClientInfo(ClientID::FromRandom())),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
-  RAY_CHECK_OK(gcs_client_.Attach(io_service));
+  RAY_CHECK_OK(gcs_client_.Connect(io_service));
 }
 
 void Monitor::HandleHeartbeat(const ClientID &client_id,
@@ -48,8 +49,8 @@ void Monitor::Tick() {
         auto client_id = it->first;
         RAY_LOG(WARNING) << "Client timed out: " << client_id;
         auto lookup_callback = [this, client_id](
-                                   gcs::AsyncGcsClient *client, const ClientID &id,
-                                   const std::vector<ClientTableData> &all_data) {
+            gcs::AsyncGcsClient *client, const ClientID &id,
+            const std::vector<ClientTableData> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
             if (client_id.Binary() == data.client_id() &&
