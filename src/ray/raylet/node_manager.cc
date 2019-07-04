@@ -2010,8 +2010,17 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID& parent_actor_id, 
                   const TaskSpecification& task_spec, bool resumed_from_checkpoint) {
-  // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
+  // Halt creation if parent actor is dead
+  auto parent_actor_entry = actor_registry_.find(parent_actor_id);
+  if (parent_actor_entry != actor_registry_.end() &&
+                  parent_actor_entry->second.GetState() == ActorTableData::DEAD){
+    RAY_LOG(DEBUG) << "Halting creation of actor " << actor_id << " as parent actor "
+                   << parent_actor_id << " is dead";
+    return;
+  }
+
+  // Notify the other node managers that the actor has been created.
   auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
   new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
   if (resumed_from_checkpoint) {
