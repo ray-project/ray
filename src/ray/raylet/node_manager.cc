@@ -668,12 +668,19 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       SubmitTask(method, Lineage());
     }
   } else if (actor_registration.GetState() == ActorTableData::DEAD) {
-    // When an actor dies, loop over all of the queued tasks for that actor
-    // and treat them as failed.
+    // When an actor dies, loop over (i) all of the queued tasks for that actor
+    // and treat them as failed (ii) all actors and kill those whose parent actor
+    // is the actor that just died.
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
+    }
+    for (auto &actor_entry_it: actor_registry_){
+      if (actor_entry_it.second.GetParentActorID() == actor_id){
+        //Kill this actor as it is a child of the dead actor.
+        HandleDisconnectedActor(actor_entry_it.first, true, true);
+      }
     }
   } else {
     RAY_CHECK(actor_registration.GetState() == ActorTableData::RECONSTRUCTING);

@@ -60,6 +60,11 @@ class ActorRegistration {
   /// Update actor's state.
   void SetState(const ActorState &state) { actor_table_data_.set_state(state); }
 
+  /// Get the actor's parent's ActorID.
+  ///
+  /// \return Parent actor's ActorID..
+  const ActorID GetParentActorID() const;
+
   /// Get the actor's node manager location.
   ///
   /// \return The actor's node manager location. All tasks for the actor should

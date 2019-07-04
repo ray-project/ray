@@ -31,6 +31,10 @@ ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
   }
 }
 
+const ActorID ActorRegistration::GetParentActorID() const {
+  return ActorID::FromBinary(actor_table_data_.parent_actor_id());
+}
+
 const ClientID ActorRegistration::GetNodeManagerId() const {
   return ClientID::FromBinary(actor_table_data_.node_manager_id());
 }
