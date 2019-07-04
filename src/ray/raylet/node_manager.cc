@@ -1917,7 +1917,7 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const TaskSpeci
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorID actor_id;
   ActorHandleID actor_handle_id;
-  TaskSpecification task_spec = task.GetTaskSpecification();
+  const TaskSpecification task_spec = task.GetTaskSpecification();
   bool resumed_from_checkpoint = false;
   if (task_spec.IsActorCreationTask()) {
     actor_id = task_spec.ActorCreationId();
@@ -2011,7 +2011,7 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
 void NodeManager::FinishAssignedActorCreationTask(const ActorID& parent_actor_id, 
                   const TaskSpecification& task_spec, bool resumed_from_checkpoint) {
   // Notify the other node managers that the actor has been created.
-  ActorID actor_id = task_spec.ActorCreationId();
+  const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
   new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
   if (resumed_from_checkpoint) {
