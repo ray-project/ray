@@ -154,12 +154,12 @@ cc_library(
     copts = COPTS,
     deps = [
         ":grpc_common_lib",
-        ":worker_cc_grpc",
         ":ray_common",
+        ":worker_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
-) 
+)
 
 # === End of rpc definitions ===
 
@@ -246,11 +246,11 @@ cc_library(
         ":gcs_fbs",
         ":node_manager_fbs",
         ":node_manager_rpc",
-        ":worker_rpc",
         ":object_manager",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
+        ":worker_rpc",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
