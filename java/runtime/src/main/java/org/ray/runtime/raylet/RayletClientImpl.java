@@ -88,13 +88,13 @@ public class RayletClientImpl implements RayletClient {
     Preconditions.checkState(!spec.parentTaskId.isNil());
     Preconditions.checkState(!spec.jobId.isNil());
 
-    ByteBuffer info = convertTaskSpecToProtobuf(spec);
+    byte[] taskSpec = convertTaskSpecToProtobuf(spec);
     byte[] cursorId = null;
     if (!spec.getExecutionDependencies().isEmpty()) {
       //TODO(hchen): handle more than one dependencies.
       cursorId = spec.getExecutionDependencies().get(0).getBytes();
     }
-    nativeSubmitTask(client, cursorId, info, info.position(), info.remaining());
+    nativeSubmitTask(client, cursorId, taskSpec);
   }
 
   @Override
@@ -171,11 +171,7 @@ public class RayletClientImpl implements RayletClient {
         args[i] = FunctionArg
             .passByReference(ObjectId.fromByteBuffer(arg.getObjectIds(0).asReadOnlyByteBuffer()));
       } else {
-        ByteBuffer lbb = arg.getData().asReadOnlyByteBuffer();
-        Preconditions.checkState(lbb != null && lbb.remaining() > 0);
-        byte[] data = new byte[lbb.remaining()];
-        lbb.get(data);
-        args[i] = FunctionArg.passByValue(data);
+        args[i] = FunctionArg.passByValue(arg.getData().toByteArray());
       }
     }
 
@@ -183,9 +179,9 @@ public class RayletClientImpl implements RayletClient {
     Preconditions.checkArgument(taskSpec.getLanguage() == Common.Language.JAVA);
     Preconditions.checkArgument(taskSpec.getFunctionDescriptorCount() == 3);
     JavaFunctionDescriptor functionDescriptor = new JavaFunctionDescriptor(
-        taskSpec.getFunctionDescriptor(0).toString(Charset.defaultCharset()),
-        taskSpec.getFunctionDescriptor(1).toString(Charset.defaultCharset()),
-        taskSpec.getFunctionDescriptor(2).toString(Charset.defaultCharset())
+        taskSpec.getFunctionDescriptor(0).toStringUtf8(),
+        taskSpec.getFunctionDescriptor(1).toStringUtf8(),
+        taskSpec.getFunctionDescriptor(2).toStringUtf8()
     );
 
     // Parse ActorCreationTaskSpec.
@@ -222,7 +218,7 @@ public class RayletClientImpl implements RayletClient {
         args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
-  private static ByteBuffer convertTaskSpecToProtobuf(TaskSpec task) {
+  private static byte[] convertTaskSpecToProtobuf(TaskSpec task) {
     // Set common fields.
     Common.TaskSpec.Builder builder = Common.TaskSpec.newBuilder()
         .setJobId(ByteString.copyFrom(task.jobId.getBytes()))
@@ -289,18 +285,7 @@ public class RayletClientImpl implements RayletClient {
       builder.setType(TaskType.NORMAL_TASK);
     }
 
-    ByteBuffer buffer = taskSpecBuffer.get();
-    buffer.clear();
-    Common.TaskSpec spec = builder.build();
-    spec.toByteString().copyTo(buffer);
-
-    if (buffer.remaining() > TASK_SPEC_BUFFER_SIZE) {
-      LOGGER.error(
-          "Allocated buffer is not enough to transfer the task specification: {} vs {}",
-          TASK_SPEC_BUFFER_SIZE, buffer.remaining());
-      throw new RuntimeException("Allocated buffer is not enough to transfer to task.");
-    }
-    return buffer;
+    return builder.build().toByteArray();
   }
 
   public void setResource(String resourceName, double capacity, UniqueId nodeId) {
@@ -327,8 +312,7 @@ public class RayletClientImpl implements RayletClient {
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
       boolean isWorker, byte[] driverTaskId);
 
-  private static native void nativeSubmitTask(long client, byte[] cursorId, ByteBuffer taskBuff,
-      int pos, int taskSize) throws RayException;
+  private static native void nativeSubmitTask(long client, byte[] cursorId, byte[] taskSpec) throws RayException;
 
   // return TaskInfo (in FlatBuffer)
   private static native byte[] nativeGetTask(long client) throws RayException;
