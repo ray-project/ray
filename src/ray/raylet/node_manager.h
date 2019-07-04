@@ -215,7 +215,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ActorTableData CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
-  /// \param task The actor task or actor creationt ask.
+  /// \param task The actor task or actor creation task.
   /// \return Void.
   void FinishAssignedActorTask(Worker &worker, const Task &task);
   /// Helper function for handling worker to finish its assigned actor task 
