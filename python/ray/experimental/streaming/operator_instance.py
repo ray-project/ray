@@ -58,8 +58,8 @@ class OperatorInstance(object):
                  input_gate,
                  output_gate,
                  checkpoint_dir):
-        self.metadata = operator_metadata
         self.instance_id = instance_id  # (Operator id, local instance id)
+        self.metadata = operator_metadata
         self.input = input_gate
         self.output = output_gate
         self.this_actor = None      # An actor handle to self
@@ -71,7 +71,7 @@ class OperatorInstance(object):
 
         # Logging-related attributes
         self.logging = self.metadata.logging
-        if self.logging:
+        if self.logging:  # Log rates
             self.input.enable_logging()
             self.output.enable_logging()
 
@@ -81,9 +81,9 @@ class OperatorInstance(object):
 
     # Used for attribute-based key extraction, e.g. for classes
     def _attribute_based_selector(self, record):
-        return vars(record)[self.key_attribute]
+        return record[self.key_attribute]
 
-    # Used to register own handle so that the actor can schedule itself
+    # Registers own handle
     def _register_handle(self, actor_handle):
         self.this_actor = actor_handle
 
@@ -114,13 +114,11 @@ class OperatorInstance(object):
                     channel.register_destination_actor(actor_handle)
                     return
 
-    # Registers the handle of an upstream actor
-    def _register_upstream_actor_handle_ids(self, upstream_actor_handle_ids):
-        self._ray_upstream_actor_handle_ids = upstream_actor_handle_ids
-
+    # Used by apply()
     def _apply(self, record):
         raise Exception("OperatorInstances must implement _apply()")
 
+    # Used by apply_batch()
     def _apply_batch(self, batch):
         raise Exception("OperatorInstances must implement _apply_batch()")
 
@@ -154,6 +152,12 @@ class OperatorInstance(object):
             comes from.
         """
         self._apply_batch(batch)
+
+    # Returns state of stateful operator instances
+    def state(self):
+        message = "Called state() on an actor of type {}, which is not "
+        message += " stateful."
+        raise Exception(message)
 
     # Returns the logged rates (if any)
     def logs(self):
@@ -199,42 +203,6 @@ class ProgressMonitor(object):
             if len(self.start_signals) == len(actor_handles):
                 return
 
-# A source actor that reads a text file line by line
-@ray.remote
-class ReadTextFile(OperatorInstance):
-    """A source operator instance that reads a text file line by line.
-
-    Attributes:
-        filepath (string): The path to the input file.
-    """
-
-    def __init__(self,
-                 instance_id,
-                 operator_metadata,
-                 input_gate,
-                 output_gate):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate)
-        self.filepath = operator_metadata.filepath
-        # TODO (john): Handle possible exception here
-        self.reader = open(self.filepath, "r")
-
-    # Read input file line by line
-    def start(self):
-        while True:
-            record = self.reader.readline()
-            # Reader returns empty string ('') on EOF,
-            # so a 'record is None' condition doesn't work here
-            if not record:
-                # Flush any remaining records to plasma and close the file
-                self.output._flush(close=True)
-                self.reader.close()
-                signal.send(ActorExit(self.instance_id))
-                return
-            # Push after removing newline characters
-            self.output._push(record[:-1])
-
-
 # Map actor
 @ray.remote
 class Map(OperatorInstance):
@@ -256,6 +224,7 @@ class Map(OperatorInstance):
     # Applies map logic on a batch of records
     def _apply_batch(self, batch):
         self.output._push_batch(self.map_fn(batch))
+
 
 # Flatmap actor
 @ray.remote
@@ -284,9 +253,9 @@ class FlatMap(OperatorInstance):
 class Union(OperatorInstance):
     """A union operator instance that concatenates two or more streams."""
 
-    # Task-based union execution on a set of batches
-    def _apply(self, record):
-        self.output._push(record)
+    # Merges all input records into a single output
+    def _apply(self, batch):
+        self.output._push_batch(batch)
 
 # Join actor
 @ray.remote
@@ -300,13 +269,14 @@ class Join(OperatorInstance):
         OperatorInstance.__init__(self, instance_id,
                                   operator_metadata, input_gate, output_gate,
                                   checkpoint_dir)
+        # The user-defined join logic
         self.join_logic = operator_metadata.logic
         assert(self.join_logic is not None), (self.join_logic)
         self.left = operator_metadata.left_input_operator_id
         self.right = operator_metadata.right_input_operator_id
         self.process_logic = None
 
-    # Task-based join execution on a set of batches
+    # Applies join logic on a batch of records
     def apply(self, batches, channel_id, source_operator_id, checkpoint_epoch):
         # Distringuish between left and right input and set the right logic
         # We expect this to be as cheap as setting a pointer
@@ -323,164 +293,6 @@ class Join(OperatorInstance):
         else:
             self.output._push_all(self.process_logic(record))
 
-# Event-time window actor
-@ray.remote
-class EventTimeWindow(OperatorInstance):
-    """An event time window operator instance (tumbling or sliding)."""
-
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
-                                  checkpoint_dir)
-        self.window_length_ms =operator_metadata.window_length_ms
-        self.slide_ms = operator_metadata.slide_ms
-        aggregator = operator_metadata.aggregation_logic
-        self.aggregator = aggregator  # The user-defined aggregator
-        # Assignment of records to windows is done based on the type of state
-        #self.__assign = self.__assigner_2 if aggregator else self.__assigner_1
-        self.__assign = self.__assigner_3
-        # Local state is organized beased on whether the user has given an
-        # aggregation function or not. In the former case, state is a list
-        # of widnow ids, each one associated with a list of tuples. This is
-        # allows for fast pre-aggregation. In the latter case, state is a list
-        # of tuples, each one associated with a list of window ids. This is
-        # better as we avoid replicating (possibly large) records to windows
-        self.state = {}
-        # An (optional) offset that serves as the min window (bucket) id
-        self.offset = operator_metadata.offset
-        # Range of window ids (used to find the windows a records belongs to)
-        self.range = math.trunc(math.ceil(
-                                self.window_length_ms / self.slide_ms))
-        # Register channel_ids to the output in order to forward watermarks
-        for channel in self.input.input_channels:
-            # Keep the last seen watermark from each input channel
-            self.output.input_channels[channel.id] = 0
-
-    def collect_expired_windows(self, watermark):
-        result = []
-        event_time = watermark['event_time']
-        min_open_window = (event_time // self.slide_ms) - self.range + 1
-        indexes = []
-        for w, window in self.state.items():
-            if w < min_open_window: # Window has expired
-                if self.aggregator is None:
-                    for record in window:
-                        record['window'] = w
-                        record['system_time'] = watermark['system_time']
-                    result += window
-                else:
-                    for auction, count in window.items():
-                        record = {
-                                'auction': auction,
-                                'count': count,
-                                'window': w,
-                                'system_time': watermark['system_time'],
-                                'event_type': 'Record',
-                                }
-                        result.append(record)
-                indexes.append(w)
-                logger.debug("XXX Firing window %d on time %d", w, event_time)
-        for i in indexes:
-            self.state.pop(i)
-        return result
-
-    # Collects windows that have expired
-    def __collect_expired_windows(self, watermark):
-        result = []
-        event_time = watermark['event_time']
-        min_open_window = (event_time // self.slide_ms) - self.range + 1
-        # logger.info("Min window: {}".format(min_open_window))
-        if self.aggregator is not None:  # window id -> state
-            indexes = []
-            for i, (window, state) in enumerate(self.state):
-                if window < min_open_window: # Window has expired
-                    record = Record(content=(window, state),
-                                    system_time=watermark['system_time']).__dict__
-                    result.append(record)
-                    indexes.append(i)
-            for window_index in indexes:  # Update state
-                self.state.pop(window_index)
-        else:  # record -> window ids
-            for i, (record, windows) in enumerate(self.state):
-                indexes = []
-                for j, window in enumerate(windows):
-                    if window < min_open_window:  # Window has expired
-                        r = Record(content=(window, record),
-                                   system_time=watermark['system_time']).__dict__
-                        result.append(r)
-                        indexes.append(j)
-                for window_index in indexes:  # Update state
-                    self.state[i][1].pop(window_index)
-        return result
-
-    # Finds the windows a record belongs to
-    def __find_windows(self, record):
-        windows = []
-        event_time = record["dateTime"]
-        slot = -1
-        slot = event_time // self.slide_ms
-        window_end = (slot * self.slide_ms) + self.window_length_ms
-        # logger.info("Window end: {}".format(window_end))
-        if event_time > window_end:  # Can happen when slide is bigger
-            return windows           # than the window
-        min = slot - self.range + 1
-        # TODO (john): Check if this is the correct semantics for offset
-        min_window_id = min if min >= self.offset else self.offset
-        max_window_id = slot if slot >= self.offset else self.offset
-        windows = list(range(min_window_id, max_window_id + 1))
-        return windows
-
-    # Updates the list of windows a record belongs to
-    def __assigner_1(self, record):
-        # This type of state is not a good fit for efficient pre-aggregation
-        assert self.aggregator is None, (self.aggregator)
-        windows = self.__find_windows(record)
-        if len(windows) > 0:  # Handle special case where some records do not
-            # fall in any window because the slide is larger than the window
-            self.state.append((record, windows))
-
-    # Replicates the result of the aggregation to all
-    # windows (buckets) affected by the input record
-    def __assigner_2(self, record):
-        assert self.aggregator is not None, (self.aggregator)
-        windows = self.__find_windows(record)
-        # logger.info("Windows for input record with timestamp {}: {}".format(
-        #             record.dateTime, windows))
-        for window in windows:
-            slot, state = next(((w, s) for w, s in self.state
-                               if w == window), (None, None))
-            if slot is None:  # New window
-                init_state = [self.aggregator.initialize(record)]
-                # logger.info("Init state for window {} is {}".format(window,
-                #             init_state))
-                self.state.append((window, init_state))
-            else:  # Apply pre-aggregation and update state
-                self.aggregator.update(state, record)
-
-    def __assigner_3(self, record):
-        windows = self.__find_windows(record)
-        if self.aggregator is not None:
-            for w in windows:
-                if w not in self.state:
-                    self.state[w] = self.aggregator.initialize_window()
-                self.aggregator.update(self.state[w], record)
-        else:
-            for w in windows:
-                if w not in self.state:
-                    self.state[w] = []
-                self.state[w].append(record)
-
-    # Task-based window execution on a set of batches
-    def _apply(self, record):
-        if record['event_type'] == 'Watermark':  # It is a watermark
-            logger.debug("XXX WATERMARK %f", record['event_time'])
-            # Fire windows that have expired
-            windows = self.collect_expired_windows(record)
-            self.output._push_all(windows)  # Push records
-            self.output._push(record)       # Propagate watermark
-        else:  # It is a data record
-            self.__assign(record)
 
 # Reduce actor
 @ray.remote
@@ -515,10 +327,6 @@ class Reduce(OperatorInstance):
         elif not isinstance(self.attribute_selector, types.FunctionType):
             sys.exit("Unrecognized or unsupported key selector.")
 
-    # Returns the local state of the actor
-    def state(self):
-        return self.state
-
     # Task-based reduce execution on a set of batches
     def _apply(self, record):
         _time, key, rest = record
@@ -532,6 +340,10 @@ class Reduce(OperatorInstance):
         except KeyError:  # Key does not exist in state
             self.state.setdefault(key, new_value)
         self.output._push((_time, key, new_value))
+
+    # Returns the local state of the actor
+    def state(self):
+        return self.state
 
 
 @ray.remote
