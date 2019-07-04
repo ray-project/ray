@@ -40,6 +40,7 @@ class TFSaverTest(unittest.TestCase):
                 "activation": "relu",
             },
             "num_samples": 1,
+            "reuse_actors": False
         }
 
         trials = tune.run(
@@ -48,7 +49,7 @@ class TFSaverTest(unittest.TestCase):
             scheduler=FrequentPausesScheduler(),
             **mnist_spec)
         # This may fail because the restore fails.
-        self.assertEquals(trials[0].last_result["global_step"], ITERS)
+        self.assertEquals(trials[0].last_result["training_iteration"], ITERS)
 
 
 if __name__ == "__main__":

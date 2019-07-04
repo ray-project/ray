@@ -293,8 +293,7 @@ class Trainable(object):
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
-            "savedir": tmpdir,
-            "checkpoint_path": checkpoint_path,
+            "checkpoint_path": os.path.relpath(checkpoint_path, tmpdir),
             "data": data,
         })
         if len(data_dict) > 10e6:  # getting pretty large
@@ -335,15 +334,10 @@ class Trainable(object):
 
         These checkpoints are returned from calls to save_to_object().
         """
-
+        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         info = pickle.loads(obj)
         data = info["data"]
-        tmpdir = info["savedir"]
-        if not os.path.exists(tmpdir):
-            # We recreate the same subtree and path.
-            os.makedirs(tmpdir)
-
-        checkpoint_path = info["checkpoint_path"]
+        checkpoint_path = os.path.join(tmpdir, info["checkpoint_path"])
 
         for relpath_name, file_contents in data.items():
             path = os.path.join(tmpdir, relpath_name)

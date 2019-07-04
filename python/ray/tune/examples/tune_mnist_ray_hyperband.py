@@ -174,7 +174,8 @@ class TrainMNIST(Trainable):
 
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
-        self.saver = tf.train.Saver(save_relative_path=True)
+        self.global_step = 0  # This is just here for testing purposes.
+        self.saver = tf.train.Saver(save_relative_paths=True)
 
     def _train(self):
         for i in range(10):
@@ -195,18 +196,32 @@ class TrainMNIST(Trainable):
                 self.y_: batch[1],
                 self.keep_prob: 1.0
             })
-
+        self.global_step += 1
         return {
+            "global_step": self.global_step,
             "mean_accuracy": train_accuracy
         }
 
     def _save(self, checkpoint_dir):
         prefix = self.saver.save(
-            self.sess, os.path.join(checkpoint_dir, "save"), global_step=self._iteration)
+            self.sess,
+            os.path.join(checkpoint_dir, "save"),
+            global_step=self.global_step)
+        with open(os.path.join(checkpoint_dir, "checkpoint-data.pkl"),
+                  "wb") as f:
+            pickle.dump({
+                "global_step": self.global_step,
+                "prefix": os.path.relpath(prefix, checkpoint_dir)
+            }, f)
         return checkpoint_dir
 
     def _restore(self, checkpoint_dir):
-        self.saver.restore(self.sess, os.path.join(checkpoint_dir, "save"))
+        with open(os.path.join(checkpoint_dir, "checkpoint-data.pkl"),
+                  "rb") as f:
+            data = pickle.load(f)
+        self.global_step = data["global_step"]
+        self.saver.restore(self.sess,
+                           os.path.join(checkpoint_dir, data["prefix"]))
 
 
 # !!! Example of using the ray.tune Python API !!!
