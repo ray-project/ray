@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import glob
 import os
 import sys
 import subprocess
@@ -62,6 +63,20 @@ def _check_tabulate():
             "Tabulate not installed. Please run `pip install tabulate`.")
 
 
+def get_most_recent_state(experiment_path):
+    experiment_path = os.path.expanduser(experiment_path)
+    if not os.path.isdir(experiment_path):
+        raise TuneError("{} is not a valid directory.".format(experiment_path))
+    experiment_state_paths = glob.glob(
+        os.path.join(experiment_path, "experiment_state*.json"))
+    if not experiment_state_paths:
+        raise TuneError(
+            "No experiment state found in {}!".format(experiment_path))
+    experiment_filename = max(
+        list(experiment_state_paths))  # if more than one, pick latest
+    return experiment_filename
+
+
 def print_format_output(dataframe):
     """Prints output of given dataframe to fit into terminal.
 
@@ -112,7 +127,7 @@ def list_trials(experiment_path,
 
     Args:
         experiment_path (str): Directory where trials are located.
-            Corresponds to Experiment.local_dir/Experiment.name.
+            Like Experiment.local_dir/Experiment.name/experiment*.json.
         sort (list): Keys to sort by.
         output (str): Name of file where output is saved.
         filter_op (str): Filter operation in the format
@@ -124,7 +139,8 @@ def list_trials(experiment_path,
     _check_tabulate()
 
     try:
-        checkpoints_df = ExperimentAnalysis(experiment_path).dataframe()
+        experiment_json = get_most_recent_state(experiment_path)
+        checkpoints_df = ExperimentAnalysis(experiment_json).dataframe()
     except TuneError:
         print("No experiment state found!")
         sys.exit(0)
@@ -143,7 +159,7 @@ def list_trials(experiment_path,
         checkpoints_df["last_update_time"] = datetime_series
 
     if "logdir" in checkpoints_df:
-        # logdir often too verbose to view in table, so drop experiment_path
+        # logdir often too long to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
             experiment_path, "")
 
@@ -214,7 +230,8 @@ def list_experiments(project_path,
         analysis_obj, checkpoints_df = None, None
         try:
             analysis_obj = ExperimentAnalysis(
-                os.path.join(project_path, experiment_dir))
+                get_most_recent_state(
+                    os.path.join(project_path, experiment_dir)))
             checkpoints_df = analysis_obj.dataframe()
         except TuneError:
             logger.debug("No experiment state found in %s", experiment_dir)

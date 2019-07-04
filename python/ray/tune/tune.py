@@ -249,7 +249,7 @@ def run(run_or_experiment,
 
     if return_trials:
         return runner.get_trials()
-    return ExperimentAnalysis(experiment.checkpoint_dir)
+    return ExperimentAnalysis(experiment.checkpoint_file)
 
 
 def run_experiments(experiments,

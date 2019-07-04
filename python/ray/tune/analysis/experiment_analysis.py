@@ -47,7 +47,7 @@ class ExperimentAnalysis(object):
         >>>     experiment_path="~/tune_results/my_exp")
     """
 
-    def __init__(self, experiment_path, trials=None):
+    def __init__(self, experiment_checkpoint_path, trials=None):
         """Initializer.
 
         Args:
@@ -55,18 +55,7 @@ class ExperimentAnalysis(object):
             trials (list|None): List of trials that can be accessed via
                 `analysis.trials`.
         """
-        experiment_path = os.path.expanduser(experiment_path)
-        if not os.path.isdir(experiment_path):
-            raise TuneError(
-                "{} is not a valid directory.".format(experiment_path))
-        experiment_state_paths = glob.glob(
-            os.path.join(experiment_path, "experiment_state*.json"))
-        if not experiment_state_paths:
-            raise TuneError(
-                "No experiment state found in {}!".format(experiment_path))
-        experiment_filename = max(
-            list(experiment_state_paths))  # if more than one, pick latest
-        with open(os.path.join(experiment_path, experiment_filename)) as f:
+        with open(experiment_checkpoint_path) as f:
             self._experiment_state = json.load(f)
 
         if "checkpoints" not in self._experiment_state:
