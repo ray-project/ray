@@ -26,7 +26,7 @@ for workload_file in "$ROOT_DIR"/workloads/*; do
       # Copy the workload to the cluster.
       ray rsync_up $CLUSTER_CONFIG --cluster-name="$workload_name" "$workload_file" "$file_name"
       # Clean up previous runs if relevant.
-      ray exec $CLUSTER_CONFIG --cluster-name="$workload_name" "ray stop; rm -r /tmp/ray; tmux kill-server | true"
+      ray exec $CLUSTER_CONFIG --cluster-name="$workload_name" "source activate tensorflow_p36 && ray stop; rm -r /tmp/ray; tmux kill-server | true"
       # Start the workload.
       ray exec $CLUSTER_CONFIG --cluster-name="$workload_name" "source activate tensorflow_p36 && python $file_name" --tmux
    ) &
