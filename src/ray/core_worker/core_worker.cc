@@ -13,7 +13,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type, const ::Language langu
       task_interface_(worker_context_, raylet_client_),
       object_interface_(worker_context_, raylet_client_, store_socket) {
   int rpc_server_port = 0;
-  if (worker_type_ == WorkerType::WORKER) {
+  if (worker_type_ == ray::WorkerType::WORKER) {
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
                                              object_interface_));
