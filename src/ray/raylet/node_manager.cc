@@ -1978,7 +1978,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
           }
           FinishAssignedActorCreationTask(parent_actor_id, task_spec, resumed_from_checkpoint);
         }));
-  } else if (!resumed_from_checkpoint) {
+  } else {
     // The actor was not resumed from a checkpoint. We extend the actor's
     // frontier as usual since there is no frontier to restore.
     ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, actor_handle_id);
