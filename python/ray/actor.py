@@ -185,7 +185,7 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _last_job_id_exported_for: The ID of the job of the last Ray
+        _last_exported_id: The ID of the last exported session.
             session during which this actor class definition was exported. This
             is an imperfect mechanism used to determine if we need to export
             the remote function again. It is imperfect in the sense that the
@@ -211,7 +211,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._last_job_id_exported_for = None
+        self._last_exported_id = None
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
@@ -344,12 +344,12 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if (self._last_job_id_exported_for is None or
-                    self._last_job_id_exported_for != worker.current_job_id):
+            if (self._last_exported_id is None or
+                    self._last_exported_id != worker.current_exported_id):
                 # If this actor class was exported in a previous session, we
                 # need to export this function again, because current GCS
                 # doesn't have it.
-                self._last_job_id_exported_for = worker.current_job_id
+                self._last_exported_id = worker.current_exported_id
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
 
