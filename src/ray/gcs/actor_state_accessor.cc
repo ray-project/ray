@@ -7,13 +7,13 @@ namespace ray {
 
 namespace gcs {
 
-ActorStateAccessor::ActorStateAccessor(AsyncGcsClient &client_impl)
+ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
     : client_impl_(client_impl) {}
 
 Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id,
                                     const MultiItemCallback<ActorTableData> &callback) {
   RAY_DCHECK(callback != nullptr);
-  auto on_done = [callback](AsyncGcsClient *client, const ActorID &actor_id,
+  auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
                             const std::vector<ActorTableData> &data) {
     callback(Status::OK(), data);
   };
@@ -28,12 +28,12 @@ Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id
   ActorTable &actor_table = client_impl_.actor_table();
   if (callback != nullptr) {
     auto on_success = [callback, data_ptr](
-        AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
+        RedisGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
       callback(Status::OK());
     };
 
     auto on_failure = [callback, data_ptr](
-        AsyncGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
+        RedisGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
       callback(Status::Invalid("Add failed, maybe exceeds max reconstruct number."));
     };
 
@@ -49,12 +49,12 @@ Status ActorStateAccessor::AsyncSubscribe(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_DCHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](AsyncGcsClient *client, const ActorID &actor_id,
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const ActorID &actor_id,
                                   const std::vector<ActorTableData> &data) {
     subscribe(actor_id, data);
   };
 
-  auto on_done = [done](AsyncGcsClient *client) {
+  auto on_done = [done](RedisGcsClient *client) {
     if (done != nullptr) {
       done(Status::OK());
     }
@@ -84,13 +84,13 @@ Status ActorStateAccessor::AsyncGetCheckpointIds(
     const JobID &job_id, const ActorID &actor_id,
     const OptionalItemCallback<ActorCheckpointIdData> &callback) {
   RAY_DCHECK(callback != nullptr);
-  auto on_success = [callback](AsyncGcsClient *client, const ActorID &actor_id,
+  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorCheckpointIdData &data) {
     boost::optional<ActorCheckpointIdData> result(data);
     callback(Status::OK(), std::move(result));
   };
 
-  auto on_failure = [callback](AsyncGcsClient *client, const ActorID &actor_id) {
+  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id) {
     boost::optional<ActorCheckpointIdData> result;
     callback(Status::KeyError("JobID or ActorID not exist."), std::move(result));
   };

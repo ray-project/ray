@@ -17,7 +17,7 @@ class ActorStateAccessorTest : public ::testing::Test {
   virtual void SetUp() {
     GenTestData();
 
-    gcs_client_.reset(new AsyncGcsClient(option_, info_));
+    gcs_client_.reset(new RedisGcsClient(option_, info_));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread.reset(new std::thread([this] {
@@ -73,7 +73,7 @@ class ActorStateAccessorTest : public ::testing::Test {
  protected:
   ClientOption option_;
   ClientInfo info_;
-  std::unique_ptr<AsyncGcsClient> gcs_client_;
+  std::unique_ptr<RedisGcsClient> gcs_client_;
 
   boost::asio::io_service io_service_;
   std::unique_ptr<std::thread> work_thread;

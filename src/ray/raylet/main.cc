@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
       std::move(PopulateRayletInfo(object_manager_config, node_manager_config));
   ray::gcs::ClientInfo client_info(raylet_info);
   auto gcs_client =
-      std::make_shared<ray::gcs::AsyncGcsClient>(client_option, client_info);
+      std::make_shared<ray::gcs::RedisGcsClient>(client_option, client_info);
   RAY_LOG(DEBUG) << "Initializing GCS client " << gcs_client->GetClientID();
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 

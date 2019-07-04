@@ -44,7 +44,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+               std::shared_ptr<gcs::RedisGcsClient> gcs_client)
     : gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
       object_manager_(main_service, object_manager_config, object_directory_),

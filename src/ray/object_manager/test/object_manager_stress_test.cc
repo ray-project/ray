@@ -32,7 +32,7 @@ class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+             std::shared_ptr<gcs::RedisGcsClient> gcs_client)
       : config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
@@ -58,7 +58,7 @@ class MockServer {
   friend class StressTestObjectManager;
 
   ObjectManagerConfig config_;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   ObjectManager object_manager_;
 };
 
@@ -105,8 +105,8 @@ class TestObjectManagerBase : public ::testing::Test {
     rpc::ClientTableData server_info;
     server_info.set_client_id(ClientID::FromRandom().Binary());
     gcs::ClientInfo client_info(server_info);
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient(client_option, client_info));
+    gcs_client_1 = std::shared_ptr<gcs::RedisGcsClient>(
+        new gcs::RedisGcsClient(client_option, client_info));
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
@@ -121,8 +121,8 @@ class TestObjectManagerBase : public ::testing::Test {
     rpc::ClientTableData server_info2;
     server_info2.set_client_id(ClientID::FromRandom().Binary());
     gcs::ClientInfo client_info2(server_info2);
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient(client_option, client_info2));
+    gcs_client_2 = std::shared_ptr<gcs::RedisGcsClient>(
+        new gcs::RedisGcsClient(client_option, client_info2));
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
@@ -172,8 +172,8 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_1;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
   std::unique_ptr<MockServer> server2;
 
@@ -221,7 +221,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+        gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
       ClientID parsed_id = ClientID::FromBinary(data.client_id());
       if (parsed_id == client_id_1 || parsed_id == client_id_2) {
         num_connected_clients += 1;

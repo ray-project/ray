@@ -18,16 +18,16 @@ namespace gcs {
 
 class RedisContext;
 
-class RAY_EXPORT AsyncGcsClient : public GcsClientInterface {
+class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
  public:
-  /// Constructor of AsyncGcsClient.
+  /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
   /// To read and write from the GCS tables requires a further call to Connect()
   /// to the client table. Will fix this in next pr.
   ///
   /// \param ClientOption Options of client, e.g. server address, is test client ...
   /// \param ClientInfo Information of client, e.g. client id, node info and so on
-  AsyncGcsClient(const ClientOption &option, const ClientInfo &info);
+  RedisGcsClient(const ClientOption &option, const ClientInfo &info);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.

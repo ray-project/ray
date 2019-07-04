@@ -9,7 +9,7 @@ namespace ray {
 
 namespace gcs {
 
-class AsyncGcsClient;
+class RedisGcsClient;
 
 /// \class ActorStateAccessor
 /// ActorStateAccessor class encapsulates the implementation details of
@@ -17,7 +17,7 @@ class AsyncGcsClient;
 /// determined at submission time, and mutable fields which determined at runtime).
 class ActorStateAccessor {
  public:
-  ActorStateAccessor(AsyncGcsClient &client_impl);
+  ActorStateAccessor(RedisGcsClient &client_impl);
 
   ~ActorStateAccessor() {}
 
@@ -102,7 +102,7 @@ class ActorStateAccessor {
   std::string DebugString() const;
 
  private:
-  AsyncGcsClient &client_impl_;
+  RedisGcsClient &client_impl_;
 };
 
 }  // namespace gcs

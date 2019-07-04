@@ -68,7 +68,7 @@ namespace raylet {
 
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
-                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+                         std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       io_service_(io_service),
@@ -131,13 +131,13 @@ ray::Status NodeManager::RegisterGcs() {
   // forwarded to the lineage cache, which requests notifications about tasks
   // that were executed remotely.
   const auto task_committed_callback = [this](
-      gcs::AsyncGcsClient *client, const TaskID &task_id,
+      gcs::RedisGcsClient *client, const TaskID &task_id,
       const TaskTableData &task_data) { lineage_cache_.HandleEntryCommitted(task_id); };
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
       task_committed_callback, nullptr, nullptr));
 
-  const auto task_lease_notification_callback = [this](gcs::AsyncGcsClient *client,
+  const auto task_lease_notification_callback = [this](gcs::RedisGcsClient *client,
                                                        const TaskID &task_id,
                                                        const TaskLeaseData &task_lease) {
     const ClientID node_manager_id = ClientID::FromBinary(task_lease.node_manager_id());
@@ -153,7 +153,7 @@ ray::Status NodeManager::RegisterGcs() {
       reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.timeout());
     }
   };
-  const auto task_lease_empty_callback = [this](gcs::AsyncGcsClient *client,
+  const auto task_lease_empty_callback = [this](gcs::RedisGcsClient *client,
                                                 const TaskID &task_id) {
     reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
   };
@@ -175,21 +175,21 @@ ray::Status NodeManager::RegisterGcs() {
       JobID::Nil(), ClientID::Nil(), actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
-  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+  auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,
                                           const ClientTableData &data) {
     ClientAdded(data);
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
   auto node_manager_client_removed = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableData &data) {
+      gcs::RedisGcsClient *client, const UniqueID &id, const ClientTableData &data) {
     ClientRemoved(data);
   };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Register a callback on the client table for resource create/update requests
   auto node_manager_resource_createupdated = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableData &data) {
+      gcs::RedisGcsClient *client, const UniqueID &id, const ClientTableData &data) {
     ResourceCreateUpdated(data);
   };
   gcs_client_->client_table().RegisterResourceCreateUpdatedCallback(
@@ -197,7 +197,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Register a callback on the client table for resource delete requests
   auto node_manager_resource_deleted = [this](
-      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableData &data) {
+      gcs::RedisGcsClient *client, const UniqueID &id, const ClientTableData &data) {
     ResourceDeleted(data);
   };
   gcs_client_->client_table().RegisterResourceDeletedCallback(
@@ -205,7 +205,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added = [this](
-      gcs::AsyncGcsClient *client, const ClientID &id,
+      gcs::RedisGcsClient *client, const ClientID &id,
       const HeartbeatBatchTableData &heartbeat_batch) {
     HeartbeatBatchAdded(heartbeat_batch);
   };
@@ -215,7 +215,7 @@ ray::Status NodeManager::RegisterGcs() {
       /*done_callback=*/nullptr));
 
   // Subscribe to driver table updates.
-  const auto job_table_handler = [this](gcs::AsyncGcsClient *client, const JobID &job_id,
+  const auto job_table_handler = [this](gcs::RedisGcsClient *client, const JobID &job_id,
                                         const std::vector<JobTableData> &job_data) {
     HandleJobTableUpdate(job_id, job_data);
   };
@@ -1172,7 +1172,7 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(
       JobID::Nil(), checkpoint_id, checkpoint_data,
-      [worker, actor_id, this](ray::gcs::AsyncGcsClient *client,
+      [worker, actor_id, this](ray::gcs::RedisGcsClient *client,
                                const ActorCheckpointID &checkpoint_id,
                                const ActorCheckpointData &data) {
         RAY_LOG(DEBUG) << "Checkpoint " << checkpoint_id << " saved for actor "
@@ -1946,7 +1946,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                      << actor_id;
       RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
           JobID::Nil(), checkpoint_id,
-          [this, actor_id, new_actor_data](ray::gcs::AsyncGcsClient *client,
+          [this, actor_id, new_actor_data](ray::gcs::RedisGcsClient *client,
                                            const UniqueID &checkpoint_id,
                                            const ActorCheckpointData &checkpoint_data) {
             RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
@@ -1960,7 +1960,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             HandleActorStateTransition(actor_id, std::move(actor_registration));
             PublishActorStateTransition(actor_id, new_actor_data, false);
           },
-          [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
+          [actor_id](ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id) {
             RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
                            << " for actor " << actor_id << " in GCS.";
           }));
@@ -2003,7 +2003,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
   RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
       JobID::Nil(), task_id,
       /*success_callback=*/
-      [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+      [this](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
              const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
@@ -2012,7 +2012,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         ResubmitTask(task);
       },
       /*failure_callback=*/
-      [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
+      [this](ray::gcs::RedisGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
         RAY_CHECK(lineage_cache_.ContainsTask(task_id))
