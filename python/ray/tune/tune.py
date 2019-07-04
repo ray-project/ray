@@ -49,6 +49,7 @@ def run(run_or_experiment,
         sync_to_driver=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
+        keep_checkpoints_num=None,
         export_formats=None,
         max_failures=3,
         restore=None,
@@ -113,6 +114,8 @@ def run(run_or_experiment,
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        keep_checkpoints_num (int): Number of checkpoints to keep. A value of
+            `None` keeps all checkpoints. Default value to `None`
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
         max_failures (int): Try to recover a trial from its last
@@ -195,6 +198,7 @@ def run(run_or_experiment,
             loggers=loggers,
             checkpoint_freq=checkpoint_freq,
             checkpoint_at_end=checkpoint_at_end,
+            keep_checkpoints_num=keep_checkpoints_num,
             export_formats=export_formats,
             max_failures=max_failures,
             restore=restore,
