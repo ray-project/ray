@@ -127,6 +127,7 @@ const std::unordered_map<ResourceSet, ordered_set<TaskID>>
 const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
                                             TaskState task_state) const {
   const auto &queue = GetTaskQueue(task_state);
+  RAY_LOG(INFO) << "Get task " << task_id << ", task state: " << static_cast<int>(task_state);
   return queue->GetTask(task_id);
 }
 
@@ -218,7 +219,7 @@ void SchedulingQueue::RemoveTasksFromQueue(
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     const auto &task_id = *it;
     if (queue->RemoveTask(task_id, removed_tasks)) {
-      RAY_LOG(DEBUG) << "Removed task " << task_id << " from "
+      RAY_LOG(INFO) << "Removed task " << task_id << " from "
                      << GetTaskStateString(task_state) << " queue";
       it = task_ids.erase(it);
     } else {
@@ -340,7 +341,7 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
 void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_state) {
   auto &queue = GetTaskQueue(task_state);
   for (const auto &task : tasks) {
-    RAY_LOG(DEBUG) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
+    RAY_LOG(INFO) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
                    << GetTaskStateString(task_state) << " queue";
     queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
   }

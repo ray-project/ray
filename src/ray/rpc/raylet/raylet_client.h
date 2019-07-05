@@ -147,7 +147,7 @@ class RayletClient {
 
   ::Language GetLanguage() const { return language_; }
 
-  WorkerID GetWorkerID() const { return worker_id_; }
+  WorkerID GetWorkerId() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
 

@@ -551,8 +551,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
-  /// Reply of get task request is not sent in function HandleGetRequest. Should handle
-  /// reply in AssignTasks function
+  /// Reply of get task request is not sent in function HandleGetTaskRequest. Should block
+  /// the worker and handle reply in AssignTasks function
   std::unordered_map<WorkerID, std::pair<rpc::GetTaskReply *, rpc::RequestDoneCallback>>
       get_task_requests_;
 

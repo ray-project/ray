@@ -31,7 +31,7 @@ pid_t Worker::Pid() const { return pid_; }
 
 Language Worker::GetLanguage() const { return language_; }
 
-const WorkerID &Worker::GetWorkerID() const { return worker_id_; }
+const WorkerID &Worker::GetWorkerId() const { return worker_id_; }
 
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 

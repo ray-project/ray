@@ -28,7 +28,7 @@ class Worker {
   /// Return the worker's PID.
   pid_t Pid() const;
   Language GetLanguage() const;
-  const WorkerID &GetWorkerID() const;
+  const WorkerID &GetWorkerId() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -77,6 +77,7 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
+  /// Record worker heartbeat timeout times.
   int heartbeat_timeout_times_;
 };
 

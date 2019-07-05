@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/protobuf/raylet.pb.h"
 
 namespace ray {
 
@@ -440,8 +441,14 @@ class ResourceIdSet {
   ///
   /// \param fbb A flatbuffer builder object.
   /// \return A flatbuffer serialized version of this object.
-  std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
-      flatbuffers::FlatBufferBuilder &fbb) const;
+  //std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
+  //    flatbuffers::FlatBufferBuilder &fbb) const;
+
+  /// \brief Serialize this object using protobuf.
+  ///
+  /// \param fbb A flatbuffer builder object.
+  /// \return A flatbuffer serialized version of this object.
+  std::vector<rpc::ResourceIdSetInfo> ToProtobuf() const;
 
  private:
   /// A mapping from resource name to a set of resource IDs for that resource.
