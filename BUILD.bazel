@@ -50,7 +50,7 @@ cc_proto_library(
 proto_library(
     name = "raylet_proto",
     srcs = ["src/ray/protobuf/raylet.proto"],
-    deps = [":gcs_proto"]
+    deps = [":gcs_proto"],
 )
 
 cc_proto_library(
@@ -104,7 +104,6 @@ cc_library(
     ],
 )
 
-
 # Object manager gRPC lib.
 cc_grpc_library(
     name = "object_manager_cc_grpc",
@@ -149,10 +148,10 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":node_manager_fbs",
         ":grpc_common_lib",
-        ":raylet_cc_grpc",
+        ":node_manager_fbs",
         ":ray_common",
+        ":raylet_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -243,10 +242,10 @@ cc_library(
         ":gcs_fbs",
         ":node_manager_fbs",
         ":node_manager_rpc",
-        ":raylet_rpc",
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":raylet_rpc",
         ":stats_lib",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -631,7 +630,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib",],
+    deps = ["//:raylet_lib"],
 )
 
 cc_binary(

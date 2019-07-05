@@ -30,7 +30,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 
 void RayletClient::TryRegisterClient(int times) {
   // We should block here until register success.
-  for (int i = 0;i<times;i++) {
+  for (int i = 0; i < times; i++) {
     auto st = RegisterClient();
     if (st.ok()) {
       Heartbeat();

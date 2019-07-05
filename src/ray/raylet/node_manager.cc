@@ -648,11 +648,11 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     }
   }
   RAY_LOG(INFO) << "Actor notification received: actor_id = " << actor_id
-                 << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                 << ", state = "
-                 << ActorTableData::ActorState_Name(actor_registration.GetState())
-                 << ", remaining_reconstructions = "
-                 << actor_registration.GetRemainingReconstructions();
+                << ", node_manager_id = " << actor_registration.GetNodeManagerId()
+                << ", state = "
+                << ActorTableData::ActorState_Name(actor_registration.GetState())
+                << ", remaining_reconstructions = "
+                << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
     // The actor's location is now known. Dequeue any methods that were
@@ -768,8 +768,9 @@ void NodeManager::HandleRegisterClientRequest(const rpc::RegisterClientRequest &
   auto worker = std::make_shared<Worker>(worker_id, request.worker_pid(),
                                          static_cast<Language>(request.language()));
 
-  RAY_LOG(INFO) << "Register client request, worker id: " << worker_id << ", is worker: "
-                << request.is_worker() << ", pid: " << request.worker_pid();
+  RAY_LOG(INFO) << "Register client request, worker id: " << worker_id
+                << ", is worker: " << request.is_worker()
+                << ", pid: " << request.worker_pid();
   if (request.is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(worker_id, std::move(worker));
@@ -1139,7 +1140,8 @@ void NodeManager::HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
                                          rpc::RequestDoneCallback done_callback) {
   bool is_worker = request.is_worker();
   const auto worker_id = WorkerID::FromBinary(request.worker_id());
-  RAY_LOG(DEBUG) << "Handle heartbeat request, worker id: " << worker_id << ", is worker: " << is_worker;
+  RAY_LOG(DEBUG) << "Handle heartbeat request, worker id: " << worker_id
+                 << ", is worker: " << is_worker;
   std::shared_ptr<Worker> worker = nullptr;
   if (is_worker) {
     worker = worker_pool_.GetRegisteredWorker(worker_id);
@@ -1708,12 +1710,12 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(INFO) << "Submitting task: task_id=" << task_id
-                 << ", actor_id=" << spec.ActorId()
-                 << ", actor_creation_id=" << spec.ActorCreationId()
-                 << ", actor_handle_id=" << spec.ActorHandleId()
-                 << ", actor_counter=" << spec.ActorCounter()
-                 << ", task_descriptor=" << spec.FunctionDescriptorString() << " on node "
-                 << gcs_client_->client_table().GetLocalClientId();
+                << ", actor_id=" << spec.ActorId()
+                << ", actor_creation_id=" << spec.ActorCreationId()
+                << ", actor_handle_id=" << spec.ActorHandleId()
+                << ", actor_counter=" << spec.ActorCounter()
+                << ", task_descriptor=" << spec.FunctionDescriptorString() << " on node "
+                << gcs_client_->client_table().GetLocalClientId();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
@@ -1737,7 +1739,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
     bool seen = actor_entry != actor_registry_.end();
-    RAY_LOG(INFO) << "seen: " << seen;
     // If we have already seen this actor and this actor is not being
     // reconstructed, its location is known.
     bool location_known =
@@ -1951,7 +1952,8 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // in the READY state, else the WAITING state.
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
-    RAY_LOG(INFO) << "Push task " << task.GetTaskSpecification().TaskId() << " to ready queue.";
+    RAY_LOG(INFO) << "Push task " << task.GetTaskSpecification().TaskId()
+                  << " to ready queue.";
     local_queues_.QueueTasks({task}, TaskState::READY);
     DispatchTasks(MakeTasksWithResources({task}));
   } else {
@@ -2008,15 +2010,16 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
   // Remove the ASSIGNED task from the READY queue.
-  //TaskState state;
+  // TaskState state;
   // Cann't remove the task here, the loop in DispatchTasks function is using
   // the tasks_with_resources_. Remove task would cause crash because of the deletion.
-  //auto assigned_task = local_queues_.RemoveTask(spec.TaskId(), &state);
+  // auto assigned_task = local_queues_.RemoveTask(spec.TaskId(), &state);
   // RAY_CHECK(state == TaskState::READY);
 
   // TODO(jzh): Should check whether we have sent get task reply success.
-  // Should reset the spec because last spec is a reference which has been removed from queue.
-  //const TaskSpecification& spec = assigned_task.GetTaskSpecification();
+  // Should reset the spec because last spec is a reference which has been removed from
+  // queue.
+  // const TaskSpecification& spec = assigned_task.GetTaskSpecification();
   // We successfully assigned the task to the worker.
   worker->AssignTaskId(spec.TaskId());
   worker->AssignJobId(spec.JobId());
@@ -2074,10 +2077,10 @@ bool NodeManager::AssignTask(const Task &task) {
   auto request = get_task_requests_.find(worker->GetWorkerId());
   RAY_CHECK(request != get_task_requests_.end());
 
-  rpc::GetTaskReply* reply = request->second.first;
+  rpc::GetTaskReply *reply = request->second.first;
   reply->set_task_spec(spec.SpecToString());
 
-  for (const auto& e: resource_id_set.ToProtobuf()) {
+  for (const auto &e : resource_id_set.ToProtobuf()) {
     auto resource = reply->add_fractional_resource_ids();
     *resource = e;
   }
@@ -2109,7 +2112,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
-  RAY_LOG(INFO) << "Task finished, is creation task: " << task.GetTaskSpecification().IsActorCreationTask();
+  RAY_LOG(INFO) << "Task finished, is creation task: "
+                << task.GetTaskSpecification().IsActorCreationTask();
   // If this was an actor or actor creation task, handle the actor's new state.
   if (task.GetTaskSpecification().IsActorCreationTask() ||
       task.GetTaskSpecification().IsActorTask()) {

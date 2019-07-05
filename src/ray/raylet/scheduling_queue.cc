@@ -127,7 +127,8 @@ const std::unordered_map<ResourceSet, ordered_set<TaskID>>
 const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
                                             TaskState task_state) const {
   const auto &queue = GetTaskQueue(task_state);
-  RAY_LOG(INFO) << "Get task " << task_id << ", task state: " << static_cast<int>(task_state);
+  RAY_LOG(INFO) << "Get task " << task_id
+                << ", task state: " << static_cast<int>(task_state);
   return queue->GetTask(task_id);
 }
 
@@ -220,7 +221,7 @@ void SchedulingQueue::RemoveTasksFromQueue(
     const auto &task_id = *it;
     if (queue->RemoveTask(task_id, removed_tasks)) {
       RAY_LOG(INFO) << "Removed task " << task_id << " from "
-                     << GetTaskStateString(task_state) << " queue";
+                    << GetTaskStateString(task_state) << " queue";
       it = task_ids.erase(it);
     } else {
       it++;
@@ -342,7 +343,7 @@ void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_
   auto &queue = GetTaskQueue(task_state);
   for (const auto &task : tasks) {
     RAY_LOG(INFO) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
-                   << GetTaskStateString(task_state) << " queue";
+                  << GetTaskStateString(task_state) << " queue";
     queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
   }
 }
