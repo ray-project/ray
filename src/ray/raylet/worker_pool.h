@@ -18,7 +18,8 @@ namespace raylet {
 
 using rpc::Language;
 
-using WorkerCommandMap = std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
+using WorkerCommandMap =
+    std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
 class Worker;
 
@@ -40,10 +41,10 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(
-      int num_worker_processes, int num_workers_per_process,
-      int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-      const WorkerCommandMap &worker_commands);
+  WorkerPool(int num_worker_processes, int num_workers_per_process,
+             int maximum_startup_concurrency,
+             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+             const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();

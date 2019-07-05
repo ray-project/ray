@@ -19,8 +19,8 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::MessageWrapper;
 using rpc::Language;
+using rpc::MessageWrapper;
 using rpc::TaskType;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
@@ -30,8 +30,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message)
-      : MessageWrapper(std::move(message)) {
+  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 

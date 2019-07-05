@@ -26,13 +26,13 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::Language;
 using rpc::ActorTableData;
 using rpc::ClientTableData;
 using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
+using rpc::Language;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.

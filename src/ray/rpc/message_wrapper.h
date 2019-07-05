@@ -15,9 +15,7 @@ class MessageWrapper {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit MessageWrapper(const Message message)
-      : message_(std::move(message)) {
-  }
+  explicit MessageWrapper(const Message message) : message_(std::move(message)) {}
 
   /// Construct from protobuf-serialized binary.
   ///
@@ -27,14 +25,10 @@ class MessageWrapper {
   }
 
   /// Get reference of the protobuf message.
-  const Message &GetMessage() const {
-    return message_;
-  }
+  const Message &GetMessage() const { return message_; }
 
   /// Serialize the message to a string.
-  const std::string Serialize() const {
-    return message_.SerializeAsString();
-  }
+  const std::string Serialize() const { return message_.SerializeAsString(); }
 
  protected:
   /// The wrapped message.

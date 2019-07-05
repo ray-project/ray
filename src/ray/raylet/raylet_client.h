@@ -1,11 +1,11 @@
 #ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
+#include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
-#include <ray/protobuf/gcs.pb.h>
 
 #include "ray/common/status.h"
 #include "ray/raylet/task_spec.h"

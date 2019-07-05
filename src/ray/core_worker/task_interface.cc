@@ -110,8 +110,8 @@ rpc::TaskSpec CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
   // Build common task spec.
   raylet::BuildCommonTaskSpec(&message, function.language, function.function_descriptor,
                               context.GetCurrentJobID(), context.GetCurrentTaskID(),
-                              next_task_index, num_returns,
-                              required_resources, required_placement_resources);
+                              next_task_index, num_returns, required_resources,
+                              required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     auto message_arg = message.add_args();
@@ -184,7 +184,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                              actor_handle.IncreaseTaskCounter(),
                              actor_handle.NewActorHandles());
 
-  TaskSpec task(raylet::TaskSpecification(task_spec_message), {actor_handle.ActorCursor()});
+  TaskSpec task(raylet::TaskSpecification(task_spec_message),
+                {actor_handle.ActorCursor()});
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();

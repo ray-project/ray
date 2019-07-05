@@ -267,7 +267,8 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(new ray::raylet::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
+  task_spec->reset(new ray::raylet::TaskSpecification(
+      string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 
