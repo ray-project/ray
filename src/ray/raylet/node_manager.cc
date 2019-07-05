@@ -862,7 +862,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
     RAY_CHECK_OK(
-      gcs_client_->job_table().AppendJobData(job_id,
+      gcs_client_->job_table().AppendJobData(JobID(driver_id),
                                              /*is_dead=*/false,
                                              std::time(nullptr),
                                              initial_config_.node_manager_address,
