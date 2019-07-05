@@ -20,15 +20,16 @@ logger.setLevel("DEBUG")
 
 LOGGING_PERIOD = 100000  # Log throughput every 100K records
 
-# Generates UUIDs
-def _generate_uuid():
-    return str(uuid.uuid4())
 
 # Round robin and rescale partitioning strategies (default)
 round_robin_strategies = [PStrategy.RoundRobin, PStrategy.Rescale]
 
 # Forward and broadcast stream partitioning strategies
 forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
+
+# Generates UUIDs
+def _generate_uuid():
+    return str(uuid.uuid4())
 
 # Used to choose output channel in case of hash-based shuffling
 # TODO (john): Replace pickle
@@ -45,9 +46,34 @@ def _hash(value):
             return int(hashlib.sha1(pickled).hexdigest(), 16)
 
 
+# Virtual queue configuration
+class QueueConfig(object):
+    """The configuration of a (virtual) queue between two operator instances.
+
+    Attributes:
+         max_size (int): The maximum size of the queue in number of batches
+         (if exceeded, backpressure kicks in).
+         max_batch_size (int): The maximum size of each batch in number of
+         records.
+         max_batch_time (float): The flush timeout per batch. Note that if
+         there is no single record added to the queue for a time period larger
+         than the timeout, then the timeout can be violated. The reason behind
+         this is that the queue is 'flushed' by the same thread that executes
+         the actor's logic (i.e., there is no background flush thread).
+    """
+
+    def __init__(self,
+                 max_size=100,         # Size in number of batches
+                 max_batch_size=1000,  # Size in number of records
+                 max_batch_time=0.1):  # Time in secs
+        self.max_size = max_size
+        self.max_batch_size = max_batch_size
+        self.max_batch_time = max_batch_time
+
+
 # A data channel between two operator instances in a streaming environment
 class DataChannel(object):
-    """A data channel for actor-to-actor communication.
+    """A virtual data channel for actor-to-actor communication.
 
     Attributes:
          env (Environment): The streaming environment the channel belongs to.
@@ -85,14 +111,45 @@ class DataChannel(object):
                                 self.src_operator_id, self.dst_operator_id,
                                 self.src_instance_id, self.dst_instance_id)
 
+    def __put_next(self, record):
+        """Pushes a record into the output buffer."""
+        if not self.write_buffer:  # Reset last flush time for the new batch
+            self.last_flush_time = time.time()
+        self.write_buffer.append(record)
+
+    def __try_flush(self):
+        """Tries flushing the output buffer based on the virtual queue
+        configuration (batch size and timeout).
+        """
+        # If buffer is full...
+        if (len(self.write_buffer) >= self.queue_config.max_batch_size):
+            self._flush_writes()
+            return True
+        # ...or if the timeout expired
+        delay = time.time() - self.last_flush_time
+        if delay >= self.queue_config.max_batch_time:
+            self._flush_writes()
+            return True
+        return False
+
+    # Closes channel at destination
+    def _close(self):
+        """Schedules a task at the destination to close its input."""
+        args = [self.id]
+        obj_id = self.destination_actor._close_input._remote(
+                args=args,
+                kwargs={},
+                num_return_vals=1)
+        assert obj_id is not None
+
     # Pushes all pending data to the destination
     def _flush_writes(self):
         """Pushes data to the destination operator instance via a new task."""
         if not self.write_buffer:
             return
-
+        # Schedule a new task at the destination
         args = [self.write_buffer, self.id]
-        obj_id = self.destination_actor.apply._remote(
+        obj_id = self.destination_actor._apply._remote(
                 args=args,
                 kwargs={},
                 num_return_vals=1)
@@ -120,32 +177,29 @@ class DataChannel(object):
             _, self.task_queue = ray.wait(
                     self.task_queue,
                     num_returns=len(self.task_queue),
-                    timeout=0.01)  # Wait for 10ms
+                    timeout=0.01)  # Wait for 10ms before calling wait() again
 
-    def __put_next(self, record):
-        if not self.write_buffer:  # Reset last flush time for the new batch
-            self.last_flush_time = time.time()
-        self.write_buffer.append(record)
+    # Propagates a watermark downstream
+    def _propagate_watermark(self, watermark):
+        """Pushes a watermark to the destination operator."""
+        args = [watermark, self.id]
+        obj_id = self.destination_actor._update_progress._remote(
+                args=args,
+                kwargs={},
+                num_return_vals=1)
+        assert obj_id is not None
 
-    def __try_flush(self):
-        # If buffer is full...
-        if (len(self.write_buffer) >= self.queue_config.max_batch_size):
-            self._flush_writes()
-            return True
-        # ...or if the timeout expired
-        delay = time.time() - self.last_flush_time
-        if delay >= self.queue_config.max_batch_time:
-            self._flush_writes()
-            return True
-        return False
-
-    def push_next(self, record):
+    # Pushes a record to the output buffer
+    def _push_next(self, record):
+        """Pushes a record into the output buffer (and flushes if needed)."""
         self.__put_next(record)
         return self.__try_flush()
 
-    def push_next_batch(self, batch):
+    # Pushes a batch of records to the destination
+    def _push_next_batch(self, batch):
+        """Pushes a batch of records to the destination operator."""
         args = [batch, self.id]
-        obj_id = self.destination_actor.apply_batch._remote(
+        obj_id = self.destination_actor._apply._remote(
                 args=args,
                 kwargs={},
                 num_return_vals=1)
@@ -155,11 +209,11 @@ class DataChannel(object):
         return True
 
     # Registers source actor handle
-    def register_source_actor(self, actor_handle):
+    def _register_source_actor(self, actor_handle):
         self.source_actor = actor_handle
 
     # Registers destination actor handle
-    def register_destination_actor(self, actor_handle):
+    def _register_destination_actor(self, actor_handle):
         self.destination_actor = actor_handle
 
 # Pulls and merges data from multiple input channels
@@ -197,25 +251,8 @@ class DataInput(object):
         # Measure input rate every RECORDS_PER_ROUND
         self.period = LOGGING_PERIOD
 
-    # Groups input channels per logical stream so that the operator can
-    # distinguish between inputs and pull from channels of a particular stream
-    # TODO (john): Make this to work for queue-based execution
-    def _group_channels_per_stream(self, source_operator_ids):
-        self.multiple_inputs = True
-        temp_channels = [[None]] * len(source_operator_ids)
-        for channel in self.input_channels:
-            index = source_operator_ids.index(channel.src_operator_id)
-            temp_channels[index].append(channel)
-        # Set flags
-        self.closed = [None] * len(source_operator_ids)
-        for i, channels in enumerate(temp_channels):
-            flags = [False] * len(channels)
-            self.closed[i] = flags
-        # Set input channels
-        self.input_channels = temp_channels
-
     # Registers an input channel as 'closed'
-    # Returns True if all channels are closed, False otherwise
+    # Returns True if all input channels are closed, False otherwise
     def _close_channel(self, channel_id):
         assert channel_id not in self.closed_channels
         self.closed_channels.append(channel_id)
@@ -363,52 +400,97 @@ class DataOutput(object):
         # Measure input rate every RECORDS_PER_ROUND
         self.period = LOGGING_PERIOD
 
-    # Enables rate logging on output channels
-    def enable_logging(self):
-        self.logging = True
+    # Broadcasts a watermark to all output channels
+    def __broadcast_watermark(self, watermark):
+        """Pushes a watermark downstream."""
+        for channel in self.forward_channels:
+            channel._propagate_watermark(watermark)
+        for channels in self.shuffle_channels:
+            for channel in channels:
+                channel._propagate_watermark(watermark)
+        for channels in self.shuffle_key_channels:
+            for channel in channels:
+                channel._propagate_watermark(watermark)
+        for channels in self.round_robin_channels:
+            for channel in channels:
+                channel._propagate_watermark(watermark)
+        for channels in self.custom_partitioning_channels:
+            for channel in channels:
+                channel._propagate_watermark(watermark)
 
-    # Flushes any remaining records in the output channels
-    # 'close' indicates whether we should also 'close' the channel (True)
-    # by propagating 'None'
-    def _flush(self, close=False):
-        """Flushes remaining output records in the output queues to plasma.
+    # Maintains the last received watermark per input channel
+    def _forward_watermark(self, watermark, input_channel_id=None):
+        """Forwards a watermark to the downstream operators.
 
-        None is used as special type of record that is propagated from sources
-        to sink to notify that the end of data in a stream.
+        This method checks if a watermark appearing in a channel must be
+        forwarded to all output channels (downstream operator instances).
+        For a source, the watermark is always forwarded to the output.
+        For any other operator, the watermark is not necessarily forwarded;
+        in this case, the forwarded watermark is the minimum watermark
+        received from all input channels of the operator that is strictly
+        larger than the previously forwarded watermark.
+
+        The method assumes single-dimensional watermarks that increase
+        monotonically.
 
         Attributes:
-             close (bool): A flag denoting whether the channel should be
-             also marked as 'closed' (True) or not (False) after flushing.
+             watermark (dict): The actual watermark object's dict
+             input_channel_id (int): The index of the input channel the
+             watermark came from
+        """
+        # logger.info("Previous watermark: {}".format(
+        #             self.last_emitted_watermark))
+        if input_channel_id is None: # Must be a source, forward watermark
+            self.last_emitted_watermark = watermark["event_time"]
+            # logger.info("Source watermark: {}".format(
+            #             self.last_emitted_watermark))
+            self.__broadcast_watermark(watermark)
+        else:  # It is an operator with at least one input
+            # Set the last seen watermark in this channel
+            self.input_channels[input_channel_id] = watermark["event_time"]
+            # Find minimum watermark amongst all input channels
+            minimum_watermark = min(self.input_channels.values())
+            if minimum_watermark > self.last_emitted_watermark:  # Forward
+                self.last_emitted_watermark = minimum_watermark
+                watermark["event_time"] = minimum_watermark
+                # logger.info("Emitting watermark: {}".format(
+                #             self.last_emitted_watermark))
+                self.__broadcast_watermark(watermark)
+
+    # Flushes any remaining records in all output channels
+    # 'close' indicates whether we should also 'close' the channels (True)
+    def _flush(self, close=False):
+        """Flushes remaining output records in the output queues and
+        (optionally) closes all output channels.
+
+        Attributes:
+             close (bool): A flag denoting whether the output channels should
+             be also marked as 'closed' (True) or not (False) after flushing.
         """
         for channel in self.forward_channels:
             channel._flush_writes()
             if close is True:
-                channel.push_next(None)
-                channel._flush_writes()
+                channel._close()
         for channels in self.shuffle_channels:
             for channel in channels:
                 channel._flush_writes()
                 if close is True:
-                    channel.push_next(None)
-                    channel._flush_writes()
+                    channel._close()
         for channels in self.shuffle_key_channels:
             for channel in channels:
                 channel._flush_writes()
                 if close is True:
-                    channel.push_next(None)
-                    channel._flush_writes()
+                    channel._close()
         for channels in self.round_robin_channels:
             for channel in channels:
                 channel._flush_writes()
                 if close is True:
-                    channel.push_next(None)
-                    channel._flush_writes()
+                    channel._close()
         for channels in self.custom_partitioning_channels:
             for channel in channels:
                 channel._flush_writes()
                 if close is True:
-                    channel.push_next(None)
-                    channel._flush_writes()
+                    channel._close()
 
         if self.logging:  # Log rate (records/s)
             self.__log(force=close)  # force=True only on termination
@@ -437,225 +519,37 @@ class DataOutput(object):
                                      channel.dst_instance_id))
         return destinations
 
-    # Pushes the record to the output
-    def _push(self, record, input_channel_id=None):
-        if record["event_type"] == "Watermark":
-            self.__forward_watermark(record, input_channel_id)
-            return
+    def _push(self, batch):
+        assert isinstance(batch, list)
         # Simple forwarding
         for channel in self.forward_channels:
             # logger.debug("Actor ({},{}) pushed '{}' to channel {}.".format(
             #    channel.src_operator_id, channel.src_instance_id, record,
             #    channel))
-            channel.push_next(record)
+            channel._push_next_batch(batch)
         # Round-robin forwarding
         for i, channels in enumerate(self.round_robin_channels):
             channel_index = self.round_robin_indexes[i]
-            flushed = channels[channel_index].push_next(record)
+            flushed = channels[channel_index]._push_next_batch(batch)
             if flushed:  # Round-robin batches, not individual records
                 channel_index += 1
                 channel_index %= len(channels)
                 self.round_robin_indexes[i] = channel_index
         # Hash-based shuffling by key
         if self.shuffle_key_exists:
-            key, _ = record
-            h = _hash(key)
-            for channels in self.shuffle_key_channels:
-                num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
-                # logger.debug(
-                #     "Actor ({},{}) pushed '{}' to channel {}.".format(
-                #     channel.src_operator_id, channel.src_instance_id,
-                #     record, channel))
-                channel.push_next(record)
-        elif self.shuffle_exists:  # Hash-based shuffling per destination
-            h = _hash(record)
-            for channels in self.shuffle_channels:
-                num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
-                # logger.debug(
-                #     "Actor ({},{}) pushed '{}' to channel {}.".format(
-                #     channel.src_operator_id, channel.src_instance_id,
-                #     record, channel))
-                channel.push_next(record)
-        elif self.custom_partitioning_exists:
-            for i, channels in enumerate(self.custom_partitioning_channels):
-                # Set the right function. In general, there might be multiple
-                # destinations, each one with a different custom partitioning
-                partitioning_fn = self.custom_partitioning_functions[i]
-                h = partitioning_fn(record)
-                num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
-                # logger.debug(
-                #     "Actor ({},{}) pushed '{}' to channel {}.".format(
-                #     channel.src_operator_id, channel.src_instance_id,
-                #     record, channel))
-                channel.push_next(record)
-
-        if self.logging:  # Log rate
-            self.__log(batch_size=1)
-
-    def _push_batch(self, record_batch, input_channel_id=None):
-        assert isinstance(record_batch, list)
-        # Simple forwarding
-        for channel in self.forward_channels:
-            # logger.debug("Actor ({},{}) pushed '{}' to channel {}.".format(
-            #    channel.src_operator_id, channel.src_instance_id, record,
-            #    channel))
-            channel.push_next_batch(record_batch)
-        # Round-robin forwarding
-        for i, channels in enumerate(self.round_robin_channels):
-            channel_index = self.round_robin_indexes[i]
-            flushed = channels[channel_index].push_next_batch(record_batch)
-            if flushed:  # Round-robin batches, not individual records
-                channel_index += 1
-                channel_index %= len(channels)
-                self.round_robin_indexes[i] = channel_index
-        # Hash-based shuffling by key
-        if self.shuffle_key_exists:
-            raise Exception("Shuffle doesn't work with the source")
-            key, _ = record
-            h = _hash(key)
-            for channels in self.shuffle_key_channels:
-                num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
-                # logger.debug(
-                #     "Actor ({},{}) pushed '{}' to channel {}.".format(
-                #     channel.src_operator_id, channel.src_instance_id,
-                #     record, channel))
-                channel.push_next(record, event=event)
-        elif self.shuffle_exists:  # Hash-based shuffling per destination
-            raise Exception("Shuffle doesn't work with the source")
-            h = _hash(record)
-            for channels in self.shuffle_channels:
-                num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
-                # logger.debug(
-                #     "Actor ({},{}) pushed '{}' to channel {}.".format(
-                #     channel.src_operator_id, channel.src_instance_id,
-                #     record, channel))
-                channel.push_next(record, event=event)
-        elif self.custom_partitioning_exists:
-            # raise Exception("Shuffle doesn't work with the source")
-            for record in record_batch:
-                for i, channels in enumerate(self.custom_partitioning_channels):
-                    # Set the right function. In general, there might be multiple
-                    # destinations, each one with a different custom partitioning
-                    partitioning_fn = self.custom_partitioning_functions[i]
-                    h = partitioning_fn(record)
+            for record in batch:
+                key, _ = record
+                h = _hash(key)
+                for channels in self.shuffle_key_channels:
                     num_instances = len(channels)  # Downstream instances
                     channel = channels[h % num_instances]
                     # logger.debug(
                     #     "Actor ({},{}) pushed '{}' to channel {}.".format(
                     #     channel.src_operator_id, channel.src_instance_id,
                     #     record, channel))
-                    channel.push_next(record, event=event)
-
-        if self.logging:  # Log rate
-            self.__log(batch_size=len(record_batch))
-
-    # Maintains the last received watermark per input channel
-    def __forward_watermark(self, watermark, input_channel_id):
-        """Forwards a watermark to the downstream operators.
-
-        This method checks if a watermark appearing in a channel must be
-        forwarded to all output channels (downstream operator instances).
-        For a source, the watermark is always forwarded to the output.
-        For any other operator, the watermark is not necessarily forwarded;
-        in this case, the forwarded watermark is the minimum watermark
-        received from all input channels of the operator that is strictly
-        larger than the previously forwarded watermark.
-
-        The method assumes single-dimensional watermrks that increase
-        monotonically.
-
-        Attributes:
-             watermark (dict): The actual watermark object's dict
-             input_channel_id (int): The index of the input channel the
-             watermark came from
-        """
-        # logger.info("Previous watermark: {}".format(
-        #             self.last_emitted_watermark))
-        if input_channel_id is None: # Must be a source, forward watermark
-            self.last_emitted_watermark = watermark["event_time"]
-            # logger.info("Source watermark: {}".format(
-            #             self.last_emitted_watermark))
-            self.__broadcast_watermark(watermark)
-        else:  # It is an operator with at least one input
-            # Set the last seen watermark in this channel
-            self.input_channels[input_channel_id] = watermark["event_time"]
-            # Find minimum watermark amongst all input channels
-            minimum_watermark = min(self.input_channels.values())
-            if minimum_watermark > self.last_emitted_watermark:  # Forward
-                self.last_emitted_watermark = minimum_watermark
-                watermark["event_time"] = minimum_watermark
-                # logger.info("Emitting watermark: {}".format(
-                #             self.last_emitted_watermark))
-                self.__broadcast_watermark(watermark)
-
-    # Broadcasts a watermark to all output channels
-    def __broadcast_watermark(self, watermark):
-        """Pushes a watermark downstream."""
-        for channel in self.forward_channels:
-            channel.queue.push_next(watermark)
-        for channels in self.shuffle_channels:
-            for channel in channels:
-                channel.queue.push_next(watermark)
-        for channels in self.shuffle_key_channels:
-            for channel in channels:
-                channel.queue.push_next(watermark)
-        for channels in self.round_robin_channels:
-            for channel in channels:
-                channel.queue.push_next(watermark)
-        for channels in self.custom_partitioning_channels:
-            for channel in channels:
-                channel.queue.push_next(watermark)
-
-    # Pushes a list of records to the output
-    # Each individual output queue flushes batches to plasma periodically
-    # based on the configured batch size and timeout
-    def _push_all(self, records, input_channel_id=None, event=None):
-        assert isinstance(records, list)
-        # Forward records
-        for record in records:
-            if record['event_type'] == "Watermark":
-                self.__forward_watermark(record, input_channel_id)
-                return
-            for channel in self.forward_channels:
-                # logger.debug(
-                #     "Actor ({},{}) pushed '{}' to channel {}.".format(
-                #     channel.src_operator_id, channel.src_instance_id,
-                #      record, channel))
-                channel.push_next(record, event=event)
-            # Round-robin forwarding
-            for i, channels in enumerate(self.round_robin_channels):
-                channel_index = self.round_robin_indexes[i]
-                flushed = channels[channel_index].push_next(record, event=event)
-                if flushed:  # Round-robin batches, not individual records
-                    channel_index += 1
-                    channel_index %= len(channels)
-                    self.round_robin_indexes[i] = channel_index
-        # Hash-based shuffling by key per destination
-        if self.shuffle_key_exists:
-            for record in records:
-                if record['event_type'] == "Watermark":
-                    self.__forward_watermark(record, input_channel_id)
-                    return
-                key, _ = record
-                h = _hash(key)
-                for channels in self.shuffle_channels:
-                    num_instances = len(channels)  # Downstream instances
-                    channel = channels[h % num_instances]
-                    # logger.debug(
-                    # "Actor ({},{}) pushed '{}' to channel {}.".format(
-                    #     channel.src_operator_id, channel.src_instance_id,
-                    #     record, channel))
-                    channel.push_next(record, event=event)
+                    channel._push_next(record)
         elif self.shuffle_exists:  # Hash-based shuffling per destination
-            for record in records:
-                if record['event_type'] == 'Watermark':
-                    self.__forward_watermark(record, input_channel_id)
-                    return
+            for record in batch:
                 h = _hash(record)
                 for channels in self.shuffle_channels:
                     num_instances = len(channels)  # Downstream instances
@@ -664,17 +558,14 @@ class DataOutput(object):
                     #     "Actor ({},{}) pushed '{}' to channel {}.".format(
                     #     channel.src_operator_id, channel.src_instance_id,
                     #     record, channel))
-                    channel.push_next(record, event=event)
+                    channel._push_next(record)
         elif self.custom_partitioning_exists:
-            for record in records:
-                if record['event_type'] == 'Watermark':
-                    self.__forward_watermark(record, input_channel_id)
-                    return
+            for record in batch:
                 for i, channels in enumerate(
-                                    self.custom_partitioning_channels):
+                                        self.custom_partitioning_channels):
                     # Set the right function. In general, there might be
-                    # multiple destinations, each one with a different custom
-                    # partitioning
+                    # multiple destinations, each one with a different
+                    # custom partitioning
                     partitioning_fn = self.custom_partitioning_functions[i]
                     h = partitioning_fn(record)
                     num_instances = len(channels)  # Downstream instances
@@ -683,10 +574,14 @@ class DataOutput(object):
                     #     "Actor ({},{}) pushed '{}' to channel {}.".format(
                     #     channel.src_operator_id, channel.src_instance_id,
                     #     record, channel))
-                    channel.push_next(record, event=event)
+                    channel._push_next(record)
 
         if self.logging:  # Log rate
-            self.__log(batch_size=len(records))
+            self.__log(batch_size=len(batch))
+
+    # Enables rate logging on output channels
+    def enable_logging(self):
+        self.logging = True
 
     # Logs output rate
     def __log(self, batch_size=0, force=False):
@@ -699,31 +594,6 @@ class DataOutput(object):
            force is True and self.records > 0):
             rate = self.records / (time.time() - self.start)
             self.rates.append(rate)
-            logger.info("THROUGHPUT:%f", rate)
+            logger.info("THROUGHPUT: {}".format(rate))
             self.records = 0
             self.start = time.time()
-
-
-# Virtual queue configuration
-class QueueConfig(object):
-    """The configuration of a (virtual) queue between two operator instances.
-
-    Attributes:
-         max_size (int): The maximum size of the queue in number of batches
-         (if exceeded, backpressure kicks in).
-         max_batch_size (int): The maximum size of each batch in number of
-         records.
-         max_batch_time (float): The flush timeout per batch. Note that if
-         there is no single record added to the queue for a time period larger
-         than the timeout, then the timeout can be violated. The reason behind
-         this is that the queue is 'flushed' by the same thread that executes
-         the actor's logic (i.e., there is no background flush thread).
-    """
-
-    def __init__(self,
-                 max_size=100,         # Size in number of batches
-                 max_batch_size=1000,  # Size in number of records
-                 max_batch_time=0.1):  # Time in secs
-        self.max_size = max_size
-        self.max_batch_size = max_batch_size
-        self.max_batch_time = max_batch_time

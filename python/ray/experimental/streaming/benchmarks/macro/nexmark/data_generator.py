@@ -73,7 +73,7 @@ class NexmarkEventGenerator(object):
         logger.info("Done.")
 
     # Returns the next batch of events for the given size
-    def get_next_batch(self, batch_size):
+    def get_next(self, batch_size=1):
         if not self.start:
             # Start time is used in __wait() to measure source throughput
             self.start = time.time()
@@ -93,37 +93,9 @@ class NexmarkEventGenerator(object):
             event_batch[0]["system_time"] = time.time()
         return event_batch
 
-    # Returns the next event
-    def get_next(self):
-        if not self.start:
-            # Start time is used in __wait() to measure source throughput
-            self.start = time.time()
-        if (self.total_count == len(self.events) or
-            self.total_count == self.max_records):
-            return None  # Exhausted
-        event = self.events[self.total_count]
-        self.total_count += 1
-        self.__wait()  # Wait if needed to meet the desired throughput
-        self.count += 1
-        if self.count == self.period:
-            self.count = 0
-            # Assign the generation timestamp to the record
-            event["system_time"] = time.time()
-        return event
-
     # Closes the generator
     def close(self):
         pass
-
-    # Drains the data generator as fast as possible and
-    # returns the total number of records emitted
-    def drain(self):
-        # Set source rate to unbounded
-        self.event_rate = float("inf")
-        records = 0
-        while self.get_next() is not None:
-            records += 1
-        return records
 
 
 # A custom sink used to measure end-to-end processing latency
@@ -131,17 +103,8 @@ class EventLatencySink(object):
     def __init__(self):
         self.state = []
 
-    # Evicts next record
-    def evict(self, record):
-        if record["event_type"] == "Watermark":
-            return  # Ignore watermarks
-        generation_time = record["system_time"]
-        if generation_time is not None:
-            # TODO (john): Clock skew might distort elapsed time
-            self.state.append(time.time() - generation_time)
-
     # Evicts next batch of records
-    def evict_batch(self, batch):
+    def evict(self, batch):
         for record in batch:
             if record["event_type"] == "Watermark":
                 return  # Ignore watermarks
@@ -152,10 +115,6 @@ class EventLatencySink(object):
 
     # Initializes the sink
     def init(self):
-        pass
-        
-    # Closes the sink
-    def close(self):
         pass
 
     # Returns sink's state

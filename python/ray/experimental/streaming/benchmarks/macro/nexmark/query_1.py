@@ -81,10 +81,10 @@ parser.add_argument("--map-instances", default=1,
 
 
 # The mapper function that transforms bid prices from dollars to euros
-def map_function(batch):
-    for bid in batch:
+def dollars_to_euros(batch_of_bids):
+    for bid in batch_of_bids:
         bid["price"] = bid["price"] * 0.9
-    return batch
+    return batch_of_bids
 
 if __name__ == "__main__":
 
@@ -204,7 +204,7 @@ if __name__ == "__main__":
                     placement=placement["Bids Source"]).set_parallelism(
                                                                   num_sources)
     # Add mapper
-    output = bid_source.map(map_function,
+    output = bid_source.map(dollars_to_euros,
                         name="Dollars to Euros",
                         placement=placement[
                         "Dollars to Euros"]).set_parallelism(map_instances)

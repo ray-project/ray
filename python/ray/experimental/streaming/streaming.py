@@ -196,10 +196,6 @@ class Environment(object):
         self.physical_dataflow = PhysicalDataflow()
         self.checkpoint_dir = checkpoint_dir
 
-        # For recovery purposes. A mapping from operator ID to a list of its
-        # upstream actors' handle IDs.
-        self.upstream_actor_handle_ids = defaultdict(list)
-
     # Constructs and deploys an actor of a specific type
     def __generate_actor(self, instance_id, operator, input, output):
         """Generates an actor that will execute an instance of
@@ -238,32 +234,29 @@ class Environment(object):
             actor_handle = operator_instance.FlatMap._remote(args=args,
                                                     kwargs=None,
                                                     resources={node_id: 1})
-        elif operator.type == OpType.Join:
-            del operator.right_input
-            node_id = operator.placement[instance_id]
-            logger.info("Placing join {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.Join._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
         elif operator.type == OpType.Union:
             # Other input streams are not needed any more.
             # Discard them to avoid serialization errors due to
-            # recursive references between stream and environment
+            # recursive references between DataStream and Environment
             del operator.other_inputs[:]
             node_id = operator.placement[instance_id]
+            logger.info("Placing union {} at {}.".format(actor_id, node_id))
             actor_handle = operator_instance.Union._remote(args=args,
                                                     kwargs=None,
                                                     resources={node_id: 1})
         elif ((operator.type == OpType.Reduce) or
               (operator.type ==  OpType.Sum)):
-            args.append(self.config)
             node_id = operator.placement[instance_id]
+            logger.info("Placing reduce {} at {}.".format(actor_id, node_id))
             actor_handle = operator_instance.Reduce._remote(args=args,
                                                     kwargs=None,
                                                     resources={node_id: 1})
         elif operator.type == OpType.KeyBy:
-            actor_handle = operator_instance.KeyBy.remote(actor_id, operator,
-                                                          input, output)
+            node_id = operator.placement[instance_id]
+            logger.info("Placing KeyBy {} at {}.".format(actor_id, node_id))
+            actor_handle = operator_instance.KeyBy._remote(args=args,
+                                                    kwargs=None,
+                                                    resources={node_id: 1})
         elif operator.type == OpType.Sink:
             node_id = operator.placement[instance_id]
             logger.info("Placing sink {} at {}.".format(actor_id, node_id))
@@ -271,7 +264,7 @@ class Environment(object):
                                                     kwargs=None,
                                                     resources={node_id: 1})
         else:  # TODO (john): Add support for other types of operators
-            message = "Unrecognized or unsupported {} operator type."
+            message = "Unrecognized or unsupported operator type: {}"
             raise Exception(message.format(operator.type))
 
         # Register current actor handle as destination to upstream
@@ -285,10 +278,6 @@ class Environment(object):
                 # Make sure the handle is registered before proceeding
                 ray.get(handle._register_destination_handle.remote(
                                             destination_handle, channel.id))
-                upstream_handle_id = ray.get(
-                                    destination_handle)._ray_actor_handle_id
-                self.upstream_actor_handle_ids[actor_id].append(
-                                                        upstream_handle_id)
         ray.get(actor_handle._register_handle.remote(actor_handle))
         self.physical_dataflow._register_handle(actor_id, actor_handle)
         self.physical_dataflow._register_metadata(operator.id, operator)
@@ -476,7 +465,7 @@ class Environment(object):
         self.physical_dataflow.monitoring_actor = monitoring_actor
         logger.info("Done. Starting sources...")
 
-        # Collect source handles
+        # Collect data source actor handles
         source_handles = []
         spinning_actor_handles = []
         for entry in self.physical_dataflow.actor_handles.items():
@@ -486,19 +475,19 @@ class Environment(object):
             # Keep source handles for now to start sources in the end
             if operator_type in source_types:
                 source_handles.extend(actor_handles)
-        #  Start sources
+        #  Start data sources
         for source_handle in source_handles:
             _ = source_handle.start.remote()
 
-        # Update dictionary so that the user can lookup
-        # operators using either an id or a name
-        id_entries = self.physical_dataflow.actor_handles.items()
-        name_entries = {}
-        for operator_id, handles in id_entries:
+        # Update dictionary in physical topology so that users
+        # can lookup operators using either an id or a name
+        operator_ids = self.physical_dataflow.actor_handles.items()
+        operator_names = {}  # name -> actor handles
+        for operator_id, handles in operator_ids:
             metadata = self.physical_dataflow.operator_metadata[operator_id]
             operator_name = metadata.name
-            name_entries.setdefault(operator_name,handles)
-        self.physical_dataflow.actor_handles.update(name_entries)
+            operator_names.setdefault(operator_name, handles)
+        self.physical_dataflow.actor_handles.update(operator_names)
         # Return handle to physical dataflow
         return self.physical_dataflow
 
@@ -812,29 +801,6 @@ class DataStream(object):
             _generate_uuid(),
             OpType.Union,
             other_inputs,
-            name,
-            num_instances=self.env.config.parallelism,
-            logging=self.env.config.logging,
-            placement=placement)
-        return self.__register(op)
-
-    # Registers a join operator to the environment
-    def join(self, right_stream, join_logic,
-             name="Join_"+_generate_uuid(),
-             placement=None):
-        """Joins two streams based on a user-defined logic.
-
-        Attributes:
-             right_stream (DataStream): The stream to join with self.
-             join_logic (object): A class specifying the join logic
-        """
-        assert isinstance(right_stream, DataStream), type(right_stream)
-        op = operator.JoinOperator(
-            _generate_uuid(),
-            OpType.Join,
-            join_logic,
-            self.src_operator_id,           # Will be used by operator to
-            right_stream.src_operator_id,   # distinuigh left from right
             name,
             num_instances=self.env.config.parallelism,
             logging=self.env.config.logging,
