@@ -21,11 +21,11 @@ enum TaskType {
   ACTOR_TASK = 2;
 }
 
-// Task specification.
+// Task specification, which represents static and immutable attributes of a task.
 message TaskSpec {
   // Type of this task.
   TaskType type = 1;
-  // Type of this task.
+  // Language of this task.
   Language language = 2;
   // Function descriptor of this task, which is a list of strings that can
   // uniquely describe the function to execute.
@@ -49,9 +49,11 @@ message TaskSpec {
   // The resources required for placing this task on a node. If this is empty,
   // then the placement resources are equal to the required_resources.
   map<string, double> required_placement_resources = 11;
-
+  // Task specification for an actor creation task.
+  // This field is only valid when `type == ACTOR_CREATION_TASK`.
   ActorCreationTaskSpec actor_creation_task_spec = 14;
-
+  // Task specification for an actor task.
+  // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
 }
 
@@ -99,6 +101,8 @@ message ActorTaskSpec {
   repeated bytes new_actor_handles = 6;
 }
 
+// Task execution specification, which represents dynamic and mutable attributes of
+// a task.
 message TaskExecutionSpec {
   // A list of object IDs representing the dependencies of this task that may
   // change at execution time.
@@ -109,6 +113,7 @@ message TaskExecutionSpec {
   uint64 num_forwards = 3;
 }
 
+// Represents a task, including task spec, and task execution spec.
 message Task {
   TaskSpec task_spec = 1;
   TaskExecutionSpec task_execution_spec = 2;
