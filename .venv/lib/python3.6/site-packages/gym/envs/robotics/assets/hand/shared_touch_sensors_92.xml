@@ -1,0 +1,120 @@
+<mujoco>
+    <sensor>
+
+        <!--PALM-->
+        <touch name="robot0:TS_palm_b0" site="robot0:T_palm_b0"></touch>
+        <touch name="robot0:TS_palm_bl" site="robot0:T_palm_bl"></touch>
+        <touch name="robot0:TS_palm_bm" site="robot0:T_palm_bm"></touch>
+        <touch name="robot0:TS_palm_br" site="robot0:T_palm_br"></touch>
+        <touch name="robot0:TS_palm_fl" site="robot0:T_palm_fl"></touch>
+        <touch name="robot0:TS_palm_fm" site="robot0:T_palm_fm"></touch>
+        <touch name="robot0:TS_palm_fr" site="robot0:T_palm_fr"></touch>
+        <touch name="robot0:TS_palm_b1" site="robot0:T_palm_b1"></touch>
+
+         <!--FOREFINGER-->
+        <touch name="robot0:TS_ffproximal_front_left_bottom"  site="robot0:T_ffproximal_front_left_bottom"></touch>
+        <touch name="robot0:TS_ffproximal_front_right_bottom" site="robot0:T_ffproximal_front_right_bottom"></touch>
+        <touch name="robot0:TS_ffproximal_front_left_top"     site="robot0:T_ffproximal_front_left_top"></touch>
+        <touch name="robot0:TS_ffproximal_front_right_top"    site="robot0:T_ffproximal_front_right_top"></touch>
+        <touch name="robot0:TS_ffproximal_back_left"          site="robot0:T_ffproximal_back_left"></touch>
+        <touch name="robot0:TS_ffproximal_back_right"         site="robot0:T_ffproximal_back_right"></touch>
+        <touch name="robot0:TS_ffproximal_tip"                site="robot0:T_ffproximal_tip"></touch>
+
+        <touch name="robot0:TS_ffmiddle_front_left"  site="robot0:T_ffmiddle_front_left"></touch>
+        <touch name="robot0:TS_ffmiddle_front_right" site="robot0:T_ffmiddle_front_right"></touch>
+        <touch name="robot0:TS_ffmiddle_back_left"   site="robot0:T_ffmiddle_back_left"></touch>
+        <touch name="robot0:TS_ffmiddle_back_right"  site="robot0:T_ffmiddle_back_right"></touch>
+        <touch name="robot0:TS_ffmiddle_tip"         site="robot0:T_ffmiddle_tip"></touch>
+
+        <touch name="robot0:TS_fftip_front_left"  site="robot0:T_fftip_front_left"></touch>
+        <touch name="robot0:TS_fftip_front_right" site="robot0:T_fftip_front_right"></touch>
+        <touch name="robot0:TS_fftip_back_left"   site="robot0:T_fftip_back_left"></touch>
+        <touch name="robot0:TS_fftip_back_right"  site="robot0:T_fftip_back_right"></touch>
+        <touch name="robot0:TS_fftip_tip"         site="robot0:T_fftip_tip"></touch>
+
+        <!-- MIDDLE FINGER -->
+        <touch name="robot0:TS_mfproximal_front_left_bottom"  site="robot0:T_mfproximal_front_left_bottom"></touch>
+        <touch name="robot0:TS_mfproximal_front_right_bottom" site="robot0:T_mfproximal_front_right_bottom"></touch>
+        <touch name="robot0:TS_mfproximal_front_left_top"     site="robot0:T_mfproximal_front_left_top"></touch>
+        <touch name="robot0:TS_mfproximal_front_right_top"    site="robot0:T_mfproximal_front_right_top"></touch>
+        <touch name="robot0:TS_mfproximal_back_left"          site="robot0:T_mfproximal_back_left"></touch>
+        <touch name="robot0:TS_mfproximal_back_right"         site="robot0:T_mfproximal_back_right"></touch>
+        <touch name="robot0:TS_mfproximal_tip"                site="robot0:T_mfproximal_tip"></touch>
+
+        <touch name="robot0:TS_mfmiddle_front_left"  site="robot0:T_mfmiddle_front_left"></touch>
+        <touch name="robot0:TS_mfmiddle_front_right" site="robot0:T_mfmiddle_front_right"></touch>
+        <touch name="robot0:TS_mfmiddle_back_left"   site="robot0:T_mfmiddle_back_left"></touch>
+        <touch name="robot0:TS_mfmiddle_back_right"  site="robot0:T_mfmiddle_back_right"></touch>
+        <touch name="robot0:TS_mfmiddle_tip"         site="robot0:T_mfmiddle_tip"></touch>
+
+        <touch name="robot0:TS_mftip_front_left"  site="robot0:T_mftip_front_left"></touch>
+        <touch name="robot0:TS_mftip_front_right" site="robot0:T_mftip_front_right"></touch>
+        <touch name="robot0:TS_mftip_back_left"   site="robot0:T_mftip_back_left"></touch>
+        <touch name="robot0:TS_mftip_back_right"  site="robot0:T_mftip_back_right"></touch>
+        <touch name="robot0:TS_mftip_tip"         site="robot0:T_mftip_tip"></touch>
+
+        <!-- RING FINGER -->
+        <touch name="robot0:TS_rfproximal_front_left_bottom"  site="robot0:T_rfproximal_front_left_bottom"></touch>
+        <touch name="robot0:TS_rfproximal_front_right_bottom" site="robot0:T_rfproximal_front_right_bottom"></touch>
+        <touch name="robot0:TS_rfproximal_front_left_top"     site="robot0:T_rfproximal_front_left_top"></touch>
+        <touch name="robot0:TS_rfproximal_front_right_top"    site="robot0:T_rfproximal_front_right_top"></touch>
+        <touch name="robot0:TS_rfproximal_back_left"          site="robot0:T_rfproximal_back_left"></touch>
+        <touch name="robot0:TS_rfproximal_back_right"         site="robot0:T_rfproximal_back_right"></touch>
+        <touch name="robot0:TS_rfproximal_tip"                site="robot0:T_rfproximal_tip"></touch>
+
+        <touch name="robot0:TS_rfmiddle_front_left"  site="robot0:T_rfmiddle_front_left"></touch>
+        <touch name="robot0:TS_rfmiddle_front_right" site="robot0:T_rfmiddle_front_right"></touch>
+        <touch name="robot0:TS_rfmiddle_back_left"   site="robot0:T_rfmiddle_back_left"></touch>
+        <touch name="robot0:TS_rfmiddle_back_right"  site="robot0:T_rfmiddle_back_right"></touch>
+        <touch name="robot0:TS_rfmiddle_tip"         site="robot0:T_rfmiddle_tip"></touch>
+
+        <touch name="robot0:TS_rftip_front_left"  site="robot0:T_rftip_front_left"></touch>
+        <touch name="robot0:TS_rftip_front_right" site="robot0:T_rftip_front_right"></touch>
+        <touch name="robot0:TS_rftip_back_left"   site="robot0:T_rftip_back_left"></touch>
+        <touch name="robot0:TS_rftip_back_right"  site="robot0:T_rftip_back_right"></touch>
+        <touch name="robot0:TS_rftip_tip"         site="robot0:T_rftip_tip"></touch>
+
+        <!-- LITTLE FINGER -->
+        <touch name="robot0:TS_lfmetacarpal_front" site="robot0:T_lfmetacarpal_front"></touch>
+
+        <touch name="robot0:TS_lfproximal_front_left_bottom"  site="robot0:T_lfproximal_front_left_bottom"></touch>
+        <touch name="robot0:TS_lfproximal_front_right_bottom" site="robot0:T_lfproximal_front_right_bottom"></touch>
+        <touch name="robot0:TS_lfproximal_front_left_top"     site="robot0:T_lfproximal_front_left_top"></touch>
+        <touch name="robot0:TS_lfproximal_front_right_top"    site="robot0:T_lfproximal_front_right_top"></touch>
+        <touch name="robot0:TS_lfproximal_back_left"          site="robot0:T_lfproximal_back_left"></touch>
+        <touch name="robot0:TS_lfproximal_back_right"         site="robot0:T_lfproximal_back_right"></touch>
+        <touch name="robot0:TS_lfproximal_tip"                site="robot0:T_lfproximal_tip"></touch>
+
+        <touch name="robot0:TS_lfmiddle_front_left"  site="robot0:T_lfmiddle_front_left"></touch>
+        <touch name="robot0:TS_lfmiddle_front_right" site="robot0:T_lfmiddle_front_right"></touch>
+        <touch name="robot0:TS_lfmiddle_back_left"   site="robot0:T_lfmiddle_back_left"></touch>
+        <touch name="robot0:TS_lfmiddle_back_right"  site="robot0:T_lfmiddle_back_right"></touch>
+        <touch name="robot0:TS_lfmiddle_tip"         site="robot0:T_lfmiddle_tip"></touch>
+
+        <touch name="robot0:TS_lftip_front_left"  site="robot0:T_lftip_front_left"></touch>
+        <touch name="robot0:TS_lftip_front_right" site="robot0:T_lftip_front_right"></touch>
+        <touch name="robot0:TS_lftip_back_left"   site="robot0:T_lftip_back_left"></touch>
+        <touch name="robot0:TS_lftip_back_right"  site="robot0:T_lftip_back_right"></touch>
+        <touch name="robot0:TS_lftip_tip"         site="robot0:T_lftip_tip"></touch>
+
+        <!--THUMB-->
+        <touch name="robot0:TS_thproximal_front_left"  site="robot0:T_thproximal_front_left"></touch>
+        <touch name="robot0:TS_thproximal_front_right" site="robot0:T_thproximal_front_right"></touch>
+        <touch name="robot0:TS_thproximal_back_left"   site="robot0:T_thproximal_back_left"></touch>
+        <touch name="robot0:TS_thproximal_back_right"  site="robot0:T_thproximal_back_right"></touch>
+        <touch name="robot0:TS_thproximal_tip"         site="robot0:T_thproximal_tip"></touch>
+
+        <touch name="robot0:TS_thmiddle_front_left"  site="robot0:T_thmiddle_front_left"></touch>
+        <touch name="robot0:TS_thmiddle_front_right" site="robot0:T_thmiddle_front_right"></touch>
+        <touch name="robot0:TS_thmiddle_back_left"   site="robot0:T_thmiddle_back_left"></touch>
+        <touch name="robot0:TS_thmiddle_back_right"  site="robot0:T_thmiddle_back_right"></touch>
+        <touch name="robot0:TS_thmiddle_tip"         site="robot0:T_thmiddle_tip"></touch>
+
+        <touch name="robot0:TS_thtip_front_left"  site="robot0:T_thtip_front_left"></touch>
+        <touch name="robot0:TS_thtip_front_right" site="robot0:T_thtip_front_right"></touch>
+        <touch name="robot0:TS_thtip_back_left"   site="robot0:T_thtip_back_left"></touch>
+        <touch name="robot0:TS_thtip_back_right"  site="robot0:T_thtip_back_right"></touch>
+        <touch name="robot0:TS_thtip_tip"         site="robot0:T_thtip_tip"></touch>
+
+    </sensor>
+</mujoco>

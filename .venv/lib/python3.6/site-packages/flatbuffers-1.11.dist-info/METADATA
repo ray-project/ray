@@ -1,0 +1,14 @@
+Metadata-Version: 2.0
+Name: flatbuffers
+Version: 1.11
+Summary: The FlatBuffers serialization format for Python
+Home-page: https://github.com/google/flatbuffers
+Author: FlatBuffers Contributors
+Author-email: me@rwinslow.com
+License: Apache 2.0
+Description-Content-Type: UNKNOWN
+Platform: UNKNOWN
+
+Python runtime library for use with the Flatbuffersserialization format.
+
+

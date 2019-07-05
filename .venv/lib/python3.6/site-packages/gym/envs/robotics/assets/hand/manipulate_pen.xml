@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco>
+    <compiler angle="radian" coordinate="local" meshdir="../stls/hand" texturedir="../textures"></compiler>
+    <option timestep="0.002" iterations="20" apirate="200">
+        <flag warmstart="enable"></flag>
+    </option>
+
+    <include file="shared.xml"></include>
+
+    <asset>
+        <include file="shared_asset.xml"></include>
+
+        <material name="material:object" specular="0" shininess="0.5" reflectance="0.0" rgba="0.46 0.81 0.88 1.0"></material>
+        <material name="material:target" specular="0" shininess="0.5" reflectance="0.0" rgba="0.46 0.81 0.88 0.5"></material>
+    </asset>
+
+    <worldbody>
+        <geom name="floor0" pos="1 1 -0.2" size="1 1 1" type="plane" condim="3" material="floor_mat"></geom>
+        <body name="floor0" pos="1 1 0"></body>
+
+        <include file="robot.xml"></include>
+
+        <body name="object" pos="1 0.87 0.2" euler="-1 1 0">
+            <geom name="object" type="capsule" size="0.008 0.1" material="material:object" condim="4"></geom>
+            <site name="object:center" pos="0 0 0" rgba="1 0 0 0" size="0.01 0.01 0.01"></site>
+            <site name="object:top" pos="0 0 0.1" rgba="1 0 0 1" size="0.0081"></site>
+            <site name="object:bottom" pos="0 0 -0.1" rgba="0 1 0 1" size="0.0081"></site>
+            <joint name="object:joint" type="free" damping="0.01"></joint>
+        </body>
+        <body name="target" pos="1 0.87 0.2" euler="-1 1 0">
+            <geom name="target" type="capsule" size="0.008 0.1" material="material:target" condim="4" group="2" contype="0" conaffinity="0"></geom>
+            <site name="target:center" pos="0 0 0" rgba="1 0 0 0" size="0.01 0.01 0.01"></site>
+            <site name="target:top" pos="0 0 0.1" rgba="1 0 0 0.5" size="0.0081"></site>
+            <site name="target:bottom" pos="0 0 -0.1" rgba="0 1 0 0.5" size="0.0081"></site>
+            <joint name="target:joint" type="free" damping="0.01"></joint>
+        </body>
+        
+        <light directional="true" ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3" castshadow="false" pos="0 1 4" dir="0 0 -1" name="light0"></light>
+    </worldbody>
+</mujoco>

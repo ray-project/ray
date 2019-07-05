@@ -1,0 +1,55 @@
+Metadata-Version: 2.1
+Name: Markdown
+Version: 3.1.1
+Summary: Python implementation of Markdown.
+Home-page: https://Python-Markdown.github.io/
+Author: Manfred Stienstra, Yuri takhteyev and Waylan limberg
+Author-email: waylan.limberg@icloud.com
+Maintainer: Waylan Limberg
+Maintainer-email: waylan.limberg@icloud.com
+License: BSD License
+Download-URL: http://pypi.python.org/packages/source/M/Markdown/Markdown-3.1.1-py2.py3-none-any.whl
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Topic :: Communications :: Email :: Filters
+Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries
+Classifier: Topic :: Internet :: WWW/HTTP :: Site Management
+Classifier: Topic :: Software Development :: Documentation
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Text Processing :: Filters
+Classifier: Topic :: Text Processing :: Markup :: HTML
+Requires-Python: >=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*
+Requires-Dist: setuptools (>=36)
+Provides-Extra: testing
+Requires-Dist: coverage ; extra == 'testing'
+Requires-Dist: pyyaml ; extra == 'testing'
+
+
+This is a Python implementation of John Gruber's Markdown_.
+It is almost completely compliant with the reference implementation,
+though there are a few known issues. See Features_ for information
+on what exactly is supported and what is not. Additional features are
+supported by the `Available Extensions`_.
+
+.. _Markdown: http://daringfireball.net/projects/markdown/
+.. _Features: https://Python-Markdown.github.io#features
+.. _`Available Extensions`: https://Python-Markdown.github.io/extensions/
+
+Support
+=======
+
+You may report bugs, ask for help, and discuss various other issues on
+the `bug tracker`_.
+
+.. _`bug tracker`: http://github.com/Python-Markdown/markdown/issues
+
+

@@ -1,0 +1,21 @@
+Metadata-Version: 1.1
+Name: gast
+Version: 0.2.0
+Summary: Python AST that abstracts the underlying Python version
+Home-page: UNKNOWN
+Author: serge-sans-paille
+Author-email: serge.guelton@telecom-bretagne.eu
+License: BSD 3-Clause
+Description: 
+        A generic AST to represent Python2 and Python3's Abstract Syntax Tree(AST).
+        
+        GAST provides a compatibility layer between the AST of various Python versions,
+        as produced by ``ast.parse`` from the standard ``ast`` module.
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3

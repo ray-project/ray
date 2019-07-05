@@ -1,0 +1,26 @@
+<!-- See LICENSE.md for legal notices. LICENSE.md must be kept together with this file. -->
+<mujoco>
+    <texture type="skybox" builtin="gradient" rgb1="0.44 0.85 0.56" rgb2="0.46 0.87 0.58" width="32" height="32"></texture>
+
+    <texture name="robot0:texplane" type="2d" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.15 0.2" width="512" height="512"></texture>
+    <texture name="robot0:texgeom" type="cube" builtin="flat" mark="cross" width="127" height="127" rgb1="0.3 0.6 0.5" rgb2="0.3 0.6 0.5" markrgb="0 0 0" random="0.01"></texture>
+
+    <material name="robot0:MatGnd" reflectance="0.5" texture="robot0:texplane" texrepeat="1 1" texuniform="true"></material>
+    <material name="robot0:MatColl" specular="1" shininess="0.3" reflectance="0.5" rgba="0.4 0.5 0.6 1"></material>
+    <material name="robot0:MatViz" specular="0.75" shininess="0.1" reflectance="0.5" rgba="0.93 0.93 0.93 1"></material>
+    <material name="robot0:object" texture="robot0:texgeom" texuniform="false"></material>
+    <material name="floor_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 0"></material>
+
+    <mesh name="robot0:forearm" file="forearm_electric.stl"></mesh>
+    <mesh name="robot0:forearm_cvx" file="forearm_electric_cvx.stl"></mesh>
+    <mesh name="robot0:wrist" scale="0.001 0.001 0.001" file="wrist.stl"></mesh>
+    <mesh name="robot0:palm" scale="0.001 0.001 0.001" file="palm.stl"></mesh>
+    <mesh name="robot0:knuckle" scale="0.001 0.001 0.001" file="knuckle.stl"></mesh>
+    <mesh name="robot0:F3" scale="0.001 0.001 0.001" file="F3.stl"></mesh>
+    <mesh name="robot0:F2" scale="0.001 0.001 0.001" file="F2.stl"></mesh>
+    <mesh name="robot0:F1" scale="0.001 0.001 0.001" file="F1.stl"></mesh>
+    <mesh name="robot0:lfmetacarpal" scale="0.001 0.001 0.001" file="lfmetacarpal.stl"></mesh>
+    <mesh name="robot0:TH3_z" scale="0.001 0.001 0.001" file="TH3_z.stl"></mesh>
+    <mesh name="robot0:TH2_z" scale="0.001 0.001 0.001" file="TH2_z.stl"></mesh>
+    <mesh name="robot0:TH1_z" scale="0.001 0.001 0.001" file="TH1_z.stl"></mesh>
+</mujoco>

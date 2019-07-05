@@ -1,0 +1,39 @@
+Metadata-Version: 2.1
+Name: gym
+Version: 0.12.1
+Summary: The OpenAI Gym: A toolkit for developing and comparing your reinforcement learning agents.
+Home-page: https://github.com/openai/gym
+Author: OpenAI
+Author-email: gym@openai.com
+License: UNKNOWN
+Platform: UNKNOWN
+Requires-Dist: scipy
+Requires-Dist: numpy (>=1.10.4)
+Requires-Dist: requests (>=2.0)
+Requires-Dist: six
+Requires-Dist: pyglet (>=1.2.0)
+Provides-Extra: all
+Requires-Dist: atari-py (>=0.1.4) ; extra == 'all'
+Requires-Dist: Pillow ; extra == 'all'
+Requires-Dist: PyOpenGL ; extra == 'all'
+Requires-Dist: box2d-py (>=2.3.5) ; extra == 'all'
+Requires-Dist: mujoco-py (<2.1,>=1.50) ; extra == 'all'
+Requires-Dist: imageio ; extra == 'all'
+Provides-Extra: atari
+Requires-Dist: atari-py (>=0.1.4) ; extra == 'atari'
+Requires-Dist: Pillow ; extra == 'atari'
+Requires-Dist: PyOpenGL ; extra == 'atari'
+Provides-Extra: box2d
+Requires-Dist: box2d-py (>=2.3.5) ; extra == 'box2d'
+Provides-Extra: classic_control
+Requires-Dist: PyOpenGL ; extra == 'classic_control'
+Provides-Extra: mujoco
+Requires-Dist: mujoco-py (<2.1,>=1.50) ; extra == 'mujoco'
+Requires-Dist: imageio ; extra == 'mujoco'
+Provides-Extra: robotics
+Requires-Dist: mujoco-py (<2.1,>=1.50) ; extra == 'robotics'
+Requires-Dist: imageio ; extra == 'robotics'
+
+UNKNOWN
+
+

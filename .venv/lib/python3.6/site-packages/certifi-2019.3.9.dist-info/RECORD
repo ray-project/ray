@@ -1,0 +1,15 @@
+certifi-2019.3.9.dist-info/DESCRIPTION.rst,sha256=aLNHONztn2ZiBpSTivVFy6EDIWmuNYSsEQwx4NWbvB4,1580
+certifi-2019.3.9.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+certifi-2019.3.9.dist-info/LICENSE.txt,sha256=anCkv2sBABbVmmS4rkrY3H9e8W8ftFPMLs13HFo0ETE,1048
+certifi-2019.3.9.dist-info/METADATA,sha256=_YlCcnsTkrUqK8ugsaoHpzg5lvdUmy1_FH1Fp0dC5DI,2521
+certifi-2019.3.9.dist-info/RECORD,,
+certifi-2019.3.9.dist-info/WHEEL,sha256=5wvfB7GvgZAbKBSE9uX9Zbi6LCL-_KgezgHblXhCRnM,113
+certifi-2019.3.9.dist-info/metadata.json,sha256=18_iszglhf39DqJF6n2lEvZN_ZKWnQeGbxvv3xPXM34,1047
+certifi-2019.3.9.dist-info/top_level.txt,sha256=KMu4vUCfsjLrkPbSNdgdekS-pVJzBAJFO__nI8NF6-U,8
+certifi/__init__.py,sha256=-M1moep9D6jZnOAT0qnM1dpoEHMPage7Osv5xLRLyFg,52
+certifi/__main__.py,sha256=FiOYt1Fltst7wk9DRa6GCoBr8qBUxlNQu_MKJf04E6s,41
+certifi/__pycache__/__init__.cpython-36.pyc,,
+certifi/__pycache__/__main__.cpython-36.pyc,,
+certifi/__pycache__/core.cpython-36.pyc,,
+certifi/cacert.pem,sha256=OXuDPlrPiaJwm5ZEAamspo0ktiNJtyu-OGhOWGqgeic,284518
+certifi/core.py,sha256=EuFc2BsToG5O1-qsx4BSjQ1r1-7WRtH87b1WflZOWhI,218

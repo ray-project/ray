@@ -1,0 +1,42 @@
+Metadata-Version: 2.1
+Name: typing
+Version: 3.6.6
+Summary: Type Hints for Python
+Home-page: https://docs.python.org/3/library/typing.html
+Author: Guido van Rossum, Jukka Lehtosalo, Łukasz Langa, Ivan Levkivskyi
+Author-email: jukka.lehtosalo@iki.fi
+License: PSF
+Keywords: typing function annotations type hints hinting checking checker typehints typehinting typechecking backport
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Python Software Foundation License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Topic :: Software Development
+
+Typing -- Type Hints for Python
+
+This is a backport of the standard library typing module to Python
+versions older than 3.5.  (See note below for newer versions.)
+
+Typing defines a standard notation for Python function and variable
+type annotations. The notation can be used for documenting code in a
+concise, standard format, and it has been designed to also be used by
+static and runtime type checkers, static analyzers, IDEs and other
+tools.
+
+NOTE: in Python 3.5 and later, the typing module lives in the stdlib,
+and installing this package has NO EFFECT.  To get a newer version of
+the typing module in Python 3.5 or later, you have to upgrade to a
+newer Python (bugfix) version.  For example, typing in Python 3.6.0 is
+missing the definition of 'Type' -- upgrading to 3.6.2 will fix this.
+
+Also note that most improvements to the typing module in Python 3.7
+will not be included in this package, since Python 3.7 has some
+built-in support that is not present in older versions (See PEP 560.)
+
+

@@ -1,0 +1,22 @@
+SWIG is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version. See the LICENSE-GPL file for
+the full terms of the GNU General Public license version 3.
+
+Portions of SWIG are also licensed under the terms of the licenses
+in the file LICENSE-UNIVERSITIES. You must observe the terms of
+these licenses, as well as the terms of the GNU General Public License,
+when you distribute SWIG.
+
+The SWIG library and examples, under the Lib and Examples top level 
+directories, are distributed under the following terms:
+
+  You may copy, modify, distribute, and make derivative works based on
+  this software, in source code or object code form, without
+  restriction. If you distribute the software to others, you may do
+  so according to the terms of your choice. This software is offered as
+  is, without warranty of any kind.
+
+See the COPYRIGHT file for a list of contributors to SWIG and their
+copyright notices.

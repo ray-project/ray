@@ -1,0 +1,38 @@
+Metadata-Version: 2.0
+Name: tensorflow-estimator
+Version: 1.13.0
+Summary: TensorFlow Estimator.
+Home-page: https://www.tensorflow.org/
+Author: Google Inc.
+Author-email: opensource@google.com
+License: Apache 2.0
+Download-URL: https://github.com/tensorflow/estimator/tags
+Description-Content-Type: UNKNOWN
+Keywords: tensorflow estimator tensor machine learning
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: absl-py (>=0.1.6)
+Requires-Dist: numpy (>=1.13.3)
+Requires-Dist: six (>=1.10.0)
+Requires-Dist: mock (>=2.0.0)
+
+TensorFlow Estimator is a high-level API that encapsulates model training,
+evaluation, prediction, and exporting.
+
+

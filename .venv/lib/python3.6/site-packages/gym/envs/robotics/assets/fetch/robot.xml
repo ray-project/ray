@@ -1,0 +1,123 @@
+<mujoco>
+	<body mocap="true" name="robot0:mocap" pos="0 0 0">
+		<geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.7" size="0.005 0.005 0.005" type="box"></geom>
+		<geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.1" size="1 0.005 0.005" type="box"></geom>
+		<geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.1" size="0.005 1 0.001" type="box"></geom>
+		<geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.1" size="0.005 0.005 1" type="box"></geom>
+	</body>
+	<body childclass="robot0:fetch" name="robot0:base_link" pos="0.2869 0.2641 0">
+		<joint armature="0.0001" axis="1 0 0" damping="1e+11" name="robot0:slide0" pos="0 0 0" type="slide"></joint>
+		<joint armature="0.0001" axis="0 1 0" damping="1e+11" name="robot0:slide1" pos="0 0 0" type="slide"></joint>
+		<joint armature="0.0001" axis="0 0 1" damping="1e+11" name="robot0:slide2" pos="0 0 0" type="slide"></joint>
+		<inertial diaginertia="1.2869 1.2236 0.9868" mass="70.1294" pos="-0.0036 0 0.0014" quat="0.7605 -0.0133 -0.0061 0.6491"></inertial>
+		<geom mesh="robot0:base_link" name="robot0:base_link" material="robot0:base_mat" class="robot0:grey"></geom>
+		<body name="robot0:torso_lift_link" pos="-0.0869 0 0.3774">
+			<inertial diaginertia="0.3365 0.3354 0.0943" mass="10.7796" pos="-0.0013 -0.0009 0.2935" quat="0.9993 -0.0006 0.0336 0.0185"></inertial>
+			<joint axis="0 0 1" damping="1e+07" name="robot0:torso_lift_joint" range="0.0386 0.3861" type="slide"></joint>
+			<geom mesh="robot0:torso_lift_link" name="robot0:torso_lift_link" material="robot0:torso_mat"></geom>
+			<body name="robot0:head_pan_link" pos="0.0531 0 0.603">
+				<inertial diaginertia="0.0185 0.0128 0.0095" mass="2.2556" pos="0.0321 0.0161 0.039" quat="0.5148 0.5451 -0.453 0.4823"></inertial>
+				<joint axis="0 0 1" name="robot0:head_pan_joint" range="-1.57 1.57"></joint>
+				<geom mesh="robot0:head_pan_link" name="robot0:head_pan_link" material="robot0:head_mat" class="robot0:grey"></geom>
+				<body name="robot0:head_tilt_link" pos="0.1425 0 0.058">
+					<inertial diaginertia="0.0063 0.0059 0.0014" mass="0.9087" pos="0.0081 0.0025 0.0113" quat="0.6458 0.66 -0.274 0.2689"></inertial>
+					<joint axis="0 1 0" damping="1000" name="robot0:head_tilt_joint" range="-0.76 1.45" ref="0.06"></joint>
+					<geom mesh="robot0:head_tilt_link" name="robot0:head_tilt_link" material="robot0:head_mat" class="robot0:blue"></geom>
+					<body name="robot0:head_camera_link" pos="0.055 0 0.0225">
+						<inertial diaginertia="0 0 0" mass="0" pos="0.055 0 0.0225"></inertial>
+						<body name="robot0:head_camera_rgb_frame" pos="0 0.02 0">
+							<inertial diaginertia="0 0 0" mass="0" pos="0 0.02 0"></inertial>
+							<body name="robot0:head_camera_rgb_optical_frame" pos="0 0 0" quat="0.5 -0.5 0.5 -0.5">
+								<inertial diaginertia="0 0 0" mass="0" pos="0 0 0" quat="0.5 -0.5 0.5 -0.5"></inertial>
+								<camera euler="3.1415 0 0" fovy="50" name="head_camera_rgb" pos="0 0 0"></camera>
+							</body>
+						</body>
+						<body name="robot0:head_camera_depth_frame" pos="0 0.045 0">
+							<inertial diaginertia="0 0 0" mass="0" pos="0 0.045 0"></inertial>
+							<body name="robot0:head_camera_depth_optical_frame" pos="0 0 0" quat="0.5 -0.5 0.5 -0.5">
+								<inertial diaginertia="0 0 0" mass="0" pos="0 0 0" quat="0.5 -0.5 0.5 -0.5"></inertial>
+							</body>
+						</body>
+					</body>
+				</body>
+			</body>
+			<body name="robot0:shoulder_pan_link" pos="0.1195 0 0.3486">
+				<inertial diaginertia="0.009 0.0086 0.0041" mass="2.5587" pos="0.0927 -0.0056 0.0564" quat="-0.1364 0.7624 -0.1562 0.613"></inertial>
+				<joint axis="0 0 1" name="robot0:shoulder_pan_joint" range="-1.6056 1.6056"></joint>
+				<geom mesh="robot0:shoulder_pan_link" name="robot0:shoulder_pan_link" material="robot0:arm_mat"></geom>
+				<body name="robot0:shoulder_lift_link" pos="0.117 0 0.06">
+					<inertial diaginertia="0.0116 0.0112 0.0023" mass="2.6615" pos="0.1432 0.0072 -0.0001" quat="0.4382 0.4382 0.555 0.555"></inertial>
+					<joint axis="0 1 0" name="robot0:shoulder_lift_joint" range="-1.221 1.518"></joint>
+					<geom mesh="robot0:shoulder_lift_link" name="robot0:shoulder_lift_link" material="robot0:arm_mat" class="robot0:blue"></geom>
+					<body name="robot0:upperarm_roll_link" pos="0.219 0 0">
+						<inertial diaginertia="0.0047 0.0045 0.0019" mass="2.3311" pos="0.1165 0.0014 0" quat="-0.0136 0.707 0.0136 0.707"></inertial>
+						<joint axis="1 0 0" limited="false" name="robot0:upperarm_roll_joint"></joint>
+						<geom mesh="robot0:upperarm_roll_link" name="robot0:upperarm_roll_link" material="robot0:arm_mat"></geom>
+						<body name="robot0:elbow_flex_link" pos="0.133 0 0">
+							<inertial diaginertia="0.0086 0.0084 0.002" mass="2.1299" pos="0.1279 0.0073 0" quat="0.4332 0.4332 0.5589 0.5589"></inertial>
+							<joint axis="0 1 0" name="robot0:elbow_flex_joint" range="-2.251 2.251"></joint>
+							<geom mesh="robot0:elbow_flex_link" name="robot0:elbow_flex_link" material="robot0:arm_mat" class="robot0:blue"></geom>
+							<body name="robot0:forearm_roll_link" pos="0.197 0 0">
+								<inertial diaginertia="0.0035 0.0031 0.0015" mass="1.6563" pos="0.1097 -0.0266 0" quat="-0.0715 0.7035 0.0715 0.7035"></inertial>
+								<joint armature="2.7538" axis="1 0 0" damping="3.5247" frictionloss="0" limited="false" name="robot0:forearm_roll_joint" stiffness="10"></joint>
+								<geom mesh="robot0:forearm_roll_link" name="robot0:forearm_roll_link" material="robot0:arm_mat"></geom>
+								<body name="robot0:wrist_flex_link" pos="0.1245 0 0">
+									<inertial diaginertia="0.0042 0.0042 0.0018" mass="1.725" pos="0.0882 0.0009 -0.0001" quat="0.4895 0.4895 0.5103 0.5103"></inertial>
+									<joint axis="0 1 0" name="robot0:wrist_flex_joint" range="-2.16 2.16"></joint>
+									<geom mesh="robot0:wrist_flex_link" name="robot0:wrist_flex_link" material="robot0:arm_mat" class="robot0:blue"></geom>
+									<body name="robot0:wrist_roll_link" pos="0.1385 0 0">
+										<inertial diaginertia="0.0001 0.0001 0.0001" mass="0.1354" pos="0.0095 0.0004 -0.0002"></inertial>
+										<joint axis="1 0 0" limited="false" name="robot0:wrist_roll_joint"></joint>
+										<geom mesh="robot0:wrist_roll_link" name="robot0:wrist_roll_link" material="robot0:arm_mat"></geom>
+										<body euler="0 0 0" name="robot0:gripper_link" pos="0.1664 0 0">
+											<inertial diaginertia="0.0024 0.0019 0.0013" mass="1.5175" pos="-0.09 -0.0001 -0.0017" quat="0 0.7071 0 0.7071"></inertial>
+											<geom mesh="robot0:gripper_link" name="robot0:gripper_link" material="robot0:gripper_mat"></geom>
+											<body name="robot0:gipper_camera_link" pos="0.055 0 0.0225">
+												<body name="robot0:gripper_camera_rgb_frame" pos="0 0.02 0">
+													<body name="robot0:gripper_camera_rgb_optical_frame" pos="0 0 0" quat="0.5 -0.5 0.5 -0.5">
+														<camera euler="3.1415 0 0" fovy="50" name="gripper_camera_rgb" pos="0 0 0"></camera>
+													</body>
+												</body>
+												<body name="robot0:gripper_camera_depth_frame" pos="0 0.045 0">
+													<body name="robot0:gripper_camera_depth_optical_frame" pos="0 0 0" quat="0.5 -0.5 0.5 -0.5"></body>
+												</body>
+											</body>
+
+											<body childclass="robot0:fetchGripper" name="robot0:r_gripper_finger_link" pos="0 0.0159 0">
+												<inertial diaginertia="0.1 0.1 0.1" mass="4" pos="-0.01 0 0"></inertial>
+												<joint axis="0 1 0" name="robot0:r_gripper_finger_joint" range="0 0.05"></joint>
+												<geom pos="0 -0.008 0" size="0.0385 0.007 0.0135" type="box" name="robot0:r_gripper_finger_link" material="robot0:gripper_finger_mat" condim="4" friction="1 0.05 0.01"></geom>
+											</body>
+											<body childclass="robot0:fetchGripper" name="robot0:l_gripper_finger_link" pos="0 -0.0159 0">
+												<inertial diaginertia="0.1 0.1 0.1" mass="4" pos="-0.01 0 0"></inertial>
+												<joint axis="0 -1 0" name="robot0:l_gripper_finger_joint" range="0 0.05"></joint>
+												<geom pos="0 0.008 0" size="0.0385 0.007 0.0135" type="box" name="robot0:l_gripper_finger_link" material="robot0:gripper_finger_mat" condim="4" friction="1 0.05 0.01"></geom>
+											</body>
+											<site name="robot0:grip" pos="0.02 0 0" rgba="0 0 0 0" size="0.02 0.02 0.02"></site>
+										</body>
+									</body>
+								</body>
+							</body>
+						</body>
+					</body>
+				</body>
+			</body>
+		</body>
+		<body name="robot0:estop_link" pos="-0.1246 0.2389 0.3113" quat="0.7071 0.7071 0 0">
+			<inertial diaginertia="0 0 0" mass="0.002" pos="0.0024 -0.0033 0.0067" quat="0.3774 -0.1814 0.1375 0.8977"></inertial>
+			<geom mesh="robot0:estop_link" rgba="0.8 0 0 1" name="robot0:estop_link"></geom>
+		</body>
+		<body name="robot0:laser_link" pos="0.235 0 0.2878" quat="0 1 0 0">
+			<inertial diaginertia="0 0 0" mass="0.0083" pos="-0.0306 0.0007 0.0552" quat="0.5878 0.5378 -0.4578 0.3945"></inertial>
+			<geom mesh="robot0:laser_link" rgba="0.7922 0.8196 0.9333 1" name="robot0:laser_link"></geom>
+			<camera euler="1.55 -1.55 3.14" fovy="25" name="lidar" pos="0 0 0.02"></camera>
+		</body>
+		<body name="robot0:torso_fixed_link" pos="-0.0869 0 0.3774">
+			<inertial diaginertia="0.3865 0.3394 0.1009" mass="13.2775" pos="-0.0722 0.0057 0.2656" quat="0.9995 0.0249 0.0177 0.011"></inertial>
+			<geom mesh="robot0:torso_fixed_link" name="robot0:torso_fixed_link" class="robot0:blue"></geom>
+		</body>
+		<body name="robot0:external_camera_body_0" pos="0 0 0">
+			<camera euler="0 0.75 1.57" fovy="43.3" name="external_camera_0" pos="1.3 0 1.2"></camera>
+		</body>
+	</body>
+</mujoco>

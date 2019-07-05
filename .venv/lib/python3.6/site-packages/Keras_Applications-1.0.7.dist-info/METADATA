@@ -1,0 +1,46 @@
+Metadata-Version: 2.1
+Name: Keras-Applications
+Version: 1.0.7
+Summary: Reference implementations of popular deep learning models
+Home-page: https://github.com/keras-team/keras-applications
+Author: Keras Team
+License: MIT
+Download-URL: https://github.com/keras-team/keras-applications/tarball/1.0.7
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: numpy (>=1.9.1)
+Requires-Dist: h5py
+Provides-Extra: tests
+Requires-Dist: pytest ; extra == 'tests'
+Requires-Dist: pytest-pep8 ; extra == 'tests'
+Requires-Dist: pytest-xdist ; extra == 'tests'
+Requires-Dist: pytest-cov ; extra == 'tests'
+
+Keras Applications is the `applications` module of
+the Keras deep learning library.
+It provides model definitions and pre-trained weights for a number
+of popular archictures, such as VGG16, ResNet50, Xception, MobileNet, and more.
+
+Read the documentation at: https://keras.io/applications/
+
+Keras Applications may be imported directly
+from an up-to-date installation of Keras:
+
+```
+from keras import applications
+```
+
+Keras Applications is compatible with Python 2.7-3.6
+and is distributed under the MIT license.
+
+

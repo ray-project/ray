@@ -1,0 +1,54 @@
+Metadata-Version: 2.1
+Name: Keras-Preprocessing
+Version: 1.0.9
+Summary: Easy data preprocessing and data augmentation for deep learning models
+Home-page: https://github.com/keras-team/keras-preprocessing
+Author: Keras Team
+License: MIT
+Download-URL: https://github.com/keras-team/keras-preprocessing/tarball/1.0.8
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: numpy (>=1.9.1)
+Requires-Dist: six (>=1.9.0)
+Provides-Extra: image
+Requires-Dist: scipy (>=0.14) ; extra == 'image'
+Requires-Dist: Pillow (>=5.2.0) ; extra == 'image'
+Provides-Extra: pep8
+Requires-Dist: flake8 ; extra == 'pep8'
+Provides-Extra: tests
+Requires-Dist: pandas ; extra == 'tests'
+Requires-Dist: pillow ; extra == 'tests'
+Requires-Dist: tensorflow (==1.7) ; extra == 'tests'
+Requires-Dist: keras ; extra == 'tests'
+Requires-Dist: pytest ; extra == 'tests'
+Requires-Dist: pytest-xdist ; extra == 'tests'
+Requires-Dist: pytest-cov ; extra == 'tests'
+
+Keras Preprocessing is the data preprocessing
+and data augmentation module of the Keras deep learning library.
+It provides utilities for working with image data, text data,
+and sequence data.
+
+Read the documentation at: https://keras.io/
+
+Keras Preprocessing may be imported directly
+from an up-to-date installation of Keras:
+
+```
+from keras import preprocessing
+```
+
+Keras Preprocessing is compatible with Python 2.7-3.6
+and is distributed under the MIT license.
+
+

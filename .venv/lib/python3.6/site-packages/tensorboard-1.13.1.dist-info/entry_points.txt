@@ -1,0 +1,3 @@
+[console_scripts]
+tensorboard = tensorboard.main:run_main
+

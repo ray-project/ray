@@ -1,0 +1,15 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+cython = "==0.29.0"
+tensorflow-gpu = "*"
+gym = "*"
+pandas = "*"
+
+[requires]
+python_version = "3.6"

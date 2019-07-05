@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco>
+    <compiler angle="radian" coordinate="local" meshdir="../stls/hand" texturedir="../textures"></compiler>
+    <option timestep="0.002" iterations="20" apirate="200">
+        <flag warmstart="enable"></flag>
+    </option>
+
+    <include file="shared.xml"></include>
+    <include file="shared_touch_sensors_92.xml"></include>
+
+    <asset>
+        <include file="shared_asset.xml"></include>
+
+        <texture name="texture:object" file="block.png" gridsize="3 4" gridlayout=".U..LFRB.D.."></texture>
+        <texture name="texture:hidden" file="block_hidden.png" gridsize="3 4" gridlayout=".U..LFRB.D.."></texture>
+
+        <material name="material:object" texture="texture:object" specular="1" shininess="0.3" reflectance="0"></material>
+        <material name="material:hidden" texture="texture:hidden" specular="1" shininess="0.3" reflectance="0"></material>
+        <material name="material:target" texture="texture:object" specular="1" shininess="0.3" reflectance="0" rgba="1 1 1 0.5"></material>
+    </asset>
+
+    <worldbody>
+        <geom name="floor0" pos="1 1 0" size="1 1 1" type="plane" condim="3" material="floor_mat"></geom>
+        <body name="floor0" pos="1 1 0"></body>
+
+        <include file="robot_touch_sensors_92.xml"></include>
+
+        <body name="object" pos="1 0.87 0.2">
+            <geom name="object" type="ellipsoid" size="0.03 0.03 0.04" material="material:object" condim="4"></geom>
+            <geom name="object_hidden" type="ellipsoid" size="0.029 0.029 0.03" material="material:hidden" condim="4" contype="0" conaffinity="0" mass="0"></geom>
+            <site name="object:center" pos="0 0 0" rgba="1 0 0 0" size="0.01 0.01 0.01"></site>
+            <joint name="object:joint" type="free" damping="0.01"></joint>
+        </body>
+        <body name="target" pos="1 0.87 0.2">
+            <geom name="target" type="ellipsoid" size="0.03 0.03 0.04" material="material:target" condim="4" group="2" contype="0" conaffinity="0"></geom>
+            <site name="target:center" pos="0 0 0" rgba="1 0 0 0" size="0.01 0.01 0.01"></site>
+            <joint name="target:joint" type="free" damping="0.01"></joint>
+        </body>
+
+        <light directional="true" ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3" castshadow="false" pos="0 1 4" dir="0 0 -1" name="light0"></light>
+    </worldbody>
+</mujoco>

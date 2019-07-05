@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco>
+	<compiler angle="radian" coordinate="local" meshdir="../stls/fetch" texturedir="../textures"></compiler>
+	<option timestep="0.002">
+		<flag warmstart="enable"></flag>
+	</option>
+
+	<include file="shared.xml"></include>
+	
+	<worldbody>
+		<geom name="floor0" pos="1 0.75 0" size="1.05 0.7 1" type="plane" condim="3" material="floor_mat"></geom>
+		<body name="floor0" pos="1 0.75 0">
+			<site name="target0" pos="0 0 0.5" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"></site>
+		</body>
+
+		<include file="robot.xml"></include>
+		
+		<body name="table0" pos="1.32441906 0.75018422 0.2">
+			<geom size="0.625 0.45 0.2" type="box" condim="3" name="table0" material="table_mat" mass="2000" friction="0.1 0.005 0.0001"></geom>
+		</body>
+
+		<body name="object0" pos="0.025 0.025 0.02">
+			<joint name="object0:joint" type="free" damping="0.01"></joint>
+			<geom size="0.025 0.02" type="cylinder" condim="3" name="object0" material="puck_mat" friction="0.1 0.005 0.0001" mass="2"></geom>
+			<site name="object0" pos="0 0 0" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"></site>
+		</body>
+
+		<light directional="true" ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3" castshadow="false" pos="0 0 4" dir="0 0 -1" name="light0"></light>
+	</worldbody>
+
+	<actuator></actuator>
+</mujoco>

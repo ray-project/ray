@@ -1,0 +1,53 @@
+Metadata-Version: 2.1
+Name: tensorflow-gpu
+Version: 1.13.1
+Summary: TensorFlow is an open source machine learning framework for everyone.
+Home-page: https://www.tensorflow.org/
+Author: Google Inc.
+Author-email: opensource@google.com
+License: Apache 2.0
+Download-URL: https://github.com/tensorflow/tensorflow/tags
+Keywords: tensorflow tensor machine learning
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: absl-py (>=0.1.6)
+Requires-Dist: astor (>=0.6.0)
+Requires-Dist: gast (>=0.2.0)
+Requires-Dist: keras-applications (>=1.0.6)
+Requires-Dist: keras-preprocessing (>=1.0.5)
+Requires-Dist: numpy (>=1.13.3)
+Requires-Dist: six (>=1.10.0)
+Requires-Dist: protobuf (>=3.6.1)
+Requires-Dist: tensorboard (<1.14.0,>=1.13.0)
+Requires-Dist: tensorflow-estimator (<1.14.0rc0,>=1.13.0)
+Requires-Dist: termcolor (>=1.1.0)
+Requires-Dist: grpcio (>=1.8.6)
+Requires-Dist: wheel (>=0.26)
+
+TensorFlow is an open source software library for high performance numerical
+computation. Its flexible architecture allows easy deployment of computation
+across a variety of platforms (CPUs, GPUs, TPUs), and from desktops to clusters
+of servers to mobile and edge devices.
+
+Originally developed by researchers and engineers from the Google Brain team
+within Google's AI organization, it comes with strong support for machine
+learning and deep learning and the flexible numerical computation core is used
+across many other scientific domains.
+
+
