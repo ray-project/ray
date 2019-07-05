@@ -126,6 +126,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ResourceSet required_placement_resources_;
 };
 
+/// Helper function for building the common fields of a `TaskSpec` message.
 void BuildCommonTaskSpec(
     rpc::TaskSpec &message, const Language &language,
     const std::vector<std::string> &function_descriptor, const JobID &job_id,
@@ -133,11 +134,13 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources);
 
+/// Helper function for building the `ActorCreactionSpec` in a `TaskSpec` message.
 void BuildActorCreationTaskSpec(
     rpc::TaskSpec &message, const ActorID &actor_id,
     uint64_t max_reconstructions = 0,
     const std::vector<std::string> &dynamic_worker_options = {});
 
+/// Helper function for building the `ActorSpec` in a `TaskSpec` message.
 void BuildActorTaskSpec(rpc::TaskSpec &message, const ActorID &actor_id,
                         const ActorHandleID &actor_handle_id,
                         const ObjectID &actor_creation_dummy_object_id,

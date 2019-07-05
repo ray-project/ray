@@ -29,18 +29,21 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   }
 }
 
+/// Converts a Protobuf `RepeatedPtrField` to a vector.
 template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedPtrField<T> &pb_repeated) {
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
+/// Converts a Protobuf `RepeatedField` to a vector.
 template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedField<T> &pb_repeated) {
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
+/// Converts a Protobuf `RepeatedField` to a vector of IDs.
 template <class ID>
 inline std::vector<ID> IdVectorFromProtobuf(
     const ::google::protobuf::RepeatedPtrField<::std::string> &pb_repeated) {
@@ -51,6 +54,7 @@ inline std::vector<ID> IdVectorFromProtobuf(
   return ret;
 }
 
+/// Converts a Protobuf map to a `unordered_map`.
 template <class K, class V>
 inline std::unordered_map<K, V> MapFromProtobuf(::google::protobuf::Map<K, V> pb_map) {
   return std::unordered_map<K, V>(pb_map.begin(), pb_map.end());
