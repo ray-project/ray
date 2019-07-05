@@ -6,19 +6,26 @@
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    WorkerContext &worker_context, RayletClient &raylet_client,
+    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface)
-    : worker_context_(worker_context), object_interface_(object_interface) {
-  task_receivers.emplace(static_cast<int>(TaskTransportType::RAYLET),
-                         std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-                             new CoreWorkerRayletTaskReceiver(raylet_client)));
+    : worker_context_(worker_context),
+      object_interface_(object_interface),
+      worker_server_("Worker", 0 /* let grpc choose port */),
+      main_work_(main_service_) {
+  task_receivers_.emplace(
+      static_cast<int>(TaskTransportType::RAYLET),
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+          raylet_client, main_service_, worker_server_)));
+
+  // Start RPC server after all the task receivers are properly initialized.
+  worker_server_.Run();
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   while (true) {
     std::vector<TaskSpec> tasks;
     auto status =
-        task_receivers[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(&tasks);
+        task_receivers_[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(&tasks);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Getting task failed with error: "
                      << ray::Status::IOError(status.message());

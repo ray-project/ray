@@ -20,7 +20,7 @@ using rpc::Language;
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const Language &language,
+  Worker(pid_t pid, const Language &language, int port,
          std::shared_ptr<LocalClientConnection> connection);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -32,6 +32,7 @@ class Worker {
   /// Return the worker's PID.
   pid_t Pid() const;
   Language GetLanguage() const;
+  int Port() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -59,6 +60,9 @@ class Worker {
   pid_t pid_;
   /// The language type of this worker.
   Language language_;
+  /// Port that this worker listens on.
+  /// If port <= 0, this indicates that the worker will not listen to a port.
+  int port_;
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
   /// The worker's currently assigned task.

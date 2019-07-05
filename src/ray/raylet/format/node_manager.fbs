@@ -136,6 +136,10 @@ table RegisterClientRequest {
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
+  // Port that this worker is listening on.
+  // If port > 0, then worker will listen to this port and wait for
+  // raylet to push tasks, instead of invoking GetTask().
+  port: int;
 }
 
 table RegisterClientReply {
