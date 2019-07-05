@@ -3,6 +3,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/raylet/task_util.h"
 
 namespace ray {
 
@@ -107,7 +108,7 @@ rpc::TaskSpec CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
   auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   // Build common task spec.
-  raylet::BuildCommonTaskSpec(message, function.language, function.function_descriptor,
+  raylet::BuildCommonTaskSpec(&message, function.language, function.function_descriptor,
                               context.GetCurrentJobID(), context.GetCurrentTaskID(),
                               next_task_index, num_returns,
                               required_resources, required_placement_resources);
@@ -150,7 +151,7 @@ Status CoreWorkerTaskInterface::CreateActor(
                                   actor_creation_options.resources, &return_ids);
 
   ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
-  raylet::BuildActorCreationTaskSpec(task_spec_message, actor_id,
+  raylet::BuildActorCreationTaskSpec(&task_spec_message, actor_id,
                                      actor_creation_options.max_reconstructions, {});
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
@@ -178,7 +179,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   // Build actor task spec.
   auto actor_creation_dummy_object_id =
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
-  raylet::BuildActorTaskSpec(task_spec_message, actor_handle.ActorID(),
+  raylet::BuildActorTaskSpec(&task_spec_message, actor_handle.ActorID(),
                              actor_handle.ActorHandleID(), actor_creation_dummy_object_id,
                              actor_handle.IncreaseTaskCounter(),
                              actor_handle.NewActorHandles());

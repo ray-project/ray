@@ -56,7 +56,7 @@ cdef class TaskSpec:
 
         # Build common task spec.
         BuildCommonTaskSpec(
-            task_spec_message, LANGUAGE_PYTHON, c_function_descriptor,
+            &task_spec_message, LANGUAGE_PYTHON, c_function_descriptor,
             job_id.native(), parent_task_id.native(), parent_counter, num_returns,
             required_resources, required_placement_resources)
 
@@ -73,7 +73,7 @@ cdef class TaskSpec:
         if not actor_creation_id.is_nil():
             # Actor creation task.
             BuildActorCreationTaskSpec(
-                task_spec_message, actor_creation_id.native(),
+                &task_spec_message, actor_creation_id.native(),
                 max_actor_reconstructions, [])
         elif not actor_id.is_nil():
             # Actor task.
@@ -81,7 +81,7 @@ cdef class TaskSpec:
                 c_new_actor_handles.push_back(
                     (<ActorHandleID?>new_actor_handle).native())
             BuildActorTaskSpec(
-                task_spec_message, actor_id.native(), actor_handle_id.native(),
+                &task_spec_message, actor_id.native(), actor_handle_id.native(),
                 actor_creation_dummy_object_id.native(), actor_counter,
                 c_new_actor_handles)
         else:

@@ -78,20 +78,23 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
         CObjectID ActorDummyObject() const
         c_vector[CActorHandleID] NewActorHandles() const
 
+
+cdef extern from "ray/raylet/task_util.h" namespace "ray::raylet" nogil:
+
     cdef void BuildCommonTaskSpec(
-        RpcTaskSpec &message, const CLanguage &language,
+        RpcTaskSpec *message, const CLanguage &language,
         const c_vector[c_string] &function_descriptor, const CJobID &job_id,
         const CTaskID &parent_task_id, uint64_t parent_counter, uint64_t num_returns,
         const unordered_map[c_string, double] &required_resources,
         const unordered_map[c_string, double] &required_placement_resources);
 
     cdef void BuildActorCreationTaskSpec(
-        RpcTaskSpec &message, const CActorID &actor_id,
+        RpcTaskSpec *message, const CActorID &actor_id,
         uint64_t max_reconstructions,
         const c_vector[c_string] &dynamic_worker_options);
 
     cdef void BuildActorTaskSpec(
-        RpcTaskSpec &message, const CActorID &actor_id, const CActorHandleID &actor_handle_id,
+        RpcTaskSpec *message, const CActorID &actor_id, const CActorHandleID &actor_handle_id,
         const CObjectID &actor_creation_dummy_object_id, uint64_t actor_counter,
         const c_vector[CActorHandleID] &new_handle_ids);
 

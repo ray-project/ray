@@ -6,6 +6,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/raylet/task_dependency_manager.h"
+#include "ray/raylet/task_util.h"
 
 namespace ray {
 
@@ -69,7 +70,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   rpc::TaskSpec task_spec_message;
-  BuildCommonTaskSpec(task_spec_message, Language::PYTHON, {"", "", ""}, JobID::Nil(),
+  BuildCommonTaskSpec(&task_spec_message, Language::PYTHON, {"", "", ""}, JobID::Nil(),
                       TaskID::FromRandom(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
     task_spec_message.add_args()->add_object_ids(arg.Binary());
