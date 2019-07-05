@@ -38,7 +38,6 @@ matrix:
       env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
-        - sudo apt-get install -qq clang-format-6.0
       install: []
       script:
         - ./ci/travis/check-git-clang-format-output.sh

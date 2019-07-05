@@ -31,8 +31,8 @@ fi
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  if [[ $CLANG_FORMAT_VERSION != "6.0.0" ]]; then
-    echo "Please install clang-format 6.0.0. You currently are using $CLANG_FORMAT_VERSION."
+  if [[ $CLANG_FORMAT_VERSION != "7.0.0" ]]; then
+    echo "Please install clang-format 7.0.0. You currently are using $CLANG_FORMAT_VERSION."
     exit 1
   fi
 else
