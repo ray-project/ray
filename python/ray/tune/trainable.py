@@ -133,7 +133,8 @@ class Trainable(object):
             across checkpoint / restore calls.
 
             `training_iteration` (int): The index of this
-            training iteration, e.g. call to train().
+            training iteration, e.g. call to train(). This is incremented
+            after `_train()` is called.
 
             `pid` (str): The pid of the training process.
 

@@ -39,7 +39,7 @@ class _MockTrainer(Trainer):
             episode_len_mean=10,
             timesteps_this_iter=10,
             info={})
-        if self.config["user_checkpoint_freq"] > 0:
+        if self.config["user_checkpoint_freq"] > 0 and self.iteration > 0:
             if self.iteration % self.config["user_checkpoint_freq"] == 0:
                 result.update({tune_result.SHOULD_CHECKPOINT: True})
         return result
