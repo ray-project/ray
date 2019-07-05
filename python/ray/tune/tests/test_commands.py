@@ -73,8 +73,7 @@ def test_ls(start_ray, tmpdir):
         stop={"training_iteration": 1},
         num_samples=num_samples,
         local_dir=str(tmpdir),
-        global_checkpoint_period=0
-    )
+        global_checkpoint_period=0)
 
     columns = ["status", "episode_reward_mean", "training_iteration"]
     limit = 2
@@ -107,8 +106,7 @@ def test_lsx(start_ray, tmpdir):
             stop={"training_iteration": 1},
             num_samples=1,
             local_dir=project_path,
-            global_checkpoint_period=0
-        )
+            global_checkpoint_period=0)
 
     limit = 2
     with Capturing() as output:
