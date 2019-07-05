@@ -63,7 +63,7 @@ class RayletClient {
   /// specification and must free it.
   ///
   /// \param task_spec The assigned task.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status GetTask(std::unique_ptr<ray::raylet::TaskSpecification> *task_spec);
 
   /// Tell the raylet to reconstruct or fetch objects.
@@ -77,7 +77,7 @@ class RayletClient {
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status NotifyUnblocked(const TaskID &current_task_id);
 
   /// Wait for the given objects until timeout expires or num_return objects are
@@ -90,7 +90,7 @@ class RayletClient {
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
                    const TaskID &current_task_id, WaitResultPair *result);
@@ -101,14 +101,14 @@ class RayletClient {
   /// \param The type of the error.
   /// \param The error message.
   /// \param The timestamp of the error.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
   /// Store some profile events in the GCS.
   ///
   /// \param profile_events A batch of profiling event information.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status PushProfileEvents(ProfileTableData *profile_events);
 
   /// Free a list of objects from object stores.
@@ -117,7 +117,7 @@ class RayletClient {
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
   /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
                           bool deleteCreatingTasks);
 
@@ -125,7 +125,7 @@ class RayletClient {
   ///
   /// \param actor_id ID of the actor.
   /// \param checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return void.
+  /// \return ray::Status.
   ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
                                      ActorCheckpointID &checkpoint_id);
 
@@ -133,7 +133,7 @@ class RayletClient {
   ///
   /// \param actor_id ID of the actor.
   /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return void.
+  /// \return ray::Status.
   ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id);
 
@@ -141,7 +141,7 @@ class RayletClient {
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
   /// \param client_Id ClientID where the resource is to be set
-  /// \return void
+  /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 

@@ -100,13 +100,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Implementation of raylet grpc service.
 
+  /// Handle a `RegisterClient` request.
   void HandleRegisterClientRequest(const rpc::RegisterClientRequest &request,
                                    rpc::RegisterClientReply *reply,
                                    rpc::RequestDoneCallback done_callback) override;
+  /// Handle a `SubmitTask` request.
   void HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                rpc::SubmitTaskReply *reply,
                                rpc::RequestDoneCallback done_callback) override;
-
   /// Handle a `DisconnectClient` request.
   void HandleDisconnectClientRequest(const rpc::DisconnectClientRequest &request,
                                      rpc::DisconnectClientReply *reply,
@@ -114,7 +115,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handle a `GetTask` request.
   void HandleGetTaskRequest(const rpc::GetTaskRequest &request, rpc::GetTaskReply *reply,
                             rpc::RequestDoneCallback done_callback) override;
-
   /// Handle a `HandleFetchOrReconstruct` request.
   void HandleFetchOrReconstructRequest(const rpc::FetchOrReconstructRequest &request,
                                        rpc::FetchOrReconstructReply *reply,

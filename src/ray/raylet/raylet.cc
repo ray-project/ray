@@ -22,6 +22,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       object_manager_(main_service, object_manager_config, object_directory_),
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
                     object_directory_),
+      socket_name_(socket_name),
       raylet_server_("Raylet", socket_name),
       raylet_service_(main_service, node_manager_) {
   raylet_server_.RegisterService(raylet_service_);
@@ -57,6 +58,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   client_info.set_object_store_socket_name(object_store_socket_name);
   client_info.set_object_manager_port(object_manager_.GetServerPort());
   client_info.set_node_manager_port(node_manager_.GetServerPort());
+  RAY_LOG(INFO) << "raylet socket: " << raylet_socket_name << ", store socket: " << object_store_socket_name;
   // Add resource information.
   for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
     client_info.add_resources_total_label(resource_pair.first);

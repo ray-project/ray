@@ -38,7 +38,8 @@ void RayletClient::TryRegisterClient(int times) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
-  RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_;
+  RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_ << ", pid: "
+                 << static_cast<int>(getpid()) << ", is worker: " << is_worker_;
 }
 
 RayletClient::~RayletClient() {
@@ -380,7 +381,7 @@ ray::Status RayletClient::RegisterClient() {
   std::future<Status> f(p.get_future());
   auto callback = [&p](const Status &status, const RegisterClientReply &reply) {
     if (!status.ok()) {
-      RAY_LOG(INFO) << "[RayletClient] Register client failed, msg: " << status.message();
+      RAY_LOG(DEBUG) << "[RayletClient] Register client failed, msg: " << status.message();
     }
     p.set_value(status);
   };
