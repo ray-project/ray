@@ -76,7 +76,7 @@ class Categorical(ActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=self.inputs, labels=x)
+            logits=self.inputs, labels=tf.cast(x, tf.int32))
 
     @override(ActionDistribution)
     def entropy(self):
@@ -126,14 +126,17 @@ class Categorical(ActionDistribution):
 class MultiCategorical(ActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
-    def __init__(self, inputs):
-        self.cats = [Categorical(input_) for input_ in inputs]
+    def __init__(self, inputs, input_lens):
+        self.cats = [
+            Categorical(input_)
+            for input_ in tf.split(inputs, input_lens, axis=1)
+        ]
         self.sample_op = self._build_sample_op()
 
     def logp(self, actions):
         # If tensor is provided, unstack it into list
         if isinstance(actions, tf.Tensor):
-            actions = tf.unstack(actions, axis=1)
+            actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
             [cat.logp(act) for cat, act in zip(self.cats, actions)])
         return tf.reduce_sum(logps, axis=0)

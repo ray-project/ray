@@ -29,8 +29,11 @@ recompile much more quickly by doing
 
 .. code-block:: shell
 
- cd ray/build
- make -j8
+ cd ray
+ bazel build //:ray_pkg
+
+This command is not enough to recompile all C++ unit tests. To do so, see
+`Testing locally`_.
 
 Debugging
 ---------
@@ -60,7 +63,7 @@ Python script with the following:
 .. code-block:: bash
 
  RAY_RAYLET_GDB=1 RAY_RAYLET_TMUX=1 python
- 
+
 You can then list the ``tmux`` sessions with ``tmux ls`` and attach to the
 appropriate one.
 
@@ -71,14 +74,14 @@ allow core dump files to be written.
 
 Inspecting Redis shards
 ~~~~~~~~~~~~~~~~~~~~~~~
-To inspect Redis, you can use the ``ray.experimental.state.GlobalState`` Python
-API.  The easiest way to do this is to start or connect to a Ray cluster with
-``ray.init()``, then query the API like so:
+To inspect Redis, you can use the global state API. The easiest way to do this
+is to start or connect to a Ray cluster with ``ray.init()``, then query the API
+like so:
 
 .. code-block:: python
 
  ray.init()
- ray.worker.global_state.client_table()
+ ray.nodes()
  # Returns current information about the nodes in the cluster, such as:
  # [{'ClientID': '2a9d2b34ad24a37ed54e4fcd32bf19f915742f5b',
  #   'EntryType': 0,
@@ -143,6 +146,14 @@ failing, you can do
 When running tests, usually only the first test failure matters. A single
 test failure often triggers the failure of subsequent tests in the same
 script.
+
+To compile and run all C++ tests, you can run:
+
+.. code-block:: shell
+
+ cd ray
+ bazel test $(bazel query 'kind(cc_test, ...)')
+
 
 Linting
 -------

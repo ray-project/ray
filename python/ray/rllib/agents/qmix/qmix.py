@@ -3,8 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
+from ray.rllib.optimizers import SyncBatchReplayOptimizer
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -71,8 +72,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Optimizer class to use.
-    "optimizer_class": "SyncBatchReplayOptimizer",
     # Whether to use a distribution of epsilons across workers for exploration.
     "per_worker_exploration": False,
     # Whether to compute priorities on workers.
@@ -90,12 +89,16 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class QMixTrainer(DQNTrainer):
-    """QMix implementation in PyTorch."""
+def make_sync_batch_optimizer(workers, config):
+    return SyncBatchReplayOptimizer(
+        workers,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        train_batch_size=config["train_batch_size"])
 
-    _name = "QMIX"
-    _default_config = DEFAULT_CONFIG
-    _policy = QMixTorchPolicy
-    _optimizer_shared_configs = [
-        "learning_starts", "buffer_size", "train_batch_size"
-    ]
+
+QMixTrainer = GenericOffPolicyTrainer.with_updates(
+    name="QMIX",
+    default_config=DEFAULT_CONFIG,
+    default_policy=QMixTorchPolicy,
+    make_policy_optimizer=make_sync_batch_optimizer)

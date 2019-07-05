@@ -25,7 +25,7 @@ TaskExecutionSpecification::ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) co
 std::vector<ObjectID> TaskExecutionSpecification::ExecutionDependencies() const {
   std::vector<ObjectID> dependencies;
   for (const auto &dependency : execution_spec_.dependencies) {
-    dependencies.push_back(ObjectID::from_binary(dependency));
+    dependencies.push_back(ObjectID::FromBinary(dependency));
   }
   return dependencies;
 }
@@ -34,7 +34,7 @@ void TaskExecutionSpecification::SetExecutionDependencies(
     const std::vector<ObjectID> &dependencies) {
   execution_spec_.dependencies.clear();
   for (const auto &dependency : dependencies) {
-    execution_spec_.dependencies.push_back(dependency.binary());
+    execution_spec_.dependencies.push_back(dependency.Binary());
   }
 }
 

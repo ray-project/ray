@@ -105,9 +105,10 @@ class PPOLoss(object):
 
 
 def ppo_surrogate_loss(policy, batch_tensors):
-    if policy.model.state_in:
-        max_seq_len = tf.reduce_max(policy.model.seq_lens)
-        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+    if policy.state_in:
+        max_seq_len = tf.reduce_max(policy.convert_to_eager(policy.seq_lens))
+        mask = tf.sequence_mask(
+            policy.convert_to_eager(policy.seq_lens), max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
@@ -121,8 +122,8 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[BEHAVIOUR_LOGITS],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
-        policy.value_function,
-        policy.kl_coeff,
+        policy.convert_to_eager(policy.value_function),
+        policy.convert_to_eager(policy.kl_coeff),
         mask,
         entropy_coeff=policy.config["entropy_coeff"],
         clip_param=policy.config["clip_param"],
@@ -134,28 +135,26 @@ def ppo_surrogate_loss(policy, batch_tensors):
 
 
 def kl_and_loss_stats(policy, batch_tensors):
-    policy.explained_variance = explained_variance(
-        batch_tensors[Postprocessing.VALUE_TARGETS], policy.value_function)
-
-    stats_fetches = {
-        "cur_kl_coeff": policy.kl_coeff,
-        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+    return {
+        "cur_kl_coeff": tf.cast(
+            policy.convert_to_eager(policy.kl_coeff), tf.float64),
+        "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
         "total_loss": policy.loss_obj.loss,
         "policy_loss": policy.loss_obj.mean_policy_loss,
         "vf_loss": policy.loss_obj.mean_vf_loss,
-        "vf_explained_var": policy.explained_variance,
+        "vf_explained_var": explained_variance(
+            batch_tensors[Postprocessing.VALUE_TARGETS],
+            policy.convert_to_eager(policy.value_function)),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
     }
-
-    return stats_fetches
 
 
 def vf_preds_and_logits_fetches(policy):
     """Adds value function and logits outputs to experience batches."""
     return {
         SampleBatch.VF_PREDS: policy.value_function,
-        BEHAVIOUR_LOGITS: policy.model.outputs,
+        BEHAVIOUR_LOGITS: policy.model_out,
     }
 
 
@@ -170,7 +169,7 @@ def postprocess_ppo_gae(policy,
         last_r = 0.0
     else:
         next_state = []
-        for i in range(len(policy.model.state_in)):
+        for i in range(len(policy.state_in)):
             next_state.append([sample_batch["state_out_{}".format(i)][-1]])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
@@ -216,52 +215,29 @@ class KLCoeffMixin(object):
             self.kl_coeff_val *= 1.5
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self._sess)
+        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
         return self.kl_coeff_val
 
 
 class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
-            if config["vf_share_layers"]:
-                self.value_function = self.model.value_function()
-            else:
-                vf_config = config["model"].copy()
-                # Do not split the last layer of the value function into
-                # mean parameters and standard deviation parameters and
-                # do not make the standard deviations free variables.
-                vf_config["free_log_std"] = False
-                if vf_config["use_lstm"]:
-                    vf_config["use_lstm"] = False
-                    logger.warning(
-                        "It is not recommended to use a LSTM model with "
-                        "vf_share_layers=False (consider setting it to True). "
-                        "If you want to not share layers, you can implement "
-                        "a custom LSTM model that overrides the "
-                        "value_function() method.")
-                with tf.variable_scope("value_function"):
-                    self.value_function = ModelCatalog.get_model({
-                        "obs": self._obs_input,
-                        "prev_actions": self._prev_action_input,
-                        "prev_rewards": self._prev_reward_input,
-                        "is_training": self._get_is_training_placeholder(),
-                    }, obs_space, action_space, 1, vf_config).outputs
-                    self.value_function = tf.reshape(self.value_function, [-1])
+            self.value_function = self.model.value_function()
         else:
-            self.value_function = tf.zeros(shape=tf.shape(self._obs_input)[:1])
+            self.value_function = tf.zeros(
+                shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])
 
     def _value(self, ob, prev_action, prev_reward, *args):
         feed_dict = {
-            self._obs_input: [ob],
-            self._prev_action_input: [prev_action],
-            self._prev_reward_input: [prev_reward],
-            self.model.seq_lens: [1]
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
+            self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
+            self.seq_lens: [1]
         }
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
+        assert len(args) == len(self.state_in), (args, self.state_in)
+        for k, v in zip(self.state_in, args):
             feed_dict[k] = v
-        vf = self._sess.run(self.value_function, feed_dict)
+        vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
 
 

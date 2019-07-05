@@ -22,7 +22,7 @@ Training Workflows
    Example of how to adjust the configuration of an environment over time.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
-- `Using policy evaluators directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/policy_evaluator_custom_workflow.py>`__:
+- `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rollout_worker_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 
 Custom Envs and Models
@@ -38,6 +38,8 @@ Custom Envs and Models
    Example of adding batch norm layers to a custom model.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
+- `Eager execution <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__:
+   Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
 
 Serving and Offline
 -------------------
@@ -71,7 +73,7 @@ Community Examples
    Example of training robotic control policies in SageMaker with RLlib.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- `NeuroCuts <https://github.com/xinjin/neurocuts-code>`__:
+- `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
    Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.

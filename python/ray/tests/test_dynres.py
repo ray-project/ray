@@ -23,8 +23,8 @@ def test_dynamic_res_creation(ray_start_regular):
 
     ray.get(set_res.remote(res_name, res_capacity))
 
-    available_res = ray.global_state.available_resources()
-    cluster_res = ray.global_state.cluster_resources()
+    available_res = ray.available_resources()
+    cluster_res = ray.cluster_resources()
 
     assert available_res[res_name] == res_capacity
     assert cluster_res[res_name] == res_capacity
@@ -43,8 +43,8 @@ def test_dynamic_res_deletion(shutdown_only):
 
     ray.get(delete_res.remote(res_name))
 
-    available_res = ray.global_state.available_resources()
-    cluster_res = ray.global_state.cluster_resources()
+    available_res = ray.available_resources()
+    cluster_res = ray.cluster_resources()
 
     assert res_name not in available_res
     assert res_name not in cluster_res
@@ -69,7 +69,7 @@ def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
     oid = remote_task.remote()  # This is infeasible
     ray.get(set_res.remote(res_name, res_capacity))  # Now should be feasible
 
-    available_res = ray.global_state.available_resources()
+    available_res = ray.available_resources()
     assert available_res[res_name] == res_capacity
 
     successful, unsuccessful = ray.wait([oid], timeout=1)
@@ -88,7 +88,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientid = ray.global_state.client_table()[1]["ClientID"]
+    target_clientid = ray.nodes()[1]["ClientID"]
 
     @ray.remote
     def set_res(resource_name, resource_capacity, client_id):
@@ -102,7 +102,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
     new_capacity = res_capacity + 1
     ray.get(set_res.remote(res_name, new_capacity, target_clientid))
 
-    target_client = next(client for client in ray.global_state.client_table()
+    target_client = next(client for client in ray.nodes()
                          if client["ClientID"] == target_clientid)
     resources = target_client["Resources"]
 
@@ -122,7 +122,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientid = ray.global_state.client_table()[1]["ClientID"]
+    target_clientid = ray.nodes()[1]["ClientID"]
 
     @ray.remote
     def set_res(resource_name, resource_capacity, res_client_id):
@@ -130,7 +130,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
             resource_name, resource_capacity, client_id=res_client_id)
 
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
-    target_client = next(client for client in ray.global_state.client_table()
+    target_client = next(client for client in ray.nodes()
                          if client["ClientID"] == target_clientid)
     resources = target_client["Resources"]
 
@@ -152,9 +152,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    target_clientids = [client["ClientID"] for client in ray.nodes()]
 
     @ray.remote
     def set_res(resource_name, resource_capacity, res_client_id):
@@ -172,9 +170,8 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     while time.time() - start_time < TIMEOUT and not success:
         resources_created = []
         for cid in target_clientids:
-            target_client = next(client
-                                 for client in ray.global_state.client_table()
-                                 if client["ClientID"] == cid)
+            target_client = next(
+                client for client in ray.nodes() if client["ClientID"] == cid)
             resources = target_client["Resources"]
             resources_created.append(resources[res_name] == res_capacity)
         success = all(resources_created)
@@ -196,7 +193,7 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    target_clientid = ray.global_state.client_table()[1]["ClientID"]
+    target_clientid = ray.nodes()[1]["ClientID"]
 
     # Launch the delete task
     @ray.remote
@@ -206,10 +203,10 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
 
     ray.get(delete_res.remote(res_name, target_clientid))
 
-    target_client = next(client for client in ray.global_state.client_table()
+    target_client = next(client for client in ray.nodes()
                          if client["ClientID"] == target_clientid)
     resources = target_client["Resources"]
-    print(ray.global_state.cluster_resources())
+    print(ray.cluster_resources())
     assert res_name not in resources
 
 
@@ -228,9 +225,7 @@ def test_dynamic_res_creation_scheduler_consistency(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    clientids = [client["ClientID"] for client in ray.nodes()]
 
     @ray.remote
     def set_res(resource_name, resource_capacity, res_client_id):
@@ -267,9 +262,7 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    clientids = [client["ClientID"] for client in ray.nodes()]
 
     @ray.remote
     def delete_res(resource_name, res_client_id):
@@ -284,7 +277,7 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
     # Create the resource on node1
     target_clientid = clientids[1]
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
-    assert ray.global_state.cluster_resources()[res_name] == res_capacity
+    assert ray.cluster_resources()[res_name] == res_capacity
 
     # Delete the resource
     ray.get(delete_res.remote(res_name, target_clientid))
@@ -322,9 +315,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    clientids = [client["ClientID"] for client in ray.nodes()]
     target_clientid = clientids[1]
 
     @ray.remote
@@ -334,7 +325,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
 
     # Create the resource on node 1
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
-    assert ray.global_state.cluster_resources()[res_name] == res_capacity
+    assert ray.cluster_resources()[res_name] == res_capacity
 
     # Task to hold the resource till the driver signals to finish
     @ray.remote
@@ -376,7 +367,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
                             })  # This should be infeasible
     successful, unsuccessful = ray.wait([task_3], timeout=TIMEOUT_DURATION)
     assert unsuccessful  # The task did not complete because it's infeasible
-    assert ray.global_state.available_resources()[res_name] == updated_capacity
+    assert ray.available_resources()[res_name] == updated_capacity
 
 
 def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
@@ -403,9 +394,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    clientids = [client["ClientID"] for client in ray.nodes()]
     target_clientid = clientids[1]
 
     @ray.remote
@@ -415,7 +404,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
 
     # Create the resource on node 1
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
-    assert ray.global_state.cluster_resources()[res_name] == res_capacity
+    assert ray.cluster_resources()[res_name] == res_capacity
 
     # Task to hold the resource till the driver signals to finish
     @ray.remote
@@ -457,7 +446,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
                             })  # This should be infeasible
     successful, unsuccessful = ray.wait([task_3], timeout=TIMEOUT_DURATION)
     assert unsuccessful  # The task did not complete because it's infeasible
-    assert ray.global_state.available_resources()[res_name] == updated_capacity
+    assert ray.available_resources()[res_name] == updated_capacity
 
 
 def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
@@ -482,9 +471,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    clientids = [client["ClientID"] for client in ray.nodes()]
     target_clientid = clientids[1]
 
     @ray.remote
@@ -499,7 +486,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
 
     # Create the resource on node 1
     ray.get(set_res.remote(res_name, res_capacity, target_clientid))
-    assert ray.global_state.cluster_resources()[res_name] == res_capacity
+    assert ray.cluster_resources()[res_name] == res_capacity
 
     # Task to hold the resource till the driver signals to finish
     @ray.remote
@@ -534,7 +521,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
         args=[], resources={res_name: 1})  # This should be infeasible
     successful, unsuccessful = ray.wait([task_2], timeout=TIMEOUT_DURATION)
     assert unsuccessful  # The task did not complete because it's infeasible
-    assert res_name not in ray.global_state.available_resources()
+    assert res_name not in ray.available_resources()
 
 
 def test_dynamic_res_creation_stress(ray_start_cluster):
@@ -553,9 +540,7 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
 
     ray.init(redis_address=cluster.redis_address)
 
-    clientids = [
-        client["ClientID"] for client in ray.global_state.client_table()
-    ]
+    clientids = [client["ClientID"] for client in ray.nodes()]
     target_clientid = clientids[1]
 
     @ray.remote
@@ -578,7 +563,7 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
     start_time = time.time()
 
     while time.time() - start_time < TIMEOUT and not success:
-        resources = ray.global_state.cluster_resources()
+        resources = ray.cluster_resources()
         all_resources_created = []
         for i in range(0, NUM_RES_TO_CREATE):
             all_resources_created.append(str(i) in resources)

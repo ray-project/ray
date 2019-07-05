@@ -302,7 +302,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/tests/test_checkpoint_restore.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output python /ray/python/ray/rllib/tests/test_policy_evaluator.py
+    /ray/ci/suppress_output python /ray/python/ray/rllib/tests/test_rollout_worker.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/tests/test_nested_spaces.py
@@ -312,6 +312,15 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/tests/test_external_multi_agent_env.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_keras_model.py --run=A2C --stop=50
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_keras_model.py --run=PPO --stop=50
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_keras_model.py --run=DQN --stop=50
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/parametric_action_cartpole.py --run=PG --stop=50
@@ -369,6 +378,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/multiagent_cartpole.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/multiagent_cartpole.py --num-iters=2 --simple
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/multiagent_two_trainers.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -387,7 +399,40 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_loss.py --iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/policy_evaluator_custom_workflow.py
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/rollout_worker_custom_workflow.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/eager_execution.py --iters=2
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run PG \
+    --stop '{"training_iteration": 1}' \
+    --config '{"use_eager": true}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run A2C \
+    --stop '{"training_iteration": 1}' \
+    --config '{"use_eager": true}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run PPO \
+    --stop '{"training_iteration": 1}' \
+    --config '{"use_eager": true}'
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_tf_policy.py --iters=2
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_torch_policy.py --iters=2
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/python/ray/rllib/examples/rollout_worker_custom_workflow.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/python/ray/rllib/examples/custom_metrics_and_callbacks.py --num-iters=2

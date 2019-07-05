@@ -15,10 +15,11 @@ FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity)
   // We check for nonnegativeity due to the implicit conversion to
   // FractionalResourceQuantity from ints/doubles when we do logical
   // comparisons.
-  RAY_CHECK(resource_quantity >= 0) << "Resource capacity, " << resource_quantity
-                                    << ", should be nonnegative.";
+  RAY_CHECK(resource_quantity >= 0)
+      << "Resource capacity, " << resource_quantity << ", should be nonnegative.";
 
-  resource_quantity_ = static_cast<int>(resource_quantity * kResourceConversionFactor);
+  resource_quantity_ =
+      static_cast<int64_t>(resource_quantity * kResourceConversionFactor);
 }
 
 const FractionalResourceQuantity FractionalResourceQuantity::operator+(
@@ -76,7 +77,11 @@ ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(
     const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map)
-    : resource_capacity_(resource_map) {}
+    : resource_capacity_(resource_map) {
+  for (auto const &resource_pair : resource_map) {
+    RAY_CHECK(resource_pair.second > 0);
+  }
+}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
@@ -169,7 +174,8 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     const std::string &resource_label = resource_pair.first;
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
-        << "Attempt to acquire unknown resource: " << resource_label;
+        << "Attempt to acquire unknown resource: " << resource_label << " capacity "
+        << resource_capacity.ToDouble();
     resource_capacity_[resource_label] -= resource_capacity;
 
     // Ensure that quantity is positive. Note, we have to have the check before
@@ -233,8 +239,10 @@ FractionalResourceQuantity ResourceSet::GetResource(
 
 const ResourceSet ResourceSet::GetNumCpus() const {
   ResourceSet cpu_resource_set;
-  cpu_resource_set.resource_capacity_[kCPU_ResourceLabel] =
-      GetResource(kCPU_ResourceLabel);
+  const FractionalResourceQuantity cpu_quantity = GetResource(kCPU_ResourceLabel);
+  if (cpu_quantity > 0) {
+    cpu_resource_set.resource_capacity_[kCPU_ResourceLabel] = cpu_quantity;
+  }
   return cpu_resource_set;
 }
 

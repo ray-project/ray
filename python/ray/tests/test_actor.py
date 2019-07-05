@@ -842,7 +842,7 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
     assert actor_id not in resulting_ids
 
 
-def test_actors_on_nodes_with_no_cpus(ray_start_regular):
+def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     @ray.remote
     class Foo(object):
         def method(self):
@@ -2439,7 +2439,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.
@@ -2483,7 +2483,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.

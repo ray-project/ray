@@ -18,8 +18,8 @@ import ray
     reason="Timeout package not installed; skipping test that may hang.")
 @pytest.mark.timeout(10)
 def test_replenish_resources(ray_start_regular):
-    cluster_resources = ray.global_state.cluster_resources()
-    available_resources = ray.global_state.available_resources()
+    cluster_resources = ray.cluster_resources()
+    available_resources = ray.available_resources()
     assert cluster_resources == available_resources
 
     @ray.remote
@@ -30,7 +30,7 @@ def test_replenish_resources(ray_start_regular):
     resources_reset = False
 
     while not resources_reset:
-        available_resources = ray.global_state.available_resources()
+        available_resources = ray.available_resources()
         resources_reset = (cluster_resources == available_resources)
     assert resources_reset
 
@@ -40,7 +40,7 @@ def test_replenish_resources(ray_start_regular):
     reason="Timeout package not installed; skipping test that may hang.")
 @pytest.mark.timeout(10)
 def test_uses_resources(ray_start_regular):
-    cluster_resources = ray.global_state.cluster_resources()
+    cluster_resources = ray.cluster_resources()
 
     @ray.remote
     def cpu_task():
@@ -50,7 +50,7 @@ def test_uses_resources(ray_start_regular):
     resource_used = False
 
     while not resource_used:
-        available_resources = ray.global_state.available_resources()
+        available_resources = ray.available_resources()
         resource_used = available_resources.get(
             "CPU", 0) == cluster_resources.get("CPU", 0) - 1
 
@@ -64,17 +64,17 @@ def test_uses_resources(ray_start_regular):
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
     cluster = ray_start_cluster_head
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
     nodes = []
     nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 2
+    assert ray.cluster_resources()["CPU"] == 2
 
     cluster.remove_node(nodes.pop())
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
 
     for i in range(5):
         nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 6
+    assert ray.cluster_resources()["CPU"] == 6

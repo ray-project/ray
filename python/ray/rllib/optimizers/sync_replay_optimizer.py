@@ -25,13 +25,12 @@ logger = logging.getLogger(__name__)
 class SyncReplayOptimizer(PolicyOptimizer):
     """Variant of the local sync optimizer that supports replay (for DQN).
 
-    This optimizer requires that policy evaluators return an additional
+    This optimizer requires that rollout workers return an additional
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
     def __init__(self,
-                 local_evaluator,
-                 remote_evaluators,
+                 workers,
                  learning_starts=1000,
                  buffer_size=10000,
                  prioritized_replay=True,
@@ -43,7 +42,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                  prioritized_replay_eps=1e-6,
                  train_batch_size=32,
                  sample_batch_size=4):
-        PolicyOptimizer.__init__(self, local_evaluator, remote_evaluators)
+        PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts
         # linearly annealing beta used in Rainbow paper
@@ -82,18 +81,20 @@ class SyncReplayOptimizer(PolicyOptimizer):
     @override(PolicyOptimizer)
     def step(self):
         with self.update_weights_timer:
-            if self.remote_evaluators:
-                weights = ray.put(self.local_evaluator.get_weights())
-                for e in self.remote_evaluators:
+            if self.workers.remote_workers():
+                weights = ray.put(self.workers.local_worker().get_weights())
+                for e in self.workers.remote_workers():
                     e.set_weights.remote(weights)
 
         with self.sample_timer:
-            if self.remote_evaluators:
+            if self.workers.remote_workers():
                 batch = SampleBatch.concat_samples(
-                    ray_get_and_free(
-                        [e.sample.remote() for e in self.remote_evaluators]))
+                    ray_get_and_free([
+                        e.sample.remote()
+                        for e in self.workers.remote_workers()
+                    ]))
             else:
-                batch = self.local_evaluator.sample()
+                batch = self.workers.local_worker().sample()
 
             # Handle everything as if multiagent
             if isinstance(batch, SampleBatch):
@@ -135,7 +136,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         samples = self._replay()
 
         with self.grad_timer:
-            info_dict = self.local_evaluator.learn_on_batch(samples)
+            info_dict = self.workers.local_worker().learn_on_batch(samples)
             for policy_id, info in info_dict.items():
                 self.learner_stats[policy_id] = get_learner_stats(info)
                 replay_buffer = self.replay_buffers[policy_id]
