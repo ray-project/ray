@@ -13,15 +13,15 @@ using StatusCallback = std::function<void(Status status)>;
 
 template <typename Data>
 using OptionalItemCallback =
-    std::function<void(Status status, boost::optional<Data> datum)>;
+    std::function<void(Status status, boost::optional<Data> data)>;
 
 template <typename Data>
 using MultiItemCallback =
-    std::function<void(Status status, const std::vector<Data> &datums)>;
+    std::function<void(Status status, const std::vector<Data> &datas)>;
 
 template <typename ID, typename Data>
 using SubscribeCallback =
-    std::function<void(const ID &id, const std::vector<Data> &datums)>;
+    std::function<void(const ID &id, const std::vector<Data> &datas)>;
 
 }  // namespace gcs
 

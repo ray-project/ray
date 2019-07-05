@@ -121,7 +121,7 @@ TEST_F(ActorStateAccessorTest, AddAndGet) {
 TEST_F(ActorStateAccessorTest, Subscribe) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   std::chrono::milliseconds timeout(10000);
-  // sub
+  // subscribe
   std::atomic<int> sub_pending_count(0);
   std::atomic<int> do_sub_pending_count(0);
   auto subscribe = [this, &sub_pending_count](const ActorID &actor_id,
@@ -137,7 +137,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
 
   ++do_sub_pending_count;
   actor_accessor.AsyncSubscribe(JobID::Nil(), ClientID::Nil(), subscribe, done);
-  // wait do sub done
+  // wait do subscribe done
   WaitPendingDone(do_sub_pending_count, timeout);
 
   // add

@@ -28,12 +28,12 @@ Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id
   ActorTable &actor_table = client_impl_.actor_table();
   if (callback != nullptr) {
     auto on_success = [callback, data_ptr](
-        RedisGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
-      callback(Status::OK());
-    };
+                          RedisGcsClient *client, const ActorID &actor_id,
+                          const ActorTableData &data) { callback(Status::OK()); };
 
-    auto on_failure = [callback, data_ptr](
-        RedisGcsClient *client, const ActorID &actor_id, const ActorTableData &data) {
+    auto on_failure = [callback, data_ptr](RedisGcsClient *client,
+                                           const ActorID &actor_id,
+                                           const ActorTableData &data) {
       callback(Status::Invalid("Add failed, maybe exceeds max reconstruct number."));
     };
 
