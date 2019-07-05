@@ -68,10 +68,10 @@ class Trainable(object):
         """
 
         self._experiment_id = uuid.uuid4().hex
-        self._config = config or {}
+        self.config = config or {}
 
         if logger_creator:
-            self._result_logger = logger_creator(self._config)
+            self._result_logger = logger_creator(self.config)
             self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -79,7 +79,8 @@ class Trainable(object):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(self._config, self._logdir, None)
+            self._result_logger = UnifiedLogger(self.config, self._logdir,
+                                                None)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -89,7 +90,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
-        self._setup(copy.deepcopy(self._config))
+        self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
 
     @classmethod
@@ -415,18 +416,18 @@ class Trainable(object):
         """
         return self._iteration
 
-    @property
-    def config(self):
-        """Configuration passed in by Tune."""
-        return self._config
+    def get_config(self):
+        """Returns configuration passed in by Tune."""
+        return self.config
 
     def _train(self):
         """Subclasses should override this to implement train().
 
         The return value will be automatically passed to the loggers. Users
-        can also return `tune.result.DONE` or `tune.result.CHECKPOINT` to
-        manually trigger termination of this trial or checkpointing of this
-        trial.
+        can also return `tune.result.DONE` or `tune.result.SHOULD_CHECKPOINT`
+        to manually trigger termination of this trial or checkpointing of this
+        trial. Note that manual checkpointing only works when subclassing
+        Trainables.
 
         Returns:
             A dict that describes training progress.

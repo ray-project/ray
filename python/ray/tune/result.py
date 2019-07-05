@@ -10,7 +10,7 @@ import os
 DONE = "done"
 
 # (Optional) Enum for user controlled checkpoint
-CHECKPOINT = "checkpoint"
+SHOULD_CHECKPOINT = "should_checkpoint"
 
 # (Auto-filled) The hostname of the machine hosting the training process.
 HOSTNAME = "hostname"
