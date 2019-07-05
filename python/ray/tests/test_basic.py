@@ -2439,7 +2439,8 @@ def test_global_state_api(shutdown_only):
 
     assert ray.objects() == {}
 
-    job_id = ray.JobID.from_driver_id(ray.WorkerID.from_binary(ray.worker.global_worker.worker_id))
+    job_id = ray.JobID.from_driver_id(
+        ray.WorkerID.from_binary(ray.worker.global_worker.worker_id))
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
