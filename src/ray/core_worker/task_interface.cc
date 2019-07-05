@@ -106,10 +106,12 @@ rpc::TaskSpec CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
   rpc::TaskSpec message;
   auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
+  // Build common task spec.
   raylet::BuildCommonTaskSpec(message, function.language, function.function_descriptor,
                               context.GetCurrentJobID(), context.GetCurrentTaskID(),
                               next_task_index, num_returns,
                               required_resources, required_placement_resources);
+  // Set task arguments.
   for (const auto &arg : args) {
     auto message_arg = message.add_args();
     if (arg.IsPassedByReference()) {
@@ -119,6 +121,7 @@ rpc::TaskSpec CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
     }
   }
 
+  // Compute return IDs.
   auto task_id = TaskID::FromBinary(message.task_id());
   (*return_ids).resize(num_returns);
   for (int i = 0; i < num_returns; i++) {
@@ -164,10 +167,15 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
-  // add one for actor cursor object id.
+  // Add one for actor cursor object id.
   auto num_returns = task_options.num_returns + 1;
+
+  // Build common task spec.
   auto task_spec_message = CreateCommonTaskSpecMessage(
       function, args, num_returns, task_options.resources, {}, return_ids);
+
+  std::unique_lock<std::mutex> guard(actor_handle.mutex_);
+  // Build actor task spec.
   auto actor_creation_dummy_object_id =
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
   raylet::BuildActorTaskSpec(task_spec_message, actor_handle.ActorID(),
@@ -175,21 +183,19 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                              actor_handle.IncreaseTaskCounter(),
                              actor_handle.NewActorHandles());
 
-  std::vector<ObjectID> execution_dependencies;
-  execution_dependencies.push_back(actor_handle.ActorCursor());
-  TaskSpec task(raylet::TaskSpecification(task_spec_message),
-                execution_dependencies);
+  TaskSpec task(raylet::TaskSpecification(task_spec_message), {actor_handle.ActorCursor()});
 
-  std::unique_lock<std::mutex> guard(actor_handle.mutex_);
+  // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();
   actor_handle.SetActorCursor(actor_cursor);
   actor_handle.ClearNewActorHandles();
   guard.unlock();
 
+  // Submit task.
   auto status =
       task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 
-  // remove cursor from return ids.
+  // Remove cursor from return ids.
   (*return_ids).pop_back();
   return status;
 }

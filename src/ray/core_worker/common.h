@@ -11,6 +11,7 @@
 namespace ray {
 
 using rpc::TaskType;
+using rpc::Language;
 
 /// Type of this worker.
 enum class WorkerType { WORKER, DRIVER };

@@ -44,8 +44,7 @@ message TaskSpec {
   repeated TaskArg args = 8;
   // Number of return objects.
   uint64 num_returns = 9;
-  // The required_resources vector indicates the quantities of the different
-  // resources required by this task.
+  // Quantities of the different resources required by this task.
   map<string, double> required_resources = 10;
   // The resources required for placing this task on a node. If this is empty,
   // then the placement resources are equal to the required_resources.
