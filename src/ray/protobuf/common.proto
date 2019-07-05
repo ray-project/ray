@@ -21,7 +21,9 @@ enum TaskType {
   ACTOR_TASK = 2;
 }
 
-// Task specification, which represents static and immutable attributes of a task.
+/// The task specification encapsulates all immutable information about the
+/// task. These fields are determined at submission time, converse to the
+/// `TaskExecutionSpec` may change at execution time.
 message TaskSpec {
   // Type of this task.
   TaskType type = 1;
@@ -101,8 +103,9 @@ message ActorTaskSpec {
   repeated bytes new_actor_handles = 6;
 }
 
-// Task execution specification, which represents dynamic and mutable attributes of
-// a task.
+// The task execution specification encapsulates all mutable information about
+// the task. These fields may change at execution time, converse to the
+// `TaskSpec` is determined at submission time.
 message TaskExecutionSpec {
   // A list of object IDs representing the dependencies of this task that may
   // change at execution time.

@@ -14,17 +14,20 @@ namespace raylet {
 
 using rpc::MessageWrapper;
 
-/// \class TaskExecutionSpecification
-///
-/// The task execution specification encapsulates all mutable information about
-/// the task. These fields may change at execution time, converse to the
-/// TaskSpecification that is determined at submission time.
+/// Wrapper class of protobuf `TaskExecutionSpec`, see `common.proto` for details.
 class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec> {
  public:
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
   explicit TaskExecutionSpecification(rpc::TaskExecutionSpec message)
       : MessageWrapper(std::move(message)) {}
 
-  explicit TaskExecutionSpecification(const std::string serialized_binary)
+  /// Construct from protobuf-serialized binary.
+  ///
+  /// \param serialized_binary Protobuf-serialized binary.
+  explicit TaskExecutionSpecification(const std::string &serialized_binary)
       : MessageWrapper(serialized_binary) {}
 
   /// Get the task's execution dependencies.

@@ -31,6 +31,7 @@ void Task::ComputeDependencies() {
 
 void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_ = task.task_execution_spec_;
+  ComputeDependencies();
 }
 
 }  // namespace raylet

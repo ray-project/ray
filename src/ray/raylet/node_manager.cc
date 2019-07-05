@@ -2011,8 +2011,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
              const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
-        rpc::Task task_message = task_data.task();
-        ResubmitTask(Task(task_message));
+        ResubmitTask(Task(task_data.task()));
       },
       /*failure_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {

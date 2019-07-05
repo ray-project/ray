@@ -23,21 +23,21 @@ using rpc::MessageWrapper;
 using rpc::Language;
 using rpc::TaskType;
 
-/// \class TaskSpecification
-///
-/// The task specification encapsulates all immutable information about the
-/// task. These fields are determined at submission time, converse to the
-/// TaskExecutionSpecification that may change at execution time.
+/// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
-  /// Deserialize a task specification from a flatbuffer.
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
   ///
-  /// \param string A serialized task specification flatbuffer.
+  /// \param message The protobuf message.
   explicit TaskSpecification(rpc::TaskSpec message)
       : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
+  /// Construct from protobuf-serialized binary.
+  ///
+  /// \param serialized_binary Protobuf-serialized binary.
   explicit TaskSpecification(const std::string &serialized_binary)
       : MessageWrapper(serialized_binary) {
     ComputeResources();

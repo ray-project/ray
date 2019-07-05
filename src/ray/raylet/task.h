@@ -21,12 +21,17 @@ namespace raylet {
 /// time.
 class Task {
  public:
+  /// Construct a `Task` object from a protobuf message.
+  ///
+  /// \param message The protobuf message.
   explicit Task(const rpc::Task &message)
       : task_spec_(message.task_spec()),
         task_execution_spec_(message.task_execution_spec()) {
     ComputeDependencies();
   }
 
+  /// Construct a `Task` object from a `TaskSpecification` and a
+  /// `TaskExecutionSpecification`.
   Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
       : task_spec_(std::move(task_spec)),
         task_execution_spec_(std::move(task_execution_spec)) {
