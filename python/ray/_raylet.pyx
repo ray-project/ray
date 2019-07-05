@@ -233,9 +233,13 @@ cdef class RayletClient:
         check_status(self.client.get().Disconnect())
 
     def submit_task(self, TaskSpec task_spec, execution_dependencies):
+        cdef:
+            CObjectID c_id
+            c_vector[CObjectID] c_dependencies
+        for dep in execution_dependencies:
+            c_dependencies.push_back((<ObjectID>dep).native())
         check_status(self.client.get().SubmitTask(
-            TaskExecutionSpec(execution_dependencies).c_spec.get().ExecutionDependencies(),
-            task_spec.task_spec.get()[0]))
+            c_dependencies, task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:

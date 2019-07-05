@@ -5,18 +5,22 @@ from libcpp.memory cimport (
     static_pointer_cast,
 )
 from ray.includes.task cimport (
+    BuildActorCreationTaskSpec,
+    BuildActorTaskSpec,
+    BuildCommonTaskSpec,
     CTask,
     CTaskArg,
     CTaskExecutionSpec,
     CTaskSpec,
-    CreateTaskSpec,
     RpcTask,
     RpcTaskExecutionSpec,
+    RpcTaskSpec,
     TaskTableData,
 )
 
 
 cdef class TaskSpec:
+    """Cython wrapper class of C++ `ray::raylet::TaskSpecification`."""
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
@@ -28,49 +32,62 @@ cdef class TaskSpec:
                  ActorHandleID actor_handle_id, int actor_counter,
                  new_actor_handles, resource_map, placement_resource_map):
         cdef:
+            RpcTaskSpec task_spec_message
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
-            shared_ptr[CTaskArg] c_arg
-            c_vector[shared_ptr[CTaskArg]] task_args
-            c_vector[CActorHandleID] task_new_actor_handles
             c_vector[c_string] c_function_descriptor
+            CTaskArg *c_arg
             c_string pickled_str
-            c_vector[CObjectID] references
+            c_vector[CActorHandleID] c_new_actor_handles
 
+        # Convert function descriptor to C++ vector.
         for item in function_descriptor:
             if not isinstance(item, bytes):
                 raise TypeError(
                     "'function_descriptor' takes a list of byte strings.")
             c_function_descriptor.push_back(item)
 
-        # Parse the resource map.
+        # Convert resource map to C++ unordered_map.
         if resource_map is not None:
             required_resources = resource_map_from_dict(resource_map)
         if placement_resource_map is not None:
             required_placement_resources = (
                 resource_map_from_dict(placement_resource_map))
 
-        # Parse the arguments from the list.
+        # Build common task spec.
+        BuildCommonTaskSpec(
+            task_spec_message, LANGUAGE_PYTHON, c_function_descriptor,
+            job_id.native(), parent_task_id.native(), parent_counter, num_returns,
+            required_resources, required_placement_resources)
+
+        # Build arguments.
         for arg in arguments:
-            c_arg = make_shared[CTaskArg]()
+            c_arg = task_spec_message.add_args()
             if isinstance(arg, ObjectID):
-                c_arg.get().add_object_ids((<ObjectID>arg).native().Binary())
+                c_arg.add_object_ids((<ObjectID>arg).native().Binary())
             else:
                 pickled_str = pickle.dumps(
                     arg, protocol=pickle.HIGHEST_PROTOCOL)
-                c_arg.get().set_data(pickled_str)
-            task_args.push_back(c_arg)
+                c_arg.set_data(pickled_str)
 
-        for new_actor_handle in new_actor_handles:
-            task_new_actor_handles.push_back(
-                (<ActorHandleID?>new_actor_handle).native())
-
-        self.task_spec.reset(CreateTaskSpec(
-            job_id.native(), parent_task_id.native(), parent_counter, actor_creation_id.native(),
-            actor_creation_dummy_object_id.native(), max_actor_reconstructions, actor_id.native(),
-            actor_handle_id.native(), actor_counter, task_new_actor_handles, task_args, num_returns,
-            required_resources, required_placement_resources, LANGUAGE_PYTHON,
-            c_function_descriptor, []))
+        if not actor_creation_id.is_nil():
+            # Actor creation task.
+            BuildActorCreationTaskSpec(
+                task_spec_message, actor_creation_id.native(),
+                max_actor_reconstructions, [])
+        elif not actor_id.is_nil():
+            # Actor task.
+            for new_actor_handle in new_actor_handles:
+                c_new_actor_handles.push_back(
+                    (<ActorHandleID?>new_actor_handle).native())
+            BuildActorTaskSpec(
+                task_spec_message, actor_id.native(), actor_handle_id.native(),
+                actor_creation_dummy_object_id.native(), actor_counter,
+                c_new_actor_handles)
+        else:
+            # Normal task.
+            pass
+        self.task_spec.reset(new CTaskSpec(task_spec_message))
 
     @staticmethod
     cdef make(unique_ptr[CTaskSpec]& task_spec):
@@ -202,6 +219,7 @@ cdef class TaskSpec:
 
 
 cdef class TaskExecutionSpec:
+    """Cython wrapper class of C++ `ray::raylet::TaskExecutionSpecification`."""
     cdef:
         unique_ptr[CTaskExecutionSpec] c_spec
 
@@ -225,7 +243,8 @@ cdef class TaskExecutionSpec:
     def dependencies(self):
         cdef:
             CObjectID c_id
-            c_vector[CObjectID] dependencies = self.c_spec.get().ExecutionDependencies()
+            c_vector[CObjectID] dependencies = (
+                self.c_spec.get().ExecutionDependencies())
         ret = []
         for c_id in dependencies:
             ret.append(ObjectID(c_id.Binary()))
@@ -236,14 +255,19 @@ cdef class TaskExecutionSpec:
 
 
 cdef class Task:
+    """Cython wrapper class of C++ `ray::raylet::Task`."""
     cdef:
         unique_ptr[CTask] c_task
 
     def __init__(self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
-        self.c_task.reset(new CTask(task_spec.task_spec.get()[0], task_execution_spec.c_spec.get()[0]))
+        self.c_task.reset(new CTask(task_spec.task_spec.get()[0],
+                                    task_execution_spec.c_spec.get()[0]))
 
 
 def generate_gcs_task_table_data(TaskSpec task_spec):
+    """ A helper function that converts a Python `TaskSpec` object to
+        serialized GCS `TaskTableData`.
+    """
     cdef:
         TaskTableData task_table_data
     task_table_data.mutable_task().mutable_task_spec().CopyFrom(
