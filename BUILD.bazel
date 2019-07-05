@@ -68,6 +68,7 @@ cc_proto_library(
 proto_library(
     name = "worker_proto",
     srcs = ["src/ray/protobuf/worker.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
