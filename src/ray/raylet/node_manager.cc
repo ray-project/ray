@@ -254,8 +254,8 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 void NodeManager::HandleJobTableUpdate(const JobID &id,
                                        const std::vector<JobTableData> &job_data) {
   for (const auto &entry : job_data) {
-    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << JobID::FromBinary(entry.job_id())
-                   << " " << entry.is_dead();
+    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << JobID::FromBinary(entry.job_id()) << " "
+                   << entry.is_dead();
     if (entry.is_dead()) {
       auto job_id = JobID::FromBinary(entry.job_id());
       auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
