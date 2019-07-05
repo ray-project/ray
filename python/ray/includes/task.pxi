@@ -265,8 +265,7 @@ cdef class Task:
 
 
 def generate_gcs_task_table_data(TaskSpec task_spec):
-    """ A helper function that converts a Python `TaskSpec` object to
-        serialized GCS `TaskTableData`.
+    """Converts a Python `TaskSpec` object to serialized GCS `TaskTableData`.
     """
     cdef:
         TaskTableData task_table_data
