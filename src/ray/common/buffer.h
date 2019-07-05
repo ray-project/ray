@@ -45,6 +45,30 @@ class LocalMemoryBuffer : public Buffer {
   size_t size_;
 };
 
+/// Represents a copy of byte buffer in local memory.
+class MemoryCopyBuffer : public Buffer {
+ public:
+  MemoryCopyBuffer(uint8_t *data, size_t size) : size_(size) {
+    data_ = reinterpret_cast<uint8_t*>(malloc(size));
+    memcpy(data_, data, size);
+  }
+
+  MemoryCopyBuffer(const Buffer &buffer)
+      : MemoryCopyBuffer(buffer.Data(), buffer.Size()) {}
+
+  uint8_t *Data() const override { return data_; }
+
+  size_t Size() const override { return size_; }
+
+  ~MemoryCopyBuffer() { free(data_); }
+
+ private:
+  /// Pointer to the data.
+  uint8_t *data_;
+  /// Size of the buffer.
+  size_t size_;
+};
+
 /// Represents a byte buffer for plasma object.
 class PlasmaBuffer : public Buffer {
  public:

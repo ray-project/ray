@@ -10,9 +10,9 @@ Status CoreWorkerMockTaskPool::SubmitTask(const TaskSpec &task) {
   if (unready_objects.empty()) {
     PutReadyTask(task_ptr);
   } else {
+    auto wrapped_task = std::make_shared<std::pair<std::shared_ptr<TaskSpec>, size_t>>(
+        task_ptr, unready_objects.size());
     for (auto &object_id : unready_objects) {
-      auto wrapped_task = std::make_shared<std::pair<std::shared_ptr<TaskSpec>, size_t>>(
-          task_ptr, unready_objects.size());
       auto it = waiting_tasks_.find(object_id);
       if (it == waiting_tasks_.end()) {
         std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>>
@@ -32,34 +32,35 @@ Status CoreWorkerMockTaskPool::GetTasks(std::shared_ptr<WorkerContext> worker_co
                                         std::vector<TaskSpec> *tasks) {
   auto &actor_id = worker_context->GetCurrentActorID();
   std::shared_ptr<TaskSpec> task;
-  std::lock_guard<std::mutex> guard(mutex_);
-  while (!task) {
+  std::unique_lock<std::mutex> guard(mutex_);
+  for (int i = 0; i < 2; i++) {
+    if (i > 0) {
+      guard.unlock();
+      usleep(100 * 1000);
+      guard.lock();
+    }
     if (!actor_id.IsNil()) {
       auto it = actor_ready_tasks_.find(actor_id);
-      if (it == actor_ready_tasks_.end() || it->second.empty()) {
-        usleep(100 * 1000);
-      } else {
+      if (it != actor_ready_tasks_.end() && !it->second.empty()) {
         task = it->second.front();
         it->second.pop_front();
       }
-    } else {
-      while (other_ready_tasks_.empty()) {
-        usleep(100 * 1000);
-      }
+    } else if (!other_ready_tasks_.empty()) {
       task = other_ready_tasks_.front();
       other_ready_tasks_.pop_front();
     }
   }
   RAY_CHECK((*tasks).empty());
-  (*tasks).emplace_back(*task);
+  if (task) {
+    (*tasks).emplace_back(*task);
+  }
   return Status::OK();
 }
 
 void CoreWorkerMockTaskPool::OnObjectPut(const ObjectID &object_id) {
   auto it = waiting_tasks_.find(object_id);
   if (it != waiting_tasks_.end()) {
-    std::unordered_set<std::shared_ptr<std::pair<std::shared_ptr<TaskSpec>, size_t>>>
-        tasks = it->second;
+    auto tasks = it->second;
     waiting_tasks_.erase(it);
     for (auto &wrapped_task : tasks) {
       wrapped_task->second--;

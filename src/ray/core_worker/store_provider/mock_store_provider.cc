@@ -5,7 +5,9 @@ namespace ray {
 Status CoreWorkerMockStoreProvider::Put(const RayObject &object,
                                         const ObjectID &object_id) {
   std::lock_guard<std::mutex> guard(mutex_);
-  pool_.emplace(object_id, object);
+  pool_.emplace(object_id,
+                RayObject(std::make_shared<MemoryCopyBuffer>(*object.GetData()),
+                          std::make_shared<MemoryCopyBuffer>(*object.GetMetadata())));
   mock_task_pool_->OnObjectPut(object_id);
   return Status::OK();
 }

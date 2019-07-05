@@ -64,7 +64,7 @@ class CoreWorkerTaskExecutionInterface {
   std::shared_ptr<CoreWorkerTaskReceiver> task_receiver_;
 
   /// A flag to make the loop stop.
-  std::atomic<bool> running_;
+  volatile std::atomic<bool> running_;
 };
 
 }  // namespace ray

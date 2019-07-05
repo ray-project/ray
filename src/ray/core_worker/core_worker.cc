@@ -42,15 +42,25 @@ CoreWorker CoreWorker::CreateForClusterMode(const enum WorkerType worker_type,
                     task_execution_interface);
 }
 
+// TODO (kfstorm): should be able to reset store and task pool if runtime shutdown.
+/// Protects intialization for single process mode.
+static std::shared_ptr<CoreWorkerMockTaskPool> mock_task_pool;
+static std::shared_ptr<CoreWorkerMockStoreProvider> mock_store_provider;
+static std::atomic<bool> single_process_initialized;
+
 CoreWorker CoreWorker::CreateForSingleProcessMode(const enum WorkerType worker_type,
                                                   const ::Language language,
                                                   const WorkerID &worker_id,
                                                   const JobID &job_id) {
   auto worker_context = std::make_shared<WorkerContext>(worker_type, worker_id, job_id);
-  auto mock_task_pool = std::make_shared<CoreWorkerMockTaskPool>();
-  auto mock_store_provider = std::make_shared<CoreWorkerMockStoreProvider>();
-  mock_task_pool->SetMockStoreProvider(mock_store_provider);
-  mock_store_provider->SetMockTaskPool(mock_task_pool);
+
+  if (!single_process_initialized.exchange(true)) {
+    mock_task_pool = std::make_shared<CoreWorkerMockTaskPool>();
+    mock_store_provider = std::make_shared<CoreWorkerMockStoreProvider>();
+    mock_task_pool->SetMockStoreProvider(mock_store_provider);
+    mock_store_provider->SetMockTaskPool(mock_task_pool);
+  }
+
   auto task_interface = std::make_shared<CoreWorkerTaskInterface>(
       worker_context, std::make_shared<CoreWorkerMockTaskSubmitter>(mock_task_pool));
   auto object_interface =

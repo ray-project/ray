@@ -61,7 +61,10 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   return Status::OK();
 }
 
-Status CoreWorkerTaskExecutionInterface::Stop() { running_ = false; }
+Status CoreWorkerTaskExecutionInterface::Stop() {
+  running_ = false;
+  return Status::OK();
+}
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
     const raylet::TaskSpecification &spec,
