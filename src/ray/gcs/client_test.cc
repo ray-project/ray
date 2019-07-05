@@ -78,6 +78,7 @@ class TestGcsWithChainAsio : public TestGcsWithAsio {
   TestGcsWithChainAsio() : TestGcsWithAsio(gcs::CommandType::kChain){};
 };
 
+/// A helper function that creates a GCS `TaskTableData` object.
 std::shared_ptr<TaskTableData> CreateTaskTableData(const TaskID &task_id,
                                                    uint64_t num_returns = 0) {
   auto data = std::make_shared<TaskTableData>();
@@ -86,6 +87,8 @@ std::shared_ptr<TaskTableData> CreateTaskTableData(const TaskID &task_id,
   return data;
 }
 
+/// A helper function that compare wether 2 `TaskTableData` objects are equal.
+/// Note, this function only compares fields set by `CreateTaskTableData`.
 bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) {
   const auto &spec1 = data1.task().task_spec();
   const auto &spec2 = data2.task().task_spec();
