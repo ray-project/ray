@@ -38,8 +38,11 @@ fi
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
   if [[ $CLANG_FORMAT_VERSION != "7.0.0" ]]; then
-    echo "Please install clang-format 7.0.0. You currently are using $CLANG_FORMAT_VERSION."
-    exit 1
+    echo "WARNING: Please install clang-format 7.0.0. You currently are using $CLANG_FORMAT_VERSION."
+    read -p "Are you sure to continue?[y/n]" input
+    if ! [ $input = 'y' ]; then
+        exit 1
+    fi
   fi
 else
   echo "WARNING: clang-format is not installed!"
