@@ -41,7 +41,7 @@ run_experiments({
         "config": {
             "num_workers": 8,
             "num_gpus": 0,
-            "num_envs_per_worker": 3,
+            "num_envs_per_worker": 5,
             "remote_worker_envs": True,
             "remote_env_batch_wait_ms": 99999999,
             "sample_batch_size": 50,
