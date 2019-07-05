@@ -30,8 +30,8 @@ python_proto_compile(
 proto_library(
     name = "gcs_proto",
     srcs = ["src/ray/protobuf/gcs.proto"],
-    deps = [":common_proto"],
     visibility = ["//java:__subpackages__"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -227,8 +227,8 @@ cc_library(
     copts = COPTS,
     linkopts = ["-pthread"],
     deps = [
-        ":gcs",
         ":common_cc_proto",
+        ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
@@ -741,7 +741,7 @@ filegroup(
     srcs = [
         "common_py_proto",
         "gcs_py_proto",
-    ]
+    ],
 )
 
 genrule(
