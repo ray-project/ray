@@ -87,6 +87,7 @@ class VTraceLoss(object):
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
+            self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss
         self.pi_loss = -tf.reduce_sum(
@@ -211,7 +212,7 @@ def stats(policy, batch_tensors):
         "var_gnorm": tf.global_norm(policy.var_list),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
-            tf.reshape(policy.loss.vtrace_returns.vs, [-1]),
+            tf.reshape(policy.loss.value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
     }
 
