@@ -106,6 +106,8 @@ bool TaskSpecification::IsActorTask() const {
 }
 
 ActorID TaskSpecification::ActorCreationId() const {
+  // TODO(hchen) Add a check to make sure this function can only be called if
+  //   task is an actor creation task.
   if (!IsActorCreationTask()) {
     return ActorID::Nil();
   }
