@@ -3,7 +3,6 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/core_worker/transport/raylet_transport.h"
-#include "ray/raylet/task_util.h"
 
 namespace ray {
 
@@ -99,45 +98,44 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
-rpc::TaskSpec CoreWorkerTaskInterface::CreateCommonTaskSpecMessage(
+raylet::TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
-  rpc::TaskSpec message;
+  raylet::TaskSpecBuilder builder;
   auto &context = worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   // Build common task spec.
-  raylet::BuildCommonTaskSpec(&message, function.language, function.function_descriptor,
-                              context.GetCurrentJobID(), context.GetCurrentTaskID(),
-                              next_task_index, num_returns, required_resources,
-                              required_placement_resources);
+  builder.SetCommonTaskSpec(function.language, function.function_descriptor,
+                            context.GetCurrentJobID(), context.GetCurrentTaskID(),
+                            next_task_index, num_returns, required_resources,
+                            required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
-    auto message_arg = message.add_args();
     if (arg.IsPassedByReference()) {
-      message_arg->add_object_ids(arg.GetReference().Binary());
+      builder.AddByRefArg(arg.GetReference());
     } else {
-      message_arg->set_data(arg.GetValue()->Data(), arg.GetValue()->Size());
+      builder.AddByValueArg(arg.GetValue()->Data(), arg.GetValue()->Size());
     }
   }
 
   // Compute return IDs.
-  auto task_id = TaskID::FromBinary(message.task_id());
+  auto task_id = TaskID::FromBinary(builder.GetMessage().task_id());
   (*return_ids).resize(num_returns);
   for (int i = 0; i < num_returns; i++) {
     (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
   }
-  return message;
+  return builder;
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const std::vector<TaskArg> &args,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
-  auto task_spec_message = CreateCommonTaskSpecMessage(
-      function, args, task_options.num_returns, task_options.resources, {}, return_ids);
-  TaskSpec task(raylet::TaskSpecification(task_spec_message), {});
+  auto builder = BuildCommonTaskSpec(function, args, task_options.num_returns,
+                                     task_options.resources, {}, return_ids);
+  TaskSpec task(builder.Build(), {});
   return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
@@ -146,20 +144,18 @@ Status CoreWorkerTaskInterface::CreateActor(
     const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
   std::vector<ObjectID> return_ids;
-  auto task_spec_message =
-      CreateCommonTaskSpecMessage(function, args, 1, actor_creation_options.resources,
-                                  actor_creation_options.resources, &return_ids);
+  auto builder = BuildCommonTaskSpec(function, args, 1, actor_creation_options.resources,
+                                     actor_creation_options.resources, &return_ids);
 
   ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
-  raylet::BuildActorCreationTaskSpec(&task_spec_message, actor_id,
-                                     actor_creation_options.max_reconstructions, {});
+  builder.SetActorTaskSpec(actor_id, actor_creation_options.max_reconstructions, {});
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
       actor_id, ActorHandleID::Nil(), function.language, function.function_descriptor));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
-  TaskSpec task(raylet::TaskSpecification(task_spec_message), {});
+  TaskSpec task(builder.Build(), {});
   return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
 }
 
@@ -172,20 +168,19 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   auto num_returns = task_options.num_returns + 1;
 
   // Build common task spec.
-  auto task_spec_message = CreateCommonTaskSpecMessage(
-      function, args, num_returns, task_options.resources, {}, return_ids);
+  auto builder = BuildCommonTaskSpec(function, args, num_returns, task_options.resources,
+                                     {}, return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
   auto actor_creation_dummy_object_id =
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
-  raylet::BuildActorTaskSpec(&task_spec_message, actor_handle.ActorID(),
-                             actor_handle.ActorHandleID(), actor_creation_dummy_object_id,
-                             actor_handle.IncreaseTaskCounter(),
-                             actor_handle.NewActorHandles());
+  builder.SetActorTaskSpec(actor_handle.ActorID(), actor_handle.ActorHandleID(),
+                           actor_creation_dummy_object_id,
+                           actor_handle.IncreaseTaskCounter(),
+                           actor_handle.NewActorHandles());
 
-  TaskSpec task(raylet::TaskSpecification(task_spec_message),
-                {actor_handle.ActorCursor()});
+  TaskSpec task(builder.Build(), {actor_handle.ActorCursor()});
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();

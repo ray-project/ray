@@ -18,13 +18,8 @@ from ray.includes.unique_ids cimport (
 )
 
 cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc" nogil:
-    cdef cppclass CTaskArg "ray::rpc::TaskArg":
-        void add_object_ids(const c_string &value)
-        void set_data(const c_string &value)
-
     cdef cppclass RpcTaskSpec "ray::rpc::TaskSpec":
         void CopyFrom(const RpcTaskSpec &value)
-        CTaskArg *add_args()
 
     cdef cppclass RpcTaskExecutionSpec "ray::rpc::TaskExecutionSpec":
         void CopyFrom(const RpcTaskExecutionSpec &value)
@@ -80,23 +75,27 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
 
 
 cdef extern from "ray/raylet/task_util.h" namespace "ray::raylet" nogil:
+    cdef cppclass TaskSpecBuilder "ray::raylet::TaskSpecBuilder":
+        TaskSpecBuilder &SetCommonTaskSpec(
+            const CLanguage &language, const c_vector[c_string] &function_descriptor,
+            const CJobID &job_id, const CTaskID &parent_task_id, uint64_t parent_counter,
+            uint64_t num_returns, const unordered_map[c_string, double] &required_resources,
+            const unordered_map[c_string, double] &required_placement_resources);
 
-    cdef void BuildCommonTaskSpec(
-        RpcTaskSpec *message, const CLanguage &language,
-        const c_vector[c_string] &function_descriptor, const CJobID &job_id,
-        const CTaskID &parent_task_id, uint64_t parent_counter, uint64_t num_returns,
-        const unordered_map[c_string, double] &required_resources,
-        const unordered_map[c_string, double] &required_placement_resources);
+        TaskSpecBuilder &AddByRefArg(const CObjectID &arg_id);
 
-    cdef void BuildActorCreationTaskSpec(
-        RpcTaskSpec *message, const CActorID &actor_id,
-        uint64_t max_reconstructions,
-        const c_vector[c_string] &dynamic_worker_options);
+        TaskSpecBuilder &AddByValueArg(const c_string &data);
 
-    cdef void BuildActorTaskSpec(
-        RpcTaskSpec *message, const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-        const CObjectID &actor_creation_dummy_object_id, uint64_t actor_counter,
-        const c_vector[CActorHandleID] &new_handle_ids);
+        TaskSpecBuilder &SetActorCreationTaskSpec(
+            const CActorID &actor_id, uint64_t max_reconstructions,
+            const c_vector[c_string] &dynamic_worker_options);
+
+        TaskSpecBuilder &SetActorTaskSpec(
+            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
+            const CObjectID &actor_creation_dummy_object_id, uint64_t actor_counter,
+            const c_vector[CActorHandleID] &new_handle_ids);
+
+        RpcTaskSpec GetMessage();
 
 
 cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:

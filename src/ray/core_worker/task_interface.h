@@ -10,6 +10,7 @@
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/task_spec.h"
+#include "ray/raylet/task_util.h"
 #include "ray/rpc/util.h"
 
 namespace ray {
@@ -152,15 +153,17 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// A helper function that creates common task spec, and compute return IDs.
+  /// Build common attributes of the task spec, and compute return ids.
   ///
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] num_returns Number of returns.
   /// \param[in] required_resources Resources required by this task.
   /// \param[in] required_placement_resources Resources required by placing this task on a
-  /// node. \param[out] return_ids Return IDs. \return `TaskSpec` protobuf message.
-  rpc::TaskSpec CreateCommonTaskSpecMessage(
+  /// node.
+  /// \param[out] return_ids Return IDs.
+  /// \return A `TaskSpecBuilder`.
+  inline raylet::TaskSpecBuilder BuildCommonTaskSpec(
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,

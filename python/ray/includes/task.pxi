@@ -5,16 +5,11 @@ from libcpp.memory cimport (
     static_pointer_cast,
 )
 from ray.includes.task cimport (
-    BuildActorCreationTaskSpec,
-    BuildActorTaskSpec,
-    BuildCommonTaskSpec,
     CTask,
-    CTaskArg,
     CTaskExecutionSpec,
     CTaskSpec,
-    RpcTask,
     RpcTaskExecutionSpec,
-    RpcTaskSpec,
+    TaskSpecBuilder,
     TaskTableData,
 )
 
@@ -32,11 +27,10 @@ cdef class TaskSpec:
                  ActorHandleID actor_handle_id, int actor_counter,
                  new_actor_handles, resource_map, placement_resource_map):
         cdef:
-            RpcTaskSpec task_spec_message
+            TaskSpecBuilder builder
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
             c_vector[c_string] c_function_descriptor
-            CTaskArg *c_arg
             c_string pickled_str
             c_vector[CActorHandleID] c_new_actor_handles
 
@@ -55,39 +49,49 @@ cdef class TaskSpec:
                 resource_map_from_dict(placement_resource_map))
 
         # Build common task spec.
-        BuildCommonTaskSpec(
-            &task_spec_message, LANGUAGE_PYTHON, c_function_descriptor,
-            job_id.native(), parent_task_id.native(), parent_counter, num_returns,
-            required_resources, required_placement_resources)
+        builder.SetCommonTaskSpec(
+            LANGUAGE_PYTHON,
+            c_function_descriptor,
+            job_id.native(),
+            parent_task_id.native(),
+            parent_counter,
+            num_returns,
+            required_resources,
+            required_placement_resources,
+        )
 
         # Build arguments.
         for arg in arguments:
-            c_arg = task_spec_message.add_args()
             if isinstance(arg, ObjectID):
-                c_arg.add_object_ids((<ObjectID>arg).native().Binary())
+                builder.AddByRefArg((<ObjectID>arg).native())
             else:
                 pickled_str = pickle.dumps(
                     arg, protocol=pickle.HIGHEST_PROTOCOL)
-                c_arg.set_data(pickled_str)
+                builder.AddByValueArg(pickled_str)
 
         if not actor_creation_id.is_nil():
             # Actor creation task.
-            BuildActorCreationTaskSpec(
-                &task_spec_message, actor_creation_id.native(),
-                max_actor_reconstructions, [])
+            builder.SetActorCreationTaskSpec(
+                actor_creation_id.native(),
+                max_actor_reconstructions,
+                [],
+            )
         elif not actor_id.is_nil():
             # Actor task.
             for new_actor_handle in new_actor_handles:
                 c_new_actor_handles.push_back(
                     (<ActorHandleID?>new_actor_handle).native())
-            BuildActorTaskSpec(
-                &task_spec_message, actor_id.native(), actor_handle_id.native(),
-                actor_creation_dummy_object_id.native(), actor_counter,
-                c_new_actor_handles)
+            builder.SetActorTaskSpec(
+                actor_id.native(),
+                actor_handle_id.native(),
+                actor_creation_dummy_object_id.native(),
+                actor_counter,
+                c_new_actor_handles,
+            )
         else:
             # Normal task.
             pass
-        self.task_spec.reset(new CTaskSpec(task_spec_message))
+        self.task_spec.reset(new CTaskSpec(builder.GetMessage()))
 
     @staticmethod
     cdef make(unique_ptr[CTaskSpec]& task_spec):
