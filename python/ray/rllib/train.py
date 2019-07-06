@@ -109,7 +109,7 @@ def create_parser(parser_creator=None):
 def run(args, parser):
     if args.config_file:
         with open(args.config_file) as f:
-            experiments = yaml.load(f)
+            experiments = yaml.load(f, Loader=yaml.FullLoader)
     else:
         # Note: keep this in sync with tune/config_parser.py
         experiments = {
