@@ -4,7 +4,8 @@
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/store_provider.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 
 namespace ray {
@@ -19,7 +20,10 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker);
+  CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
+                                   RayletClient &raylet_client,
+                                   CoreWorkerObjectInterface &object_interface);
+
   /// The callback provided app-language workers that executes tasks.
   ///
   /// \param ray_function[in] Information about the function to execute.
@@ -46,8 +50,10 @@ class CoreWorkerTaskExecutionInterface {
   Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
                               std::vector<std::shared_ptr<RayObject>> *args);
 
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
+  /// Reference to the parent CoreWorker's objects interface.
+  CoreWorkerObjectInterface &object_interface_;
 
   /// All the task task receivers supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers;

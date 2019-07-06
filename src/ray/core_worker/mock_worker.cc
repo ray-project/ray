@@ -17,8 +17,8 @@ namespace ray {
 class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
-      : worker_(WorkerType::WORKER, ray::rpc::Language::PYTHON, store_socket,
-                raylet_socket, JobID::FromRandom()) {}
+      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+                JobID::FromRandom()) {}
 
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,

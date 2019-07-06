@@ -182,6 +182,7 @@ class RNNSequencing(unittest.TestCase):
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
+                    "state_shape": [3, 3],
                 },
             })
         ppo.train()
@@ -238,6 +239,7 @@ class RNNSequencing(unittest.TestCase):
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
+                    "state_shape": [3, 3],
                 },
             })
         ppo.train()
