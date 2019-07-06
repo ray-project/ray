@@ -2424,9 +2424,8 @@ def wait_for_num_objects(num_objects, timeout=10):
     reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
 
-    error_message = (
-        "The ray global state API cannot be used "
-        "before ray.init has been called.")
+    error_message = ("The ray global state API cannot be used "
+                     "before ray.init has been called.")
 
     with pytest.raises(Exception, match=error_message):
         ray.objects()

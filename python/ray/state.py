@@ -440,8 +440,8 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        job_keys = self.redis_client.keys(
-            gcs_utils.TablePrefix_JOB_string + "*")
+        job_keys = self.redis_client.keys(gcs_utils.TablePrefix_JOB_string +
+                                          "*")
 
         job_ids_binary = {
             key[len(gcs_utils.TablePrefix_JOB_string):]
