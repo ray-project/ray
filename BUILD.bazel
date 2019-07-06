@@ -688,33 +688,6 @@ filegroup(
     visibility = ["//java:__subpackages__"],
 )
 
-flatbuffer_py_library(
-    name = "python_node_manager_fbs",
-    srcs = [
-        "src/ray/raylet/format/node_manager.fbs",
-    ],
-    outs = [
-        "ray/protocol/DisconnectClient.py",
-        "ray/protocol/FetchOrReconstruct.py",
-        "ray/protocol/ForwardTaskRequest.py",
-        "ray/protocol/FreeObjectsRequest.py",
-        "ray/protocol/GetTaskReply.py",
-        "ray/protocol/MessageType.py",
-        "ray/protocol/NotifyUnblocked.py",
-        "ray/protocol/PushErrorRequest.py",
-        "ray/protocol/RegisterClientReply.py",
-        "ray/protocol/RegisterClientRequest.py",
-        "ray/protocol/RegisterNodeManagerRequest.py",
-        "ray/protocol/ResourceIdSetInfo.py",
-        "ray/protocol/SubmitTaskRequest.py",
-        "ray/protocol/Task.py",
-        "ray/protocol/TaskExecutionSpecification.py",
-        "ray/protocol/WaitReply.py",
-        "ray/protocol/WaitRequest.py",
-    ],
-    out_prefix = "python/ray/core/generated/",
-)
-
 filegroup(
     name = "python_sources",
     srcs = glob([
@@ -787,7 +760,6 @@ genrule(
         "python/ray/_raylet.so",
         "//:python_sources",
         "//:all_py_proto",
-        "//:python_node_manager_fbs",
         "//:redis-server",
         "//:redis-cli",
         "//:libray_redis_module.so",
@@ -809,9 +781,6 @@ genrule(
         cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
-        done &&
         for f in $(locations //:all_py_proto); do
             cp -f $$f $$WORK_DIR/python/ray/core/generated/;
         done &&
