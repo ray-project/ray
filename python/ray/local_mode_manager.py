@@ -11,8 +11,9 @@ from ray.exceptions import RayTaskError
 
 
 class LocalModeObjectID(ObjectID):
-    """Wrapper class around ray.ObjectID used for local mode. Object values
-    are stored directly as a field of the LocalModeObjectID.
+    """Wrapper class around ray.ObjectID used for local mode.
+    
+    Object values are stored directly as a field of the LocalModeObjectID.
 
     Attributes:
         value: Field that stores object values. If this field does not exist,
@@ -23,9 +24,7 @@ class LocalModeObjectID(ObjectID):
 
 
 class LocalModeManager(object):
-    """A class used by the worker process to emulate remote operations when
-    running in local mode.
-    """
+    """Used to emulate remote operations when running in local mode."""
 
     def __init__(self):
         """Initialize a LocalModeManager."""
