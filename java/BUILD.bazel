@@ -52,7 +52,7 @@ define_java_module(
     additional_srcs = [
         ":all_java_proto",
     ],
-    exlcude_srcs = [
+    exclude_srcs = [
         "runtime/src/main/java/org/ray/runtime/generated/*.java",
     ],
     additional_resources = [

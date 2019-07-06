@@ -16,7 +16,7 @@ def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_p
 def define_java_module(
         name,
         additional_srcs = [],
-        exlcude_srcs = [],
+        exclude_srcs = [],
         additional_resources = [],
         define_test_lib = False,
         test_deps = [],
@@ -27,7 +27,7 @@ def define_java_module(
         name = lib_name,
         srcs = additional_srcs + native.glob(
             [name + "/src/main/java/**/*.java"],
-            exclude = exlcude_srcs,
+            exclude = exclude_srcs,
         ),
         resources = native.glob([name + "/src/main/resources/**"]) + additional_resources,
         **kwargs
