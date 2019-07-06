@@ -230,6 +230,7 @@ class RNNSequencing(unittest.TestCase):
             env="counter",
             config={
                 "shuffle_sequences": False,  # for deterministic testing
+                "num_workers": 0,
                 "sample_batch_size": 20,
                 "train_batch_size": 20,
                 "sgd_minibatch_size": 10,
