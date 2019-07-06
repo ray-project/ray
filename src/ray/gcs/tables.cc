@@ -476,7 +476,8 @@ std::string ProfileTable::DebugString() const {
 }
 
 Status JobTable::AppendJobData(const JobID &job_id, bool is_dead, int64_t timestamp,
-                               const std::string& node_manager_address, int64_t driver_pid) {
+                               const std::string &node_manager_address,
+                               int64_t driver_pid) {
   auto data = std::make_shared<JobTableData>();
   data->set_job_id(job_id.Binary());
   data->set_is_dead(is_dead);

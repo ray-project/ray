@@ -659,7 +659,7 @@ class JobTable : public Log<JobID, JobTableData> {
   /// \param driver_pid Process ID of the driver process.
   /// \return The return status.
   Status AppendJobData(const JobID &job_id, bool is_dead, int64_t timestamp,
-                       const std::string& node_manager_address, int64_t driver_pid);
+                       const std::string &node_manager_address, int64_t driver_pid);
 };
 
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
