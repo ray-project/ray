@@ -142,6 +142,40 @@ def recursive_fnmatch(dirpath, pattern):
     return matches
 
 
+def validate_save_restore(trainable_cls, config=None, use_object_store=False):
+    """Helper method to check if your Trainable class will resume correctly.
+
+    Args:
+        trainable_cls: Trainable class for evaluation.
+        config (dict): Config to pass to Trainable when testing.
+        use_object_store (bool): Whether to save and restore to Ray's object
+            store. Recommended to set this to True if planning to use
+            algorithms that pause training (i.e., PBT, HyperBand).
+    """
+    trainable_1 = trainable_cls(config=config)
+    trainable_2 = trainable_cls(config=config)
+
+    for _ in range(3):
+        res = trainable_1.train()
+
+    assert res.get(TRAINING_ITERATION), (
+        "Validation will not pass because it requires `training_iteration` "
+        "to be returned.")
+
+    if use_object_store:
+        trainable_2.restore_from_object(trainable_1.save_to_object())
+    else:
+        trainable_2.restore(trainable_1.save())
+
+    from ray.tune.result import TRAINING_ITERATION
+    res = trainable_2.train()
+    assert res[TRAINING_ITERATION] == 4
+
+    res = trainable_2.train()
+    assert res[TRAINING_ITERATION] == 5
+    return True
+
+
 if __name__ == "__main__":
     ray.init()
     X = pin_in_object_store("hello")

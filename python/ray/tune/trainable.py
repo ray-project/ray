@@ -240,30 +240,19 @@ class Trainable(object):
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
-            logger.warning(
-                "Deprecation: Returned {} (str) from _save. "
-                "This will be ignored in the future.".format(checkpoint))
-            if (not (checkpoint.startswith(checkpoint_dir)
-                     or checkpoint == checkpoint_dir)):
+            if not checkpoint.startswith(checkpoint_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
-            if not os.path.exists(checkpoint):
-                raise ValueError(
-                    "The returned checkpoint path does not exist: {}".format(
-                        checkpoint))
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
-        else:
-            raise ValueError(
-                "`_save` must return a dict or string type: {}".format(
-                    str(type(checkpoint))))
-        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "wb") as f:
+
+        with open(checkpoint_dir + ".tune_metadata", "wb") as f:
             pickle.dump({
                 "experiment_id": self._experiment_id,
                 "iteration": self._iteration,
@@ -272,7 +261,7 @@ class Trainable(object):
                 "episodes_total": self._episodes_total,
                 "saved_as_dict": saved_as_dict
             }, f)
-        return checkpoint_dir
+        return checkpoint_path
 
     def save_to_object(self):
         """Saves the current model state to a Python object. It also
@@ -305,7 +294,7 @@ class Trainable(object):
         shutil.rmtree(tmpdir)
         return out.getvalue()
 
-    def restore(self, checkpoint_dir):
+    def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -313,7 +302,7 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "rb") as f:
+        with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
@@ -322,12 +311,13 @@ class Trainable(object):
         self._episodes_total = metadata["episodes_total"]
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
-            with open(os.path.join(checkpoint_dir, "checkpoint"),
+            with open(os.path.join(checkpoint_path, "checkpoint"),
                       "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
+            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
             self._restore(checkpoint_dict)
         else:
-            self._restore(checkpoint_dir)
+            self._restore(checkpoint_path)
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0

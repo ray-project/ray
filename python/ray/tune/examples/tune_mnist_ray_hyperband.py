@@ -150,7 +150,7 @@ class TrainMNIST(Trainable):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y_ = tf.placeholder(tf.float32, [None, 10])
 
-        activation_fn = getattr(tf.nn, config["activation"])
+        activation_fn = getattr(tf.nn, config.get("activation", "relu"))
 
         # Build the graph for the deep net
         y_conv, self.keep_prob = setupCNN(self.x)
@@ -162,7 +162,7 @@ class TrainMNIST(Trainable):
 
         with tf.name_scope("adam_optimizer"):
             train_step = tf.train.AdamOptimizer(
-                config["learning_rate"]).minimize(cross_entropy)
+                config.get("learning_rate", 1e-4)).minimize(cross_entropy)
 
         self.train_step = train_step
 
@@ -174,7 +174,6 @@ class TrainMNIST(Trainable):
 
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
-        self.global_step = 0  # This is just here for testing purposes.
         self.saver = tf.train.Saver(save_relative_paths=True)
 
     def _train(self):
@@ -196,32 +195,16 @@ class TrainMNIST(Trainable):
                 self.y_: batch[1],
                 self.keep_prob: 1.0
             })
-        self.global_step += 1
         return {
             "global_step": self.global_step,
             "mean_accuracy": train_accuracy
         }
 
     def _save(self, checkpoint_dir):
-        prefix = self.saver.save(
-            self.sess,
-            os.path.join(checkpoint_dir, "save"),
-            global_step=self.global_step)
-        with open(os.path.join(checkpoint_dir, "checkpoint-data.pkl"),
-                  "wb") as f:
-            pickle.dump({
-                "global_step": self.global_step,
-                "prefix": os.path.relpath(prefix, checkpoint_dir)
-            }, f)
-        return checkpoint_dir
+        self.saver.save(self.sess, os.path.join(checkpoint_dir, "save"))
 
     def _restore(self, checkpoint_dir):
-        with open(os.path.join(checkpoint_dir, "checkpoint-data.pkl"),
-                  "rb") as f:
-            data = pickle.load(f)
-        self.global_step = data["global_step"]
-        self.saver.restore(self.sess,
-                           os.path.join(checkpoint_dir, data["prefix"]))
+        self.saver.restore(self.sess, os.path.join(checkpoint_dir, "save"))
 
 
 # !!! Example of using the ray.tune Python API !!!
