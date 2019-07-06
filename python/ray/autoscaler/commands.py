@@ -35,7 +35,7 @@ def create_or_update_cluster(config_file, override_min_workers,
                              override_max_workers, no_restart, restart_only,
                              yes, override_cluster_name):
     """Create or updates an autoscaling Ray cluster from a config json."""
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
@@ -73,7 +73,7 @@ def _bootstrap_config(config):
 def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     validate_config(config)
@@ -119,7 +119,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
 def kill_node(config_file, yes, override_cluster_name):
     """Kills a random Raylet worker."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
@@ -326,7 +326,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
@@ -426,7 +426,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
@@ -463,7 +463,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
 def get_head_node_ip(config_file, override_cluster_name):
     """Returns head node IP for given configuration file if exists."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
@@ -483,7 +483,7 @@ def get_head_node_ip(config_file, override_cluster_name):
 def get_worker_node_ips(config_file, override_cluster_name):
     """Returns worker node IPs for given configuration file."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.load(open(config_file).read(), Loader=yaml.FullLoader)
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
