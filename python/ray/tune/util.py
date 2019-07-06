@@ -152,26 +152,32 @@ def validate_save_restore(trainable_cls, config=None, use_object_store=False):
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
-    trainable_1 = trainable_cls(config=config)
-    trainable_2 = trainable_cls(config=config)
+    assert ray.is_initialized(), "Need Ray to be initialized."
+    remote_cls = ray.remote(trainable_cls)
+    trainable_1 = remote_cls.remote(config=config)
+    trainable_2 = remote_cls.remote(config=config)
+
+    from ray.tune.result import TRAINING_ITERATION
 
     for _ in range(3):
-        res = trainable_1.train()
+        res = ray.get(trainable_1.train.remote())
 
     assert res.get(TRAINING_ITERATION), (
         "Validation will not pass because it requires `training_iteration` "
         "to be returned.")
 
     if use_object_store:
-        trainable_2.restore_from_object(trainable_1.save_to_object())
+        restore_check = trainable_2.restore_from_object.remote(
+            trainable_1.save_to_object.remote())
+        ray.get(restore_check)
     else:
-        trainable_2.restore(trainable_1.save())
+        restore_check = ray.get(
+            trainable_2.restore.remote(trainable_1.save.remote()))
 
-    from ray.tune.result import TRAINING_ITERATION
-    res = trainable_2.train()
+    res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4
 
-    res = trainable_2.train()
+    res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
 

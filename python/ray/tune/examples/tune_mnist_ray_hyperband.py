@@ -196,15 +196,16 @@ class TrainMNIST(Trainable):
                 self.keep_prob: 1.0
             })
         return {
-            "global_step": self.global_step,
             "mean_accuracy": train_accuracy
         }
 
     def _save(self, checkpoint_dir):
-        self.saver.save(self.sess, os.path.join(checkpoint_dir, "save"))
+        path = self.saver.save(
+            self.sess, os.path.join(checkpoint_dir, "save"))
+        return path
 
-    def _restore(self, checkpoint_dir):
-        self.saver.restore(self.sess, os.path.join(checkpoint_dir, "save"))
+    def _restore(self, checkpoint_path):
+        self.saver.restore(self.sess, checkpoint_path)
 
 
 # !!! Example of using the ray.tune Python API !!!

@@ -230,7 +230,7 @@ class Trainable(object):
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint path that may be passed to restore().
+            Checkpoint path or prefix that may be passed to restore().
         """
 
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
@@ -251,8 +251,10 @@ class Trainable(object):
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
+        else:
+            checkpoint_path = checkpoint_dir
 
-        with open(checkpoint_dir + ".tune_metadata", "wb") as f:
+        with open(checkpoint_path + ".tune_metadata", "wb") as f:
             pickle.dump({
                 "experiment_id": self._experiment_id,
                 "iteration": self._iteration,
@@ -401,7 +403,7 @@ class Trainable(object):
 
         Returns:
             checkpoint (str | dict): If string, the return value is
-                expected to be the checkpoint path that will be passed to
+                expected to be the checkpoint path or prefix to be passed to
                 `_restore()`. If dict, the return value will be automatically
                 serialized by Tune and passed to `_restore()`.
 
