@@ -13,7 +13,7 @@ from ray.tests.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
 
-@pytest.fixture(params=[1, 20])
+@pytest.fixture(params=[1, 4])
 def ray_start_sharded(request):
     num_redis_shards = request.param
 
