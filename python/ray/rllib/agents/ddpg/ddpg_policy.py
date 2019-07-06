@@ -7,7 +7,8 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn
+from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
+from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
@@ -20,83 +21,129 @@ from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, scope_vars
 
 tf = try_import_tf()
 
-ACTION_SCOPE = "action"
-POLICY_SCOPE = "policy"
-POLICY_TARGET_SCOPE = "target_policy"
-Q_SCOPE = "critic"
-Q_TARGET_SCOPE = "target_critic"
-TWIN_Q_SCOPE = "twin_critic"
-TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 
-# Importance sampling weights for prioritized replay
-PRIO_WEIGHTS = "weights"
+def build_ddpg_model(policy, obs_space, action_space, config):
+    if not isinstance(action_space, Box):
+        raise UnsupportedSpaceException(
+            "Action space {} is not supported for DDPG.".format(
+                action_space))
+    if len(action_space.shape) > 1:
+        raise UnsupportedSpaceException(
+            "Action space has multiple dimensions "
+            "{}. ".format(action_space.shape) +
+            "Consider reshaping this into a single dimension, "
+            "using a Tuple action space, or the multi-agent API.")
 
+    policy.ddpg_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        num_outputs,
+        config["model"],
+        framework="tf",
+        model_interface=DDPGModel,
+        name="actor_critic",
+        actor_hidden_activation=config["actor_hidden_activation"],
+        actor_hiddens=config["actor_hiddens"],
+        critic_hidden_activation=config["critic_hidden_activation"],
+        critic_hiddens=config["critic_hiddens"],
+        parameter_noise=config["parameter_noise"],
+        twin_q=config["twin_q"])
 
-class DDPGPostprocessing(object):
-    """Implements n-step learning and param noise adjustments."""
+    policy.target_ddpg_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        num_outputs,
+        config["model"],
+        framework="tf",
+        model_interface=DDPGModel,
+        name="actor_critic",
+        actor_hidden_activation=config["actor_hidden_activation"],
+        actor_hiddens=config["actor_hiddens"],
+        critic_hidden_activation=config["critic_hidden_activation"],
+        critic_hiddens=config["critic_hiddens"],
+        parameter_noise=config["parameter_noise"],
+        twin_q=config["twin_q"])
 
-    @override(Policy)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
-        if self.config["parameter_noise"]:
-            # adjust the sigma of parameter space noise
-            states, noisy_actions = [
-                list(x) for x in sample_batch.columns(
-                    [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
-            ]
-            self.sess.run(self.remove_noise_op)
-            clean_actions = self.sess.run(
-                self.output_actions,
-                feed_dict={
-                    self.cur_observations: states,
-                    self.stochastic: False,
-                    self.noise_scale: .0,
-                    self.pure_exploration_phase: False,
-                })
-            distance_in_action_space = np.sqrt(
-                np.mean(np.square(clean_actions - noisy_actions)))
-            self.pi_distance = distance_in_action_space
-            if distance_in_action_space < self.config["exploration_ou_sigma"]:
-                self.parameter_noise_sigma_val *= 1.01
-            else:
-                self.parameter_noise_sigma_val /= 1.01
-            self.parameter_noise_sigma.load(
-                self.parameter_noise_sigma_val, session=self.sess)
-
-        return _postprocess_dqn(self, sample_batch)
+    return policy.ddpg_model
 
 
-class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
-    def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
-        if not isinstance(action_space, Box):
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for DDPG.".format(
-                    action_space))
-        if len(action_space.shape) > 1:
-            raise UnsupportedSpaceException(
-                "Action space has multiple dimensions "
-                "{}. ".format(action_space.shape) +
-                "Consider reshaping this into a single dimension, "
-                "using a Tuple action space, or the multi-agent API.")
+def postprocess_trajectory(policy,
+                           sample_batch,
+                           other_agent_batches=None,
+                           episode=None):
+    if policy.config["parameter_noise"]:
+        policy.adjust_param_noise_sigma(sample_batch)
+    return _postprocess_dqn(policy, sample_batch)
 
-        self.config = config
+
+class ExplorationStateMixin(object):
+    def __init__(self):
         self.cur_noise_scale = 1.0
         self.cur_pure_exploration_phase = False
-        self.dim_actions = action_space.shape[0]
-        self.low_action = action_space.low
-        self.high_action = action_space.high
 
+
+class OptimizerManagerMixin(object):
+    def __init__(self, config):
         # create global step for counting the number of update operations
         self.global_step = tf.train.get_or_create_global_step()
 
         # use separate optimizers for actor & critic
         self._actor_optimizer = tf.train.AdamOptimizer(
-            learning_rate=self.config["actor_lr"])
+            learning_rate=config["actor_lr"])
         self._critic_optimizer = tf.train.AdamOptimizer(
-            learning_rate=self.config["critic_lr"])
+            learning_rate=config["critic_lr"])
+
+
+class ParamNoiseMixin(object):
+    def __init__(self):
+        self.remove_noise_op = ???
+        self.noise_scale = ???
+        self.pure_exploration_phase = ???
+        self.pi_distance = ???
+        self.parameter_noise_sigma_val = ???
+
+    def adjust_param_noise_sigma(self, sample_batch):
+        # adjust the sigma of parameter space noise
+        states, noisy_actions = [
+            list(x) for x in sample_batch.columns(
+                [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
+        ]
+        policy.get_session().run(policy.remove_noise_op)
+        clean_actions = policy.get_session().run(
+            policy.output_actions,
+            feed_dict={
+                policy.get_placeholder(SampleBatch.CUR_OBS): states,
+                policy.stochastic: False,
+                policy.noise_scale: .0,
+                policy.pure_exploration_phase: False,
+            })
+        distance_in_action_space = np.sqrt(
+            np.mean(np.square(clean_actions - noisy_actions)))
+        policy.pi_distance = distance_in_action_space
+        if distance_in_action_space < policy.config["exploration_ou_sigma"]:
+            policy.parameter_noise_sigma_val *= 1.01
+        else:
+            policy.parameter_noise_sigma_val /= 1.01
+        policy.parameter_noise_sigma.load(
+            policy.parameter_noise_sigma_val, session=policy.get_session())
+
+
+
+DDPGTFPolicy = build_tf_policy(
+    name="DDPGTFPolicy",
+    get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
+    make_model=build_ddpg_model,
+    postprocess_fn=postprocess_trajectory)
+
+class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
+    def __init__(self, observation_space, action_space, config):
+#        self.cur_noise_scale = 1.0
+#        self.cur_pure_exploration_phase = False
+#        self.dim_actions = action_space.shape[0]
+#        self.low_action = action_space.low
+#        self.high_action = action_space.high
+
+#        self.global_step = tf.train.get_or_create_global_step()
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
