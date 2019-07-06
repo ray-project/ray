@@ -252,9 +252,8 @@ class Trainable(object):
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         elif checkpoint is not None:
-            logger.warning(
-                "Returned unexpected type {}. "
-                "Expected str or dict.".format(type(checkpoint)))
+            logger.warning("Returned unexpected type {}. "
+                           "Expected str or dict.".format(type(checkpoint)))
             checkpoint_path = checkpoint_dir
 
         with open(checkpoint_path + ".tune_metadata", "wb") as f:
@@ -316,7 +315,7 @@ class Trainable(object):
         self._episodes_total = metadata["episodes_total"]
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
-            with open(checkpoint_path,"rb") as loaded_state:
+            with open(checkpoint_path, "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
             checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
             self._restore(checkpoint_dict)
