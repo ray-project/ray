@@ -2086,7 +2086,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         trials = [
             Trial(
                 "__fake",
@@ -2145,8 +2145,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
-
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(
             Trial(
                 "__fake",
@@ -2200,7 +2199,7 @@ class TrialRunnerTest(unittest.TestCase):
             },
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2221,7 +2220,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
