@@ -581,7 +581,8 @@ void TestLogSubscribeAll(const JobID &job_id,
   auto subscribe_callback = [job_ids](gcs::AsyncGcsClient *client) {
     // We have subscribed. Do the writes to the table.
     for (size_t i = 0; i < job_ids.size(); i++) {
-      RAY_CHECK_OK(client->job_table().AppendJobData(job_ids[i], false));
+      RAY_CHECK_OK(
+          client->job_table().AppendJobData(job_ids[i], false, 0, "localhost", 1));
     }
   };
 

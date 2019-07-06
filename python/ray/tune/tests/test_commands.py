@@ -90,6 +90,7 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
+            sort=["status"],
             info_keys=("status", ),
             filter_op="status == TERMINATED")
     lines = output.captured
@@ -126,6 +127,7 @@ def test_lsx(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_experiments(
             project_path,
+            sort=["total_trials"],
             info_keys=("total_trials", ),
             filter_op="total_trials == 1")
     lines = output.captured
