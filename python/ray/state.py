@@ -400,8 +400,9 @@ class GlobalState(object):
             job_id = ray.JobID(hex_to_binary(job_id))
 
         # Return information about a single job ID.
-        message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value("JOB"), "", job_id.binary())
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("JOB"), "",
+            job_id.binary())
 
         if message is None:
             return {}
