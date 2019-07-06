@@ -28,7 +28,6 @@ from __future__ import print_function
 
 import argparse
 import os
-import pickle
 import time
 
 import ray
@@ -195,13 +194,10 @@ class TrainMNIST(Trainable):
                 self.y_: batch[1],
                 self.keep_prob: 1.0
             })
-        return {
-            "mean_accuracy": train_accuracy
-        }
+        return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
-        path = self.saver.save(
-            self.sess, os.path.join(checkpoint_dir, "save"))
+        path = self.saver.save(self.sess, os.path.join(checkpoint_dir, "save"))
         return path
 
     def _restore(self, checkpoint_path):
