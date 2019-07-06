@@ -389,11 +389,12 @@ class GlobalState(object):
         """Fetch and parse the job table information for a single job ID.
 
         Args:
-            job_id: A job ID to get information about.
-         Returns:
+            job_id: A job ID or hex string to get information about.
+
+        Returns:
             A dictionary with information about the job ID in question.
         """
-        # Allow the argument to be either a DriverID or a hex string.
+        # Allow the argument to be either a JobID or a hex string.
         if not isinstance(job_id, ray.JobID):
             assert isinstance(job_id, str)
             job_id = ray.JobID(hex_to_binary(job_id))
@@ -426,10 +427,11 @@ class GlobalState(object):
 
     def job_table(self):
         """Fetch and parse the Redis job table.
-         Returns:
+
+        Returns:
             Information about the Ray jobs in the cluster,
             namely a list of dicts with keys:
-            - "JobID" (sha1 identifier for the job),
+            - "JobID" (identifier for the job),
             - "NodeManagerAddress" (IP address of the driver for this job),
             - "DriverPid" (process ID of the driver for this job),
             - "StartTime" (UNIX timestamp of the start time of this job),
@@ -1054,7 +1056,7 @@ def jobs():
 
      Returns:
         Information from the job table, namely a list of dicts with keys:
-        - "JobID" (sha1 identifier for the job),
+        - "JobID" (identifier for the job),
         - "NodeManagerAddress" (IP address of the driver for this job),
         - "DriverPid" (process ID of the driver for this job),
         - "StartTime" (UNIX timestamp of the start time of this job),

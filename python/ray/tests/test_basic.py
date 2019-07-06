@@ -2423,16 +2423,21 @@ def wait_for_num_objects(num_objects, timeout=10):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
-    with pytest.raises(Exception):
+
+    error_message = (
+        "The ray global state API cannot be used "
+        "before ray.init has been called.")
+
+    with pytest.raises(Exception, match=error_message):
         ray.objects()
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match=error_message):
         ray.tasks()
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match=error_message):
         ray.nodes()
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
