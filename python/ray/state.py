@@ -388,7 +388,7 @@ class GlobalState(object):
     def _job_table(self, job_id):
         """Fetch and parse the job table information for a single job ID.
 
-         Args:
+        Args:
             job_id: A job ID to get information about.
          Returns:
             A dictionary with information about the job ID in question.
