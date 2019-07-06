@@ -229,7 +229,7 @@ class RNNSequencing(unittest.TestCase):
         ppo = PPOTrainer(
             env="counter",
             config={
-                "num_workers": 0,
+                "shuffle_sequences": False,  # for deterministic testing
                 "sample_batch_size": 20,
                 "train_batch_size": 20,
                 "sgd_minibatch_size": 10,
