@@ -75,7 +75,7 @@ ObjectID TaskSpecification::ArgId(size_t arg_index, size_t id_index) const {
 }
 
 const uint8_t *TaskSpecification::ArgVal(size_t arg_index) const {
-  return reinterpret_cast<const uint8_t *>(message_.args(arg_index).data().c_str());
+  return reinterpret_cast<const uint8_t *>(message_.args(arg_index).data().data());
 }
 
 size_t TaskSpecification::ArgValLength(size_t arg_index) const {
