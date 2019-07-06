@@ -7,6 +7,9 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
+#include "ray/rpc/client_call.h"
+#include "ray/rpc/worker/worker_client.h"
+#include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
@@ -21,7 +24,7 @@ class TaskSpecification;
 class CoreWorkerTaskExecutionInterface {
  public:
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
-                                   RayletClient &raylet_client,
+                                   std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface);
 
   /// The callback provided app-language workers that executes tasks.
@@ -56,7 +59,18 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorkerObjectInterface &object_interface_;
 
   /// All the task task receivers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers;
+  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers_;
+
+  /// The RPC server.
+  rpc::GrpcServer worker_server_;
+
+  /// Event loop where tasks are processed.
+  boost::asio::io_service main_service_;
+
+  /// The asio work to keep main_service_ alive.
+  boost::asio::io_service::work main_work_;
+
+  friend class CoreWorker;
 };
 
 }  // namespace ray
