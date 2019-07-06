@@ -159,7 +159,7 @@ class Cifar10Model(Trainable):
             validation_data=None)
 
         # loss, accuracy
-        _, accuracy = self.model.evaluate(x_test, y_test, verbose=1)
+        _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
         return {"mean_accuracy": accuracy}
 
     def _save(self, checkpoint_dir):

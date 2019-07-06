@@ -290,7 +290,7 @@ class Trainable(object):
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
-            "checkpoint_path": os.path.relpath(checkpoint_path, tmpdir),
+            "checkpoint_name": os.path.relpath(checkpoint_path, tmpdir),
             "data": data,
         })
         if len(data_dict) > 10e6:  # getting pretty large
@@ -316,8 +316,7 @@ class Trainable(object):
         self._episodes_total = metadata["episodes_total"]
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
-            with open(os.path.join(checkpoint_path, "checkpoint"),
-                      "rb") as loaded_state:
+            with open(checkpoint_path,"rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
             checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
             self._restore(checkpoint_dict)
@@ -333,10 +332,10 @@ class Trainable(object):
 
         These checkpoints are returned from calls to save_to_object().
         """
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         info = pickle.loads(obj)
         data = info["data"]
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_path"])
+        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
+        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
 
         for relpath_name, file_contents in data.items():
             path = os.path.join(tmpdir, relpath_name)
