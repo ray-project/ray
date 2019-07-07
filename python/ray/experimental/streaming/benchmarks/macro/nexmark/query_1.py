@@ -31,7 +31,9 @@ parser.add_argument("--plasma-memory", default=10**9,
                     help="amount of memory to start plasma with")
 parser.add_argument("--queue-size", default=10,
                     help="the queue size in number of batches")
-parser.add_argument("--batch-size", default=1000,
+# The batch size is estimated based on the Bid's size, so that
+# each batch corresponds to a buffer of around 32K bytes
+parser.add_argument("--batch-size", default=120,
                     help="the batch size in number of records")
 parser.add_argument("--flush-timeout", default=0.1,  # 100ms
                     help="the timeout (in seconds) to flush a batch")

@@ -24,9 +24,12 @@ logger.setLevel("INFO")
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--queue-size", default=8,
+parser.add_argument("--queue-size", default=10,
                     help="the queue size in number of batches")
-parser.add_argument("--batch-size", default=1000,
+# The batch size is estimated based on the Bid's size, so that
+# each batch corresponds to a buffer of around 32K bytes. For auctions,
+# the respective batch size is 42 whereas for persons is 210.
+parser.add_argument("--batch-size", default=120,
                     help="the batch size in number of elements")
 parser.add_argument("--flush-timeout", default=0.1,
                     help="the timeout to flush a batch")

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import logging
 import math
-import sys
 import time
 import uuid
 from collections import defaultdict
@@ -60,11 +59,13 @@ class Config(object):
          dataflow operator (default: 1)
     """
 
-    def __init__(self, parallelism=1, logging=False):
+    def __init__(self, parallelism=1, micro_batch_api=False, logging=False):
         # Virtual queue configuration
         self.queue_config = QueueConfig()
         # Dataflow parallelism (can be overwritten at the operator level)
         self.parallelism = parallelism
+        # Micro-batch API
+        self.use_micro_batch = micro_batch_api
         # Logging flag
         self.logging = logging
         # ...
@@ -253,7 +254,7 @@ class Environment(object):
                                                     resources={node_id: 1})
         elif operator.type == OpType.KeyBy:
             node_id = operator.placement[instance_id]
-            logger.info("Placing KeyBy {} at {}.".format(actor_id, node_id))
+            logger.info("Placing keyBy {} at {}.".format(actor_id, node_id))
             actor_handle = operator_instance.KeyBy._remote(args=args,
                                                     kwargs=None,
                                                     resources={node_id: 1})
@@ -278,7 +279,9 @@ class Environment(object):
                 # Make sure the handle is registered before proceeding
                 ray.get(handle._register_destination_handle.remote(
                                             destination_handle, channel.id))
+        # Register own handle (used by actor for scheduling itself)
         ray.get(actor_handle._register_handle.remote(actor_handle))
+        # Register operator to the physical dataflow
         self.physical_dataflow._register_handle(actor_id, actor_handle)
         self.physical_dataflow._register_metadata(operator.id, operator)
         assert actor_handle is not None
@@ -374,8 +377,8 @@ class Environment(object):
                 raise Exception(message)
         return channels
 
-    # An edge denotes a flow of data between logical operators
-    # and may correspond to multiple data channels in the physical dataflow
+    # An edge denotes a flow of data between logical operators and may
+    # correspond to multiple data channels in the physical dataflow
     def _add_edge(self, source, destination):
         self.logical_topo.add_edge(source, destination)
 
@@ -389,7 +392,7 @@ class Environment(object):
         self.topo_cleaned = True
 
     # Sets the level of parallelism for a registered operator
-    # Overwrites the environment parallelism (if set)
+    # by overwriting the streaming environment parallelism
     def _set_parallelism(self, operator_id, level_of_parallelism):
         self.operators[operator_id].num_instances = level_of_parallelism
 
@@ -425,6 +428,7 @@ class Environment(object):
     # Constructs and deploys the physical dataflow
     def execute(self):
         """Deploys and executes the physical dataflow."""
+        # Step 0: Clean logical dataflow
         self._collect_garbage()  # Make sure everything is clean
         # TODO (john): Check if dataflow has any 'logical inconsistencies'
         # For example, if there is a forward partitioning strategy but
@@ -432,11 +436,12 @@ class Environment(object):
         # upstream instances, some of the downstream instances will not be
         # used at all
 
+
         logger.debug("Deploying and executing the dataflow...")
-        # Each operator instance is implemented as a Ray actor
-        # Actors are deployed in topological order, as we traverse the
-        # logical dataflow from sources to sinks. Sources are started at the
-        # end of the dataflow construction
+        # # Step 1: Deploy actors. Each operator instance is implemented as a
+        # Ray actor. Actors are deployed in topological order, as we traverse
+        # the logical dataflow from sources to sinks. Sources are started at
+        # the end of the dataflow construction.
         all_handles = []
         upstream_channels = {}
         for node in nx.topological_sort(self.logical_topo):
@@ -456,18 +461,17 @@ class Environment(object):
                 if existing_channels != channels:
                     value.extend(channels)
 
-        # Start and register the monitoring actor to the physical dataflow
+        # Step 2: Start and register monitoring actor to the physical dataflow
         first_node_id = utils.get_cluster_node_ids()[0]
         logger.info("Placing progress monitor at {}.".format(first_node_id))
         monitoring_actor = operator_instance.ProgressMonitor._remote(
                                             args=[all_handles], kwargs=None,
                                             resources={first_node_id: 1})
         self.physical_dataflow.monitoring_actor = monitoring_actor
-        logger.info("Done. Starting sources...")
 
-        # Collect data source actor handles
-        source_handles = []
-        spinning_actor_handles = []
+        logger.info("Starting sources...")
+        # Step 3: Start data sources
+        source_handles = []  # The source actor handles
         for entry in self.physical_dataflow.actor_handles.items():
             operator_id, actor_handles = entry
             operator = self.physical_dataflow.operator_metadata[operator_id]
@@ -475,12 +479,12 @@ class Environment(object):
             # Keep source handles for now to start sources in the end
             if operator_type in source_types:
                 source_handles.extend(actor_handles)
-        #  Start data sources
+        #  Start spinning
         for source_handle in source_handles:
             _ = source_handle.start.remote()
 
-        # Update dictionary in physical topology so that users
-        # can lookup operators using either an id or a name
+        # Step 4: Update dictionary in physical topology so that
+        # users can lookup operators using either an id or a name
         operator_ids = self.physical_dataflow.actor_handles.items()
         operator_names = {}  # name -> actor handles
         for operator_id, handles in operator_ids:
@@ -488,6 +492,7 @@ class Environment(object):
             operator_name = metadata.name
             operator_names.setdefault(operator_name, handles)
         self.physical_dataflow.actor_handles.update(operator_names)
+
         # Return handle to physical dataflow
         return self.physical_dataflow
 
@@ -731,7 +736,8 @@ class DataStream(object):
     # Registers KeyBy operator to the environment
     # TODO (john): This should returned a KeyedDataStream
     # A stream can be partitioned on a key either within the upstream operator
-    # or by introducing a pipelined KeyBy operator (as, e.g., in Flink)
+    # or by introducing a pipelined KeyBy operator. The latter transforms the
+    # input stream of records to a new stream of tuples (key, record).
     def key_by(self, key_selector, name="KeyBy_"+_generate_uuid(),
                placement=None):
         """Applies a key_by operator to the stream.
@@ -739,6 +745,9 @@ class DataStream(object):
         Attributes:
              key_attribute_index (int): The index of the key attributed
              (assuming tuple records).
+             name (str): The name of the keyBy operator
+             placement list(str): A mapping from local instance ids in
+             [0...num_instances) to cluster node ids
         """
         op = operator.KeyByOperator(
             _generate_uuid(),
@@ -757,6 +766,9 @@ class DataStream(object):
 
         Attributes:
              reduce_fn (function): The user-defined reduce function.
+             name (str): The name of the reduce operator
+             placement list(str): A mapping from local instance ids in
+             [0...num_instances) to cluster node ids
         """
         op = operator.Operator(
             _generate_uuid(),
@@ -776,6 +788,9 @@ class DataStream(object):
         Attributes:
              sum_attribute_index (int): The index of the attribute to sum
              (assuming tuple records).
+             name (str): The name of the sum operator
+             placement list(str): A mapping from local instance ids in
+             [0...num_instances) to cluster node ids
         """
         op = operator.SumOperator(
             _generate_uuid(),
@@ -795,6 +810,9 @@ class DataStream(object):
 
         Attributes:
              other_streams list(DataStream): The list of streams to union.
+             name (str): The name of the union operator
+             placement list(str): A mapping from local instance ids in
+             [0...num_instances) to cluster node ids
         """
         assert isinstance(other_inputs, list), other_inputs
         op = operator.UnionOperator(

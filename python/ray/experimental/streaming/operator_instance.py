@@ -5,7 +5,6 @@ from __future__ import print_function
 import logging
 import math
 import msgpack
-import sys
 import time
 import types
 
@@ -24,17 +23,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
 
 
-# Used for attribute selection in Reduce
-def _identity(element):
-    return element
-
 # Signal denoting that a streaming actor finished processing
 # and returned after all its input channels have been closed
 class ActorExit(signal.Signal):
     def __init__(self, value=None):
         self.value = value
 
-# Signal denoting that a streaming data source started emitting records
+# Signal denoting that a streaming data source has started emitting records
 class ActorStart(signal.Signal):
     def __init__(self, value=None):
         self.value = value
@@ -49,7 +44,7 @@ class OperatorInstance(object):
         the instance (see: DataInput in communication.py).
         output (DataOutput): The output gate that manages output channels of
         the instance (see: DataOutput in communication.py).
-        checkpoint_dir (str): The checkpoint directory
+        checkpoint_dir (str): The checkpoints directory
     """
 
     def __init__(self,
@@ -62,12 +57,17 @@ class OperatorInstance(object):
         self.metadata = operator_metadata
         self.input = input_gate
         self.output = output_gate
-        self.this_actor = None      # An actor handle to self
+        self.this_actor = None      # Owns actor handle
 
         self.key_index = None       # Index for key selection
         self.key_attribute = None   # Attribute name for key selection
 
-        self.num_records_seen = 0   # Number of records seen by the instance
+        self.num_records_seen = 0   # Number of records seen by the actor
+
+        # TODO (john): Should be initialized based on the user-defined offset
+        self.last_emitted_watermark = 0
+        # Epochs per input channel
+        self.epochs = [0] * len(self.input.input_channels)
 
         # Logging-related attributes
         self.logging = self.metadata.logging
@@ -87,7 +87,7 @@ class OperatorInstance(object):
     def _register_handle(self, actor_handle):
         self.this_actor = actor_handle
 
-    # Registers the handle of a destination actor to a channel
+    # Registers the handle of a destination actor to an output channel
     def _register_destination_handle(self, actor_handle, channel_id):
         for channel in self.output.forward_channels:
             if channel.id == channel_id:
@@ -114,13 +114,56 @@ class OperatorInstance(object):
                     channel._register_destination_actor(actor_handle)
                     return
 
-    # Updates progress information
+    # Updates progress information (called by the upstream operator instance)
     def _update_progress(self, watermark, input_channel_id):
-        """ Updates progress information as received from upstream and
+        """Updates progress information as received from upstream and
         propagates this information downstream.
+
+        This method checks if a watermark appearing in a channel must be
+        forwarded to all output channels (downstream operator instances).
+        For a source, the watermark is always forwarded to the output.
+        For any other operator, the watermark is not necessarily forwarded;
+        in this case, the forwarded watermark is the minimum watermark
+        received from all input channels of the operator that is strictly
+        larger than the previously forwarded watermark.
+
+        The method assumes single-dimensional watermarks that increase
+        monotonically.
+
+        Attributes:
+             watermark (dict): The watermark object's dict
+             input_channel_id (int): The index of the input channel the
+             watermark came from
         """
         assert input_channel_id is not None
-        self.output._forward_watermark(watermark, input_channel_id)
+        # Set the last seen watermark in this channel
+        previous_epoch = self.input.input_channels[input_channel_id]
+        current_epoch = watermark["event_time"]
+        # Epochs from the same input can only increase monotonically
+        assert prev_epoch < current_epoch
+        self.epochs[input_channel_id] = current_epoch
+        # Find minimum watermark amongst all input channels
+        minimum_watermark = min(self.epochs.values())
+        if minimum_watermark > self.last_emitted_watermark:  # Forward
+            self.last_emitted_watermark = minimum_watermark
+            # Update the epoch and propagate the same watermark downstream
+            watermark["event_time"] = minimum_watermark
+            # logger.info("Emitting watermark: {}".format(
+            #             self.last_emitted_watermark))
+            self.output._broadcast_watermark(watermark)
+
+    # Closes an input channel (called by the upstream operator instance)
+    def _close_input(self, channel_id):
+        """ Closes an input channel and exits if all inputs have been
+        closed.
+
+        Attributes:
+            channel_id (str(UUID)): The id of the input 'channel' to close.
+        """
+        if self.input._close_channel(channel_id):
+            # logger.debug("Closing channel {}".format(channel_id))
+            self.output._close()
+            signal.send(ActorExit(self.instance_id))
 
     # This method must be implemented by the subclasses
     def _apply(self, batch, input_channel_id=None):
@@ -133,22 +176,20 @@ class OperatorInstance(object):
         """
         raise Exception("OperatorInstances must implement _apply()")
 
-    # Closes an input channel (called by the upstream operator instance)
-    def _close_input(self, channel_id):
-        """ Closes an input channel and exits if all inputs have been
-        closed.
+    # This method must be implemented by the subclasses
+    def _apply_batch(self, batch, input_channel_id=None):
+        """ Applies the user-defined operator logic to a batch of records.
 
         Attributes:
-            channel_id (str(UUID)): The id of the input 'channel' to close.
+            batch (list): The batch of input records
+            input_channel_id (str(UUID)): The id of the input 'channel' the
+            batch comes from.
         """
-        if self.input._close_channel(channel_id):
-            # logger.debug("Closing channel {}".format(channel_id))
-            self.output._flush(close=True)
-            signal.send(ActorExit(self.instance_id))
+        raise Exception("OperatorInstances must implement _apply_batch()")
 
     # Returns state of stateful operator instances
     def state(self):
-        message = "Called state() on an actor of type {}, which is not "
+        message = "Called state() on an instance of type {}, which is not "
         message += " stateful."
         raise Exception(message)
 
@@ -196,6 +237,7 @@ class ProgressMonitor(object):
             if len(self.start_signals) == len(actor_handles):
                 return
 
+
 # Map actor
 @ray.remote
 class Map(OperatorInstance):
@@ -215,6 +257,11 @@ class Map(OperatorInstance):
         self.map_fn = operator_metadata.logic
 
     # Applies map logic on a batch of records
+    def _apply_batch(self, batch):
+        for record in batch:
+            self.output._push(self.map_fn(record))
+
+    # Applies map logic on a batch of records
     def _apply(self, batch):
         self.output._push(self.map_fn(batch))
 
@@ -231,8 +278,8 @@ class FlatMap(OperatorInstance):
 
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
+        OperatorInstance.__init__(self, instance_id, operator_metadata,
+                                  input_gate, output_gate,
                                   checkpoint_dir)
         # The user-defined flatmap function
         self.flatmap_fn = operator_metadata.logic
@@ -242,7 +289,13 @@ class FlatMap(OperatorInstance):
     # Flatmap generates record batches of arbitrary size, which might exceed
     # the max batch size (as well as the size limit for inline objects)
     def _apply(self, batch):
+        for record in batch:
+            self.output._push_batch(self.flatmap_fn(record))
+
+    # Applies flatmap logic on a batch of records
+    def _apply_batch(self, batch):
         self.output._push(self.flatmap_fn(batch))
+
 
 # Union actor
 @ray.remote
@@ -259,8 +312,16 @@ class Union(OperatorInstance):
 
     # Merges all input records into a single output
     def _apply(self, batch):
-        self.output._push(batch)
+        self.output._push_batch(batch)
 
+    # Merges all input records into a single output
+    def _apply_batch(self, batch):
+        self.output._push_batch(batch)
+
+
+# Used as default attribute selection in the Reduce operator
+def _identity(element):
+    return element
 
 # Reduce actor
 @ray.remote
@@ -268,18 +329,18 @@ class Reduce(OperatorInstance):
     """A reduce operator instance that combines a new value for a key
     with the last reduced one according to a user-defined logic.
 
+    Expects an input stream of tuples of the form (key, record).
+
     Attributes:
         reduce_fn (function): The user-defined reduce logic.
-        value_attribute (int): The index of the value to reduce
-        (assuming tuple records).
         state (dict): A mapping from keys to values.
     """
 
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate, checkpoint_dir, config=None):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate,
-                                  output_gate, checkpoint_dir)
+        OperatorInstance.__init__(self, instance_id, operator_metadata,
+                                  input_gate, output_gate,
+                                  checkpoint_dir)
         self.state = {}                             # key -> value
         self.reduce_fn = operator_metadata.logic    # Reduce function
         # Set the attribute selector
@@ -298,19 +359,23 @@ class Reduce(OperatorInstance):
     # Applies reduce logic on a batch of records
     def _apply(self, batch):
         for record in batch:
-            _time, key, rest = record
-            new_value = self.attribute_selector(record)
-            # TODO (john): Is there a way to update state with
-            # a single dictionary lookup?
+            key, data = record
+            new_value = self.attribute_selector(data)
+            # TODO (john): Is there a way to update state with a single
+            # dictionary lookup?
             try:
                 old_value = self.state[key]
                 new_value = self.reduce_fn(old_value, new_value)
                 self.state[key] = new_value
             except KeyError:  # Key does not exist in state
                 self.state.setdefault(key, new_value)
-            self.output._push((_time, key, new_value))
+            self.output._push((key, new_value))
 
-    # Returns the local state of the actor
+    # Applies reduce logic on a batch of records
+    def _apply_batch(self, batch):
+        self.output._push_batch(self.reduce_fn(batch, self.state))
+
+    # Returns the local state of the operator instance
     def state(self):
         return self.state
 
@@ -320,6 +385,9 @@ class KeyBy(OperatorInstance):
     """A key_by operator instance that physically partitions the
     stream based on a key.
 
+    The key_by actor transforms the input data stream or records into a new
+    stream of tuples of the form (key, record).
+
     Attributes:
         key_attribute (int): The index of the value to reduce
         (assuming tuple records).
@@ -327,8 +395,8 @@ class KeyBy(OperatorInstance):
 
     def __init__(self, instance_id, operator_metadata, input_gate,
                  output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
+        OperatorInstance.__init__(self, instance_id, operator_metadata,
+                                  input_gate, output_gate,
                                   checkpoint_dir)
         # Set the key selector
         self.key_selector = operator_metadata.key_selector
@@ -343,18 +411,23 @@ class KeyBy(OperatorInstance):
 
     # Extracts the shuffling key from each record in a batch
     def _apply(self, batch):
-        batch[:] = [self.key_selector(record) for record in batch]
-        self.output._push(batch)
+        batch[:] = [(self.key_selector(record), record) for record in batch]
+        self.output._push_batch(batch)
+
+    # Extracts the shuffling key from each record in a batch
+    def _apply_batch(self, batch):
+        batch[:] = [(self.key_selector(record), record) for record in batch]
+        self.output._push_batch(batch)
 
 # A custom source actor
 @ray.remote
 class Source(OperatorInstance):
     """A source emitting records.
 
-    A user-defined source must implement the following methods:
-    - init()
-    - get_next(batch_size)
-    - close()
+    A user-defined source object must implement the following methods:
+        - init()
+        - get_next(batch_size)
+        - close()
     """
 
     def __init__(self, instance_id, operator_metadata, input_gate,
@@ -381,8 +454,8 @@ class Source(OperatorInstance):
         on the event times seen so far and a user-defined watermark interval.
 
         Attributes:
-             record_batch (list): The list of input records,
-             each one with an associated event time.
+            record_batch (list): The list of input records, each one with
+            an associated event time.
         """
         max_timestamp = 0
         for record in record_batch:
@@ -400,8 +473,8 @@ class Source(OperatorInstance):
                                             max_timestamp,
                                             self.watermark_interval))
             # Use obj.__dict__ instead of the object itself
-            self.output._forward_watermark(Watermark(self.max_event_time,
-                                                     time.time()).__dict__)
+            self.output._broadcast_watermark(Watermark(self.max_event_time,
+                                                       time.time()).__dict__)
             # Update max event time seen so far
             self.max_event_time = max_timestamp
 
@@ -416,7 +489,7 @@ class Source(OperatorInstance):
                 logger.info("Source throuhgput: {}".format(
                             self.num_records_seen / (
                             time.time() - self.start_time)))
-                self.output._flush(close=True)  # Flush and close output
+                self.output._close()  # Flush and close output
                 signal.send(ActorExit(self.instance_id))  # Send exit signal
                 self.source.close()
                 return
@@ -433,13 +506,14 @@ class Source(OperatorInstance):
                 logger.info("Source throughput: {}".format(
                     self.num_records_seen / (time.time() - self.start_time)))
 
+
 # A custom sink actor
 @ray.remote
 class Sink(OperatorInstance):
     """A dataflow sink.
 
-    A user-defined sink must implement the following method:
-    - evict(batch)
+    A user-defined sink object must implement the following method:
+        - evict(batch)
     """
 
     def __init__(self, instance_id, operator_metadata, input_gate,
@@ -449,11 +523,15 @@ class Sink(OperatorInstance):
                                   checkpoint_dir)
         # The user-defined sink
         self.sink = operator_metadata.sink
-        self.sink.init()  # Initialize the sink
 
     # Applies the sink logic to a batch of records
     def _apply(self, batch):
-        self.sink.evict(batch)
+        for record in batch:
+            self.sink.evict(record)
+
+    # Applies the sink logic to a batch of records
+    def _apply_batch(self, batch):
+        self.sink.evict_batch(batch)
 
     # Returns the local state (if any) of the sink instance
     def state(self):
