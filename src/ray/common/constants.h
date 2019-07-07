@@ -7,9 +7,6 @@
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 20;
 
-/// Length of Job ID in bytes.
-constexpr int64_t kJobIDSize = 4;
-
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
 constexpr int kObjectIdIndexSize = 32;

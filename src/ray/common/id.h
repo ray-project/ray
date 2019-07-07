@@ -74,20 +74,25 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
+  static constexpr int64_t length = 4;
+
+  // TODO(qwang): Move this to `WorkerID::JobId()`
+  // once we separate `WorkerID` from `UniqueID`.
+  //
   // Note that this is only used for driver id since we only embed
   // job id to driver id and not embed job id to worker id yet.
   static JobID FromDriverId(const WorkerID &driver_id);
 
   static JobID FromInt(int32_t value);
 
-  static size_t Size() { return kJobIDSize; }
+  static size_t Size() { return length; }
 
   JobID() : BaseID() {}
 
   WorkerID DriverId() const;
 
  private:
-  uint8_t id_[kJobIDSize];
+  uint8_t id_[length];
 };
 
 class TaskID : public BaseID<TaskID> {
@@ -141,7 +146,7 @@ class ObjectID : public BaseID<ObjectID> {
   int32_t index_;
 };
 
-static_assert(sizeof(JobID) == kJobIDSize + sizeof(size_t),
+static_assert(sizeof(JobID) == JobID::length + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(TaskID) == kTaskIDSize + sizeof(size_t),
               "TaskID size is not as expected");
