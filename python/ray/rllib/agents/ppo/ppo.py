@@ -154,9 +154,6 @@ def validate_config(config):
             "FYI: By default, the value function will not share layers "
             "with the policy model ('vf_share_layers': False).")
 
-    # auto set the model option for layer sharing
-    config["model"]["vf_share_layers"] = config["vf_share_layers"]
-
 
 PPOTrainer = build_trainer(
     name="PPO",

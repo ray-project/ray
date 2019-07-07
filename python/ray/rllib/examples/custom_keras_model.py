@@ -93,7 +93,7 @@ class MyKerasQModel(DistributionalQModel):
 
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
     args = parser.parse_args()
     ModelCatalog.register_custom_model("keras_model", MyKerasModel)
     ModelCatalog.register_custom_model("keras_q_model", MyKerasQModel)
@@ -102,6 +102,7 @@ if __name__ == "__main__":
         stop={"episode_reward_mean": args.stop},
         config={
             "env": "CartPole-v0",
+            "num_gpus": 0,
             "model": {
                 "custom_model": "keras_q_model"
                 if args.run == "DQN" else "keras_model"
