@@ -140,6 +140,7 @@ def build_tf_policy(name,
                 action_sampler_fn=action_sampler_fn,
                 existing_model=existing_model,
                 existing_inputs=existing_inputs,
+                get_batch_divisibility_req=get_batch_divisibility_req,
                 obs_include_prev_action_reward=obs_include_prev_action_reward)
 
             if after_init:

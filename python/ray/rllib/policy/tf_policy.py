@@ -438,7 +438,8 @@ class TFPolicy(Policy):
     def _build_compute_gradients(self, builder, postprocessed_batch):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict({self._is_training: True})
-        builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
+        builder.add_feed_dict(
+            self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
         fetches = builder.add_fetches(
             [self._grads, self._get_grad_and_stats_fetches()])
         return fetches[0], fetches[1]
@@ -455,7 +456,8 @@ class TFPolicy(Policy):
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict(self._get_loss_inputs_dict(postprocessed_batch))
+        builder.add_feed_dict(
+            self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
         builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
@@ -473,7 +475,19 @@ class TFPolicy(Policy):
                                               **fetches[LEARNER_STATS_KEY])
         return fetches
 
-    def _get_loss_inputs_dict(self, batch):
+    def _get_loss_inputs_dict(self, batch, shuffle):
+        """Return a feed dict from a batch.
+
+        Arguments:
+            batch (SampleBatch): batch of data to derive inputs from
+            shuffle (bool): whether to shuffle batch sequences. Shuffle may
+                be done in-place. This only makes sense if you're further
+                applying minibatch SGD after getting the outputs.
+
+        Returns:
+            feed dict of data
+        """
+
         feed_dict = {}
         if self._batch_divisibility_req > 1:
             meets_divisibility_reqs = (
@@ -485,6 +499,8 @@ class TFPolicy(Policy):
 
         # Simple case: not RNN nor do we need to pad
         if not self._state_inputs and meets_divisibility_reqs:
+            if shuffle:
+                batch.shuffle()
             for k, ph in self._loss_inputs:
                 feed_dict[ph] = batch[k]
             return feed_dict
@@ -507,7 +523,8 @@ class TFPolicy(Policy):
             batch[SampleBatch.AGENT_INDEX], [batch[k] for k in feature_keys],
             [batch[k] for k in state_keys],
             max_seq_len,
-            dynamic_max=dynamic_max)
+            dynamic_max=dynamic_max,
+            shuffle=shuffle)
         for k, v in zip(feature_keys, feature_sequences):
             feed_dict[self._loss_input_dict[k]] = v
         for k, v in zip(state_keys, initial_states):
