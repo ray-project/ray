@@ -12,7 +12,6 @@ import ray.experimental.tf_utils
 from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize

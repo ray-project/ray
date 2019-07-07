@@ -8,7 +8,8 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance

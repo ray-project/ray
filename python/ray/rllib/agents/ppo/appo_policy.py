@@ -16,7 +16,8 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
