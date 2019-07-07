@@ -27,7 +27,8 @@ class DDPGModel(TFModelV2):
                  critic_hidden_activation="relu",
                  critic_hiddens=(400, 300),
                  parameter_noise=False,
-                 twin_q=False):
+                 twin_q=False,
+                 exploration_ou_sigma=0.2):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -37,6 +38,7 @@ class DDPGModel(TFModelV2):
             critic_hiddens (list): hidden layers sizes for critic network
             parameter_noise (bool): use param noise exploration
             twin_q (bool): build twin Q networks
+            exploration_ou_sigma (float): ou noise sigma for exploration
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the output heads. Those layers for
@@ -45,6 +47,7 @@ class DDPGModel(TFModelV2):
 
         super(DDPGModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
+        self.exploration_ou_sigma = exploration_ou_sigma
 
         self.action_dim = np.product(action_space.shape)
         self.model_out = tf.keras.layers.Input(
@@ -72,6 +75,13 @@ class DDPGModel(TFModelV2):
         pi_out = tf.keras.layers.Lambda(build_action_net)(self.model_out)
         self.action_net = tf.keras.Model(self.model_out, pi_out)
         self.register_variables(self.action_net.variables)
+
+        # Noise vars for P network except for layer normalization vars
+        if parameter_noise:
+            self._build_parameter_noise([
+                var for var in self.action_net.variables
+                    if "LayerNorm" not in var.name
+            ])
 
         def build_q_net(model_out, actions):
             q_out = tf.concat([model_out, actions], axis=1)
@@ -129,3 +139,53 @@ class DDPGModel(TFModelV2):
             tensor of shape [BATCH_SIZE].
         """
         return self.q_net(model_out, actions)
+
+    def _build_parameter_noise(self, pnet_params):
+        self.parameter_noise_sigma_val = self.exploration_ou_sigma
+        self.parameter_noise_sigma = tf.get_variable(
+            initializer=tf.constant_initializer(
+                self.parameter_noise_sigma_val),
+            name="parameter_noise_sigma",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+        self.parameter_noise = []
+        # No need to add any noise on LayerNorm parameters
+        for var in pnet_params:
+            noise_var = tf.get_variable(
+                name=var.name.split(":")[0] + "_noise",
+                shape=var.shape,
+                initializer=tf.constant_initializer(.0),
+                trainable=False)
+            self.parameter_noise.append(noise_var)
+        remove_noise_ops = list()
+        for var, var_noise in zip(pnet_params, self.parameter_noise):
+            remove_noise_ops.append(tf.assign_add(var, -var_noise))
+        self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
+        generate_noise_ops = list()
+        for var_noise in self.parameter_noise:
+            generate_noise_ops.append(
+                tf.assign(
+                    var_noise,
+                    tf.random_normal(
+                        shape=var_noise.shape,
+                        stddev=self.parameter_noise_sigma)))
+        with tf.control_dependencies(generate_noise_ops):
+            add_noise_ops = list()
+            for var, var_noise in zip(pnet_params, self.parameter_noise):
+                add_noise_ops.append(tf.assign_add(var, var_noise))
+            self.add_noise_op = tf.group(*tuple(add_noise_ops))
+        self.pi_distance = None
+
+    def update_action_noise(self, distance_in_action_space, session):
+        """Update the model action noise settings.
+        
+        This is called internally by the DDPG policy."""
+
+        self.pi_distance = distance_in_action_space
+        if distance_in_action_space < policy.config["exploration_ou_sigma"]:
+            self.parameter_noise_sigma_val *= 1.01
+        else:
+            self.parameter_noise_sigma_val /= 1.01
+        self.parameter_noise_sigma.load(
+            self.parameter_noise_sigma_val, session=session)

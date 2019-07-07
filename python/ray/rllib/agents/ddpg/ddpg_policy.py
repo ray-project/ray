@@ -34,7 +34,26 @@ def build_ddpg_model(policy, obs_space, action_space, config):
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 
-    policy.ddpg_model = ModelCatalog.get_model_v2(
+    prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    policy.model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        num_outputs,
+        config["model"],
+        framework="tf",
+        model_interface=DDPGModel,
+        name="actor_critic",
+        actor_hidden_activation=config["actor_hidden_activation"],
+        actor_hiddens=config["actor_hiddens"],
+        critic_hidden_activation=config["critic_hidden_activation"],
+        critic_hiddens=config["critic_hiddens"],
+        parameter_noise=config["parameter_noise"],
+        twin_q=config["twin_q"])
+    policy.batchnorm_update_ops = list(
+        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+        prev_update_ops)
+
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
         num_outputs,
@@ -49,22 +68,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         parameter_noise=config["parameter_noise"],
         twin_q=config["twin_q"])
 
-    policy.target_ddpg_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        num_outputs,
-        config["model"],
-        framework="tf",
-        model_interface=DDPGModel,
-        name="actor_critic",
-        actor_hidden_activation=config["actor_hidden_activation"],
-        actor_hiddens=config["actor_hiddens"],
-        critic_hidden_activation=config["critic_hidden_activation"],
-        critic_hiddens=config["critic_hiddens"],
-        parameter_noise=config["parameter_noise"],
-        twin_q=config["twin_q"])
-
-    return policy.ddpg_model
+    return policy.model
 
 
 def postprocess_trajectory(policy,
@@ -76,31 +80,111 @@ def postprocess_trajectory(policy,
     return _postprocess_dqn(policy, sample_batch)
 
 
+def stats(policy, batch_tensors):
+    return {
+        "td_error": policy.td_error,
+    }
+
+
+def build_action_output(policy, model, input_dict, obs_space, action_space,
+                        config):
+
+    # Use sigmoid to scale to [0,1], but also double magnitude of input to
+    # emulate behaviour of tanh activation used in DDPG and TD3 papers.
+    sigmoid_out = tf.nn.sigmoid(2 * policy.model_out)
+    # Rescale to actual env policy scale
+    # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
+    # get same dims)
+    action_range = (action_space.high - action_space.low)[None]
+    low_action = action_space.low[None]
+    deterministic_actions = action_range * sigmoid_out + low_action
+
+    noise_type = config["exploration_noise_type"]
+    action_low = action_space.low
+    action_high = action_space.high
+    action_range = action_space.high - action_low
+
+    def compute_stochastic_actions():
+        def make_noisy_actions():
+            # shape of deterministic_actions is [None, dim_action]
+            if noise_type == "gaussian":
+                # add IID Gaussian noise for exploration, TD3-style
+                normal_sample = policy.noise_scale * tf.random_normal(
+                    tf.shape(deterministic_actions),
+                    stddev=config["exploration_gaussian_sigma"])
+                stochastic_actions = tf.clip_by_value(
+                    deterministic_actions + normal_sample,
+                    action_low * tf.ones_like(deterministic_actions),
+                    action_high * tf.ones_like(deterministic_actions))
+            elif noise_type == "ou":
+                # add OU noise for exploration, DDPG-style
+                zero_acts = action_low.size * [.0]
+                exploration_sample = tf.get_variable(
+                    name="ornstein_uhlenbeck",
+                    dtype=tf.float32,
+                    initializer=zero_acts,
+                    trainable=False)
+                normal_sample = tf.random_normal(
+                    shape=[action_low.size], mean=0.0, stddev=1.0)
+                ou_new = config["exploration_ou_theta"] \
+                    * -exploration_sample \
+                    + config["exploration_ou_sigma"] * normal_sample
+                exploration_value = tf.assign_add(exploration_sample,
+                                                  ou_new)
+                base_scale = config["exploration_ou_noise_scale"]
+                noise = policy.noise_scale * base_scale \
+                    * exploration_value * action_range
+                stochastic_actions = tf.clip_by_value(
+                    deterministic_actions + noise,
+                    action_low * tf.ones_like(deterministic_actions),
+                    action_high * tf.ones_like(deterministic_actions))
+            else:
+                raise ValueError(
+                    "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
+                    noise_type)
+            return stochastic_actions
+
+        def make_uniform_random_actions():
+            # pure random exploration option
+            uniform_random_actions = tf.random_uniform(
+                tf.shape(deterministic_actions))
+            # rescale uniform random actions according to action range
+            tf_range = tf.constant(action_range[None], dtype="float32")
+            tf_low = tf.constant(action_low[None], dtype="float32")
+            uniform_random_actions = uniform_random_actions * tf_range \
+                + tf_low
+            return uniform_random_actions
+
+        stochastic_actions = tf.cond(
+            # need to condition on noise_scale > 0 because zeroing
+            # noise_scale is how a worker signals no noise should be used
+            # (this is ugly and should be fixed by adding an "eval_mode"
+            # config flag or something)
+            tf.logical_and(policy.pure_exploration_phase, noise_scale > 0),
+            true_fn=make_uniform_random_actions,
+            false_fn=make_noisy_actions)
+        return stochastic_actions
+
+    enable_stochastic = tf.logical_and(policy.stochastic,
+                                       not config["parameter_noise"])
+    actions = tf.cond(enable_stochastic, compute_stochastic_actions,
+                      lambda: deterministic_actions)
+    self.output_actions = actions
+    return actions
+
+
 class ExplorationStateMixin(object):
-    def __init__(self):
+    def __init__(self, obs_space, action_space, config):
         self.cur_noise_scale = 1.0
         self.cur_pure_exploration_phase = False
+        self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
+        self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
+        self.pure_exploration_phase = tf.placeholder(
+            tf.bool, (), name="pure_exploration_phase")
 
-
-class OptimizerManagerMixin(object):
-    def __init__(self, config):
-        # create global step for counting the number of update operations
-        self.global_step = tf.train.get_or_create_global_step()
-
-        # use separate optimizers for actor & critic
-        self._actor_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["actor_lr"])
-        self._critic_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["critic_lr"])
-
-
-class ParamNoiseMixin(object):
-    def __init__(self):
-        self.remove_noise_op = ???
-        self.noise_scale = ???
-        self.pure_exploration_phase = ???
-        self.pi_distance = ???
-        self.parameter_noise_sigma_val = ???
+    def add_parameter_noise(self):
+        if self.config["parameter_noise"]:
+            self.sess.run(self.model.add_noise_op)
 
     def adjust_param_noise_sigma(self, sample_batch):
         # adjust the sigma of parameter space noise
@@ -108,7 +192,7 @@ class ParamNoiseMixin(object):
             list(x) for x in sample_batch.columns(
                 [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
         ]
-        policy.get_session().run(policy.remove_noise_op)
+        policy.get_session().run(policy.model.remove_noise_op)
         clean_actions = policy.get_session().run(
             policy.output_actions,
             feed_dict={
@@ -119,89 +203,128 @@ class ParamNoiseMixin(object):
             })
         distance_in_action_space = np.sqrt(
             np.mean(np.square(clean_actions - noisy_actions)))
-        policy.pi_distance = distance_in_action_space
-        if distance_in_action_space < policy.config["exploration_ou_sigma"]:
-            policy.parameter_noise_sigma_val *= 1.01
-        else:
-            policy.parameter_noise_sigma_val /= 1.01
-        policy.parameter_noise_sigma.load(
-            policy.parameter_noise_sigma_val, session=policy.get_session())
+        policy.model.update_action_noise(
+            distance_in_action_space, policy.get_session())
+
+    def set_epsilon(self, epsilon):
+        # set_epsilon is called by optimizer to anneal exploration as
+        # necessary, and to turn it off during evaluation. The "epsilon" part
+        # is a carry-over from DQN, which uses epsilon-greedy exploration
+        # rather than adding action noise to the output of a policy network.
+        self.cur_noise_scale = epsilon
+
+    def set_pure_exploration_phase(self, pure_exploration_phase):
+        self.cur_pure_exploration_phase = pure_exploration_phase
+
+    @override(Policy)
+    def get_state(self):
+        return [
+            TFPolicy.get_state(self), self.cur_noise_scale,
+            self.cur_pure_exploration_phase
+        ]
+
+    @override(Policy)
+    def set_state(self, state):
+        TFPolicy.set_state(self, state[0])
+        self.set_epsilon(state[1])
+        self.set_pure_exploration_phase(state[2])
 
 
+class TargetNetworkMixin(object):
+    def __init__(self, config):
+        # update_target_fn will be called periodically to copy Q network to
+        # target Q network
+        self.tau_value = config.get("tau")
+        self.tau = tf.placeholder(tf.float32, (), name="tau")
+        update_target_expr = []
+        for var, var_target in zip(
+                sorted(self.q_func_vars, key=lambda v: v.name),
+                sorted(target_q_func_vars, key=lambda v: v.name)):
+            update_target_expr.append(
+                var_target.assign(self.tau * var +
+                                  (1.0 - self.tau) * var_target))
+        if config["twin_q"]:
+            for var, var_target in zip(
+                    sorted(self.twin_q_func_vars, key=lambda v: v.name),
+                    sorted(twin_target_q_func_vars, key=lambda v: v.name)):
+                update_target_expr.append(
+                    var_target.assign(self.tau * var +
+                                      (1.0 - self.tau) * var_target))
+        for var, var_target in zip(
+                sorted(self.policy_vars, key=lambda v: v.name),
+                sorted(target_policy_vars, key=lambda v: v.name)):
+            update_target_expr.append(
+                var_target.assign(self.tau * var +
+                                  (1.0 - self.tau) * var_target))
+        self.update_target_expr = tf.group(*update_target_expr)
+
+    # support both hard and soft sync
+    def update_target(self, tau=None):
+        tau = tau or self.tau_value
+        return self.sess.run(
+            self.update_target_expr, feed_dict={self.tau: tau})
+
+
+class OptimizationMixin(object):
+    def __init__(self, config):
+        # create global step for counting the number of update operations
+        self.global_step = tf.train.get_or_create_global_step()
+
+        # use separate optimizers for actor & critic
+        self._actor_optimizer = tf.train.AdamOptimizer(
+            learning_rate=config["actor_lr"])
+        self._critic_optimizer = tf.train.AdamOptimizer(
+            learning_rate=config["critic_lr"])
+
+    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
+                         importance_weights):
+        td_err = self.get_session().run(
+            self.td_error,
+            feed_dict={
+                self.get_placeholder(SampleBatch.CUR_OBS): [np.array(ob) for ob in obs_t],
+                self.get_placeholder(SampleBatch.ACTIONS),
+                self.get_placeholder(SampleBatch.REWARDS): rew_t,
+                self.get_placeholder(SampleBatch.NEXT_OBS): [np.array(ob) for ob in obs_tp1],
+                self.get_placeholder(SampleBatch.DONES): done_mask,
+                self.get_placeholder(PRIO_WEIGHTS): importance_weights
+            })
+        return td_err
+
+
+def setup_early_mixins(policy, obs_space, action_space, config):
+    ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
+    OptimizationMixin.__init__(config)
+
+
+def setup_late_mixins(policy, obs_space, action_space, config):
+    TargetNetworkMixin.__init__(config)
+
+
+def exploration_setting_inputs(self):
+    return {
+        # FIXME: what about turning off exploration? Isn't that a good idea?
+        self.stochastic: True,
+        self.noise_scale: self.cur_noise_scale,
+        self.pure_exploration_phase: self.cur_pure_exploration_phase,
+    }
 
 DDPGTFPolicy = build_tf_policy(
     name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_model,
-    postprocess_fn=postprocess_trajectory)
+    postprocess_fn=postprocess_trajectory,
+    extra_action_feed_fn=exploration_setting_inputs,
+    action_sampler_fn=build_action_output,
+    stats_fn=stats,
+    optimizer_fn=lambda policy, config: None,
+    update_ops_fn=lambda policy: policy.batchnorm_update_ops,
+    mixins=[ExplorationStateMixin, OptimizationMixin],
+    before_init=setup_early_mixins,
+    after_init=setup_late_mixins)
+
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
-#        self.cur_noise_scale = 1.0
-#        self.cur_pure_exploration_phase = False
-#        self.dim_actions = action_space.shape[0]
-#        self.low_action = action_space.low
-#        self.high_action = action_space.high
-
-#        self.global_step = tf.train.get_or_create_global_step()
-
-        # Action inputs
-        self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
-        self.pure_exploration_phase = tf.placeholder(
-            tf.bool, (), name="pure_exploration_phase")
-        self.cur_observations = tf.placeholder(
-            tf.float32,
-            shape=(None, ) + observation_space.shape,
-            name="cur_obs")
-
-        with tf.variable_scope(POLICY_SCOPE) as scope:
-            policy_out, self.policy_model = self._build_policy_network(
-                self.cur_observations, observation_space, action_space)
-            self.policy_vars = scope_vars(scope.name)
-
-        # Noise vars for P network except for layer normalization vars
-        if self.config["parameter_noise"]:
-            self._build_parameter_noise([
-                var for var in self.policy_vars if "LayerNorm" not in var.name
-            ])
-
-        # Action outputs
-        with tf.variable_scope(ACTION_SCOPE):
-            self.output_actions = self._add_exploration_noise(
-                policy_out, self.stochastic, self.noise_scale,
-                self.pure_exploration_phase, action_space)
-
-        if self.config["smooth_target_policy"]:
-            self.reset_noise_op = tf.no_op()
-        else:
-            with tf.variable_scope(ACTION_SCOPE, reuse=True):
-                exploration_sample = tf.get_variable(name="ornstein_uhlenbeck")
-                self.reset_noise_op = tf.assign(exploration_sample,
-                                                self.dim_actions * [.0])
-
-        # Replay inputs
-        self.obs_t = tf.placeholder(
-            tf.float32,
-            shape=(None, ) + observation_space.shape,
-            name="observation")
-        self.act_t = tf.placeholder(
-            tf.float32, shape=(None, ) + action_space.shape, name="action")
-        self.rew_t = tf.placeholder(tf.float32, [None], name="reward")
-        self.obs_tp1 = tf.placeholder(
-            tf.float32, shape=(None, ) + observation_space.shape)
-        self.done_mask = tf.placeholder(tf.float32, [None], name="done")
-        self.importance_weights = tf.placeholder(
-            tf.float32, [None], name="weight")
-
-        # policy network evaluation
-        with tf.variable_scope(POLICY_SCOPE, reuse=True) as scope:
-            prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-            self.policy_t, _ = self._build_policy_network(
-                self.obs_t, observation_space, action_space)
-            policy_batchnorm_update_ops = list(
-                set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
-                prev_update_ops)
 
         # target policy network evaluation
         with tf.variable_scope(POLICY_TARGET_SCOPE) as scope:
@@ -287,32 +410,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
                         self.critic_loss += (
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
 
-        # update_target_fn will be called periodically to copy Q network to
-        # target Q network
-        self.tau_value = config.get("tau")
-        self.tau = tf.placeholder(tf.float32, (), name="tau")
-        update_target_expr = []
-        for var, var_target in zip(
-                sorted(self.q_func_vars, key=lambda v: v.name),
-                sorted(target_q_func_vars, key=lambda v: v.name)):
-            update_target_expr.append(
-                var_target.assign(self.tau * var +
-                                  (1.0 - self.tau) * var_target))
-        if self.config["twin_q"]:
-            for var, var_target in zip(
-                    sorted(self.twin_q_func_vars, key=lambda v: v.name),
-                    sorted(twin_target_q_func_vars, key=lambda v: v.name)):
-                update_target_expr.append(
-                    var_target.assign(self.tau * var +
-                                      (1.0 - self.tau) * var_target))
-        for var, var_target in zip(
-                sorted(self.policy_vars, key=lambda v: v.name),
-                sorted(target_policy_vars, key=lambda v: v.name)):
-            update_target_expr.append(
-                var_target.assign(self.tau * var +
-                                  (1.0 - self.tau) * var_target))
-        self.update_target_expr = tf.group(*update_target_expr)
-
         self.sess = tf.get_default_session()
         self.loss_inputs = [
             (SampleBatch.CUR_OBS, self.obs_t),
@@ -353,11 +450,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         # Hard initial update
         self.update_target(tau=1.0)
-
-    @override(TFPolicy)
-    def optimizer(self):
-        # we don't use this because we have two separate optimisers
-        return None
 
     @override(TFPolicy)
     def build_apply_op(self, optimizer, grads_and_vars):
@@ -413,175 +505,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             + self._critic_grads_and_vars
         return grads_and_vars
 
-    @override(TFPolicy)
-    def extra_compute_action_feed_dict(self):
-        return {
-            # FIXME: what about turning off exploration? Isn't that a good
-            # idea?
-            self.stochastic: True,
-            self.noise_scale: self.cur_noise_scale,
-            self.pure_exploration_phase: self.cur_pure_exploration_phase,
-        }
-
-    @override(TFPolicy)
-    def extra_compute_grad_fetches(self):
-        return {
-            "td_error": self.td_error,
-            LEARNER_STATS_KEY: self.stats,
-        }
-
-    @override(TFPolicy)
-    def get_weights(self):
-        return self.variables.get_weights()
-
-    @override(TFPolicy)
-    def set_weights(self, weights):
-        self.variables.set_weights(weights)
-
-    @override(Policy)
-    def get_state(self):
-        return [
-            TFPolicy.get_state(self), self.cur_noise_scale,
-            self.cur_pure_exploration_phase
-        ]
-
-    @override(Policy)
-    def set_state(self, state):
-        TFPolicy.set_state(self, state[0])
-        self.set_epsilon(state[1])
-        self.set_pure_exploration_phase(state[2])
-
-    def _build_q_network(self, obs, obs_space, action_space, actions):
-        if self.config["use_state_preprocessor"]:
-            q_model = ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
-            q_out = tf.concat([q_model.last_layer, actions], axis=1)
-        else:
-            q_model = None
-            q_out = tf.concat([obs, actions], axis=1)
-
-        activation = getattr(tf.nn, self.config["critic_hidden_activation"])
-        for hidden in self.config["critic_hiddens"]:
-            q_out = tf.layers.dense(q_out, units=hidden, activation=activation)
-        q_values = tf.layers.dense(q_out, units=1, activation=None)
-
-        return q_values, q_model
-
-    def _build_policy_network(self, obs, obs_space, action_space):
-        if self.config["use_state_preprocessor"]:
-            model = ModelCatalog.get_model({
-                "obs": obs,
-                "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
-            action_out = model.last_layer
-        else:
-            model = None
-            action_out = obs
-
-        activation = getattr(tf.nn, self.config["actor_hidden_activation"])
-        for hidden in self.config["actor_hiddens"]:
-            if self.config["parameter_noise"]:
-                import tensorflow.contrib.layers as layers
-                action_out = layers.fully_connected(
-                    action_out,
-                    num_outputs=hidden,
-                    activation_fn=activation,
-                    normalizer_fn=layers.layer_norm)
-            else:
-                action_out = tf.layers.dense(
-                    action_out, units=hidden, activation=activation)
-        action_out = tf.layers.dense(
-            action_out, units=self.dim_actions, activation=None)
-
-        # Use sigmoid to scale to [0,1], but also double magnitude of input to
-        # emulate behaviour of tanh activation used in DDPG and TD3 papers.
-        sigmoid_out = tf.nn.sigmoid(2 * action_out)
-        # Rescale to actual env policy scale
-        # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
-        # get same dims)
-        action_range = (action_space.high - action_space.low)[None]
-        low_action = action_space.low[None]
-        actions = action_range * sigmoid_out + low_action
-
-        return actions, model
-
-    def _add_exploration_noise(self, deterministic_actions,
-                               should_be_stochastic, noise_scale,
-                               enable_pure_exploration, action_space):
-        noise_type = self.config["exploration_noise_type"]
-        action_low = action_space.low
-        action_high = action_space.high
-        action_range = action_space.high - action_low
-
-        def compute_stochastic_actions():
-            def make_noisy_actions():
-                # shape of deterministic_actions is [None, dim_action]
-                if noise_type == "gaussian":
-                    # add IID Gaussian noise for exploration, TD3-style
-                    normal_sample = noise_scale * tf.random_normal(
-                        tf.shape(deterministic_actions),
-                        stddev=self.config["exploration_gaussian_sigma"])
-                    stochastic_actions = tf.clip_by_value(
-                        deterministic_actions + normal_sample,
-                        action_low * tf.ones_like(deterministic_actions),
-                        action_high * tf.ones_like(deterministic_actions))
-                elif noise_type == "ou":
-                    # add OU noise for exploration, DDPG-style
-                    zero_acts = action_low.size * [.0]
-                    exploration_sample = tf.get_variable(
-                        name="ornstein_uhlenbeck",
-                        dtype=tf.float32,
-                        initializer=zero_acts,
-                        trainable=False)
-                    normal_sample = tf.random_normal(
-                        shape=[action_low.size], mean=0.0, stddev=1.0)
-                    ou_new = self.config["exploration_ou_theta"] \
-                        * -exploration_sample \
-                        + self.config["exploration_ou_sigma"] * normal_sample
-                    exploration_value = tf.assign_add(exploration_sample,
-                                                      ou_new)
-                    base_scale = self.config["exploration_ou_noise_scale"]
-                    noise = noise_scale * base_scale \
-                        * exploration_value * action_range
-                    stochastic_actions = tf.clip_by_value(
-                        deterministic_actions + noise,
-                        action_low * tf.ones_like(deterministic_actions),
-                        action_high * tf.ones_like(deterministic_actions))
-                else:
-                    raise ValueError(
-                        "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
-                        noise_type)
-                return stochastic_actions
-
-            def make_uniform_random_actions():
-                # pure random exploration option
-                uniform_random_actions = tf.random_uniform(
-                    tf.shape(deterministic_actions))
-                # rescale uniform random actions according to action range
-                tf_range = tf.constant(action_range[None], dtype="float32")
-                tf_low = tf.constant(action_low[None], dtype="float32")
-                uniform_random_actions = uniform_random_actions * tf_range \
-                    + tf_low
-                return uniform_random_actions
-
-            stochastic_actions = tf.cond(
-                # need to condition on noise_scale > 0 because zeroing
-                # noise_scale is how a worker signals no noise should be used
-                # (this is ugly and should be fixed by adding an "eval_mode"
-                # config flag or something)
-                tf.logical_and(enable_pure_exploration, noise_scale > 0),
-                true_fn=make_uniform_random_actions,
-                false_fn=make_noisy_actions)
-            return stochastic_actions
-
-        enable_stochastic = tf.logical_and(should_be_stochastic,
-                                           not self.config["parameter_noise"])
-        actions = tf.cond(enable_stochastic, compute_stochastic_actions,
-                          lambda: deterministic_actions)
-        return actions
-
     def _build_actor_critic_loss(self,
                                  q_t,
                                  q_tp1,
@@ -627,77 +550,3 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         critic_loss = tf.reduce_mean(self.importance_weights * errors)
         actor_loss = -tf.reduce_mean(q_t_det_policy)
         return critic_loss, actor_loss, td_error
-
-    def _build_parameter_noise(self, pnet_params):
-        self.parameter_noise_sigma_val = self.config["exploration_ou_sigma"]
-        self.parameter_noise_sigma = tf.get_variable(
-            initializer=tf.constant_initializer(
-                self.parameter_noise_sigma_val),
-            name="parameter_noise_sigma",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
-        self.parameter_noise = list()
-        # No need to add any noise on LayerNorm parameters
-        for var in pnet_params:
-            noise_var = tf.get_variable(
-                name=var.name.split(":")[0] + "_noise",
-                shape=var.shape,
-                initializer=tf.constant_initializer(.0),
-                trainable=False)
-            self.parameter_noise.append(noise_var)
-        remove_noise_ops = list()
-        for var, var_noise in zip(pnet_params, self.parameter_noise):
-            remove_noise_ops.append(tf.assign_add(var, -var_noise))
-        self.remove_noise_op = tf.group(*tuple(remove_noise_ops))
-        generate_noise_ops = list()
-        for var_noise in self.parameter_noise:
-            generate_noise_ops.append(
-                tf.assign(
-                    var_noise,
-                    tf.random_normal(
-                        shape=var_noise.shape,
-                        stddev=self.parameter_noise_sigma)))
-        with tf.control_dependencies(generate_noise_ops):
-            add_noise_ops = list()
-            for var, var_noise in zip(pnet_params, self.parameter_noise):
-                add_noise_ops.append(tf.assign_add(var, var_noise))
-            self.add_noise_op = tf.group(*tuple(add_noise_ops))
-        self.pi_distance = None
-
-    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
-                         importance_weights):
-        td_err = self.sess.run(
-            self.td_error,
-            feed_dict={
-                self.obs_t: [np.array(ob) for ob in obs_t],
-                self.act_t: act_t,
-                self.rew_t: rew_t,
-                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
-                self.done_mask: done_mask,
-                self.importance_weights: importance_weights
-            })
-        return td_err
-
-    def reset_noise(self, sess):
-        sess.run(self.reset_noise_op)
-
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
-
-    # support both hard and soft sync
-    def update_target(self, tau=None):
-        tau = tau or self.tau_value
-        return self.sess.run(
-            self.update_target_expr, feed_dict={self.tau: tau})
-
-    def set_epsilon(self, epsilon):
-        # set_epsilon is called by optimizer to anneal exploration as
-        # necessary, and to turn it off during evaluation. The "epsilon" part
-        # is a carry-over from DQN, which uses epsilon-greedy exploration
-        # rather than adding action noise to the output of a policy network.
-        self.cur_noise_scale = epsilon
-
-    def set_pure_exploration_phase(self, pure_exploration_phase):
-        self.cur_pure_exploration_phase = pure_exploration_phase
