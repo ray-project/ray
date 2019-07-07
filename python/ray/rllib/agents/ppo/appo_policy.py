@@ -277,7 +277,7 @@ def add_values_and_logits(policy):
 
 
 AsyncPPOTFPolicy = VTraceTFPolicy.with_updates(
-    name="VTraceTFPolicy",
+    name="AsyncPPOTFPolicy",
     loss_fn=build_appo_surrogate_loss,
     postprocess_fn=postprocess_trajectory,
     extra_action_fetches_fn=add_values_and_logits)

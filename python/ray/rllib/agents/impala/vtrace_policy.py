@@ -178,6 +178,7 @@ def build_vtrace_loss(policy, batch_tensors):
     loss_actions = actions if is_multidiscrete else tf.expand_dims(
         actions, axis=1)
 
+    # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
     policy.loss = VTraceLoss(
         actions=make_time_major(loss_actions, drop_last=True),
         actions_logp=make_time_major(
