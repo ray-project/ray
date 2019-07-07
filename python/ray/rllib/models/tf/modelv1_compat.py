@@ -85,8 +85,11 @@ def make_v1_wrapper(legacy_model_cls):
 
         @override(ModelV2)
         def variables(self):
-            return super(ModelV1Wrapper, self).variables() + scope_vars(
-                self.variable_scope)
+            var_list = super(ModelV1Wrapper, self).variables()
+            for v in scope_vars(self.variable_scope):
+                if v not in var_list:
+                    var_list.append(v)
+            return var_list
 
         @override(ModelV2)
         def custom_loss(self, policy_loss, loss_inputs):
