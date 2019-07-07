@@ -86,7 +86,7 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(new Worker(pid, language, client));
+    return std::shared_ptr<Worker>(new Worker(pid, language, -1, client));
   }
 
   void SetWorkerCommands(

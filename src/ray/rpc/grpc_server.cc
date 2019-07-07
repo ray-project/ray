@@ -13,7 +13,7 @@ void GrpcServer::Run() {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
   if (services_.size() == 0) {
-    RAY_LOG(WARNING) << "No service is found when start grpc server.";
+    RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
   }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
@@ -34,6 +34,8 @@ void GrpcServer::Run() {
   }
   // Start a thread that polls incoming requests.
   polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
+  // Set the server as running.
+  is_closed_ = false;
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {

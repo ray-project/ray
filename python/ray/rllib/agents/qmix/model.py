@@ -6,7 +6,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from ray.rllib.models.preprocessors import get_preprocessor
-from ray.rllib.models.pytorch.model import TorchModel
+from ray.rllib.models.torch.model import TorchModel
 from ray.rllib.utils.annotations import override
 
 

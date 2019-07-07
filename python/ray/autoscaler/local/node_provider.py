@@ -28,10 +28,15 @@ class ClusterState(object):
             with self.file_lock:
                 if os.path.exists(self.save_path):
                     workers = json.loads(open(self.save_path).read())
+                    head_config = workers.get(provider_config["head_ip"])
+                    if not head_config or head_config.get(
+                            "tags", {}).get(TAG_RAY_NODE_TYPE) != "head":
+                        workers = {}
+                        logger.info("Head IP changed - recreating cluster.")
                 else:
                     workers = {}
                 logger.info("ClusterState: "
-                            "Loaded cluster state: {}".format(workers))
+                            "Loaded cluster state: {}".format(list(workers)))
                 for worker_ip in provider_config["worker_ips"]:
                     if worker_ip not in workers:
                         workers[worker_ip] = {
@@ -55,8 +60,8 @@ class ClusterState(object):
                         TAG_RAY_NODE_TYPE] == "head"
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
-                    logger.info("ClusterState: "
-                                "Writing cluster state: {}".format(workers))
+                    logger.debug("ClusterState: "
+                                 "Writing cluster state: {}".format(workers))
                     f.write(json.dumps(workers))
 
     def get(self):
@@ -74,11 +79,17 @@ class ClusterState(object):
                 workers[worker_id] = info
                 with open(self.save_path, "w") as f:
                     logger.info("ClusterState: "
-                                "Writing cluster state: {}".format(workers))
+                                "Writing cluster state: {}".format(
+                                    list(workers)))
                     f.write(json.dumps(workers))
 
 
 class LocalNodeProvider(NodeProvider):
+    """NodeProvider for private/local clusters.
+
+    `node_id` is overloaded to also be `node_ip` in this class.
+    """
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.state = ClusterState("/tmp/cluster-{}.lock".format(cluster_name),

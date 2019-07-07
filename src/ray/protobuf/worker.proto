@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+message AssignTaskRequest {
+  // The ID of the task to be pushed.
+  bytes task_id = 1;
+  // The task to be pushed. This should include task_id.
+  // TODO(hchen): Currently, `task_spec` are represented as
+  // flatbutters-serialized bytes. This is because the flatbuffers-defined Task data
+  // structure is being used in many places. We should move Task and all related data
+  // structures to protobuf.
+  bytes task_spec = 2;
+}
+
+message AssignTaskReply {
+}
+
+// Service for worker.
+service WorkerTaskService {
+  // Push a task to a worker.
+  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
+}
