@@ -18,8 +18,8 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
-from ray.rllib.models.pytorch.fcnet import FullyConnectedNetwork
-from ray.rllib.models.pytorch.model import TorchModel
+from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
+from ray.rllib.models.torch.model import TorchModel
 from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env

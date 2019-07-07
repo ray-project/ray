@@ -5,6 +5,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
+#include "ray/gcs/format/gcs_generated.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/raylet/task_spec.h"
 
@@ -13,13 +14,10 @@ namespace ray {
 /// Type of this worker.
 enum class WorkerType { WORKER, DRIVER };
 
-/// Language of Ray tasks and workers.
-enum class WorkerLanguage { PYTHON, JAVA };
-
 /// Information about a remote function.
 struct RayFunction {
   /// Language of the remote function.
-  const WorkerLanguage language;
+  const Language language;
   /// Function descriptor of the remote function.
   const std::vector<std::string> function_descriptor;
 };
