@@ -12,7 +12,7 @@ from ray.exceptions import RayTaskError
 
 class LocalModeObjectID(ObjectID):
     """Wrapper class around ray.ObjectID used for local mode.
-    
+
     Object values are stored directly as a field of the LocalModeObjectID.
 
     Attributes:
