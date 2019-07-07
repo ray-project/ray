@@ -99,15 +99,15 @@ def stats(policy, batch_tensors):
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         config):
-    model({
+    model_out, _ = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    model_out = model.get_policy_output()
+    action_out = model.get_policy_output(model_out)
 
     # Use sigmoid to scale to [0,1], but also double magnitude of input to
     # emulate behaviour of tanh activation used in DDPG and TD3 papers.
-    sigmoid_out = tf.nn.sigmoid(2 * model_out)
+    sigmoid_out = tf.nn.sigmoid(2 * action_out)
     # Rescale to actual env policy scale
     # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
     # get same dims)

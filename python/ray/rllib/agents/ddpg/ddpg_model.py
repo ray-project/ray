@@ -13,6 +13,11 @@ tf = try_import_tf()
 class DDPGModel(TFModelV2):
     """Extension of standard TFModel for DDPG.
 
+    Data flow:
+        obs -> forward() -> model_out
+        model_out -> get_policy_output() -> pi(s)
+        model_out, actions -> get_q_values() -> Q(s, a)
+
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
