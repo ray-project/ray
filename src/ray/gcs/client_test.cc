@@ -97,8 +97,8 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
 }
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
-  auto data = CreateTaskTableData(task_id);
+  const auto task_id = TaskID::FromRandom();
+  cosnt auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
   auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
@@ -514,8 +514,7 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cl
   std::vector<std::shared_ptr<TaskTableData>> task_vector;
   auto AppendTaskData = [&task_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      auto task_data = CreateTaskTableData(TaskID::FromRandom());
-      task_vector.push_back(task_data);
+      task_vector.push_back(CreateTaskTableData(TaskID::FromRandom()));
     }
   };
   AppendTaskData(1);
@@ -920,9 +919,9 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
 void TestTableSubscribeCancel(const JobID &job_id,
                               std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a table entry.
-  TaskID task_id = TaskID::FromRandom();
-  int num_modifications = 3;
-  auto data = CreateTaskTableData(task_id, 0);
+  const auto task_id = TaskID::FromRandom();
+  const int num_modifications = 3;
+  const auto data = CreateTaskTableData(task_id, 0);
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
 
   // The failure callback should not be called since all keys are non-empty
