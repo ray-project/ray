@@ -7,7 +7,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
+from ray.rllib.agents.ddpg.ddpg_model import DDPGModel, PassThroughObs
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
@@ -33,6 +33,17 @@ def build_ddpg_model(policy, obs_space, action_space, config):
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 
+    if config["use_state_preprocessor"]:
+        default_model = None  # catalog decides
+    else:
+
+        class PassThroughObs(TFModelV2):
+            def forward(self, input_dict, state, seq_lens):
+                return input_dict["obs"]
+
+        default_model = PassThroughObs
+        num_outputs = np.product(action.shape)
+
     prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy.model = ModelCatalog.get_model_v2(
         obs_space,
@@ -41,6 +52,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         config["model"],
         framework="tf",
         model_interface=DDPGModel,
+        default_model=default_model,
         name="actor_critic",
         actor_hidden_activation=config["actor_hidden_activation"],
         actor_hiddens=config["actor_hiddens"],
@@ -58,6 +70,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         config["model"],
         framework="tf",
         model_interface=DDPGModel,
+        default_model=default_model,
         name="actor_critic",
         actor_hidden_activation=config["actor_hidden_activation"],
         actor_hiddens=config["actor_hiddens"],
@@ -86,10 +99,12 @@ def stats(policy, batch_tensors):
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         config):
-    model_out, _ = model({
+    model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
+    model_out = model.get_policy_output()
+
     # Use sigmoid to scale to [0,1], but also double magnitude of input to
     # emulate behaviour of tanh activation used in DDPG and TD3 papers.
     sigmoid_out = tf.nn.sigmoid(2 * model_out)
