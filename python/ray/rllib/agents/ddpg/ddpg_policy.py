@@ -25,8 +25,7 @@ tf = try_import_tf()
 def build_ddpg_model(policy, obs_space, action_space, config):
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(
-            "Action space {} is not supported for DDPG.".format(
-                action_space))
+            "Action space {} is not supported for DDPG.".format(action_space))
     if len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space has multiple dimensions "
@@ -50,8 +49,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         parameter_noise=config["parameter_noise"],
         twin_q=config["twin_q"])
     policy.batchnorm_update_ops = list(
-        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
-        prev_update_ops)
+        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -88,10 +86,13 @@ def stats(policy, batch_tensors):
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         config):
-
+    model_out, _ = model({
+        "obs": input_dict[SampleBatch.CUR_OBS],
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
     # Use sigmoid to scale to [0,1], but also double magnitude of input to
     # emulate behaviour of tanh activation used in DDPG and TD3 papers.
-    sigmoid_out = tf.nn.sigmoid(2 * policy.model_out)
+    sigmoid_out = tf.nn.sigmoid(2 * model_out)
     # Rescale to actual env policy scale
     # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
     # get same dims)
@@ -129,8 +130,7 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
                 ou_new = config["exploration_ou_theta"] \
                     * -exploration_sample \
                     + config["exploration_ou_sigma"] * normal_sample
-                exploration_value = tf.assign_add(exploration_sample,
-                                                  ou_new)
+                exploration_value = tf.assign_add(exploration_sample, ou_new)
                 base_scale = config["exploration_ou_noise_scale"]
                 noise = policy.noise_scale * base_scale \
                     * exploration_value * action_range
@@ -203,8 +203,8 @@ class ExplorationStateMixin(object):
             })
         distance_in_action_space = np.sqrt(
             np.mean(np.square(clean_actions - noisy_actions)))
-        policy.model.update_action_noise(
-            distance_in_action_space, policy.get_session())
+        policy.model.update_action_noise(distance_in_action_space,
+                                         policy.get_session())
 
     def set_epsilon(self, epsilon):
         # set_epsilon is called by optimizer to anneal exploration as
@@ -281,10 +281,14 @@ class OptimizationMixin(object):
         td_err = self.get_session().run(
             self.td_error,
             feed_dict={
-                self.get_placeholder(SampleBatch.CUR_OBS): [np.array(ob) for ob in obs_t],
-                self.get_placeholder(SampleBatch.ACTIONS),
+                self.get_placeholder(SampleBatch.CUR_OBS): [
+                    np.array(ob) for ob in obs_t
+                ],
+                self.get_placeholder(SampleBatch.ACTIONS): act_t,
                 self.get_placeholder(SampleBatch.REWARDS): rew_t,
-                self.get_placeholder(SampleBatch.NEXT_OBS): [np.array(ob) for ob in obs_tp1],
+                self.get_placeholder(SampleBatch.NEXT_OBS): [
+                    np.array(ob) for ob in obs_tp1
+                ],
                 self.get_placeholder(SampleBatch.DONES): done_mask,
                 self.get_placeholder(PRIO_WEIGHTS): importance_weights
             })
@@ -307,6 +311,7 @@ def exploration_setting_inputs(self):
         self.noise_scale: self.cur_noise_scale,
         self.pure_exploration_phase: self.cur_pure_exploration_phase,
     }
+
 
 DDPGTFPolicy = build_tf_policy(
     name="DDPGTFPolicy",

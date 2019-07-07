@@ -45,8 +45,8 @@ class DDPGModel(TFModelV2):
         forward() should be defined in subclasses of DDPGModel.
         """
 
-        super(DDPGModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+        super(DDPGModel, self).__init__(obs_space, action_space, num_outputs,
+                                        model_config, name)
         self.exploration_ou_sigma = exploration_ou_sigma
 
         self.action_dim = np.product(action_space.shape)
@@ -80,7 +80,7 @@ class DDPGModel(TFModelV2):
         if parameter_noise:
             self._build_parameter_noise([
                 var for var in self.action_net.variables
-                    if "LayerNorm" not in var.name
+                if "LayerNorm" not in var.name
             ])
 
         def build_q_net(model_out, actions):
@@ -99,8 +99,8 @@ class DDPGModel(TFModelV2):
         if twin_q:
             twin_q_out = tf.keras.layers.Lambda(build_q_net)(
                 [self.model_out, self.actions])
-            self.twin_q_net = tf.keras.Model(
-                [self.model_out, self.actions], twin_q_out)
+            self.twin_q_net = tf.keras.Model([self.model_out, self.actions],
+                                             twin_q_out)
             self.register_variables(self.twin_q_out.variables)
 
     def forward(self, input_dict, state, seq_lens):
@@ -179,7 +179,7 @@ class DDPGModel(TFModelV2):
 
     def update_action_noise(self, distance_in_action_space, session):
         """Update the model action noise settings.
-        
+
         This is called internally by the DDPG policy."""
 
         self.pi_distance = distance_in_action_space
