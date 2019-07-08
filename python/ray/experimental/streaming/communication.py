@@ -84,7 +84,7 @@ class DataChannel(object):
 
     def __init__(self, env_config, src_operator_id, dst_operator_id,
                  src_instance_id, dst_instance_id):
-        self.micro_batch_api = env_config.use_micro_batch_api
+        self.use_micro_batch_api = env_config.use_micro_batch_api
         self.queue_config = env_config.queue_config
         # Actor handles
         self.source_actor = None
