@@ -28,7 +28,7 @@ from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
 num_classes = 10
-NUM_SAMPLES = 512
+NUM_SAMPLES = 128
 
 
 class Cifar10Model(Trainable):
@@ -150,11 +150,10 @@ class Cifar10Model(Trainable):
         )
 
         aug_gen.fit(x_train)
-        gen = aug_gen.flow(
-            x_train, y_train, batch_size=self.config.get("batch_size", 64))
+        batch_size = self.config.get("batch_size", 64)
+        gen = aug_gen.flow(x_train, y_train, batch_size=batch_size)
         self.model.fit_generator(
             generator=gen,
-            steps_per_epoch=50000 // self.config.get("batch_size", 64),
             epochs=self.config.get("epochs", 1),
             validation_data=None)
 
