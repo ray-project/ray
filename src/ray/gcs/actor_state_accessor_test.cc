@@ -12,12 +12,12 @@ namespace gcs {
 
 class ActorStateAccessorTest : public ::testing::Test {
  public:
-  ActorStateAccessorTest() : option_("127.0.0.1", 6379, "", true), info_() {}
+  ActorStateAccessorTest() : option_("127.0.0.1", 6379, "", true) {}
 
   virtual void SetUp() {
     GenTestData();
 
-    gcs_client_.reset(new RedisGcsClient(option_, info_));
+    gcs_client_.reset(new RedisGcsClient(option_));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread.reset(new std::thread([this] {
@@ -47,6 +47,8 @@ class ActorStateAccessorTest : public ::testing::Test {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       ActorID actor_id = ActorID::FromRandom();
       actor->set_actor_id(actor_id.Binary());
+      actor->set_max_reconstructions(1);
+      actor->set_remaining_reconstructions(1);
       JobID job_id = JobID::FromRandom();
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
@@ -72,7 +74,6 @@ class ActorStateAccessorTest : public ::testing::Test {
 
  protected:
   ClientOption option_;
-  ClientInfo info_;
   std::unique_ptr<RedisGcsClient> gcs_client_;
 
   boost::asio::io_service io_service_;
@@ -85,13 +86,12 @@ class ActorStateAccessorTest : public ::testing::Test {
 
 TEST_F(ActorStateAccessorTest, AddAndGet) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
-  size_t log_length = 0;
   // add
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
     JobID job_id = JobID::FromBinary(actor->job_id());
     ++pending_count_;
-    actor_accessor.AsyncAdd(job_id, elem.first, actor, log_length, [this](Status status) {
+    actor_accessor.AsyncAdd(job_id, elem.first, actor, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     });
@@ -142,13 +142,12 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
 
   // add
   std::atomic<int> add_pending_count(0);
-  size_t log_length = 0;
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
     JobID job_id = JobID::FromBinary(actor->job_id());
     ++sub_pending_count;
     ++add_pending_count;
-    actor_accessor.AsyncAdd(job_id, elem.first, actor, log_length,
+    actor_accessor.AsyncAdd(job_id, elem.first, actor,
                             [&add_pending_count](Status status) {
                               RAY_CHECK_OK(status);
                               --add_pending_count;

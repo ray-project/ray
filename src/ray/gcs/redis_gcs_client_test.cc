@@ -7,7 +7,6 @@ extern "C" {
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/gcs/client_def.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -29,10 +28,7 @@ class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     ClientOption option("127.0.0.1", 6379, command_type_);
-    ClientTableData client_data;
-    client_data.set_client_id(ClientID::FromRandom().Binary());
-    ClientInfo info(client_data);
-    client_ = std::make_shared<gcs::RedisGcsClient>(option, info);
+    client_ = std::make_shared<gcs::RedisGcsClient>(option);
     job_id_ = JobID::FromRandom();
   }
 

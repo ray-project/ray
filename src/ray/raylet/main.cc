@@ -39,24 +39,6 @@ static std::vector<std::string> parse_worker_command(std::string worker_command)
   return result;
 }
 
-ray::rpc::ClientTableData PopulateRayletInfo(
-    const ray::ObjectManagerConfig &object_manager_config,
-    const ray::raylet::NodeManagerConfig &node_manager_config) {
-  ray::rpc::ClientTableData raylet_info;
-  ray::ClientID client_id = ray::ClientID::FromRandom();
-  raylet_info.set_client_id(client_id.Binary());
-  raylet_info.set_node_manager_address(FLAGS_node_ip_address);
-  raylet_info.set_raylet_socket_name(FLAGS_raylet_socket_name);
-  raylet_info.set_object_store_socket_name(object_manager_config.store_socket_name);
-  raylet_info.set_object_manager_port(FLAGS_object_manager_port);
-  raylet_info.set_node_manager_port(FLAGS_node_manager_port);
-  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-    raylet_info.add_resources_total_label(resource_pair.first);
-    raylet_info.add_resources_total_capacity(resource_pair.second);
-  }
-  return raylet_info;
-}
-
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
@@ -177,14 +159,9 @@ int main(int argc, char *argv[]) {
   // Initialize the node manager.
   boost::asio::io_service main_service;
 
-  //  initialize mock gcs & object directory
+  // Initialize gcs client
   ray::gcs::ClientOption client_option(redis_address, redis_port, redis_password);
-  ray::rpc::ClientTableData raylet_info =
-      std::move(PopulateRayletInfo(object_manager_config, node_manager_config));
-  ray::gcs::ClientInfo client_info(raylet_info);
-  auto gcs_client =
-      std::make_shared<ray::gcs::RedisGcsClient>(client_option, client_info);
-  RAY_LOG(DEBUG) << "Initializing GCS client " << gcs_client->GetClientID();
+  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_option);
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(

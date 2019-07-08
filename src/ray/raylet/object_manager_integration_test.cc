@@ -57,11 +57,8 @@ class TestObjectManagerBase : public ::testing::Test {
 
     // start first server
     gcs::ClientOption client_option("127.0.0.1", 6379, /*password*/ "", true);
-    rpc::ClientTableData server_info;
-    server_info.set_client_id(ClientID::FromRandom().Binary());
-    gcs::ClientInfo client_info(server_info);
-    gcs_client_1 = std::shared_ptr<gcs::RedisGcsClient>(
-        new gcs::RedisGcsClient(client_option, client_info));
+    gcs_client_1 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_option));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -70,11 +67,8 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
-    rpc::ClientTableData server_info2;
-    server_info2.set_client_id(ClientID::FromRandom().Binary());
-    gcs::ClientInfo client_info2(server_info2);
-    gcs_client_2 = std::shared_ptr<gcs::RedisGcsClient>(
-        new gcs::RedisGcsClient(client_option, client_info2));
+    gcs_client_2 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_option));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;

@@ -74,7 +74,8 @@ void ObjectDirectory::RegisterBackend() {
         }
       };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      JobID::Nil(), gcs_client_->GetClientID(), object_notification_callback, nullptr));
+      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
+      object_notification_callback, nullptr));
 }
 
 ray::Status ObjectDirectory::ReportObjectAdded(
@@ -123,7 +124,8 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   for (const auto &client_pair : clients) {
     RemoteConnectionInfo info(client_pair.first);
     LookupRemoteConnectionInfo(info);
-    if (info.Connected() && info.client_id != gcs_client_->GetClientID()) {
+    if (info.Connected() &&
+        info.client_id != gcs_client_->client_table().GetLocalClientId()) {
       remote_connections.push_back(info);
     }
   }
@@ -156,8 +158,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
-    status = gcs_client_->object_table().RequestNotifications(JobID::Nil(), object_id,
-                                                              gcs_client_->GetClientID());
+    status = gcs_client_->object_table().RequestNotifications(
+        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -184,8 +186,8 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    status = gcs_client_->object_table().CancelNotifications(JobID::Nil(), object_id,
-                                                             gcs_client_->GetClientID());
+    status = gcs_client_->object_table().CancelNotifications(
+        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
     listeners_.erase(entry);
   }
   return status;

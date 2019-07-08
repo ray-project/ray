@@ -7,7 +7,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
-#include "ray/gcs/client_def.h"
 #include "ray/gcs/gcs_client_interface.h"
 #include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
@@ -27,8 +26,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// to the client table. Will fix this in next pr.
   ///
   /// \param ClientOption Options of client, e.g. server address, is test client ...
-  /// \param ClientInfo Information of client, e.g. client id, node info and so on
-  RedisGcsClient(const ClientOption &option, const ClientInfo &info);
+  RedisGcsClient(const ClientOption &option);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
@@ -37,6 +35,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   Status Connect(boost::asio::io_service &io_service);
 
   /// Disconnect with GCS Service. Non-thread safe.
+  /// TODO(micafan) rename if nothing related to Disconnect
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver

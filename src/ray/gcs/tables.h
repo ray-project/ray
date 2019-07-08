@@ -45,7 +45,7 @@ class RedisGcsClient;
 
 /// Specifies whether commands issued to a table should be regular or chain-replicated
 /// (when available).
-enum class CommandType { kRegular, kChain };
+enum class CommandType { kRegular, kChain, kUnknown };
 
 /// \class PubsubInterface
 ///

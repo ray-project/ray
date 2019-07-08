@@ -7,12 +7,59 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/actor_state_accessor.h"
-#include "ray/gcs/client_def.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 namespace gcs {
+
+/// \class ClientOption
+/// GCS client's options(configuration items), such as service address, service password.
+class ClientOption {
+ public:
+  /// Constructor of ClientOption.
+  ///
+  /// \param ip GCS service ip
+  /// \param port GCS service port
+  /// \param password GCS service password
+  /// \param is_test_client Is test client
+  ClientOption(const std::string &ip, int port, const std::string &password,
+               bool is_test_client = false)
+      : server_ip_(ip),
+        server_port_(port),
+        password_(password),
+        is_test_client_(is_test_client) {
+#if RAY_USE_NEW_GCS
+    command_type_ = CommandType::kChain;
+#else
+    command_type_ = CommandType::kRegular;
+#endif
+  }
+
+  /// This constructor is only used for testing(RedisGcsClient's test).
+  ///
+  /// \param ip Gcs service ip
+  /// \param port Gcs service port
+  /// \param command_type Command type of RedisGcsClient
+  ClientOption(const std::string &ip, int port, CommandType command_type)
+      : server_ip_(ip),
+        server_port_(port),
+        command_type_(command_type),
+        is_test_client_(true) {}
+
+  // GCS server address
+  std::string server_ip_;
+  int server_port_;
+
+  // Password of GCS server.
+  std::string password_;
+  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
+  // might be used, if available.
+  CommandType command_type_ = CommandType::kUnknown;
+
+  // If it's test client.
+  bool is_test_client_{false};
+};
 
 /// \class GcsClientInterface
 /// Interface layer of GCS client. To read and write from the GCS,
@@ -31,14 +78,9 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Get client id.
-  ///
-  /// \return ClientID
-  const ClientID &GetClientID() const { return info_.GetClientID(); }
-
   /// This function is thread safe.
   virtual ActorStateAccessor &Actors() {
-    RAY_DCHECK(actor_accessor_ != nullptr);
+    RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
 
@@ -46,14 +88,12 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Constructor of GcsClientInterface.
   ///
   /// \param option Options for client.
-  /// \param info Information of this client, such as client type, client id and so on.
-  GcsClientInterface(const ClientOption &option, const ClientInfo &info)
-      : option_(option), info_(info) {}
+  /// \param info Information of this client, client id and so on.
+  GcsClientInterface(const ClientOption &option) : option_(option) {}
 
   ClientOption option_;
-  ClientInfo info_;
 
-  // Is client already successfully executed Connect()
+  // Whether this client connects to the server successfully.
   bool is_connected_{false};
 
   std::unique_ptr<ActorStateAccessor> actor_accessor_;

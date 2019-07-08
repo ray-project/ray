@@ -24,7 +24,17 @@ Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id
 
 Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id,
                                     std::shared_ptr<ActorTableData> data_ptr,
-                                    size_t log_length, const StatusCallback &callback) {
+                                    const StatusCallback &callback) {
+  // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
+  // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
+  // reconstructions. This is followed optionally by a DEAD entry.
+  int log_length =
+      2 * (data_ptr->max_reconstructions() - data_ptr->remaining_reconstructions());
+  if (data_ptr->state() != ActorTableData::ALIVE) {
+    // RECONSTRUCTING or DEAD entries have an odd index.
+    log_length += 1;
+  }
+
   ActorTable &actor_table = client_impl_.actor_table();
   if (callback != nullptr) {
     auto on_success = [callback, data_ptr](
@@ -62,46 +72,6 @@ Status ActorStateAccessor::AsyncSubscribe(
 
   ActorTable &actor_table = client_impl_.actor_table();
   return actor_table.Subscribe(job_id, client_id, on_subscribe, on_done);
-}
-
-Status ActorStateAccessor::RequestNotifications(const JobID &job_id,
-                                                const ActorID &actor_id,
-                                                const ClientID &client_id) {
-  ActorTable &actor_table = client_impl_.actor_table();
-  actor_table.RequestNotifications(job_id, actor_id, client_id);
-  return Status::OK();
-}
-
-Status ActorStateAccessor::CancelNotifications(const JobID &job_id,
-                                               const ActorID &actor_id,
-                                               const ClientID &client_id) {
-  ActorTable &actor_table = client_impl_.actor_table();
-  actor_table.CancelNotifications(job_id, actor_id, client_id);
-  return Status::OK();
-}
-
-Status ActorStateAccessor::AsyncGetCheckpointIds(
-    const JobID &job_id, const ActorID &actor_id,
-    const OptionalItemCallback<ActorCheckpointIdData> &callback) {
-  RAY_DCHECK(callback != nullptr);
-  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                               const ActorCheckpointIdData &data) {
-    boost::optional<ActorCheckpointIdData> result(data);
-    callback(Status::OK(), std::move(result));
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id) {
-    boost::optional<ActorCheckpointIdData> result;
-    callback(Status::KeyError("JobID or ActorID not exist."), std::move(result));
-  };
-
-  ActorCheckpointIdTable &checkpoint_id_table = client_impl_.actor_checkpoint_id_table();
-  return checkpoint_id_table.Lookup(job_id, actor_id, on_success, on_failure);
-}
-
-std::string ActorStateAccessor::DebugString() const {
-  ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.DebugString();
 }
 
 }  // namespace gcs

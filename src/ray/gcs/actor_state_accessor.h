@@ -2,7 +2,7 @@
 #define RAY_GCS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
-#include "ray/gcs/call_back.h"
+#include "ray/gcs/callback.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -17,7 +17,7 @@ class RedisGcsClient;
 /// determined at submission time, and mutable fields which determined at runtime).
 class ActorStateAccessor {
  public:
-  ActorStateAccessor(RedisGcsClient &client_impl);
+  explicit ActorStateAccessor(RedisGcsClient &client_impl);
 
   ~ActorStateAccessor() {}
 
@@ -25,7 +25,7 @@ class ActorStateAccessor {
   ///
   /// \param job_id The ID of the job (driver or app).
   /// \param actor_id The ID of actor that is looked up in the GCS.
-  /// \param call_back Callback that is called after read data done.
+  /// \param callback Callback that is called after read data done.
   /// \return Status
   Status AsyncGet(const JobID &job_id, const ActorID &actor_id,
                   const MultiItemCallback<ActorTableData> &callback);
@@ -34,10 +34,10 @@ class ActorStateAccessor {
   ///
   /// \param job_id The ID of the job (driver or app).
   /// \param actor_id The ID of actor that is add to the GCS.
-  /// \param call_back Callback that is called after the data has been written to the GCS.
+  /// \param callback Callback that is called after the data has been written to the GCS.
   /// \return Status
   Status AsyncAdd(const JobID &job_id, const ActorID &actor_id,
-                  std::shared_ptr<ActorTableData> data_ptr, size_t log_length,
+                  std::shared_ptr<ActorTableData> data_ptr,
                   const StatusCallback &callback);
 
   /// Subscribe to any add operations of actor. The caller may choose
@@ -58,48 +58,6 @@ class ActorStateAccessor {
   Status AsyncSubscribe(const JobID &job_id, const ClientID &client_id,
                         const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
-
-  /// Request notifications about a actor in GCS.
-  ///
-  /// The notifications will be returned via the subscribe callback that was
-  /// registered by `AsyncSubscribe`.  An initial notification will be returned for
-  /// the current values at the actor, if any, and a subsequent notification will
-  /// be published for every following update to the actor. Before
-  /// notifications can be requested, the caller must first call `AsyncSubscribe`
-  /// with the same `client_id`.
-  ///
-  /// \param job_id The ID of the job (= driver).
-  /// \param client_id The client who is requesting notifications. Before
-  /// notifications can be requested, a call to `AsyncSubscribe` to GCS
-  /// with the same `client_id` must complete successfully.
-  /// \param actor_id The ID of the actor to request notifications for.
-  /// notifications can be requested, a call to `AsyncSubscribe`
-  /// must complete successfully.
-  /// \return Status
-  Status RequestNotifications(const JobID &job_id, const ActorID &actor_id,
-                              const ClientID &client_id);
-
-  /// Cancel notifications about a actor in GCS.
-  ///
-  /// \param job_id The ID of the job (= driver).
-  /// \param actor_id The ID of the actor to request notifications for.
-  /// \return Status
-  Status CancelNotifications(const JobID &job_id, const ActorID &actor_id,
-                             const ClientID &client_id);
-
-  /// Get actor's checkpoint ids asynchronously.
-  ///
-  /// \param job_id The ID of the job (driver or app).
-  /// \param actor_id The ID of actor who's checkpoint ids is lookup.
-  /// \param callback  Callback that is called when read is complete.
-  Status AsyncGetCheckpointIds(
-      const JobID &job_id, const ActorID &actor_id,
-      const OptionalItemCallback<ActorCheckpointIdData> &callback);
-
-  /// Get debug string.
-  ///
-  /// \return string
-  std::string DebugString() const;
 
  private:
   RedisGcsClient &client_impl_;

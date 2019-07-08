@@ -609,8 +609,8 @@ void NodeManager::PublishActorStateTransition(const ActorID &actor_id,
       }
     }
   };
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncAdd(JobID::Nil(), actor_id, actor_notification,
-                                              log_length, done));
+  RAY_CHECK_OK(
+      gcs_client_->Actors().AsyncAdd(JobID::Nil(), actor_id, actor_notification, done));
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,

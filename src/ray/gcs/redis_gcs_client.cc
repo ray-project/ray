@@ -70,15 +70,15 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const ClientOption &option, const ClientInfo &info)
-    : GcsClientInterface(option, info) {
+RedisGcsClient::RedisGcsClient(const ClientOption &option)
+    : GcsClientInterface(option) {
 }
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
 
   if (option_.server_ip_.empty()) {
-    RAY_LOG(ERROR) << "connect failed, gcs service address is empty.";
+    RAY_LOG(ERROR) << "Failed to connect, gcs service address is empty.";
     return Status::Invalid("gcs service address is invalid!");
   }
 
@@ -94,7 +94,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
     std::vector<std::string> addresses;
     std::vector<int> ports;
     GetRedisShards(primary_context_->sync_context(), addresses, ports);
-    if (addresses.size() == 0) {
+    if (addresses.empty()) {
       RAY_CHECK(ports.empty());
       addresses.push_back(option_.server_ip_);
       ports.push_back(option_.server_port_);
@@ -114,7 +114,10 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   }
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
-  client_table_.reset(new ClientTable({primary_context_}, this, info_.GetClientID()));
+
+  // TODO(micafan) Modify ClientTable' Constructor in future
+  client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
+
   error_table_.reset(new ErrorTable({primary_context_}, this));
   job_table_.reset(new JobTable({primary_context_}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
@@ -136,9 +139,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // TODO(swang or micafan): Call the client table's Connect() method here.
   // Will do it in next PR(ClientTable). And synchronous connect is better.
 
-  is_connected_ = status.ok() ? true : false;
-  RAY_LOG(INFO) << "RedisGcsClient Connect status=" << status << " client_id="
-    << info_.GetClientID();
+  is_connected_ = status.ok();
+  RAY_LOG(INFO) << "RedisGcsClient Connect status=" << status;
   return status;
 }
 
@@ -147,6 +149,7 @@ void RedisGcsClient::Disconnect() {
   is_connected_ = false;
   // TODO(micafan) Call the client table's Disconnect here. Synchronous disconnect
   // is better.
+  RAY_LOG(INFO) << "RedisGcsClient Disconnect.";
 }
 
 Status RedisGcsClient::Attach(boost::asio::io_service &io_service) {
