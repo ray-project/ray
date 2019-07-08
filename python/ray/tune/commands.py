@@ -14,7 +14,7 @@ import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
 from ray.tune.trial import Trial
-from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis import Analysis
 from ray.tune import TuneError
 try:
     from tabulate import tabulate
@@ -139,8 +139,7 @@ def list_trials(experiment_path,
     _check_tabulate()
 
     try:
-        experiment_json = get_most_recent_state(experiment_path)
-        checkpoints_df = ExperimentAnalysis(experiment_json).dataframe()
+        checkpoints_df = Analysis(experiment_path).dataframe()
     except TuneError:
         print("No experiment state found!")
         sys.exit(0)
@@ -229,9 +228,7 @@ def list_experiments(project_path,
     for experiment_dir in experiment_folders:
         analysis_obj, checkpoints_df = None, None
         try:
-            analysis_obj = ExperimentAnalysis(
-                get_most_recent_state(
-                    os.path.join(project_path, experiment_dir)))
+            analysis_obj = Analysis(os.path.join(project_path, experiment_dir))
             checkpoints_df = analysis_obj.dataframe()
         except TuneError:
             logger.debug("No experiment state found in %s", experiment_dir)
