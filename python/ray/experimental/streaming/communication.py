@@ -470,7 +470,7 @@ class DataOutput(object):
                 channel._close()
 
         if self.logging:  # Log rate (records/s)
-            self.__log(force=close)  # force=True only on termination
+            self.__log(force=True)  # force=True only on termination
 
     # Used for record-at-a-time operators and when _push_batch()
     # is not applicable, e.g. when shuffling is needed
