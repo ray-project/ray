@@ -610,7 +610,7 @@ class ActorHandle(object):
         # not just the first one.
         worker = ray.worker.get_global_worker()
         if (worker.mode == ray.worker.SCRIPT_MODE
-                and self._ray_actor_job_id != ray.JobID.from_driver_id(
+                and self._ray_actor_job_id != ray.JobID.compute_job_id_from_driver(
                     ray.WorkerID(worker.worker_id))):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
