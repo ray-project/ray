@@ -148,7 +148,8 @@ def kl_and_loss_stats(policy, batch_tensors):
             policy.convert_to_eager(policy.value_function)),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
-        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
+        "entropy_coeff": tf.cast(
+            policy.convert_to_eager(policy.entropy_coeff), tf.float64),
     }
 
 
