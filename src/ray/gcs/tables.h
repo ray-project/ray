@@ -67,8 +67,8 @@ class LogInterface {
  public:
   using WriteCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
-  virtual Status Append(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
-                        const WriteCallback &done) = 0;
+  virtual Status Append(const JobID &job_id, const ID &id,
+                        const std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual Status AppendAt(const JobID &job_id, const ID &task_id,
                           const std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
