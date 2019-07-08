@@ -259,10 +259,9 @@ class Trainable(object):
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
-        elif checkpoint is not None:
-            logger.warning("Returned unexpected type {}. "
-                           "Expected str or dict.".format(type(checkpoint)))
-            checkpoint_path = checkpoint_dir
+        else:
+            raise ValueError("Returned unexpected type {}. "
+                             "Expected str or dict.".format(type(checkpoint)))
 
         with open(checkpoint_path + ".tune_metadata", "wb") as f:
             pickle.dump({
