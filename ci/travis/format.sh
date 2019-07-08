@@ -44,7 +44,6 @@ if which clang-format >/dev/null; then
   tool_version_check "clang-format" $CLANG_FORMAT_VERSION "7.0.0"
 else
     echo "WARNING: clang-format is not installed!"
-    exit 1
 fi
 
 # Only fetch master since that's the branch we're diffing against.
