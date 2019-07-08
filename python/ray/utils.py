@@ -232,6 +232,18 @@ def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
 
 
+def compute_job_id_from_driver(driver_id):
+    assert isinstance(driver_id, ray.WorkerID)
+    return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
+
+
+def compute_driver_id_from_job(job_id):
+    assert isinstance(job_id, ray.JobID)
+    rest_length = ray.WorkerID.size() - ray.JobID.size()
+    driver_id_str = job_id.binary() + (rest_length * "0xff")
+    return ray.WorkerID(driver_id_str)
+
+
 def get_cuda_visible_devices():
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 

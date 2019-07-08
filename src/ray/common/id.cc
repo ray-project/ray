@@ -26,6 +26,14 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
+WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
+  std::vector<uint8_t> data(WorkerID::Size(), 0);
+  std::memcpy(data.data(), job_id.Data(), JobID::Size());
+  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xff);
+  return WorkerID::FromBinary(
+      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+}
+
 plasma::UniqueID ObjectID::ToPlasmaId() const {
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), Data(), kUniqueIDSize);
@@ -149,19 +157,6 @@ JobID JobID::FromInt(uint32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
-}
-
-JobID JobID::ComputeJobIdFromDriver(const WorkerID &driver_id) {
-  std::string driver_id_str = driver_id.Binary();
-  return JobID::FromBinary(driver_id_str.substr(0, JobID::Size()));
-}
-
-WorkerID JobID::ComputeDriverIdFromJob(const JobID &job_id) {
-  std::vector<uint8_t> data(WorkerID::Size(), 0);
-  std::memcpy(data.data(), job_id.Data(), JobID::Size());
-  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xff);
-  return WorkerID::FromBinary(
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 

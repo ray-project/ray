@@ -1030,7 +1030,7 @@ void NodeManager::ProcessDisconnectClientMessage(
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
-    const auto driver_id = JobID::ComputeDriverIdFromJob(job_id);
+    const auto driver_id = ComputeDriverIdFromJob(job_id);
     RAY_CHECK(!job_id.IsNil());
     RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
         job_id, /*is_dead=*/true, std::time(nullptr),

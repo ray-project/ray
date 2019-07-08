@@ -227,18 +227,6 @@ cdef class JobID(BaseID):
         return cls(CJobID.FromInt(value).Binary())
 
     @classmethod
-    def compute_job_id_from_driver(cls, driver_id):
-        assert isinstance(driver_id, WorkerID)
-        return cls(CJobID.ComputeJobIdFromDriver(
-            CWorkerID.FromBinary(driver_id.binary())).Binary())
-
-    @classmethod
-    def compute_driver_id_from_job(cls, job_id):
-        assert isinstance(job_id, JobID)
-        return WorkerID(CJobID.ComputeDriverIdFromJob(
-            CJobID.FromBinary(job_id.binary())).Binary())
-
-    @classmethod
     def nil(cls):
         return cls(CJobID.Nil().Binary())
 
