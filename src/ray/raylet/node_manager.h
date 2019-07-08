@@ -459,6 +459,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// worker is registered with a port greater than zero (which indicates it will
   /// act as a rpc server), and when a worker finishes it assigned task, which is
   /// indicated by a `GetTask` message (or a rpc reply if the worker is a rpc server).
+  /// Later all the workers will be migrated to use rpc server, in that case tasks are
+  /// pushed by raylet to workers, instead of workers pulling from raylet.
   ///
   /// \param worker Worker that is available.
   /// \return void.

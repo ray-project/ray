@@ -61,39 +61,6 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
 }
 
 Status CoreWorkerTaskExecutionInterface::Run() {
-  auto callback = [this](const raylet::TaskSpecification &spec) {
-    worker_context_.SetCurrentTask(spec);
-
-    RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
-
-    std::vector<std::shared_ptr<RayObject>> args;
-    RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
-
-    TaskType task_type;
-    if (spec.IsActorCreationTask()) {
-      task_type = TaskType::ACTOR_CREATION_TASK;
-    } else if (spec.IsActorTask()) {
-      task_type = TaskType::ACTOR_TASK;
-    } else {
-      task_type = TaskType::NORMAL_TASK;
-    }
-
-    TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
-
-    auto num_returns = spec.NumReturns();
-    if (spec.IsActorCreationTask() || spec.IsActorTask()) {
-      RAY_CHECK(num_returns > 0);
-      // Decrease to account for the dummy object id.
-      num_returns--;
-    }
-
-    auto status = execution_callback_(func, args, task_info, num_returns);
-    // TODO(zhijunfu):
-    // 1. Check and handle failure.
-    // 2. Save or load checkpoint.
-    return status;
-  };
-
   // Run main IO service.
   main_service_.run();
 
