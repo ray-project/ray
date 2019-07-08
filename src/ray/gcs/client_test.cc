@@ -98,7 +98,7 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   const auto task_id = TaskID::FromRandom();
-  cosnt auto data = CreateTaskTableData(task_id);
+  auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
   auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
@@ -921,7 +921,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
   // Add a table entry.
   const auto task_id = TaskID::FromRandom();
   const int num_modifications = 3;
-  const auto data = CreateTaskTableData(task_id, 0);
+  auto data = CreateTaskTableData(task_id, 0);
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
 
   // The failure callback should not be called since all keys are non-empty
@@ -932,9 +932,8 @@ void TestTableSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id, num_modifications](gcs::AsyncGcsClient *client,
-                                                            const TaskID &id,
-                                                            const TaskTableData &data) {
+  auto notification_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
+                                         const TaskTableData &data) {
     ASSERT_EQ(id, task_id);
     // Check that we only get notifications for the first and last writes,
     // since notifications are canceled in between.
@@ -952,8 +951,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto subscribe_callback = [job_id, task_id,
-                             num_modifications](gcs::AsyncGcsClient *client) {
+  auto subscribe_callback = [job_id, task_id](gcs::AsyncGcsClient *client) {
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
