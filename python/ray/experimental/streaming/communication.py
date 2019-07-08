@@ -291,7 +291,8 @@ class DataOutput(object):
     """
 
     def __init__(self, channels, partitioning_schemes):
-        self.max_batch_size = channels[0].queue_config.max_batch_size
+        self.max_batch_size = channels[0].queue_config.max_batch_size if len(
+                                                        channels) > 0 else 0
         self.custom_partitioning_functions = None
         self.channel_index = 0
         self.key_selector = None
