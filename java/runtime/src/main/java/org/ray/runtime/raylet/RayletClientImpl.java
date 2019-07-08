@@ -273,6 +273,7 @@ public class RayletClientImpl implements RayletClient {
           Common.ActorTaskSpec.newBuilder()
               .setActorId(ByteString.copyFrom(task.actorId.getBytes()))
               .setActorHandleId(ByteString.copyFrom(task.actorHandleId.getBytes()))
+              .setActorCreationDummyObjectId(ByteString.copyFrom(task.actorId.getBytes()))
               .setActorCounter(task.actorCounter)
               .addAllNewActorHandles(newHandles)
       );
