@@ -47,27 +47,31 @@ class Analysis(object):
         self._trial_dataframes = {}
 
     def get_all_trial_dataframes(self):
+        fail_count = 0
         for path in self._get_trial_paths():
-            if path in self._trial_dataframes:
-                continue
             try:
                 self._trial_dataframes[path] = pd.read_csv(
                     os.path.join(path, EXPR_PROGRESS_FILE))
-            except Exception as e:
-                logger.warning("Couldn't read from {}. Raised {}".format(
-                    path, e))
+            except Exception:
+                fail_count += 1
+
+        if fail_count:
+            logger.warning(
+                "Couldn't read results from {} paths".format(fail_count))
         return self._trial_dataframes
 
     def get_all_configs(self):
+        fail_count = 0
         for path in self._get_trial_paths():
-            if path in self._configs:
-                continue
             try:
                 with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
                     self._configs[path] = json.load(f)
-            except Exception as e:
-                logger.warning("Couldn't read from {}. Raised {}".format(
-                    path, e))
+            except Exception:
+                fail_count += 1
+
+        if fail_count:
+            logger.warning(
+                "Couldn't read config from {} paths".format(fail_count))
         return self._configs
 
     def dataframe(self, metric=None, mode=None):
@@ -82,7 +86,8 @@ class Analysis(object):
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs()
         for path, config in all_configs.items():
-            rows[path].update(config)
+            if path in rows:
+                rows[path].update(config)
         return pd.DataFrame(list(rows.values()))
 
     def get_best_config(self, metric, mode="max"):
