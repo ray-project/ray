@@ -301,8 +301,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
-  ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(),
-                      ::Language::JAVA,
+  ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(), Language::JAVA,
                       {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
   auto forkedHandle1 = handle1.Fork();

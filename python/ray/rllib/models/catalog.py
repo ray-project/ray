@@ -23,8 +23,9 @@ from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.error import UnsupportedSpaceException
 
 tf = try_import_tf()
 
@@ -49,7 +50,7 @@ MODEL_DEFAULTS = {
     # should already match num_outputs.
     "no_final_linear": False,
     # Whether layers should be shared for the value function.
-    "vf_share_layers": False,
+    "vf_share_layers": True,
 
     # == LSTM ==
     # Whether to wrap the model with a LSTM
@@ -120,7 +121,7 @@ class ModelCatalog(object):
         config = config or MODEL_DEFAULTS
         if isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
-                raise ValueError(
+                raise UnsupportedSpaceException(
                     "Action space has multiple dimensions "
                     "{}. ".format(action_space.shape) +
                     "Consider reshaping this into a single dimension, "

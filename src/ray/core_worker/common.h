@@ -5,11 +5,13 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/gcs/format/gcs_generated.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/raylet/task_spec.h"
 
 namespace ray {
+
+using rpc::Language;
+using rpc::TaskType;
 
 /// Type of this worker.
 enum class WorkerType { WORKER, DRIVER };
@@ -65,8 +67,6 @@ class TaskArg {
   /// Data of the argument, if passed by value, otherwise nullptr.
   const std::shared_ptr<Buffer> data_;
 };
-
-enum class TaskType { NORMAL_TASK, ACTOR_CREATION_TASK, ACTOR_TASK };
 
 /// Information of a task
 struct TaskInfo {

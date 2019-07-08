@@ -1,4 +1,4 @@
-basic-dqn:
+atari-dist-dqn:
     env:
         grid_search:
             - BreakoutNoFrameskip-v4

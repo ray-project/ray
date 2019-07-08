@@ -241,6 +241,11 @@ class ValueNetworkMixin(object):
         return vf[0]
 
 
+def setup_config(policy, obs_space, action_space, config):
+    # auto set the model option for layer sharing
+    config["model"]["vf_share_layers"] = config["vf_share_layers"]
+
+
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
@@ -255,5 +260,6 @@ PPOTFPolicy = build_tf_policy(
     extra_action_fetches_fn=vf_preds_and_logits_fetches,
     postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,
+    before_init=setup_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])

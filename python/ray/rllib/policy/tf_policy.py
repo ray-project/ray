@@ -349,6 +349,11 @@ class TFPolicy(Policy):
             self._is_training = tf.placeholder_with_default(False, ())
         return self._is_training
 
+    def _debug_vars(self):
+        if log_once("grad_vars"):
+            for _, v in self._grads_and_vars:
+                logger.info("Optimizing variable {}".format(v))
+
     def _extra_input_signature_def(self):
         """Extra input signatures to add when exporting tf model.
         Inferred from extra_compute_action_feed_dict()
@@ -436,6 +441,7 @@ class TFPolicy(Policy):
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
+        self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(
@@ -455,6 +461,7 @@ class TFPolicy(Policy):
         return fetches[0]
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
+        self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))

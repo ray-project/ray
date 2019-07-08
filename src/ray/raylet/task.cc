@@ -4,23 +4,11 @@ namespace ray {
 
 namespace raylet {
 
-flatbuffers::Offset<protocol::Task> Task::ToFlatbuffer(
-    flatbuffers::FlatBufferBuilder &fbb) const {
-  auto task = CreateTask(fbb, task_spec_.ToFlatbuffer(fbb),
-                         task_execution_spec_.ToFlatbuffer(fbb));
-  return task;
-}
-
 const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
 }
 
 const TaskSpecification &Task::GetTaskSpecification() const { return task_spec_; }
-
-void Task::SetExecutionDependencies(const std::vector<ObjectID> &dependencies) {
-  task_execution_spec_.SetExecutionDependencies(dependencies);
-  ComputeDependencies();
-}
 
 void Task::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
@@ -42,22 +30,8 @@ void Task::ComputeDependencies() {
 }
 
 void Task::CopyTaskExecutionSpec(const Task &task) {
-  task_execution_spec_ = task.GetTaskExecutionSpec();
+  task_execution_spec_ = task.task_execution_spec_;
   ComputeDependencies();
-}
-
-const std::string Task::Serialize() const {
-  flatbuffers::FlatBufferBuilder fbb;
-  fbb.Finish(ToFlatbuffer(fbb));
-  return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-}
-
-std::string SerializeTaskAsString(const std::vector<ObjectID> *dependencies,
-                                  const TaskSpecification *task_spec) {
-  std::vector<ObjectID> execution_dependencies(*dependencies);
-  TaskExecutionSpecification execution_spec(std::move(execution_dependencies));
-  Task task(execution_spec, *task_spec);
-  return task.Serialize();
 }
 
 }  // namespace raylet

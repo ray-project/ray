@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import logging
 from functools import wraps
 
@@ -137,17 +136,16 @@ class RemoteFunction(object):
                                              kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                # In LOCAL_MODE, remote calls simply execute the function.
-                # We copy the arguments to prevent the function call from
-                # mutating them and to match the usual behavior of
-                # immutable remote objects.
-                result = self._function(*copy.deepcopy(args))
-                return result
-            object_ids = worker.submit_task(
-                self._function_descriptor,
-                args,
-                num_return_vals=num_return_vals,
-                resources=resources)
+                object_ids = worker.local_mode_manager.execute(
+                    self._function, self._function_descriptor, args,
+                    num_return_vals)
+            else:
+                object_ids = worker.submit_task(
+                    self._function_descriptor,
+                    args,
+                    num_return_vals=num_return_vals,
+                    resources=resources)
+
             if len(object_ids) == 1:
                 return object_ids[0]
             elif len(object_ids) > 1:
