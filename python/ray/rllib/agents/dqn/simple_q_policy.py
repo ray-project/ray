@@ -4,6 +4,7 @@ from __future__ import print_function
 """Basic example of a DQN policy without any optimizations."""
 
 from gym.spaces import Discrete
+import logging
 
 import ray
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
@@ -18,6 +19,7 @@ from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss
 
 tf = try_import_tf()
+logger = logging.getLogger(__name__)
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -55,6 +57,7 @@ class TargetNetworkMixin(object):
             (self.q_func_vars, self.target_q_func_vars)
         for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
             update_target_expr.append(var_target.assign(var))
+            logger.debug("Update target op {}".format(var_target))
         self.update_target_expr = tf.group(*update_target_expr)
 
     def update_target(self):

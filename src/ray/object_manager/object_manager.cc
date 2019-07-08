@@ -17,9 +17,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
-      connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_("object_manager", config_.object_manager_port),
+      object_manager_server_("ObjectManager", config_.object_manager_port),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -831,7 +830,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_.DebugString();
   result << "\n" << buffer_pool_.DebugString();
-  result << "\n" << connection_pool_.DebugString();
   return result.str();
 }
 
@@ -847,7 +845,6 @@ void ObjectManager::RecordMetrics() const {
                                      {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectManagerStats().Record(profile_events_.size(),
                                      {{stats::ValueTypeKey, "num_profile_events"}});
-  connection_pool_.RecordMetrics();
 }
 
 }  // namespace ray

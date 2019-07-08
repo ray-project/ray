@@ -5,6 +5,7 @@
 
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
@@ -14,7 +15,7 @@ namespace ray {
 
 class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerRayletTaskSubmitter(RayletClient &raylet_client);
+  CoreWorkerRayletTaskSubmitter(std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a task for execution to raylet.
   ///
@@ -24,19 +25,41 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 
  private:
   /// Raylet client.
-  RayletClient &raylet_client_;
+  std::unique_ptr<RayletClient> &raylet_client_;
 };
 
-class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver {
+class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
+                                     public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(RayletClient &raylet_client);
+  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+                               boost::asio::io_service &io_service,
+                               rpc::GrpcServer &server);
 
   // Get tasks for execution from raylet.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) override;
 
+  /// TODO(zhijunfu): This is currently unused. Later when we migrate from worker "get
+  /// task" to raylet "assign task", this method will be used and the `GetTask` above will
+  /// be removed.
+  ///
+  /// Handle a `AssignTask` request.
+  /// The implementation can handle this request asynchronously. When hanling is done, the
+  /// `done_callback` should be called.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] done_callback The callback to be called when the request is done.
+  void HandleAssignTask(const rpc::AssignTaskRequest &request,
+                        rpc::AssignTaskReply *reply,
+                        rpc::RequestDoneCallback done_callback) override;
+
  private:
   /// Raylet client.
-  RayletClient &raylet_client_;
+  std::unique_ptr<RayletClient> &raylet_client_;
+  /// The callback function to process a task.
+  TaskHandler task_handler_;
+  /// The rpc service for `WorkerTaskService`.
+  rpc::WorkerTaskGrpcService task_service_;
 };
 
 }  // namespace ray

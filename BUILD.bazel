@@ -48,6 +48,16 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "worker_proto",
+    srcs = ["src/ray/protobuf/worker.proto"],
+)
+
+cc_proto_library(
+    name = "worker_cc_proto",
+    deps = ["worker_proto"],
+)
+
+proto_library(
     name = "core_worker_proto",
     srcs = ["src/ray/protobuf/core_worker.proto"],
 )
@@ -122,6 +132,30 @@ cc_library(
         ":grpc_common_lib",
         ":object_manager_cc_grpc",
         ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# worker gRPC lib.
+cc_grpc_library(
+    name = "worker_cc_grpc",
+    srcs = [":worker_proto"],
+    grpc_only = True,
+    deps = [":worker_cc_proto"],
+)
+
+# worker server and client.
+cc_library(
+    name = "worker_rpc",
+    hdrs = glob([
+        "src/ray/rpc/worker/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":worker_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -216,6 +250,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":stats_lib",
+        ":worker_rpc",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -253,6 +288,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":raylet_lib",
+        ":worker_rpc",
     ],
 )
 

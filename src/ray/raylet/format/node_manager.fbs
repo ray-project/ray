@@ -138,6 +138,10 @@ table RegisterClientRequest {
   job_id: string;
   // Language of this worker.
   language: Language;
+  // Port that this worker is listening on.
+  // If port > 0, then worker will listen to this port and wait for
+  // raylet to push tasks, instead of invoking GetTask().
+  port: int;
 }
 
 table RegisterClientReply {

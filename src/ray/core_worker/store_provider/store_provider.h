@@ -77,7 +77,8 @@ class CoreWorkerStoreProvider {
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects. \return Status.
+  /// created these objects.
+  /// \return Status.
   virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                         bool delete_creating_tasks) = 0;
 };

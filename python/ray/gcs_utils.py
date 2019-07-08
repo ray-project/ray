@@ -59,6 +59,7 @@ TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_OBJECT_string = "OBJECT"
 TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
+TablePrefix_JOB_string = "JOB"
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
