@@ -16,65 +16,65 @@ class RayletServiceHandler {
  public:
   virtual void HandleRegisterClientRequest(const RegisterClientRequest &request,
                                            RegisterClientReply *reply,
-                                           RequestDoneCallback done_callback) = 0;
+                                           SendReplyCallback send_reply_callback) = 0;
   /// Handle a `SubmitTask` request.
   /// The implementation can handle this request asynchronously. When handling is done,
-  /// the `done_callback` should be called.
+  /// the `send_reply_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
   virtual void HandleSubmitTaskRequest(const SubmitTaskRequest &request,
                                        SubmitTaskReply *reply,
-                                       RequestDoneCallback done_callback) = 0;
+                                       SendReplyCallback send_reply_callback) = 0;
   /// Handle a `DisconnectClient` request.
   virtual void HandleDisconnectClientRequest(const DisconnectClientRequest &request,
                                              DisconnectClientReply *reply,
-                                             RequestDoneCallback done_callback) = 0;
+                                             SendReplyCallback send_reply_callback) = 0;
 
   /// Handle a `GetTask` request.
   virtual void HandleGetTaskRequest(const GetTaskRequest &request, GetTaskReply *reply,
-                                    RequestDoneCallback done_callback) = 0;
+                                    SendReplyCallback send_reply_callback) = 0;
 
   /// Handle a `HandleFetchOrReconstructRequest` request.
   virtual void HandleFetchOrReconstructRequest(const FetchOrReconstructRequest &request,
                                                FetchOrReconstructReply *reply,
-                                               RequestDoneCallback done_callback) = 0;
+                                               SendReplyCallback send_reply_callback) = 0;
   /// Handle a `HandleNotifyUnblockedReply` request.
   virtual void HandleNotifyUnblockedRequest(const NotifyUnblockedRequest &request,
                                             NotifyUnblockedReply *reply,
-                                            RequestDoneCallback done_callback) = 0;
+                                            SendReplyCallback send_reply_callback) = 0;
   /// Handle a `WaitReply` request.
   virtual void HandleWaitRequest(const WaitRequest &request, WaitReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
+                                 SendReplyCallback send_reply_callback) = 0;
   /// Handle a `PushErrorReply` request.
   virtual void HandlePushErrorRequest(const PushErrorRequest &request,
                                       PushErrorReply *reply,
-                                      RequestDoneCallback done_callback) = 0;
+                                      SendReplyCallback send_reply_callback) = 0;
   /// Handle a `PushProfileEventsReply` request.
   virtual void HandlePushProfileEventsRequest(const PushProfileEventsRequest &request,
                                               PushProfileEventsReply *reply,
-                                              RequestDoneCallback done_callback) = 0;
+                                              SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjectsInObjectStoreReply` request.
   virtual void HandleFreeObjectsInObjectStoreRequest(
       const FreeObjectsInObjectStoreRequest &request,
-      FreeObjectsInObjectStoreReply *reply, RequestDoneCallback done_callback) = 0;
+      FreeObjectsInObjectStoreReply *reply, SendReplyCallback send_reply_callback) = 0;
   /// Handle a `PrepareActorCheckpointReply` request.
   virtual void HandlePrepareActorCheckpointRequest(
       const PrepareActorCheckpointRequest &request, PrepareActorCheckpointReply *reply,
-      RequestDoneCallback done_callback) = 0;
+      SendReplyCallback send_reply_callback) = 0;
   /// Handle a `NotifyActorResumedFromCheckpointReply` request.
   virtual void HandleNotifyActorResumedFromCheckpointRequest(
       const NotifyActorResumedFromCheckpointRequest &request,
       NotifyActorResumedFromCheckpointReply *reply,
-      RequestDoneCallback done_callback) = 0;
+      SendReplyCallback send_reply_callback) = 0;
   /// Handle a `SetResourceReply` request.
   virtual void HandleSetResourceRequest(const SetResourceRequest &request,
                                         SetResourceReply *reply,
-                                        RequestDoneCallback done_callback) = 0;
+                                        SendReplyCallback send_reply_callback) = 0;
   virtual void HandleHeartbeatRequest(const HeartbeatRequest &request,
                                       HeartbeatReply *reply,
-                                      RequestDoneCallback done_callback) = 0;
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `RayletGrpcService`.

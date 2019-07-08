@@ -6,11 +6,12 @@ namespace rpc {
 
 RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id,
-                           const ::Language &language)
+                           const ::Language &language, int port)
     : worker_id_(worker_id),
       is_worker_(is_worker),
       job_id_(job_id),
       language_(language),
+      port_(port),
       main_service_(),
       work_(main_service_),
       client_call_manager_(main_service_),

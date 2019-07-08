@@ -165,7 +165,7 @@ cc_library(
     hdrs = glob([
         "src/ray/rpc/raylet/*.h",
         "src/ray/raylet/*.h",
-    )],
+    ]),
     copts = COPTS,
     deps = [
         ":grpc_common_lib",

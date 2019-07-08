@@ -98,67 +98,67 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implementation of raylet grpc service.
 
   /// Handle a `RegisterClient` request.
   void HandleRegisterClientRequest(const rpc::RegisterClientRequest &request,
                                    rpc::RegisterClientReply *reply,
-                                   rpc::RequestDoneCallback done_callback) override;
+                                   rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `SubmitTask` request.
   void HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                rpc::SubmitTaskReply *reply,
-                               rpc::RequestDoneCallback done_callback) override;
+                               rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `DisconnectClient` request.
   void HandleDisconnectClientRequest(const rpc::DisconnectClientRequest &request,
                                      rpc::DisconnectClientReply *reply,
-                                     rpc::RequestDoneCallback done_callback) override;
+                                     rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `GetTask` request.
   void HandleGetTaskRequest(const rpc::GetTaskRequest &request, rpc::GetTaskReply *reply,
-                            rpc::RequestDoneCallback done_callback) override;
+                            rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `HandleFetchOrReconstruct` request.
   void HandleFetchOrReconstructRequest(const rpc::FetchOrReconstructRequest &request,
                                        rpc::FetchOrReconstructReply *reply,
-                                       rpc::RequestDoneCallback done_callback) override;
+                                       rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `HandleNotifyUnblocked` request.
   void HandleNotifyUnblockedRequest(const rpc::NotifyUnblockedRequest &request,
                                     rpc::NotifyUnblockedReply *reply,
-                                    rpc::RequestDoneCallback done_callback) override;
+                                    rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `Wait` request.
   void HandleWaitRequest(const rpc::WaitRequest &request, rpc::WaitReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
+                         rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `PushError` request.
   void HandlePushErrorRequest(const rpc::PushErrorRequest &request,
                               rpc::PushErrorReply *reply,
-                              rpc::RequestDoneCallback done_callback) override;
+                              rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `PushProfileEvents` request.
   void HandlePushProfileEventsRequest(const rpc::PushProfileEventsRequest &request,
                                       rpc::PushProfileEventsReply *reply,
-                                      rpc::RequestDoneCallback done_callback) override;
+                                      rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `FreeObjectsInObjectStore` request.
   void HandleFreeObjectsInObjectStoreRequest(
       const rpc::FreeObjectsInObjectStoreRequest &request,
       rpc::FreeObjectsInObjectStoreReply *reply,
-      rpc::RequestDoneCallback done_callback) override;
+      rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `PrepareActorCheckpoint` request.
   void HandlePrepareActorCheckpointRequest(
       const rpc::PrepareActorCheckpointRequest &request,
       rpc::PrepareActorCheckpointReply *reply,
-      rpc::RequestDoneCallback done_callback) override;
+      rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `NotifyActorResumedFromCheckpoint` request.
   void HandleNotifyActorResumedFromCheckpointRequest(
       const rpc::NotifyActorResumedFromCheckpointRequest &request,
       rpc::NotifyActorResumedFromCheckpointReply *reply,
-      rpc::RequestDoneCallback done_callback) override;
+      rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `SetResource` request.
   void HandleSetResourceRequest(const rpc::SetResourceRequest &request,
                                 rpc::SetResourceReply *reply,
-                                rpc::RequestDoneCallback done_callback) override;
+                                rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `Heartbeat` request.
   void HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
                               rpc::HeartbeatReply *reply,
-                              rpc::RequestDoneCallback done_callback) override;
+                              rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   bool WorkerIsDead(const WorkerID &worker_id);
@@ -555,7 +555,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Reply of get task request is not sent in function HandleGetTaskRequest. Should block
   /// the worker and handle reply in AssignTasks function
-  std::unordered_map<WorkerID, std::pair<rpc::GetTaskReply *, rpc::RequestDoneCallback>>
+  std::unordered_map<WorkerID, std::pair<rpc::GetTaskReply *, rpc::SendReplyCallback>>
       get_task_requests_;
 
   /// The RPC server.

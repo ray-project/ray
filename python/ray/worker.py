@@ -39,7 +39,6 @@ import ray.state
 from ray import (
     ActorHandleID,
     ActorID,
-    ClientID,
     WorkerID,
     JobID,
     ObjectID,
