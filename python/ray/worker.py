@@ -1873,7 +1873,6 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            # Note that make the `driver_task_id` be related to `driver_id`.
             TaskID(worker.worker_id[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.

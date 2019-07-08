@@ -121,7 +121,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
-    JobId jobId = JobId.fromLong(1L);
+    JobId jobId = JobId.fromInt(1);
     final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
     final String jobResourcePath = resourcePath + "/" + jobId.toString();
     File jobResourceDir = new File(jobResourcePath);

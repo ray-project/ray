@@ -1,6 +1,6 @@
 package org.ray.runtime;
 
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.objectstore.MockObjectStore;
@@ -15,7 +15,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private MockObjectStore store;
 
-  private AtomicLong jobCounter = new AtomicLong(0L);
+  private AtomicInteger jobCounter = new AtomicInteger(0);
 
   @Override
   public void start() {
@@ -44,6 +44,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   private JobId nextJobId() {
-    return JobId.fromLong(jobCounter.getAndIncrement());
+    return JobId.fromInt(jobCounter.getAndIncrement());
   }
 }

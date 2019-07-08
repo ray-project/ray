@@ -154,8 +154,7 @@ JobID JobID::FromInt(uint32_t value) {
 
 JobID JobID::ComputeJobIdFromDriver(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
-  driver_id_str.resize(JobID::Size());
-  return JobID::FromBinary(driver_id_str);
+  return JobID::FromBinary(driver_id_str.substr(0, JobID::Size()));
 }
 
 WorkerID JobID::ComputeDriverIdFromJob(const JobID &job_id) {

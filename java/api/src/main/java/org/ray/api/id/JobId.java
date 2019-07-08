@@ -38,15 +38,11 @@ public class JobId extends BaseId implements Serializable {
     return new JobId(byteBuffer2Bytes(bb));
   }
 
-  public static JobId fromLong(Long value) {
-    if (value > MAX_VALUE) {
-      throw new IllegalArgumentException("Invalid value for a job id.");
-    }
-
+  public static JobId fromInt(int value) {
     byte[] bytes = new byte[JobId.LENGTH];
     ByteBuffer wbb = ByteBuffer.wrap(bytes);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    wbb.putInt(value.intValue());
+    wbb.putInt(value);
     return new JobId(bytes);
   }
 

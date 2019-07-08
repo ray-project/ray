@@ -2628,7 +2628,7 @@ def test_workers(shutdown_only):
 
 
 def test_specific_job_id():
-    dummy_driver_id = ray.JobID(b"0010")
+    dummy_driver_id = ray.JobID.from_int(1)
     ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
