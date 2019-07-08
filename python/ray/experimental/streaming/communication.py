@@ -529,7 +529,7 @@ class DataOutput(object):
                 channel._push_next(record)
 
         if self.logging:  # Log rate
-            self.__log(batch_size=len(batch))
+            self.__log(batch_size=1)
 
     # Pushing whole batches to the output is expected to be more efficient
     # than pushing individual records by repeatedly calling _push() on each
