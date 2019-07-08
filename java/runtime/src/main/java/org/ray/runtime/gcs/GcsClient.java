@@ -160,7 +160,7 @@ public class GcsClient {
   }
 
   public JobId nextJobId() {
-    int jobCounter = primary.incr("JobCounter".getBytes());
+    int jobCounter = (int) primary.incr("JobCounter".getBytes());
     return JobId.fromInt(jobCounter);
   }
 

@@ -104,7 +104,7 @@ public class RedisClient {
     }
   }
 
-  public int incr(byte[] key) {
+  public long incr(byte[] key) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.incr(key).intValue();
     }
