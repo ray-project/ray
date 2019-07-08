@@ -139,12 +139,10 @@ class ModelCatalog(object):
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
                 dist = TorchDiagGaussian if torch else DiagGaussian
-                return dist, action_space.shape[0] * 2
             elif dist_type == "deterministic":
-                return Deterministic, action_space.shape[0]
+                dist = Deterministic
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = TorchCategorical if torch else Categorical
-            return dist, action_space.n
         elif isinstance(action_space, gym.spaces.Tuple):
             child_dist = []
             input_lens = []
@@ -163,12 +161,14 @@ class ModelCatalog(object):
         elif isinstance(action_space, Simplex):
             if torch:
                 raise NotImplementedError
-            return Dirichlet, action_space.shape[0]
-        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+            dist = Dirichlet
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if torch:
                 raise NotImplementedError
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+
+        return dist, dist.parameter_shape_for_action_space(action_space)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
@@ -184,11 +184,16 @@ class ModelCatalog(object):
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        if isinstance(action_space, gym.spaces.Box):
+        if isinstance(action_space, gym.spaces.Discrete):
+            return tf.placeholder(tf.int64, shape=(None,), name="action")
+        elif isinstance(action_space, (gym.spaces.Box, Simplex)):
             return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]), name="action")
-        elif isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None, ), name="action")
+                tf.float32, shape=(None,) + action_space.shape, name="action")
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+            return tf.placeholder(
+                tf.as_dtype(action_space.dtype),
+                shape=(None,) + action_space.shape,
+                name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -201,14 +206,6 @@ class ModelCatalog(object):
             return tf.placeholder(
                 tf.int64 if all_discrete else tf.float32,
                 shape=(None, size),
-                name="action")
-        elif isinstance(action_space, Simplex):
-            return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]), name="action")
-        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
-            return tf.placeholder(
-                tf.as_dtype(action_space.dtype),
-                shape=(None, len(action_space.nvec)),
                 name="action")
         else:
             raise NotImplementedError("action space {}"

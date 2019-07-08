@@ -5,6 +5,7 @@ from __future__ import print_function
 from collections import namedtuple
 import distutils.version
 import numpy as np
+import gym
 
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf
@@ -72,12 +73,9 @@ class ActionDistribution(object):
     @DeveloperAPI
     @staticmethod
     def parameter_shape_for_action_space(action_space, options_dict=None):
-        """Must be implemented for custom action distributions.
-
-        Returns the required shape of an input parameter tensor for a
+        """Returns the required shape of an input parameter tensor for a
         particular action space and an optional dict of distribution-specific
-        options (e.g., whether a Gaussian should expect a variable for its
-        log-variance parameter).
+        options.
 
         Args:
             action_space (gym.Space): The action space this distribution will
@@ -144,6 +142,11 @@ class Categorical(ActionDistribution):
     @override(ActionDistribution)
     def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, options_dict=None):
+        return action_space.n
 
 
 class MultiCategorical(ActionDistribution):
@@ -214,6 +217,11 @@ class DiagGaussian(ActionDistribution):
     def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, options_dict=None):
+        return action_space.shape[0] * 2
+
 
 class Deterministic(ActionDistribution):
     """Action distribution that returns the input values directly.
@@ -228,6 +236,11 @@ class Deterministic(ActionDistribution):
     @override(ActionDistribution)
     def _build_sample_op(self):
         return self.inputs
+
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, options_dict=None):
+        return action_space.shape[0]
 
 
 class MultiActionDistribution(ActionDistribution):
@@ -338,3 +351,8 @@ class Dirichlet(ActionDistribution):
     @override(ActionDistribution)
     def _build_sample_op(self):
         return self.dist.sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, options_dict=None):
+        return action_space.shape[0]
