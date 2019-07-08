@@ -173,9 +173,14 @@ if __name__ == "__main__":
             "observation_filter": "NoFilter",  # don't filter the action list
             "vf_share_layers": True,  # don't create duplicate value model
         }
-    elif args.run == "DQN":
+    elif args.run in ["SimpleQ", "DQN"]:
         cfg = {
             "hiddens": [],  # important: don't postprocess the action scores
+            # TODO(ekl) we could support dueling if the model in this example
+            # was ModelV2 and only emitted -inf values on get_q_values().
+            # The problem with ModelV1 is that the model outputs
+            # are used as state scores and hence cause blowup to inf.
+            "dueling": False,
         }
     else:
         cfg = {}  # PG, IMPALA, A2C, etc.

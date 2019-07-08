@@ -52,7 +52,6 @@ class Experiment(object):
         >>>     },
         >>>     num_samples=10,
         >>>     local_dir="~/ray_results",
-        >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
         >>>     max_failures=2)
     """
@@ -68,7 +67,7 @@ class Experiment(object):
                  upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
-                 sync_function=None,
+                 sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  keep_checkpoints_num=None,
@@ -78,30 +77,30 @@ class Experiment(object):
                  restore=None,
                  repeat=None,
                  trial_resources=None,
-                 custom_loggers=None):
-        if sync_function:
-            assert upload_dir, "Need `upload_dir` if sync_function given."
-
+                 custom_loggers=None,
+                 sync_function=None):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
             _raise_deprecation_note(
                 "trial_resources", "resources_per_trial", soft=False)
-        if custom_loggers:
-            _raise_deprecation_note("custom_loggers", "loggers", soft=False)
+        if sync_function:
+            _raise_deprecation_note(
+                "sync_function", "sync_to_driver", soft=False)
 
+        config = config or {}
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
             "stop": stop or {},
-            "config": config or {},
+            "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
-            "upload_dir": upload_dir or "",  # argparse converts None to "null"
+            "upload_dir": upload_dir,
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
-            "sync_function": sync_function,
+            "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "keep_checkpoints_num": keep_checkpoints_num,
@@ -182,7 +181,13 @@ class Experiment(object):
 
     @property
     def checkpoint_dir(self):
-        return os.path.join(self.spec["local_dir"], self.name)
+        if self.local_dir:
+            return os.path.join(self.local_dir, self.name)
+
+    @property
+    def remote_checkpoint_dir(self):
+        if self.spec["upload_dir"]:
+            return os.path.join(self.spec["upload_dir"], self.name)
 
 
 def convert_to_experiment_list(experiments):

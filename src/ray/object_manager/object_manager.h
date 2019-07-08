@@ -16,7 +16,6 @@
 
 #include "plasma/client.h"
 
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -202,23 +201,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Void.
   void TryPull(const ObjectID &object_id);
 
-  /// Add a connection to a remote object manager.
-  /// This is invoked by an external server.
-  ///
-  /// \param conn The connection.
-  /// \return Status of whether the connection was successfully established.
-  void ProcessNewClient(TcpClientConnection &conn);
-
-  /// Process messages sent from other nodes. We only establish
-  /// transfer connections using this method; all other transfer communication
-  /// is done separately.
-  ///
-  /// \param conn The connection.
-  /// \param message_type The message type.
-  /// \param message A pointer set to the beginning of the message.
-  void ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
-                            int64_t message_type, const uint8_t *message);
-
   /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
   /// method is idempotent.
   ///
@@ -337,11 +319,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
 
-  /// Part of an asynchronous sequence of Pull methods.
-  /// Uses an existing connection or creates a connection to ClientID.
-  /// Executes on main_service_ thread.
-  void PullEstablishConnection(const ObjectID &object_id, const ClientID &client_id);
-
   /// This is used to notify the main thread that the sending of a chunk has
   /// completed.
   ///
@@ -373,15 +350,6 @@ class ObjectManager : public ObjectManagerInterface,
   void HandleReceiveFinished(const ObjectID &object_id, const ClientID &client_id,
                              uint64_t chunk_index, double start_time_us,
                              double end_time_us, ray::Status status);
-
-  /// Execute a receive on the receive_service_ thread pool.
-  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                                   uint64_t data_size, uint64_t metadata_size,
-                                   uint64_t chunk_index, TcpClientConnection &conn);
-
-  /// Handles freeing objects request.
-  void ReceiveFreeRequest(std::shared_ptr<TcpClientConnection> &conn,
-                          const uint8_t *message);
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
@@ -449,7 +417,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// The client call manager used to deal with reply.
   rpc::ClientCallManager client_call_manager_;
 
-  /// clientID - object manager gRPC client.
+  /// Client id - object manager gRPC client.
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 };

@@ -17,7 +17,7 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, const Language &language);
+  Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkDead();
@@ -29,6 +29,7 @@ class Worker {
   pid_t Pid() const;
   Language GetLanguage() const;
   const WorkerID &GetWorkerId() const;
+  int Port() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
@@ -57,6 +58,8 @@ class Worker {
   WorkerID worker_id_;
   /// The worker's PID.
   pid_t pid_;
+  /// The worker port.
+  int port_;
   /// The language type of this worker.
   Language language_;
   /// The worker's currently assigned task.

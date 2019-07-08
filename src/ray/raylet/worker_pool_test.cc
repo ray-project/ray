@@ -76,7 +76,7 @@ class WorkerPoolTest : public ::testing::Test {
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
     WorkerID worker_id = WorkerID::FromRandom();
-    return std::shared_ptr<Worker>(new Worker(worker_id, pid, language));
+    return std::shared_ptr<Worker>(new Worker(worker_id, pid, -1, language));
   }
 
   void SetWorkerCommands(

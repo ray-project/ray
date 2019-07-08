@@ -42,6 +42,8 @@ void GrpcServer::Run() {
   }
   // Start a thread that polls incoming requests.
   polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
+  // Set the server as running.
+  is_closed_ = false;
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {
