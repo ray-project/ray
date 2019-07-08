@@ -37,6 +37,9 @@ parser.add_argument("--batch-size", default=120,
                     help="the batch size in number of records")
 parser.add_argument("--flush-timeout", default=0.1,  # 100ms
                     help="the timeout (in seconds) to flush a batch")
+parser.add_argument("--micro-batch", default=False,
+                    action='store_true',
+                    help="use micro-batch API")
 
 parser.add_argument("--simulate-cluster", default=False,
                     action='store_true',
@@ -82,8 +85,13 @@ parser.add_argument("--map-instances", default=1,
                     help="the number of instances of the map operator")
 
 
+# The mapper function that transforms a bid price from dollars to euros
+def dollars_to_euros(bid):
+    bid["price"] = bid["price"] * 0.9
+    return bid
+
 # The mapper function that transforms bid prices from dollars to euros
-def dollars_to_euros(batch_of_bids):
+def dollars_to_euros_batch(batch_of_bids):
     for bid in batch_of_bids:
         bid["price"] = bid["price"] * 0.9
     return batch_of_bids
@@ -98,6 +106,7 @@ if __name__ == "__main__":
     max_queue_size = int(args.queue_size)
     max_batch_size = int(args.batch_size)
     batch_timeout = float(args.flush_timeout)
+    micro_batch = bool(args.micro_batch)
 
     simulate_cluster = bool(args.simulate_cluster)
     pin_processes = bool(args.pin_processes)
@@ -126,6 +135,7 @@ if __name__ == "__main__":
     logger.info("Max queue size: {}".format(max_queue_size))
     logger.info("Max batch size: {}".format(max_batch_size))
     logger.info("Batch timeout: {}".format(batch_timeout))
+    logger.info("Micro-batch API: {}".format(micro_batch))
 
     logger.info("Simulate cluster: {}".format(simulate_cluster))
     logger.info("Pin processes: {}".format(pin_processes))
@@ -186,6 +196,8 @@ if __name__ == "__main__":
 
     # Create streaming environment, construct and run dataflow
     env = Environment()
+    if micro_batch:  # Set API
+        env.use_micro_batch_api()
     # Virtual queue configuration
     queue_config = QueueConfig(max_queue_size, max_batch_size, batch_timeout)
     env.set_queue_config(queue_config)
@@ -193,23 +205,24 @@ if __name__ == "__main__":
         env.enable_logging()
 
     # Construct the custom source objects (all read from the same file)
-    source_objects = [dg.NexmarkEventGenerator(bids_file, "Bid",
-                                               source_rate,
-                                               sample_period=sample_period,
-                                               max_records=max_records,
-                                               omit_extra=omit_extra)
-                      for _ in range(num_sources)]
+    source_object = dg.NexmarkEventGenerator(bids_file, "Bid",
+                                             source_rate,
+                                             sample_period=sample_period,
+                                             max_records=max_records,
+                                             omit_extra=omit_extra)
     # Add sources to the dataflow
-    bid_source = env.source(source_objects,
+    bid_source = env.source(source_object,
                     name="Bids Source",
-                    batch_size=max_batch_size,
-                    placement=placement["Bids Source"]).set_parallelism(
-                                                                  num_sources)
+                    placement=placement[
+                    "Bids Source"]).set_parallelism(num_sources)
+
+    # Set the right map function
+    map_fn =  dollars_to_euros_batch if micro_batch else dollars_to_euros
     # Add mapper
-    output = bid_source.map(dollars_to_euros,
-                        name="Dollars to Euros",
-                        placement=placement[
-                        "Dollars to Euros"]).set_parallelism(map_instances)
+    output = bid_source.map(map_fn,
+                    name="Dollars to Euros",
+                    placement=placement[
+                    "Dollars to Euros"]).set_parallelism(map_instances)
 
     # Add a final custom sink to measure latency (if logging is enabled)
     output.sink(dg.EventLatencySink(),

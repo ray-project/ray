@@ -65,7 +65,7 @@ class Config(object):
         # Dataflow parallelism (can be overwritten at the operator level)
         self.parallelism = parallelism
         # Micro-batch API
-        self.use_micro_batch = micro_batch_api
+        self.use_micro_batch_api = micro_batch_api
         # Logging flag
         self.logging = logging
         # ...
@@ -404,6 +404,10 @@ class Environment(object):
     def set_queue_config(self, queue_config):
         self.config.queue_config = queue_config
 
+    # Sets the same level of parallelism for all operators in the environment
+    def use_microbatch_api(self):
+        self.config.use_micro_batch_api = True
+
     # Enables actor logging
     def enable_logging(self):
         self.config.logging = True
@@ -411,7 +415,6 @@ class Environment(object):
     # Creates and registers a user-defined data source
     def source(self, source_object, watermark_interval=0,
                name="Source_"+_generate_uuid(),
-               batch_size=None,
                placement=None):
         source_id = _generate_uuid()
         source_stream = DataStream(self, source_id)
@@ -420,7 +423,6 @@ class Environment(object):
                                              source_object,
                                              watermark_interval,
                                              name,
-                                             batch_size=batch_size,
                                              logging=self.config.logging,
                                              placement=placement)
         return source_stream

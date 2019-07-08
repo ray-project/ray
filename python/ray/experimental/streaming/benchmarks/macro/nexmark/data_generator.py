@@ -103,15 +103,14 @@ class EventLatencySink(object):
     def __init__(self):
         self.state = []
 
-    # Evicts next batch of records
-    def evict(self, batch):
-        for record in batch:
-            if record["event_type"] == "Watermark":
-                return  # Ignore watermarks
-            generation_time = record["system_time"]
-            if generation_time is not None:
-                # TODO (john): Clock skew might distort elapsed time
-                self.state.append(time.time() - generation_time)
+    # Evicts next record
+    def evict(self, record):
+        if record["event_type"] == "Watermark":
+            return  # Ignore watermarks
+        generation_time = record["system_time"]
+        if generation_time is not None:
+            # TODO (john): Clock skew might distort elapsed time
+            self.state.append(time.time() - generation_time)
 
     # Initializes the sink
     def init(self):
