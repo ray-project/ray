@@ -1,12 +1,11 @@
 package org.ray.runtime;
 
+import java.util.concurrent.atomic.AtomicLong;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.MockRayletClient;
-
-import java.util.concurrent.atomic.AtomicLong;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
