@@ -2510,7 +2510,7 @@ def test_global_state_api(shutdown_only):
 
     assert ray.objects() == {}
 
-    job_id = ray.JobID.compute_job_id_from_driver(
+    job_id = ray.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
