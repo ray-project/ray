@@ -466,7 +466,7 @@ class Source(OperatorInstance):
     def start(self):
         signal.send(ActorStart(self.instance_id))
         self.start_time = time.time()
-        batch_size = output[0].queue_config.max_batch_size
+        batch_size = self.output[0].queue_config.max_batch_size
         while True:
             record_batch = self.source.get_next(batch_size)
             if record_batch is None:  # Source is exhausted
