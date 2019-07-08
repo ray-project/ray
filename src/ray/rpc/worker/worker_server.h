@@ -19,7 +19,8 @@ class WorkerTaskHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \return status.
-  virtual Status HandleAssignTask(const AssignTaskRequest &request, AssignTaskReply *reply) = 0;
+  virtual Status HandleAssignTask(const AssignTaskRequest &request,
+                                  AssignTaskReply *reply) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.

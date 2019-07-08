@@ -18,8 +18,8 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket) {
     auto executor_func = [this](const RayFunction &ray_function,
-                            const std::vector<std::shared_ptr<RayObject>> &args,
-                            const TaskInfo &task_info, int num_returns) {
+                                const std::vector<std::shared_ptr<RayObject>> &args,
+                                const TaskInfo &task_info, int num_returns) {
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
 
@@ -40,9 +40,10 @@ class MockWorker {
       }
       return Status::OK();
     };
-    
-    worker_ = std::unique_ptr<CoreWorker>(new CoreWorker(WorkerType::WORKER, Language::PYTHON,
-        store_socket, raylet_socket, JobID::FromRandom(), executor_func));
+
+    worker_ = std::unique_ptr<CoreWorker>(
+        new CoreWorker(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+                       JobID::FromRandom(), executor_func));
   }
 
   void Run() {

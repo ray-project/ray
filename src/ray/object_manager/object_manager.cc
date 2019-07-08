@@ -664,7 +664,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 
 /// Implementation of ObjectManagerServiceHandler
 Status ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
-                                      rpc::PushReply *reply) {
+                                        rpc::PushReply *reply) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -710,7 +710,7 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
 }
 
 Status ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
-                                      rpc::PullReply *reply) {
+                                        rpc::PullReply *reply) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
@@ -732,7 +732,7 @@ Status ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
 }
 
 Status ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
-                                             rpc::FreeObjectsReply *reply) {
+                                               rpc::FreeObjectsReply *reply) {
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));

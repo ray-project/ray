@@ -32,8 +32,7 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
   CoreWorkerRayletTaskReceiver(boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server,
-                               const TaskHandler &task_handler);
+                               rpc::GrpcServer &server, const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -42,13 +41,13 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   Status HandleAssignTask(const rpc::AssignTaskRequest &request,
-                        rpc::AssignTaskReply *reply) override;
+                          rpc::AssignTaskReply *reply) override;
 
  private:
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.
-  TaskHandler task_handler_;  
+  TaskHandler task_handler_;
 };
 
 }  // namespace ray

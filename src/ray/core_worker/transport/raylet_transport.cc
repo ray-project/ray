@@ -14,10 +14,9 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : task_service_(io_service, *this),
-      task_handler_(task_handler) {
+    boost::asio::io_service &io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler)
+    : task_service_(io_service, *this), task_handler_(task_handler) {
   server.RegisterService(task_service_);
 }
 

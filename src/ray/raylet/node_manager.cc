@@ -1235,7 +1235,7 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
 }
 
 Status NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                                    rpc::ForwardTaskReply *reply) {
+                                      rpc::ForwardTaskReply *reply) {
   // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;

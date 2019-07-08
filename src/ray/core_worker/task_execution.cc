@@ -16,17 +16,18 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
-      std::placeholders::_1);
+                        std::placeholders::_1);
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          main_service_, worker_server_, func)));
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+          new CoreWorkerRayletTaskReceiver(main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::ExecuteTask(const raylet::TaskSpecification &spec) {
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(
+    const raylet::TaskSpecification &spec) {
   worker_context_.SetCurrentTask(spec);
 
   RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};

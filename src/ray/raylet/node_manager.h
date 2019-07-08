@@ -466,7 +466,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handle a `ForwardTask` request.
   Status HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                         rpc::ForwardTaskReply *reply) override;
+                           rpc::ForwardTaskReply *reply) override;
 
   // GCS client ID for this node.
   ClientID client_id_;

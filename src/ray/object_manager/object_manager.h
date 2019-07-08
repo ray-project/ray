@@ -83,24 +83,26 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param reply Reply to the sender
   /// \param done_callback Callback of the request
   /// \return status.
-  Status HandlePushRequest(const rpc::PushRequest &request, rpc::PushReply *reply) override;
+  Status HandlePushRequest(const rpc::PushRequest &request,
+                           rpc::PushReply *reply) override;
 
   /// Handle pull request from remote object manager
   ///
   /// \param request Pull request
   /// \param reply Reply
   /// \param done_callback Callback of request
-  /// \return status.  
-  Status HandlePullRequest(const rpc::PullRequest &request, rpc::PullReply *reply) override;
+  /// \return status.
+  Status HandlePullRequest(const rpc::PullRequest &request,
+                           rpc::PullReply *reply) override;
 
   /// Handle free objects request
   ///
   /// \param request Free objects request
   /// \param reply Reply
   /// \param done_callback
-  /// \return status.  
+  /// \return status.
   Status HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
-                                rpc::FreeObjectsReply *reply) override;
+                                  rpc::FreeObjectsReply *reply) override;
 
   /// Send object to remote object manager
   ///
