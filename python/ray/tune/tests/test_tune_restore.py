@@ -66,6 +66,7 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
 
+    @unittest.skip("cifar10.load_data is currently flaky.")
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         validate_save_restore(Cifar10Model)
