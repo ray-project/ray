@@ -166,6 +166,12 @@ class DistributionalQModel(TFModelV2):
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 
+    def forward(self, input_dict, state, seq_lens):
+        """This generates the model_out tensor input.
+
+        You must implement this as documented in modelv2.py."""
+        raise NotImplementedError
+
     def get_q_value_distributions(self, model_out):
         """Returns distributional values for Q(s, a) given a state embedding.
 

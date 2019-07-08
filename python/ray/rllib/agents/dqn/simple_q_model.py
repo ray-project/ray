@@ -54,6 +54,12 @@ class SimpleQModel(TFModelV2):
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.register_variables(self.q_value_head.variables)
 
+    def forward(self, input_dict, state, seq_lens):
+        """This generates the model_out tensor input.
+
+        You must implement this as documented in modelv2.py."""
+        raise NotImplementedError
+
     def get_q_values(self, model_out):
         """Returns Q(s, a) given a feature tensor for the state.
 
