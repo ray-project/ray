@@ -926,16 +926,34 @@ class Worker(object):
         finally:
             self._current_task = None
 
-        # Store the outputs in the local object store.
+        retries_left = 5
+        delay = 1
         try:
-            with profiling.profile("task:store_outputs"):
-                # If this is an actor task, then the last object ID returned by
-                # the task is a dummy output, not returned by the function
-                # itself. Decrement to get the correct number of return values.
-                num_returns = len(return_object_ids)
-                if num_returns == 1:
-                    outputs = (outputs, )
-                self._store_outputs_in_object_store(return_object_ids, outputs)
+            while retries_left:
+                retries_left -= 1
+                logger.info("retrying: {}.".format(retries_left))
+                # Store the outputs in the local object store.
+                try:
+                    with profiling.profile("task:store_outputs"):
+                        # If this is an actor task, then the last object ID returned by
+                        # the task is a dummy output, not returned by the function
+                        # itself. Decrement to get the correct number of return values.
+                        num_returns = len(return_object_ids)
+                        if num_returns == 1:
+                            outputs = (outputs, )
+                        self._store_outputs_in_object_store(
+                            return_object_ids, outputs)
+                    return
+                except pyarrow.lib.PlasmaStoreFull as plasma_exc:
+                    if retries_left:
+                        logger.info(
+                            "Waiting {} for plasma store to drain.".format(
+                                delay))
+                        time.sleep(delay)
+                        delay *= 2
+                    else:
+                        logger.info("Failed.")
+                        raise plasma_exc
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
