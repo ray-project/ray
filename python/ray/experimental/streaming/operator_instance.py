@@ -423,11 +423,8 @@ class Source(OperatorInstance):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
                                   input_gate, output_gate,
                                   checkpoint_dir)
-
-        _, local_instance_id = instance_id
-        source_objects = operator_metadata.sources
         # The user-defined source
-        self.source = source_object
+        self.source = operator_metadata.source
         self.source.init()  # Initialize the source
         # The watermark interval in ms
         self.watermark_interval = operator_metadata.watermark_interval
