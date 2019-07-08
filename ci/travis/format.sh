@@ -26,13 +26,19 @@ FLAKE8_VERSION=$(flake8 --version | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
 
 if [[ $FLAKE8_VERSION != "3.7.7" ]]; then
-  echo "Please install flake8==3.7.7. You currently are using $FLAKE8_VERSION."
-  exit 1
+    echo "WARNING: Please install flake8==3.7.7. You currently are using $FLAKE8_VERSION."
+    read -p "Are you sure to continue?[y/n]" input
+    if ! [ $input = 'y' ]; then
+        exit 1
+    fi
 fi
 
 if [[ $YAPF_VERSION != "0.23.0" ]]; then
-  echo "Please install yapf==0.23.0. You currently are using $YAPF_VERSION."
-  exit 1
+    echo "WARNING: Please install yapf==0.23.0. You currently are using $YAPF_VERSION."
+    read -p "Are you sure to continue?[y/n]" input
+    if ! [ $input = 'y' ]; then
+        exit 1
+    fi
 fi
 
 if which clang-format >/dev/null; then
@@ -45,7 +51,8 @@ if which clang-format >/dev/null; then
     fi
   fi
 else
-  echo "WARNING: clang-format is not installed!"
+    echo "WARNING: clang-format is not installed!"
+    exit 1
 fi
 
 # Only fetch master since that's the branch we're diffing against.
