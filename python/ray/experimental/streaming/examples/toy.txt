@@ -1,5 +1,0 @@
-This is
-a test file
-to test if example
-works
-fine
