@@ -1847,6 +1847,9 @@ bool NodeManager::AssignTask(const Task &task) {
     }
   };
 
+  ResourceIdSet resource_id_set =
+      worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
+
   if (worker->Port() > 0) {
     // Worker is listening on a port. Push the task directly to worker.
     // Lookup worker client for this node_id and use it to send the request.
@@ -1864,6 +1867,7 @@ bool NodeManager::AssignTask(const Task &task) {
     rpc::AssignTaskRequest request;
     request.set_task_id(task_id.Binary());
     request.set_task_spec(task.Serialize());
+    request.set_resource_ids(resource_id_set.Serialize());
 
     auto status = client->AssignTask(
         request, [this, worker](Status status, const rpc::AssignTaskReply &reply) {
@@ -1894,8 +1898,8 @@ bool NodeManager::AssignTask(const Task &task) {
         [status, finish_assign_task_callback]() { finish_assign_task_callback(status); });
 
   } else {
-    ResourceIdSet resource_id_set =
-        worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
+    // This corresponds to existing python/java workers that haven't been
+    // migrated to core worker architecture.
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
     auto message = protocol::CreateGetTaskReply(

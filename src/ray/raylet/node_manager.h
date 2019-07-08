@@ -536,7 +536,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
 
-  /// Map from node ids to clients of the local workers.
+  /// Map from worker ids to rpc clients of workers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerTaskClient>> worker_clients_;
 };
 
