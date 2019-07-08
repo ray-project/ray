@@ -31,7 +31,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskLeaseData> {
   MOCK_METHOD4(
       Add,
       ray::Status(const JobID &job_id, const TaskID &task_id,
-                  std::shared_ptr<TaskLeaseData> &task_data,
+                  const std::shared_ptr<TaskLeaseData> &task_data,
                   const gcs::TableInterface<TaskID, TaskLeaseData>::WriteCallback &done));
 };
 

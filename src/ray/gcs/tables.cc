@@ -40,7 +40,8 @@ namespace gcs {
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
-                             std::shared_ptr<Data> &data, const WriteCallback &done) {
+                             const std::shared_ptr<Data> &data,
+                             const WriteCallback &done) {
   num_appends_++;
   auto callback = [this, id, data, done](const CallbackReply &reply) {
     const auto status = reply.ReadAsStatus();
@@ -59,8 +60,9 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
-                               std::shared_ptr<Data> &data, const WriteCallback &done,
-                               const WriteCallback &failure, int log_length) {
+                               const std::shared_ptr<Data> &data,
+                               const WriteCallback &done, const WriteCallback &failure,
+                               int log_length) {
   num_appends_++;
   auto callback = [this, id, data, done, failure](const CallbackReply &reply) {
     const auto status = reply.ReadAsStatus();
@@ -226,7 +228,8 @@ std::string Log<ID, Data>::DebugString() const {
 
 template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
-                            std::shared_ptr<Data> &data, const WriteCallback &done) {
+                            const std::shared_ptr<Data> &data,
+                            const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, data, done](const CallbackReply &reply) {
     if (done != nullptr) {
@@ -288,8 +291,8 @@ std::string Table<ID, Data>::DebugString() const {
 }
 
 template <typename ID, typename Data>
-Status Set<ID, Data>::Add(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
-                          const WriteCallback &done) {
+Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
+                          const std::shared_ptr<Data> &data, const WriteCallback &done) {
   num_adds_++;
   auto callback = [this, id, data, done](const CallbackReply &reply) {
     if (done != nullptr) {
@@ -303,7 +306,8 @@ Status Set<ID, Data>::Add(const JobID &job_id, const ID &id, std::shared_ptr<Dat
 
 template <typename ID, typename Data>
 Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
-                             std::shared_ptr<Data> &data, const WriteCallback &done) {
+                             const std::shared_ptr<Data> &data,
+                             const WriteCallback &done) {
   num_removes_++;
   auto callback = [this, id, data, done](const CallbackReply &reply) {
     if (done != nullptr) {

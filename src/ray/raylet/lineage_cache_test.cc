@@ -24,7 +24,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status Add(const JobID &job_id, const TaskID &task_id,
-             std::shared_ptr<TaskTableData> &task_data,
+             const std::shared_ptr<TaskTableData> &task_data,
              const gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     auto callback = done;

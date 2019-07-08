@@ -163,7 +163,7 @@ class CoreWorkerTaskInterface {
   /// node.
   /// \param[out] return_ids Return IDs.
   /// \return A `TaskSpecBuilder`.
-  inline raylet::TaskSpecBuilder BuildCommonTaskSpec(
+  raylet::TaskSpecBuilder BuildCommonTaskSpec(
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,

@@ -98,7 +98,7 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   const auto task_id = TaskID::FromRandom();
-  auto data = CreateTaskTableData(task_id);
+  const auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
   auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
@@ -921,7 +921,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
   // Add a table entry.
   const auto task_id = TaskID::FromRandom();
   const int num_modifications = 3;
-  auto data = CreateTaskTableData(task_id, 0);
+  const auto data = CreateTaskTableData(task_id, 0);
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
 
   // The failure callback should not be called since all keys are non-empty
