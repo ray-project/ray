@@ -318,7 +318,8 @@ class Environment(object):
             ]
             log = "Constructed {} input and {} output channels "
             log += "for the {}-th instance of the {} operator."
-            logger.debug(log.format(len(ip), len(op), i, operator.type))
+            logger.debug(log.format(len(input_channels),
+                                    len(outout_channels), i, operator.type))
             input_gate = DataInput(input_channels)
             output_gate = DataOutput(outout_channels,
                                      operator.partitioning_strategies)
