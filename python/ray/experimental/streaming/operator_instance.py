@@ -259,7 +259,7 @@ class Map(OperatorInstance):
     # Applies map logic on a batch of records (one record at a time)
     def _apply(self, batch, input_channel_id=None):
         for record in batch:
-            self.output._push(self.map_fn(batch))
+            self.output._push(self.map_fn(record))
 
     # Applies map logic on a batch of records
     def _apply_batch(self, batch, input_channel_id=None):
