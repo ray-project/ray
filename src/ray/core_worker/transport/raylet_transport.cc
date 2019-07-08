@@ -20,16 +20,14 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
   server.RegisterService(task_service_);
 }
 
-void CoreWorkerRayletTaskReceiver::HandleAssignTask(
-    const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
-    rpc::RequestDoneCallback done_callback) {
+Status CoreWorkerRayletTaskReceiver::HandleAssignTask(
+    const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply) {
   const std::string &task_message = request.task_spec();
   const raylet::Task task(*flatbuffers::GetRoot<protocol::Task>(
       reinterpret_cast<const uint8_t *>(task_message.data())));
   const auto &spec = task.GetTaskSpecification();
 
-  auto status = task_handler_(spec);
-  done_callback(status);
+  return task_handler_(spec);
 }
 
 Status CoreWorkerRayletTaskReceiver::SetTaskHandler(const TaskHandler &callback) {

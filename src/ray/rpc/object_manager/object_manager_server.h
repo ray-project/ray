@@ -15,21 +15,17 @@ namespace rpc {
 class ObjectManagerServiceHandler {
  public:
   /// Handle a `Push` request.
-  /// The implementation can handle this request asynchronously. When handling is done,
-  /// the `done_callback` should be called.
+  /// The implementation can handle this request asynchronously.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
-  virtual void HandlePushRequest(const PushRequest &request, PushReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
+  /// \return status.
+  virtual Status HandlePushRequest(const PushRequest &request, PushReply *reply) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePullRequest(const PullRequest &request, PullReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
+  virtual Status HandlePullRequest(const PullRequest &request, PullReply *reply) = 0;
   /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
-                                        FreeObjectsReply *reply,
-                                        RequestDoneCallback done_callback) = 0;
+  virtual Status HandleFreeObjectsRequest(const FreeObjectsRequest &request,
+                                          FreeObjectsReply *reply) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.

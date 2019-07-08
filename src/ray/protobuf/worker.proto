@@ -14,7 +14,7 @@ message AssignTaskRequest {
   // A list of the resources reserved for this worker.
   // TODO(zhijunfu): `resource_ids` is represented as
   // flatbutters-serialized bytes, will be moved to protobuf later.
-  repeated bytes resource_ids = 3;
+  bytes resource_ids = 3;
 }
 
 message AssignTaskReply {
