@@ -216,10 +216,14 @@ class AWSNodeProvider(NodeProvider):
             "TagSpecifications": tag_specs
         })
 
-        logger.info(f"NodeProvider: Calling create_instances {count}...")
+        logger.info(
+            "NodeProvider: Calling create_instances (count={}).".format(count))
         L = self.ec2.create_instances(**conf)
         for x in L:
-            logger.info(f"NodeProvider: created instance {x.instance_id} {x.state['Name']} {x.state_reason['Message']}")
+            logger.info("NodeProvider: Created instance "
+                        "[id={}, name={}, info={}]".format(
+                            x.instance_id, x.state["Name"],
+                            x.state_reason["Message"]))
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
