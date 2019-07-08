@@ -1861,8 +1861,6 @@ bool NodeManager::AssignTask(const Task &task) {
     }
     auto &client = client_entry->second;
 
-    // TODO(zhijunfu): AssignTask() only sends the task spec to the worker, but
-    // doesn't include the task resource ids.
     rpc::AssignTaskRequest request;
     request.set_task_id(task_id.Binary());
     request.set_task_spec(task.Serialize());

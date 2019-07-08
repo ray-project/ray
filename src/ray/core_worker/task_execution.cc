@@ -7,22 +7,60 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface)
+    CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor)
     : worker_context_(worker_context),
       object_interface_(object_interface),
+      execution_callback_(executor),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_work_(main_service_) {
+  RAY_CHECK(execution_callback_ != nullptr);
+
+  auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
+      std::placeholders::_1);
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, main_service_, worker_server_)));
+          main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
-  auto callback = [this, executor](const raylet::TaskSpecification &spec) {
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(const raylet::TaskSpecification &spec) {
+  worker_context_.SetCurrentTask(spec);
+
+  RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
+
+  std::vector<std::shared_ptr<RayObject>> args;
+  RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+
+  TaskType task_type;
+  if (spec.IsActorCreationTask()) {
+    task_type = TaskType::ACTOR_CREATION_TASK;
+  } else if (spec.IsActorTask()) {
+    task_type = TaskType::ACTOR_TASK;
+  } else {
+    task_type = TaskType::NORMAL_TASK;
+  }
+
+  TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
+
+  auto num_returns = spec.NumReturns();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+    RAY_CHECK(num_returns > 0);
+    // Decrease to account for the dummy object id.
+    num_returns--;
+  }
+
+  auto status = execution_callback_(func, args, task_info, num_returns);
+  // TODO(zhijunfu):
+  // 1. Check and handle failure.
+  // 2. Save or load checkpoint.
+  return status;
+}
+
+Status CoreWorkerTaskExecutionInterface::Run() {
+  auto callback = [this](const raylet::TaskSpecification &spec) {
     worker_context_.SetCurrentTask(spec);
 
     RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
@@ -48,16 +86,12 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
       num_returns--;
     }
 
-    auto status = executor(func, args, task_info, num_returns);
+    auto status = execution_callback_(func, args, task_info, num_returns);
     // TODO(zhijunfu):
     // 1. Check and handle failure.
     // 2. Save or load checkpoint.
     return status;
   };
-
-  for (auto &entry : task_receivers_) {
-    entry.second->SetTaskHandler(callback);
-  }
 
   // Run main IO service.
   main_service_.run();

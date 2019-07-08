@@ -25,7 +25,8 @@ class CoreWorker {
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const ::Language language,
              const std::string &store_socket, const std::string &raylet_socket,
-             const JobID &job_id = JobID::Nil());
+             const JobID &job_id,
+             CoreWorkerTaskExecutionInterface::TaskExecutor execution_callback = nullptr);
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }

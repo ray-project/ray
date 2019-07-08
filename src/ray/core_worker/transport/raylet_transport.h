@@ -31,9 +31,9 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
-                               boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server);
+  CoreWorkerRayletTaskReceiver(boost::asio::io_service &io_service,
+                               rpc::GrpcServer &server,
+                               const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -44,15 +44,11 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   Status HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply) override;
 
-  Status SetTaskHandler(const TaskHandler &callback) override;
-
  private:
-  /// Raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
-  /// The callback function to process a task.
-  TaskHandler task_handler_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
+  /// The callback function to process a task.
+  TaskHandler task_handler_;  
 };
 
 }  // namespace ray

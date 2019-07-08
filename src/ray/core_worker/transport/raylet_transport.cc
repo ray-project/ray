@@ -14,9 +14,10 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server)
-    : raylet_client_(raylet_client), task_service_(io_service, *this) {
+    boost::asio::io_service &io_service,
+    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    : task_service_(io_service, *this),
+      task_handler_(task_handler) {
   server.RegisterService(task_service_);
 }
 
@@ -28,11 +29,6 @@ Status CoreWorkerRayletTaskReceiver::HandleAssignTask(
   const auto &spec = task.GetTaskSpecification();
 
   return task_handler_(spec);
-}
-
-Status CoreWorkerRayletTaskReceiver::SetTaskHandler(const TaskHandler &callback) {
-  task_handler_ = callback;
-  return Status::OK();
 }
 
 }  // namespace ray

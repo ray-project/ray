@@ -33,9 +33,6 @@ class CoreWorkerTaskSubmitter {
 class CoreWorkerTaskReceiver {
  public:
   using TaskHandler = std::function<Status(const raylet::TaskSpecification &task_spec)>;
-
-  // Get tasks for execution.
-  virtual Status SetTaskHandler(const TaskHandler &callback) = 0;
 };
 
 }  // namespace ray

@@ -5,7 +5,8 @@ namespace ray {
 
 CoreWorker::CoreWorker(const enum WorkerType worker_type, const ::Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
-                       const JobID &job_id)
+                       const JobID &job_id,
+                       CoreWorkerTaskExecutionInterface::TaskExecutor execution_callback)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
@@ -14,9 +15,11 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type, const ::Language langu
       object_interface_(worker_context_, raylet_client_, store_socket) {
   int rpc_server_port = 0;
   if (worker_type_ == ray::WorkerType::WORKER) {
+    RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                             object_interface_));
+                                             object_interface_,
+                                             execution_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
