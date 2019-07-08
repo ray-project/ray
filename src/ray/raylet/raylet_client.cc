@@ -202,19 +202,20 @@ ray::Status RayletConnection::AtomicRequestReply(
 }
 
 RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-                           bool is_worker, const DriverID &driver_id,
-                           const Language &language)
+                           bool is_worker, const JobID &job_id, const Language &language,
+                           int port)
     : client_id_(client_id),
       is_worker_(is_worker),
-      driver_id_(driver_id),
-      language_(language) {
+      job_id_(job_id),
+      language_(language),
+      port_(port) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
-      language);
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
+      language, port);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -323,11 +324,11 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::PushError(const DriverID &driver_id, const std::string &type,
+ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
-      fbb, to_flatbuf(fbb, driver_id), fbb.CreateString(type),
+      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 

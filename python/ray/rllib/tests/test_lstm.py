@@ -182,6 +182,7 @@ class RNNSequencing(unittest.TestCase):
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
+                    "state_shape": [3, 3],
                 },
             })
         ppo.train()
@@ -228,6 +229,7 @@ class RNNSequencing(unittest.TestCase):
         ppo = PPOTrainer(
             env="counter",
             config={
+                "shuffle_sequences": False,  # for deterministic testing
                 "num_workers": 0,
                 "sample_batch_size": 20,
                 "train_batch_size": 20,
@@ -238,6 +240,7 @@ class RNNSequencing(unittest.TestCase):
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
+                    "state_shape": [3, 3],
                 },
             })
         ppo.train()

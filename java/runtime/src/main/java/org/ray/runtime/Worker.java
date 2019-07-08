@@ -86,7 +86,7 @@ public class Worker {
     try {
       // Get method
       RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(spec.driverId, spec.getJavaFunctionDescriptor());
+          .getFunction(spec.jobId, spec.getJavaFunctionDescriptor());
       // Set context
       runtime.getWorkerContext().setCurrentTask(spec, rayFunction.classLoader);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);

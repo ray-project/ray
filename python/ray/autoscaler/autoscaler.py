@@ -10,6 +10,7 @@ import math
 import os
 import subprocess
 import threading
+import traceback
 import time
 from collections import defaultdict
 
@@ -507,7 +508,7 @@ class StandardAutoscaler(object):
     def reload_config(self, errors_fatal=False):
         try:
             with open(self.config_path) as f:
-                new_config = yaml.load(f.read())
+                new_config = yaml.safe_load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
@@ -660,6 +661,22 @@ class StandardAutoscaler(object):
 
         return "{}/{} target nodes{}".format(
             len(nodes), self.target_num_workers(), suffix)
+
+    def kill_workers(self):
+        logger.error("StandardAutoscaler: kill_workers triggered")
+
+        while True:
+            try:
+                nodes = self.workers()
+                if nodes:
+                    self.provider.terminate_nodes(nodes)
+                logger.error(
+                    "StandardAutoscaler: terminated {} node(s)".format(
+                        len(nodes)))
+            except Exception:
+                traceback.print_exc()
+
+            time.sleep(10)
 
 
 def typename(v):
