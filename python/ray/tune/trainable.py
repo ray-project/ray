@@ -22,6 +22,8 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
 
+from ray.tune.util import UtilMonitor
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +66,7 @@ class Trainable(object):
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        log_sys_usage = self.config.get("log_sys_usage", False)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -86,6 +89,7 @@ class Trainable(object):
         self._restored = False
         self._setup(copy.deepcopy(self.config))
         self._local_ip = ray.services.get_node_ip_address()
+        self._monitor = UtilMonitor(start=log_sys_usage)
 
     @classmethod
     def default_resource_request(cls, config):
@@ -204,6 +208,10 @@ class Trainable(object):
             time_since_restore=self._time_since_restore,
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
+
+        monitor_data = self._monitor.get_data()
+        if monitor_data:
+            result.update(monitor_data)
 
         self._log_result(result)
 
@@ -442,7 +450,6 @@ class Trainable(object):
         Args:
             result (dict): Training result returned by _train().
         """
-
         self._result_logger.on_result(result)
 
     def _stop(self):

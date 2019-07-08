@@ -50,7 +50,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                  train_batch_size=1024,
                  num_gpus=0,
                  standardize_fields=[],
-                 straggler_mitigation=False):
+                 straggler_mitigation=False,
+                 shuffle_sequences=True):
         PolicyOptimizer.__init__(self, workers)
 
         self.batch_size = sgd_batch_size
@@ -59,6 +60,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
         self.train_batch_size = train_batch_size
         self.straggler_mitigation = straggler_mitigation
+        self.shuffle_sequences = shuffle_sequences
         if not num_gpus:
             self.devices = ["/cpu:0"]
         else:
@@ -157,10 +159,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                 standardized = (value - value.mean()) / max(1e-4, value.std())
                 batch[field] = standardized
 
-            # Important: don't shuffle RNN sequence elements
-            if not policy._state_inputs:
-                batch.shuffle()
-
         num_loaded_tuples = {}
         with self.load_timer:
             for policy_id, batch in samples.policy_batches.items():
@@ -168,7 +166,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                     continue
 
                 policy = self.policies[policy_id]
-                tuples = policy._get_loss_inputs_dict(batch)
+                policy._debug_vars()
+                tuples = policy._get_loss_inputs_dict(
+                    batch, shuffle=self.shuffle_sequences)
                 data_keys = [ph for _, ph in policy._loss_inputs]
                 if policy._state_inputs:
                     state_keys = policy._state_inputs + [policy._seq_lens]
