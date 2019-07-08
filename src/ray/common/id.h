@@ -19,6 +19,17 @@ namespace ray {
 
 class WorkerID;
 class UniqueID;
+class JobID;
+
+/// TODO(qwang): These 2 helper functions should be removed once we separated the
+/// `WorkerID` from `UniqueID`.
+///
+/// A helper function that compute the `JobID` from the given `DriverID.`
+JobID ComputeJobIdFromDriver(const WorkerID &driver_id);
+
+/// A helper function that get the `DriverID` of the given job.
+WorkerID ComputeDriverIdFromJob(const JobID &job_id);
+
 
 // Declaration.
 std::mt19937 RandomlySeededMersenneTwister();
@@ -31,6 +42,7 @@ template <typename T>
 class BaseID {
  public:
   BaseID();
+  static T FromRandom();
   static T FromBinary(const std::string &binary);
   static const T &Nil();
   static size_t Size() { return T::Size(); }
@@ -44,7 +56,6 @@ class BaseID {
   std::string Hex() const;
 
  protected:
-  static T FromRandom();
 
   BaseID(const std::string &binary) {
     std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), T::Size());
@@ -59,7 +70,6 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-  static UniqueID FromRandom() { return BaseID<UniqueID>::FromRandom(); }
 
   static size_t Size() { return kUniqueIDSize; }
 
@@ -76,20 +86,13 @@ class JobID : public BaseID<JobID> {
  public:
   static constexpr int64_t length = 4;
 
-  // TODO(qwang): Move this to `WorkerID::JobId()`
-  // once we separate `WorkerID` from `UniqueID`.
-  //
-  // Note that this is only used for driver id since we only embed
-  // job id to driver id and not embed job id to worker id yet.
-  static JobID FromDriverId(const WorkerID &driver_id);
-
   static JobID FromInt(int32_t value);
 
   static size_t Size() { return length; }
 
-  JobID() : BaseID() {}
+  static JobID FromRandom() = delete;
 
-  WorkerID DriverId() const;
+  JobID() : BaseID() {}
 
  private:
   uint8_t id_[length];
@@ -100,7 +103,6 @@ class TaskID : public BaseID<TaskID> {
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
-  static TaskID FromRandom() { return BaseID<TaskID>::FromRandom(); }
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -108,7 +110,6 @@ class TaskID : public BaseID<TaskID> {
 
 class ObjectID : public BaseID<ObjectID> {
  public:
-  static ObjectID FromRandom() { return BaseID<ObjectID>::FromRandom(); }
 
   ObjectID() : BaseID() {}
   static size_t Size() { return kUniqueIDSize; }

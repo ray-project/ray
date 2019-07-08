@@ -1716,8 +1716,8 @@ def connect(node,
 
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
-        # The Redis client can safely be shared between threads. However, that is
-        # not true of Redis pubsub clients. See the documentation at
+        # The Redis client can safely be shared between threads. However,
+        # that is not true of Redis pubsub clients. See the documentation at
         # https://github.com/andymccurdy/redis-py#thread-safety.
         worker.redis_client = node.create_redis_client()
 
