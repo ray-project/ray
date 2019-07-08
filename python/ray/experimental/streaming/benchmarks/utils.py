@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
 CLUSTER_NODE_PREFIX = "Node_"
+LOGGING_PERIOD = 100000  # Log throughput every 100K records
 
 
 # Uses Linux taskset command to pin each Python process to a CPU core

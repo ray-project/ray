@@ -78,7 +78,7 @@ class Operator(object):
         self.placement = placement
         # TODO (john): Assign operator instances to nodes automatically if
         # no placement is specified. Do not allow empty placements for now
-        assert(self.placement is not None), (self.placement)
+        assert self.placement is not None
 
     # Sets the partitioning scheme for an output stream of the operator
     def _set_partition_strategy(self,
@@ -167,14 +167,16 @@ class KeyByOperator(Operator):
                  name="",
                  logic=None,
                  num_instances=1,
-                 logging=False):
+                 logging=False,
+                 placement=None):
         Operator.__init__(self,
                           id,
                           type,
                           name,
                           logic,
                           num_instances,
-                          logging)
+                          logging,
+                          placement)
         self.key_selector = key_selector
 
 

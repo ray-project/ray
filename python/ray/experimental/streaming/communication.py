@@ -9,15 +9,13 @@ import time
 import uuid
 
 import ray
+from ray.experimental.streaming.benchmarks.utils import LOGGING_PERIOD
 from ray.experimental.streaming.operator import PStrategy
-from ray.experimental.streaming.batched_queue import BatchedQueue
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
-
-LOGGING_PERIOD = 100000  # Log throughput every 100K records
 
 
 # Round robin and rescale partitioning strategies (default)
@@ -86,7 +84,7 @@ class DataChannel(object):
 
     def __init__(self, env_config, src_operator_id, dst_operator_id,
                  src_instance_id, dst_instance_id):
-        self.micro_batch_api = env_config.micro_batch_api
+        self.micro_batch_api = env_config.use_micro_batch_api
         self.queue_config = env_config.queue_config
         # Actor handles
         self.source_actor = None
@@ -150,7 +148,7 @@ class DataChannel(object):
     def _push_next_batch(self, batch):
         """Pushes a batch of records to the destination operator."""
         args = [batch, self.id]
-        if self.micro_batch_api:
+        if self.use_micro_batch_api:
             obj_id = self.destination_actor._apply_batch._remote(
                     args=args,
                     kwargs={},
@@ -172,7 +170,7 @@ class DataChannel(object):
             return
         # Schedule a new task at the destination
         args = [self.write_buffer, self.id]
-        if self.micro_batch_api:
+        if self.use_micro_batch_api:
             obj_id = self.destination_actor._apply_batch._remote(
                     args=args,
                     kwargs={},

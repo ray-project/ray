@@ -2,16 +2,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray.experimental.streaming.benchmarks.utils as utils
 from ray.experimental.streaming.streaming import Environment
 from ray.experimental.streaming.operator import OpType, PStrategy
 
 
 def test_parallelism():
     """Tests operator parallelism."""
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     env = Environment()
     # Try setting a common parallelism for all operators
     env.set_parallelism(2)
-    stream = env.source(None).map(None).filter(None).flat_map(None)
+    stream = env.source(None,
+            placement=placement).set_parallelism(1).map(None,
+            placement=placement).map(None,
+            placement=placement).flat_map(None, placement=placement)
     env._collect_garbage()
     for operator in env.operators.values():
         if operator.type == OpType.Source:
@@ -20,8 +25,9 @@ def test_parallelism():
         else:
             assert operator.num_instances == 2, (operator.num_instances, 2)
     # Check again after adding an operator with different parallelism
-    stream.map(None, "Map1").shuffle().set_parallelism(3).map(
-        None, "Map2").set_parallelism(4)
+    stream.map(None, "Map1",
+               placement=placement).shuffle().set_parallelism(3).map(
+               None, "Map2", placement=placement).set_parallelism(4)
     env._collect_garbage()
     for operator in env.operators.values():
         if operator.type == OpType.Source:
@@ -36,10 +42,12 @@ def test_parallelism():
 
 def test_partitioning():
     """Tests stream partitioning."""
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     env = Environment()
     # Try defining multiple partitioning strategies for the same stream
-    _ = env.source(None).shuffle().rescale().broadcast().map(
-        None).broadcast().shuffle()
+    _ = env.source(None,
+        placement=placement).shuffle().rescale().broadcast().map(
+        None, placement=placement).broadcast().shuffle()
     env._collect_garbage()
     for operator in env.operators.values():
         p_schemes = operator.partitioning_strategies
@@ -56,12 +64,16 @@ def test_partitioning():
 def test_forking():
     """Tests stream forking."""
     env = Environment()
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     # Try forking a stream
-    stream = env.source(None).map(None).set_parallelism(2)
+    stream = env.source(None, placement=placement).map(None,
+                        placement=placement).set_parallelism(2)
     # First branch with a shuffle partitioning strategy
-    _ = stream.shuffle().key_by(0).sum(1)
+    _ = stream.shuffle().key_by(0,
+                                placement=placement).sum(1,
+                                placement=placement)
     # Second branch with the default partitioning strategy
-    _ = stream.key_by(1).sum(2)
+    _ = stream.key_by(1, placement=placement).sum(2, placement=placement)
     env._collect_garbage()
     # Operator ids
     source_id = None
@@ -77,16 +89,17 @@ def test_forking():
         elif operator.type == OpType.Map:
             map_id = id
         elif operator.type == OpType.KeyBy:
-            if operator.other_args == 0:
+            if operator.key_selector == 0:
                 keyby1_id = id
             else:
-                assert operator.other_args == 1, (operator.other_args, 1)
+                assert operator.key_selector == 1, (operator.key_selector, 1)
                 keyby2_id = id
         elif operator.type == OpType.Sum:
-            if operator.other_args == 1:
+            if operator.attribute_selector == 1:
                 sum1_id = id
             else:
-                assert operator.other_args == 2, (operator.other_args, 2)
+                assert operator.attribute_selector == 2, (
+                            operator.attribute_selector, 2)
                 sum2_id = id
     # Check generated streams and their partitioning
     for source, destination in env.logical_topo.edges:
@@ -96,26 +109,26 @@ def test_forking():
         elif source == map_id:
             p_scheme = operator.partitioning_strategies[destination]
             strategy = p_scheme.strategy
-            key_index = env.operators[destination].other_args
+            key_index = env.operators[destination].key_selector
             if key_index == 0:  # This must be the first branch
                 assert strategy == PStrategy.Shuffle, (strategy,
                                                        PStrategy.Shuffle)
                 assert destination == keyby1_id, (destination, keyby1_id)
             else:  # This must be the second branch
                 assert key_index == 1, (key_index, 1)
-                assert strategy == PStrategy.Forward, (strategy,
-                                                       PStrategy.Forward)
+                assert strategy == PStrategy.Rescale, (strategy,
+                                                       PStrategy.Rescale)
                 assert destination == keyby2_id, (destination, keyby2_id)
         elif source == keyby1_id or source == keyby2_id:
             p_scheme = operator.partitioning_strategies[destination]
             strategy = p_scheme.strategy
-            key_index = env.operators[destination].other_args
-            if key_index == 1:  # This must be the first branch
+            attribute_index = env.operators[destination].attribute_selector
+            if attribute_index == 1:  # This must be the first branch
                 assert strategy == PStrategy.ShuffleByKey, (
                     strategy, PStrategy.ShuffleByKey)
                 assert destination == sum1_id, (destination, sum1_id)
             else:  # This must be the second branch
-                assert key_index == 2, (key_index, 2)
+                assert attribute_index == 2, (attribute_index, 2)
                 assert strategy == PStrategy.ShuffleByKey, (
                     strategy, PStrategy.ShuffleByKey)
                 assert destination == sum2_id, (destination, sum2_id)
@@ -126,17 +139,22 @@ def test_forking():
 def _test_shuffle_channels():
     """Tests shuffling connectivity."""
     env = Environment()
+    # print("Parallelism: ",env.config.parallelism)
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     # Try defining a shuffle
-    _ = env.source(None).shuffle().map(None).set_parallelism(4)
+    _ = env.source(None, placement=placement).shuffle().map(None,
+                         placement=placement).set_parallelism(4)
     expected = [(0, 0), (0, 1), (0, 2), (0, 3)]
     _test_channels(env, expected)
 
 
-def _test_forward_channels():
-    """Tests forward connectivity."""
+def _test_rescale_channels():
+    """Tests rescale connectivity."""
     env = Environment()
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     # Try the default partitioning strategy
-    _ = env.source(None).set_parallelism(4).map(None).set_parallelism(2)
+    _ = env.source(None, placement=placement).set_parallelism(4).map(None,
+                         placement=placement).set_parallelism(2)
     expected = [(0, 0), (1, 1), (2, 0), (3, 1)]
     _test_channels(env, expected)
 
@@ -144,18 +162,23 @@ def _test_forward_channels():
 def _test_broadcast_channels():
     """Tests broadcast connectivity."""
     env = Environment()
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     # Try broadcasting
-    _ = env.source(None).set_parallelism(4).broadcast().map(
-        None).set_parallelism(2)
-    expected = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1), (3, 0), (3, 1)]
+    _ = env.source(None,
+            placement=placement).set_parallelism(4).broadcast().map(
+            None, placement=placement).set_parallelism(2)
+    expected = [(0, 0), (0, 1), (1, 0), (1, 1),
+                (2, 0), (2, 1), (3, 0), (3, 1)]
     _test_channels(env, expected)
 
 
 def _test_round_robin_channels():
     """Tests round-robin connectivity."""
     env = Environment()
+    placement = utils.CLUSTER_NODE_PREFIX + "0"
     # Try broadcasting
-    _ = env.source(None).round_robin().map(None).set_parallelism(2)
+    _ = env.source(None, placement=placement).round_robin().map(None,
+                         placement=placement).set_parallelism(2)
     expected = [(0, 0), (0, 1)]
     _test_channels(env, expected)
 
@@ -192,10 +215,10 @@ def _test_channels(environment, expected_channels):
 
 def test_channel_generation():
     """Tests data channel generation."""
+    _test_rescale_channels()
     _test_shuffle_channels()
     _test_broadcast_channels()
     _test_round_robin_channels()
-    _test_forward_channels()
 
 
 # TODO (john): Add simple wordcount test

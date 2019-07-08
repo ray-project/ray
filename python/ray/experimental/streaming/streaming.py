@@ -187,16 +187,15 @@ class Environment(object):
          the streaming dataflow.
     """
 
-    def __init__(self, checkpoint_dir=None, config=Config()):
+    def __init__(self, checkpoint_dir=None):
         self.logical_topo = nx.DiGraph()  # DAG
         self.physical_topo = nx.DiGraph()  # DAG
         self.operators = {}  # operator id --> operator object
-        self.config = config  # Environment's configuration
+        self.config = Config()  # Environment's configuration
         self.topo_cleaned = False
         # A handle to the running dataflow
         self.physical_dataflow = PhysicalDataflow()
         self.checkpoint_dir = checkpoint_dir
-
     # Constructs and deploys an actor of a specific type
     def __generate_actor(self, instance_id, operator, input, output):
         """Generates an actor that will execute an instance of
@@ -419,12 +418,13 @@ class Environment(object):
         source_id = _generate_uuid()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = operator.CustomSourceOperator(source_id,
-                                             OpType.Source,
-                                             source_object,
-                                             watermark_interval,
-                                             name,
-                                             logging=self.config.logging,
-                                             placement=placement)
+                                    OpType.Source,
+                                    source_object,
+                                    watermark_interval,
+                                    name,
+                                    num_instances=self.config.parallelism,
+                                    logging=self.config.logging,
+                                    placement=placement)
         return source_stream
 
     # Constructs and deploys the physical dataflow
