@@ -7,23 +7,30 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    plasma::PlasmaClient &store_client, std::mutex &store_client_mutex,
-    std::unique_ptr<RayletClient> &raylet_client)
-    : store_client_(store_client),
-      store_client_mutex_(store_client_mutex),
-      raylet_client_(raylet_client) {}
+    const std::string &store_socket, std::unique_ptr<RayletClient> &raylet_client)
+    : raylet_client_(raylet_client) {
+  auto status = store_client_.Connect(store_socket);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
+                   << " core worker: " << status.message();
+    throw std::runtime_error(status.message());
+  }
+}
 
-Status CoreWorkerPlasmaStoreProvider::Put(const Buffer &buffer,
+Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
-  std::shared_ptr<arrow::Buffer> data;
+  auto data = object.GetData();
+  auto metadata = object.GetMetadata();
+  std::shared_ptr<arrow::Buffer> out_buffer;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(
-        store_client_.Create(plasma_id, buffer.Size(), nullptr, 0, &data));
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Create(
+        plasma_id, data->Size(), metadata ? metadata->Data() : nullptr,
+        metadata ? metadata->Size() : 0, &out_buffer));
   }
 
-  memcpy(data->mutable_data(), buffer.Data(), buffer.Size());
+  memcpy(out_buffer->mutable_data(), data->Data(), data->Size());
 
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
@@ -33,9 +40,9 @@ Status CoreWorkerPlasmaStoreProvider::Put(const Buffer &buffer,
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
-                                          int64_t timeout_ms, const TaskID &task_id,
-                                          std::vector<std::shared_ptr<Buffer>> *results) {
+Status CoreWorkerPlasmaStoreProvider::Get(
+    const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+    std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
   bool was_blocked = false;
@@ -90,8 +97,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(const std::vector<ObjectID> &ids,
     for (size_t i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
         const auto &object_id = unready_ids[i];
-        (*results)[unready[object_id]] =
-            std::make_shared<PlasmaBuffer>(object_buffers[i].data);
+        (*results)[unready[object_id]] = std::make_shared<RayObject>(
+            std::make_shared<PlasmaBuffer>(object_buffers[i].data),
+            std::make_shared<PlasmaBuffer>(object_buffers[i].metadata));
         unready.erase(object_id);
       }
     }

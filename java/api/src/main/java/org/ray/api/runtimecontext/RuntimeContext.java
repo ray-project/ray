@@ -9,12 +9,9 @@ import org.ray.api.id.UniqueId;
 public interface RuntimeContext {
 
   /**
-   * Get the current Driver ID.
-   *
-   * If called in a driver, this returns the driver ID. If called in a worker, this returns the ID
-   * of the associated driver.
+   * Get the current Job ID.
    */
-  UniqueId getCurrentDriverId();
+  UniqueId getCurrentJobId();
 
   /**
    * Get the current actor ID.

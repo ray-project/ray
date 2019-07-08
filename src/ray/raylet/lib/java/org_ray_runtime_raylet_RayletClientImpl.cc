@@ -43,12 +43,12 @@ inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
     JNIEnv *env, jclass, jstring sockName, jbyteArray workerId, jboolean isWorker,
-    jbyteArray driverId) {
+    jbyteArray jobId) {
   UniqueIdFromJByteArray<ClientID> worker_id(env, workerId);
-  UniqueIdFromJByteArray<DriverID> driver_id(env, driverId);
+  UniqueIdFromJByteArray<JobID> job_id(env, jobId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
   auto raylet_client = new RayletClient(nativeString, worker_id.GetId(), isWorker,
-                                        driver_id.GetId(), Language::JAVA);
+                                        job_id.GetId(), Language::JAVA);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(raylet_client);
 }
@@ -224,13 +224,13 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
  */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(
-    JNIEnv *env, jclass, jbyteArray driverId, jbyteArray parentTaskId,
+    JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId,
     jint parent_task_counter) {
-  UniqueIdFromJByteArray<DriverID> driver_id(env, driverId);
+  UniqueIdFromJByteArray<JobID> job_id(env, jobId);
   UniqueIdFromJByteArray<TaskID> parent_task_id(env, parentTaskId);
 
   TaskID task_id =
-      ray::GenerateTaskId(driver_id.GetId(), parent_task_id.GetId(), parent_task_counter);
+      ray::GenerateTaskId(job_id.GetId(), parent_task_id.GetId(), parent_task_counter);
   jbyteArray result = env->NewByteArray(task_id.Size());
   if (nullptr == result) {
     return nullptr;

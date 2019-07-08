@@ -5,7 +5,7 @@
 
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker_server.h"
+#include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
@@ -31,7 +31,8 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(boost::asio::io_service &io_service,
+  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+                               boost::asio::io_service &io_service,
                                rpc::GrpcServer &server);
 
   /// Handle a `AssignTask` request.
@@ -48,6 +49,8 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   Status SetTaskHandler(const TaskHandler &callback) override;
 
  private:
+  /// Raylet client.
+  std::unique_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The rpc service for `WorkerTaskService`.

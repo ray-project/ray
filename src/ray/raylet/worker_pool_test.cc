@@ -109,7 +109,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const ActorID actor_creation_id = ActorID::Nil()) {
   std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(DriverID::Nil(), TaskID::Nil(), 0, actor_creation_id,
+  return TaskSpecification(JobID::Nil(), TaskID::Nil(), 0, actor_creation_id,
                            ObjectID::Nil(), 0, actor_id, ActorHandleID::Nil(), 0, {}, {},
                            0, {}, {}, language, function_descriptor);
 }
@@ -226,7 +226,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
-  TaskSpecification task_spec(DriverID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
+  TaskSpecification task_spec(JobID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
                               ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
                               {}, {}, 0, {}, {}, Language::JAVA, {"", "", ""},
                               {"test_op_0", "test_op_1"});

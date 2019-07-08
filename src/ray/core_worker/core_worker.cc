@@ -3,56 +3,30 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(const enum WorkerType worker_type,
-                       const enum WorkerLanguage language,
+CoreWorker::CoreWorker(const enum WorkerType worker_type, const ::Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
-                       DriverID driver_id)
+                       const JobID &job_id)
     : worker_type_(worker_type),
       language_(language),
-      store_socket_(store_socket),
       raylet_socket_(raylet_socket),
-      worker_context_(worker_type, driver_id),
-      task_interface_(*this),
-      object_interface_(*this),
-      task_execution_interface_(*this) {
-  auto status = store_client_.Connect(store_socket_);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
-                   << " core worker: " << status.message();
-    throw std::runtime_error(status.message());
+      worker_context_(worker_type, job_id),
+      task_interface_(worker_context_, raylet_client_),
+      object_interface_(worker_context_, raylet_client_, store_socket) {
+  int rpc_server_port = 0;
+  if (worker_type_ == ray::WorkerType::WORKER) {
+    task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
+        new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
+                                             object_interface_));
+    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
-
-  // TODO(zhijunfu): For non-driver worker, the initialization of
-  // raylet client is delayed to when `TaskExecutionInterface::Run()`
-  // is called, as it is until that time the port for the worker
-  // rpc server can be determined, and this information needs to be
-  // included when worker registers to raylet.
-  if (worker_type_ == WorkerType::DRIVER) {
-    InitializeRayletClient(0);
-  }
-}
-
-void CoreWorker::InitializeRayletClient(int server_port) {
-  if (raylet_client_ == nullptr) {
-    raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-        raylet_socket_, worker_context_.GetWorkerID(),
-        (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentDriverID(),
-        ToTaskLanguage(language_), server_port));
-  }
-}
-
-::Language CoreWorker::ToTaskLanguage(WorkerLanguage language) {
-  switch (language) {
-  case ray::WorkerLanguage::JAVA:
-    return ::Language::JAVA;
-    break;
-  case ray::WorkerLanguage::PYTHON:
-    return ::Language::PYTHON;
-    break;
-  default:
-    RAY_LOG(FATAL) << "invalid language specified: " << static_cast<int>(language);
-    break;
-  }
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this can be changed later
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
+      raylet_socket_, ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
+      language_, rpc_server_port));
 }
 
 }  // namespace ray
