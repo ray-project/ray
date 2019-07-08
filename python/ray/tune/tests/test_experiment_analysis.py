@@ -58,12 +58,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)
 
-    def testBestTrainable(self):
-        best_trainable = self.ea.get_best_trainable(self.metric,
-                                                    MyTrainableClass)
-
-        self.assertTrue(isinstance(best_trainable, MyTrainableClass))
-
     def testBestConfig(self):
         best_config = self.ea.get_best_config(self.metric)
 
@@ -95,28 +89,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
         self.assertTrue(isinstance(min_trial, dict))
         self.assertTrue(self.metric in flat_trial)
-
-    def testCheckpoints(self):
-        checkpoints = self.ea._checkpoints
-
-        self.assertTrue(isinstance(checkpoints, list))
-        self.assertTrue(isinstance(checkpoints[0], dict))
-        self.assertEqual(len(checkpoints), self.num_samples)
-
-    def testStats(self):
-        stats = self.ea.stats()
-
-        self.assertTrue(isinstance(stats, dict))
-        self.assertTrue("start_time" in stats)
-        self.assertTrue("timestamp" in stats)
-
-    def testRunnerData(self):
-        runner_data = self.ea.runner_data()
-
-        self.assertTrue(isinstance(runner_data, dict))
-        self.assertTrue("_local_checkpoint_dir" in runner_data)
-        self.assertEqual(runner_data["_local_checkpoint_dir"],
-                         os.path.expanduser(self.test_path))
 
     def testBestLogdir(self):
         logdir = self.ea.get_best_logdir(self.metric)

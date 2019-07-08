@@ -70,6 +70,9 @@ EXPR_META_FILE = "trial_status.json"
 # File that stores parameters of the trial.
 EXPR_PARAM_FILE = "params.json"
 
+# Pickle File that stores parameters of the trial.
+EXPR_PARAM_PICKLE_FILE = "params.pkl"
+
 # File that stores the progress of the trial.
 EXPR_PROGRESS_FILE = "progress.csv"
 

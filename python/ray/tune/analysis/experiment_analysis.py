@@ -3,13 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import glob
 import json
 import logging
 import os
 import pandas as pd
 
 from ray.tune.error import TuneError
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE
 from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,106 @@ def unnest_checkpoints(checkpoints):
     return checkpoint_dicts
 
 
-class ExperimentAnalysis(object):
+class Analysis(object):
+    """Analyze results from directory of experiments."""
+
+    def __init__(self, experiment_dir):
+        experiment_dir = os.path.expanduser(experiment_dir)
+        if not os.path.isdir(experiment_dir):
+            raise TuneError(
+                "{} is not a valid directory.".format(experiment_dir))
+        self._experiment_dir = experiment_dir
+        self._configs = {}
+        self._trial_dataframes = {}
+
+    def get_all_trial_dataframes(self):
+        for path in self._get_trial_paths():
+            if path in self._trial_dataframes:
+                continue
+            try:
+                self._trial_dataframes[path] = pd.read_csv(
+                    os.path.join(path, EXPR_PROGRESS_FILE))
+            except Exception as e:
+                logger.warning("Couldn't read from {}. Raised {}".format(
+                    path, e))
+        return self._trial_dataframes
+
+    def get_all_configs(self):
+        for path in self._get_trial_paths():
+            if path in self._configs:
+                continue
+            try:
+                with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
+                    self._configs[path] = json.load(f)
+            except Exception as e:
+                logger.warning("Couldn't read from {}. Raised {}".format(
+                    path, e))
+        return self._configs
+
+    def dataframe(self, metric=None, mode=None):
+        """Returns a pandas.DataFrame object constructed from the trials.
+
+        Args:
+            metric (str): Key for trial info to order on.
+                If None, uses last result.
+            mode (str): One of [min, max].
+
+        """
+        rows = self._retrieve_rows(metric=metric, mode=mode)
+        all_configs = self.get_all_configs()
+        for path, config in all_configs.items():
+            rows[path].update(config)
+        return pd.DataFrame(list(rows.values()))
+
+    def get_best_config(self, metric, mode="max"):
+        """Retrieve the best config corresponding to the trial.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+
+        """
+        rows = self._retrieve_rows(metric=metric, mode=mode)
+        all_configs = self.get_all_configs()
+        compare_op = max if mode == "max" else min
+        best_path = compare_op(rows, key=lambda k: rows[k][metric])
+        return all_configs[best_path]
+
+    def _retrieve_rows(self, metric=None, mode=None):
+        assert mode is None or mode in ["max", "min"]
+        all_dfs = self.get_all_trial_dataframes()
+        rows = {}
+        for path, df in all_dfs.items():
+            if mode == "max":
+                idx = df[metric].idxmax()
+            elif mode == "min":
+                idx = df[metric].idxmin()
+            else:
+                idx = -1
+            rows[path] = df.iloc[idx].to_dict()
+
+        return rows
+
+    def _get_trial_paths(self):
+        _trial_paths = []
+        for trial_path, _, files in os.walk(self._experiment_dir):
+            if EXPR_PROGRESS_FILE in files:
+                _trial_paths += [trial_path]
+
+        if not _trial_paths:
+            raise TuneError("No trials found in {}.".format(
+                self.experiment_dir))
+        return _trial_paths
+
+    def get_best_logdir(self, metric, mode="max"):
+        df = self.dataframe()
+        if mode == "max":
+            return df.iloc[df[metric].idxmax()].logdir
+        elif mode == "min":
+            return df.iloc[df[metric].idxmin()].logdir
+
+
+class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 
     Parameters:
@@ -56,33 +155,12 @@ class ExperimentAnalysis(object):
                 `analysis.trials`.
         """
         with open(experiment_checkpoint_path) as f:
-            self._experiment_state = json.load(f)
+            _experiment_state = json.load(f)
 
-        if "checkpoints" not in self._experiment_state:
+        if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = self._experiment_state["checkpoints"]
-        self._scrubbed_checkpoints = unnest_checkpoints(self._checkpoints)
+        self._checkpoints = _experiment_state["checkpoints"]
         self.trials = trials
-        self._dataframe = None
-
-    def get_all_trial_dataframes(self):
-        trial_dfs = {}
-        for checkpoint in self._checkpoints:
-            logdir = checkpoint["logdir"]
-            progress = max(glob.glob(os.path.join(logdir, "progress.csv")))
-            trial_dfs[checkpoint["trial_id"]] = pd.read_csv(progress)
-        return trial_dfs
-
-    def dataframe(self, refresh=False):
-        """Returns a pandas.DataFrame object constructed from the trials.
-
-        Args:
-            refresh (bool): Clears the cache which may have an existing copy.
-
-        """
-        if self._dataframe is None or refresh:
-            self._dataframe = pd.DataFrame(self._scrubbed_checkpoints)
-        return self._dataframe
 
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
@@ -92,54 +170,10 @@ class ExperimentAnalysis(object):
         """Returns a dictionary of the TrialRunner data."""
         return self._experiment_state.get("runner_data")
 
-    def trial_dataframe(self, trial_id):
-        """Returns a pandas.DataFrame constructed from one trial."""
-        for checkpoint in self._checkpoints:
-            if checkpoint["trial_id"] == trial_id:
-                logdir = checkpoint["logdir"]
-                progress = max(glob.glob(os.path.join(logdir, "progress.csv")))
-                return pd.read_csv(progress)
-        raise ValueError("Trial id {} not found".format(trial_id))
-
-    def get_best_trainable(self, metric, trainable_cls, mode="max"):
-        """Returns the best Trainable based on the experiment metric.
-
-        Args:
-            metric (str): Key for trial info to order on.
-            mode (str): One of [min, max].
-
-        """
-        return trainable_cls(config=self.get_best_config(metric, mode=mode))
-
-    def get_best_config(self, metric, mode="max"):
-        """Retrieve the best config from the best trial.
-
-        Args:
-            metric (str): Key for trial info to order on.
-            mode (str): One of [min, max].
-
-        """
-        return self.get_best_info(metric, flatten=False, mode=mode)["config"]
-
-    def get_best_logdir(self, metric, mode="max"):
-        df = self.dataframe()
-        if mode == "max":
-            return df.iloc[df[metric].idxmax()].logdir
-        elif mode == "min":
-            return df.iloc[df[metric].idxmin()].logdir
-
-    def get_best_info(self, metric, mode="max", flatten=True):
-        """Retrieve the best trial based on the experiment metric.
-
-        Args:
-            metric (str): Key for trial info to order on.
-            mode (str): One of [min, max].
-            flatten (bool): Assumes trial info is flattened, where
-                nested entries are concatenated like `info:metric`.
-        """
-        optimize_op = max if mode == "max" else min
-        if flatten:
-            return optimize_op(
-                self._scrubbed_checkpoints, key=lambda d: d.get(metric, 0))
-        return optimize_op(
-            self._checkpoints, key=lambda d: d["last_result"].get(metric, 0))
+    def _get_trial_paths(self):
+        _trial_paths = [
+            checkpoint["logdir"] for checkpoint in self._checkpoints
+        ]
+        if not _trial_paths:
+            raise TuneError("No trials found.")
+        return _trial_paths
