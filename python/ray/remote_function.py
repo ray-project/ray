@@ -116,10 +116,10 @@ class RemoteFunction(object):
         worker.check_connected()
 
         if (self._last_exported_id is None
-                or self._last_exported_id != worker.current_exported_id):
+                or self._last_exported_id != worker._current_exported_id):
             # If this function was exported in a previous session, we need to
             # export this function again, because current GCS doesn't have it.
-            self._last_exported_id = worker.current_exported_id
+            self._last_exported_id = worker._current_exported_id
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs

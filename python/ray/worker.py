@@ -162,7 +162,7 @@ class Worker(object):
         # postprocessor must take two arguments ("object_ids", and "values").
         self._post_get_hooks = []
         # The id of the current exported session.
-        self.current_exported_id = None
+        self._current_exported_id = None
 
     @property
     def connected(self):
@@ -1785,7 +1785,7 @@ def connect(node,
 
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
-        worker.current_exported_id = _random_string()
+        worker._current_exported_id = _random_string()
 
         # The concept of a driver is the same as the concept of a "job".
         # Register the driver/job with Redis here.
