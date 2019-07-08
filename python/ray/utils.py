@@ -239,8 +239,8 @@ def compute_job_id_from_driver(driver_id):
 
 def compute_driver_id_from_job(job_id):
     assert isinstance(job_id, ray.JobID)
-    rest_length = ray.WorkerID.size() - ray.JobID.size()
-    driver_id_str = job_id.binary() + (rest_length * "0xff")
+    rest_length = ray_constants.ID_SIZE - job_id.size()
+    driver_id_str = job_id.binary() + (rest_length * b"\xff")
     return ray.WorkerID(driver_id_str)
 
 
