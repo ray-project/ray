@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+option java_package = "org.ray.runtime.generated";
+
+// Language of a task or worker.
+enum Language {
+  PYTHON = 0;
+  JAVA = 1;
+  CPP = 2;
+}
+
+// Type of a task.
+enum TaskType {
+  // Normal task.
+  NORMAL_TASK = 0;
+  // Actor creation task.
+  ACTOR_CREATION_TASK = 1;
+  // Actor task.
+  ACTOR_TASK = 2;
+}
+
+/// The task specification encapsulates all immutable information about the
+/// task. These fields are determined at submission time, converse to the
+/// `TaskExecutionSpec` may change at execution time.
+message TaskSpec {
+  // Type of this task.
+  TaskType type = 1;
+  // Language of this task.
+  Language language = 2;
+  // Function descriptor of this task, which is a list of strings that can
+  // uniquely describe the function to execute.
+  // For a Python function, it should be: [module_name, class_name, function_name]
+  // For a Java function, it should be: [class_name, method_name, type_descriptor]
+  repeated bytes function_descriptor = 3;
+  // ID of the job that this task belongs to.
+  bytes job_id = 4;
+  // Task ID of the task.
+  bytes task_id = 5;
+  // Task ID of the parent task.
+  bytes parent_task_id = 6;
+  // A count of the number of tasks submitted by the parent task before this one.
+  uint64 parent_counter = 7;
+  // Task arguments.
+  repeated TaskArg args = 8;
+  // Number of return objects.
+  uint64 num_returns = 9;
+  // Quantities of the different resources required by this task.
+  map<string, double> required_resources = 10;
+  // The resources required for placing this task on a node. If this is empty,
+  // then the placement resources are equal to the required_resources.
+  map<string, double> required_placement_resources = 11;
+  // Task specification for an actor creation task.
+  // This field is only valid when `type == ACTOR_CREATION_TASK`.
+  ActorCreationTaskSpec actor_creation_task_spec = 14;
+  // Task specification for an actor task.
+  // This field is only valid when `type == ACTOR_TASK`.
+  ActorTaskSpec actor_task_spec = 15;
+}
+
+// Argument in the task.
+message TaskArg {
+  // Object IDs for pass-by-reference arguments. Normally there is only one
+  // object ID in this list which represents the object that is being passed.
+  // However to support reducers in a MapReduce workload, we also support
+  // passing multiple object IDs for each argument.
+  repeated bytes object_ids = 1;
+  // Data for pass-by-value arguments.
+  bytes data = 2;
+}
+
+// Task spec of an actor creation task.
+message ActorCreationTaskSpec {
+  // ID of the actor that will be created by this task.
+  bytes actor_id = 2;
+  // The max number of times this actor should be recontructed.
+  // If this number of 0 or negative, the actor won't be reconstructed on failure.
+  uint64 max_actor_reconstructions = 3;
+  // The dynamic options used in the worker command when starting the worker process for
+  // an actor creation task. If the list isn't empty, the options will be used to replace
+  // the placeholder strings (`RAY_WORKER_OPTION_0`, `RAY_WORKER_OPTION_1`, etc) in the
+  // worker command.
+  repeated string dynamic_worker_options = 4;
+}
+
+// Task spec of an actor task.
+message ActorTaskSpec {
+  // Actor ID of the task. This is the actor that this task is executed on
+  // or NIL_ACTOR_ID if the task is just a normal task.
+  bytes actor_id = 2;
+  // The ID of the handle that was used to submit the task. This should be
+  // unique across handles with the same actor_id.
+  bytes actor_handle_id = 3;
+  // The dummy object ID of the actor creation task if this is an actor method.
+  bytes actor_creation_dummy_object_id = 4;
+  // Number of tasks that have been submitted to this actor so far.
+  uint64 actor_counter = 5;
+  // If this is an actor task, then this will be populated with all of the new
+  // actor handles that were forked from this handle since the last task on
+  // this handle was submitted.
+  // Note that this is a long string that concatenate all of the new_actor_handle IDs.
+  repeated bytes new_actor_handles = 6;
+}
+
+// The task execution specification encapsulates all mutable information about
+// the task. These fields may change at execution time, converse to the
+// `TaskSpec` is determined at submission time.
+message TaskExecutionSpec {
+  // A list of object IDs representing the dependencies of this task that may
+  // change at execution time.
+  repeated bytes dependencies = 1;
+  // The last time this task was received for scheduling.
+  double last_timestamp = 2;
+  // The number of times this task was spilled back by raylets.
+  uint64 num_forwards = 3;
+}
+
+// Represents a task, including task spec, and task execution spec.
+message Task {
+  TaskSpec task_spec = 1;
+  TaskExecutionSpec task_execution_spec = 2;
+}

@@ -305,12 +305,9 @@ class GlobalState(object):
         assert len(gcs_entries.entries) == 1
         task_table_data = gcs_utils.TaskTableData.FromString(
             gcs_entries.entries[0])
-        task_table_message = gcs_utils.Task.GetRootAsTask(
-            task_table_data.task, 0)
 
-        execution_spec = task_table_message.TaskExecutionSpec()
-        task_spec = task_table_message.TaskSpecification()
-        task = ray._raylet.Task.from_string(task_spec)
+        task = ray._raylet.TaskSpec.from_string(
+            task_table_data.task.task_spec.SerializeToString())
         function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
@@ -335,14 +332,12 @@ class GlobalState(object):
             "FunctionName": function_descriptor.function_name,
         }
 
+        execution_spec = ray._raylet.TaskExecutionSpec.from_string(
+            task_table_data.task.task_execution_spec.SerializeToString())
         return {
             "ExecutionSpec": {
-                "Dependencies": [
-                    execution_spec.Dependencies(i)
-                    for i in range(execution_spec.DependenciesLength())
-                ],
-                "LastTimestamp": execution_spec.LastTimestamp(),
-                "NumForwards": execution_spec.NumForwards()
+                "Dependencies": execution_spec.dependencies(),
+                "NumForwards": execution_spec.num_forwards(),
             },
             "TaskSpec": task_spec_info
         }

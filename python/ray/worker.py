@@ -688,7 +688,7 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(job_id, JobID)
-            task = ray._raylet.Task(
+            task = ray._raylet.TaskSpec(
                 job_id,
                 function_descriptor_list,
                 args_for_raylet,
@@ -702,11 +702,10 @@ class Worker(object):
                 actor_handle_id,
                 actor_counter,
                 new_actor_handles,
-                execution_dependencies,
                 resources,
                 placement_resources,
             )
-            self.raylet_client.submit_task(task)
+            self.raylet_client.submit_task(task, execution_dependencies)
 
             return task.returns()
 
@@ -1864,7 +1863,7 @@ def connect(node,
         nil_actor_counter = 0
 
         function_descriptor = FunctionDescriptor.for_driver_task()
-        driver_task = ray._raylet.Task(
+        driver_task_spec = ray._raylet.TaskSpec(
             worker.current_job_id,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
@@ -1878,24 +1877,25 @@ def connect(node,
             ActorHandleID.nil(),  # actor_handle_id.
             nil_actor_counter,  # actor_counter.
             [],  # new_actor_handles.
-            [],  # execution_dependencies.
             {},  # resource_map.
             {},  # placement_resource_map.
         )
-        task_table_data = ray.gcs_utils.TaskTableData()
-        task_table_data.task = driver_task._serialized_raylet_task()
+        task_table_data = ray._raylet.generate_gcs_task_table_data(
+            driver_task_spec)
 
         # Add the driver task to the task table.
         ray.state.state._execute_command(
-            driver_task.task_id(), "RAY.TABLE_ADD",
+            driver_task_spec.task_id(),
+            "RAY.TABLE_ADD",
             ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
             ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
-            driver_task.task_id().binary(),
-            task_table_data.SerializeToString())
+            driver_task_spec.task_id().binary(),
+            task_table_data,
+        )
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
-        worker.task_context.current_task_id = driver_task.task_id()
+        worker.task_context.current_task_id = driver_task_spec.task_id()
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,

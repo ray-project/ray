@@ -2,14 +2,9 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "org.ray.runtime.generated";
+import "src/ray/protobuf/common.proto";
 
-// Language of a worker or task.
-enum Language {
-  PYTHON = 0;
-  CPP = 1;
-  JAVA = 2;
-}
+option java_package = "org.ray.runtime.generated";
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
@@ -77,12 +72,8 @@ message TaskReconstructionData {
   bytes node_manager_id = 2;
 }
 
-// TODO(hchen): Task table currently still uses flatbuffers-defined data structure
-// (`Task` in `node_manager.fbs`), because a lot of code depends on that. This should
-// be migrated to protobuf very soon.
 message TaskTableData {
-  // Flatbuffers-serialized content of the task, see `src/ray/raylet/task.h`.
-  bytes task = 1;
+  Task task = 1;
 }
 
 message ActorTableData {
