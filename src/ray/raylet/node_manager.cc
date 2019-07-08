@@ -862,9 +862,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
     RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        JobID(driver_id),
-        /*is_dead=*/false, std::time(nullptr), initial_config_.node_manager_address,
-        message->worker_pid()));
+        job_id, /*is_dead=*/false, std::time(nullptr),
+        initial_config_.node_manager_address, message->worker_pid()));
   }
 }
 
@@ -1030,16 +1029,17 @@ void NodeManager::ProcessDisconnectClientMessage(
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else if (is_driver) {
     // The client is a driver.
-    auto job_id = worker->GetAssignedTaskId();
+    const auto job_id = worker->GetAssignedJobId();
+    const auto driver_id = job_id.DriverId();
     RAY_CHECK(!job_id.IsNil());
     RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
         job_id, /*is_dead=*/true, std::time(nullptr), 
         initial_config_.node_manager_address, worker->Pid()));
-    local_queues_.RemoveDriverTaskId(job_id);
+    local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
     RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
-                   << "job_id: " << worker->GetAssignedJobId();
+                   << "job_id: " << job_id;
   }
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
