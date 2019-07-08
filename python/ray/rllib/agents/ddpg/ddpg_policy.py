@@ -75,6 +75,12 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
                     action_space))
+        if len(action_space.shape) > 1:
+            raise UnsupportedSpaceException(
+                "Action space has multiple dimensions "
+                "{}. ".format(action_space.shape) +
+                "Consider reshaping this into a single dimension, "
+                "using a Tuple action space, or the multi-agent API.")
 
         self.config = config
         self.cur_noise_scale = 1.0
