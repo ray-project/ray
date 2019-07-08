@@ -27,6 +27,8 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 4000,
     # Total SGD batch size across all devices for SGD
     "sgd_minibatch_size": 128,
+    # Whether to shuffle sequences in the batch when training (recommended)
+    "shuffle_sequences": True,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Stepsize of SGD
@@ -79,7 +81,8 @@ def choose_policy_optimizer(workers, config):
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
-        straggler_mitigation=config["straggler_mitigation"])
+        straggler_mitigation=config["straggler_mitigation"],
+        shuffle_sequences=config["shuffle_sequences"])
 
 
 def update_kl(trainer, fetches):

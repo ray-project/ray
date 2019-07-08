@@ -69,7 +69,8 @@ class RayletClient {
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-               bool is_worker, const JobID &job_id, const Language &language);
+               bool is_worker, const JobID &job_id, const Language &language,
+               int port = -1);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -188,6 +189,7 @@ class RayletClient {
   const bool is_worker_;
   const JobID job_id_;
   const Language language_;
+  const int port_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
