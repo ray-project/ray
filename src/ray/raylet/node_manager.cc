@@ -861,7 +861,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
       // Initialize a rpc client to the new worker.
       std::unique_ptr<rpc::WorkerTaskClient> grpc_client(
-          new rpc::WorkerTaskClient("0.0.0.0", worker->Port(), client_call_manager_));
+          new rpc::WorkerTaskClient("127.0.0.1", worker->Port(), client_call_manager_));
       worker_clients_.emplace(client_id, std::move(grpc_client));
     }
 
