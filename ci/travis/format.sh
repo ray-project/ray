@@ -25,34 +25,23 @@ fi
 FLAKE8_VERSION=$(flake8 --version | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
 
-if [[ $FLAKE8_VERSION != "3.7.7" ]]; then
-    echo "WARNING: Ray uses flake8==3.7.7. You currently are using $FLAKE8_VERSION." \
-         "This might generate different results."
-    read -p "Do you want to continue?[y/n]" input
-    if ! [ $input = 'y' ]; then
-        exit 1
+# params: tool name, tool version, required version
+tool_version_check() {
+    if [[ $2 != $3 ]]; then
+        echo "WARNING: Ray uses $1 $3, You currently are using $2. This might generate different results."
+        read -p "Do you want to continue?[y/n]" answer
+        if ! [ $answer = 'y' ] && ! [ $answer = 'Y' ]; then
+            exit 1
+        fi
     fi
-fi
+}
 
-if [[ $YAPF_VERSION != "0.23.0" ]]; then
-    echo "WARNING: Ray uses yapf==0.23.0. You currently are using $YAPF_VERSION." \
-         "This might generate different results."
-    read -p "Do you want to continue?[y/n]" input
-    if ! [ $input = 'y' ]; then
-        exit 1
-    fi
-fi
+tool_version_check "flake8" $FLAKE8_VERSION "3.7.7"
+tool_version_check "yapf" $YAPF_VERSION "0.23.0"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  if [[ $CLANG_FORMAT_VERSION != "7.0.0" ]]; then
-    echo "WARNING: Ray uses clang-format 7.0.0, but you are using $CLANG_FORMAT_VERSION." \
-         "This might generate different results."
-    read -p "Do you want to continue? [y/n]" input
-    if ! [ $input = 'y' ]; then
-        exit 1
-    fi
-  fi
+  tool_version_check "clang-format" $CLANG_FORMAT_VERSION "7.0.0"
 else
     echo "WARNING: clang-format is not installed!"
     exit 1
