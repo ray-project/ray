@@ -145,7 +145,7 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
   return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
-JobID JobID::FromInt(int32_t value) {
+JobID JobID::FromInt(uint32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(

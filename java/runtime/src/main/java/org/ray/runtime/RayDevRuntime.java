@@ -6,6 +6,8 @@ import org.ray.runtime.objectstore.MockObjectStore;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.MockRayletClient;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 public class RayDevRuntime extends AbstractRayRuntime {
 
   public RayDevRuntime(RayConfig rayConfig) {
@@ -14,12 +16,12 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private MockObjectStore store;
 
-  private Long jobCounter = 0L;
+  private AtomicLong jobCounter = new AtomicLong(0L);
 
   @Override
   public void start() {
     store = new MockObjectStore(this);
-    if (rayConfig.getJobId() == JobId.NIL) {
+    if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
     workerContext = new WorkerContext(rayConfig.workerMode,
@@ -43,6 +45,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   private JobId nextJobId() {
-    return JobId.fromLong(jobCounter++);
+    return JobId.fromLong(jobCounter.getAndIncrement());
   }
 }

@@ -126,8 +126,4 @@ public class UniqueIdTest {
         IdUtil.concatIds(objectIds).array()), objectHexCompareStr);
   }
 
-  @Test
-  void testJobId() {
-    System.out.println(JobId.fromLong(1L).toString());
-  }
 }

@@ -215,7 +215,6 @@ cdef class ClientID(UniqueID):
 cdef class JobID(BaseID):
     cdef CJobID data
 
-    # TODO(qwang): Should we remove this ctor?
     def __init__(self, id):
         check_id(id, CJobID.Size())
         self.data = CJobID.FromBinary(<c_string>id)

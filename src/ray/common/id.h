@@ -76,7 +76,7 @@ class JobID : public BaseID<JobID> {
  public:
   static constexpr int64_t length = 4;
 
-  static JobID FromInt(int32_t value);
+  static JobID FromInt(uint32_t value);
 
   static size_t Size() { return length; }
 

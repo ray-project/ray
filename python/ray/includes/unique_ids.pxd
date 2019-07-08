@@ -1,6 +1,6 @@
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
-from libc.stdint cimport uint8_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, uint32_t, int64_t
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:
@@ -90,7 +90,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         size_t Size()
 
         @staticmethod
-        CJobID FromInt(int32_t value)
+        CJobID FromInt(uint32_t value)
 
         @staticmethod
         CJobID ComputeJobIdFromDriver(const CWorkerID &driver_id)
