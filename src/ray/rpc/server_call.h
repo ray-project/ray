@@ -153,14 +153,14 @@ class ServerCallImpl : public ServerCall {
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
   void OnReplySent() {
-    if (send_reply_success_callback_) {
-      send_reply_success_callback_();
+    if (send_reply_success_callback_ && !io_service_.stopped()) {
+      io_service_.post([this]() { send_reply_success_callback_(); });
     }
   }
 
   void OnReplyFailed() {
-    if (send_reply_failure_callback_) {
-      send_reply_failure_callback_();
+    if (send_reply_failure_callback_ && !io_service_.stopped()) {
+      io_service_.post([this]() { send_reply_failure_callback_(); });
     }
   }
 
