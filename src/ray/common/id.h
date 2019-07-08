@@ -21,16 +21,6 @@ class WorkerID;
 class UniqueID;
 class JobID;
 
-/// TODO(qwang): These 2 helper functions should be removed once we separated the
-/// `WorkerID` from `UniqueID`.
-///
-/// A helper function that compute the `JobID` from the given `DriverID.`
-JobID ComputeJobIdFromDriver(const WorkerID &driver_id);
-
-/// A helper function that get the `DriverID` of the given job.
-WorkerID ComputeDriverIdFromJob(const JobID &job_id);
-
-
 // Declaration.
 std::mt19937 RandomlySeededMersenneTwister();
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
@@ -89,6 +79,15 @@ class JobID : public BaseID<JobID> {
   static JobID FromInt(int32_t value);
 
   static size_t Size() { return length; }
+
+  /// TODO(qwang): These 2 helper functions should be removed
+  /// once we separated the `WorkerID` from `UniqueID`.
+  ///
+  /// A helper function that compute the `JobID` from the given `DriverID.`
+  static JobID ComputeJobIdFromDriver(const WorkerID &driver_id);
+
+  /// A helper function that get the `DriverID` of the given job.
+  static WorkerID ComputeDriverIdFromJob(const JobID &job_id);
 
   static JobID FromRandom() = delete;
 

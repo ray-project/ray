@@ -93,9 +93,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CJobID FromInt(int32_t value)
 
         @staticmethod
-        CJobID FromDriverId(const CWorkerID &driver_id)
+        CJobID ComputeJobIdFromDriver(const CWorkerID &driver_id)
 
-        CWorkerID DriverId() const;
+        @staticmethod
+        CWorkerID ComputeDriverIdFromJob(const CJobID &job_id)
 
     cdef cppclass CTaskID "ray::TaskID"(CBaseID[CTaskID]):
 
