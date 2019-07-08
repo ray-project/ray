@@ -83,7 +83,8 @@ class ServerCallFactory {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunction = Status (ServiceHandler::*)(const Request &, Reply *);
+using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
+                                                       RequestDoneCallback);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
@@ -128,9 +129,13 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
-    auto status = (service_handler_.*handle_request_function_)(request_, &reply_);
-    // When the handler is done with the request, tell gRPC to finish this request.
-    Finish(status);
+    (service_handler_.*handle_request_function_)(request_, &reply_,
+                                                 [this](Status status) {
+                                                   // When the handler is done with the
+                                                   // request, tell gRPC to finish this
+                                                   // request.
+                                                   Finish(status);
+                                                 });
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }

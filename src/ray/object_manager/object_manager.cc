@@ -663,8 +663,9 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 }
 
 /// Implementation of ObjectManagerServiceHandler
-Status ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
-                                        rpc::PushReply *reply) {
+void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
+                                      rpc::PushReply *reply,
+                                      rpc::RequestDoneCallback done_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -680,7 +681,7 @@ Status ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
   double end_time = current_sys_time_seconds();
 
   HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time, status);
-  return status;
+  done_callback(status);
 }
 
 ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
@@ -709,8 +710,9 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
   return status;
 }
 
-Status ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
-                                        rpc::PullReply *reply) {
+void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
+                                      rpc::PullReply *reply,
+                                      rpc::RequestDoneCallback done_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
@@ -728,17 +730,18 @@ Status ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
   }
 
   main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
-  return Status::OK();
+  done_callback(Status::OK());
 }
 
-Status ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
-                                               rpc::FreeObjectsReply *reply) {
+void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
+                                             rpc::FreeObjectsReply *reply,
+                                             rpc::RequestDoneCallback done_callback) {
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));
   }
   FreeObjects(object_ids, /* local_only */ true);
-  return Status::OK();
+  done_callback(Status::OK());
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,

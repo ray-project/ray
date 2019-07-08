@@ -14,8 +14,8 @@ namespace rpc {
 class WorkerTaskHandler {
  public:
   /// Handle a `AssignTask` request.
-  /// The implementation can handle this request asynchronously. When handling is done,
-  /// the `done_callback` should be called.
+  /// The implementation can handle this request asynchronously. When hanling is done, the
+  /// `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
@@ -49,9 +49,9 @@ class WorkerTaskGrpcService : public GrpcService {
             service_, &WorkerTaskService::AsyncService::RequestAssignTask,
             service_handler_, &WorkerTaskHandler::HandleAssignTask, cq, main_service_));
 
-    // Set `AssignTask`'s accept concurrency to 5.
+    // Set `AssignTask`'s accept concurrency to 100.
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(push_task_call_Factory), 5);
+        std::move(push_task_call_Factory), 100);
   }
 
  private:

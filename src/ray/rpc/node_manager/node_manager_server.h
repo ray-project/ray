@@ -14,13 +14,15 @@ namespace rpc {
 class NodeManagerServiceHandler {
  public:
   /// Handle a `ForwardTask` request.
-  /// The implementation can handle this request asynchronously.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \return status.
-  virtual Status HandleForwardTask(const ForwardTaskRequest &request,
-                                   ForwardTaskReply *reply) = 0;
+  /// \param[in] done_callback The callback to be called when the request is done.
+  virtual void HandleForwardTask(const ForwardTaskRequest &request,
+                                 ForwardTaskReply *reply,
+                                 RequestDoneCallback done_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

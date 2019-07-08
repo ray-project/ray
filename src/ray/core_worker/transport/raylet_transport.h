@@ -40,8 +40,10 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  Status HandleAssignTask(const rpc::AssignTaskRequest &request,
-                          rpc::AssignTaskReply *reply) override;
+  /// \param[in] done_callback The callback to be called when the request is done.
+  void HandleAssignTask(const rpc::AssignTaskRequest &request,
+                        rpc::AssignTaskReply *reply,
+                        rpc::RequestDoneCallback done_callback) override;
 
  private:
   /// The rpc service for `WorkerTaskService`.
