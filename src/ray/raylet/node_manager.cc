@@ -1018,8 +1018,10 @@ void NodeManager::HandlePrepareActorCheckpointRequest(
         RAY_CHECK_OK(gcs_client_->actor_checkpoint_id_table().AddCheckpointId(
             JobID::Nil(), actor_id, checkpoint_id));
         // Send reply to worker.
-        reply->set_checkpoint_id(actor_id.Binary());
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+        reply->set_checkpoint_id(checkpoint_id.Binary());
+        send_reply_callback(Status::OK(), nullptr, [this](){
+          RAY_LOG(WARNING) << "Failed to send PrepareActorCheckpointReply to client";
+        });
       }));
 }
 
