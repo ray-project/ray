@@ -248,7 +248,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
 }
 
 bool SchedulingQueue::RemoveTask(const TaskID &task_id,
-                                 Task *task,
+                                 Task *removed_task,
                                  TaskState *removed_task_state) {
   std::vector<Task> removed_tasks;
   std::unordered_set<TaskID> task_id_set = {task_id};
@@ -276,8 +276,8 @@ bool SchedulingQueue::RemoveTask(const TaskID &task_id,
 
   // Make sure we got the removed task.
   if (removed_tasks.size() == 1) {
-    *task = removed_tasks.front();
-    RAY_CHECK(task->GetTaskSpecification().TaskId() == task_id);
+    *removed_task = removed_tasks.front();
+    RAY_CHECK(removed_task->GetTaskSpecification().TaskId() == task_id);
     return true;
   }
   RAY_LOG(DEBUG) << "Task " << task_id
