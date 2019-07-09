@@ -146,8 +146,8 @@ class ServerCallImpl : public ServerCall {
           // request, tell gRPC to finish this
           // request.
           SendReply(status);
-          send_reply_success_callback_ = std::move(success);
-          send_reply_failure_callback_ = std::move(failure);
+          // send_reply_success_callback_ = std::move(success);
+          // send_reply_failure_callback_ = std::move(failure);
         });
   }
 
