@@ -135,7 +135,7 @@ class ServerCallImpl : public ServerCall {
       SendReply(Status::Invalid("HandleServiceClosed"));
     }
   }
-x
+
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(
