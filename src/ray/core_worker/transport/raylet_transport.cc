@@ -24,7 +24,7 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
-    rpc::RequestDoneCallback done_callback) {
+    rpc::SendReplyCallback send_reply_callback) {
   const raylet::Task task(request.task());
   const auto &spec = task.GetTaskSpecification();
   auto status = task_handler_(spec);
@@ -34,7 +34,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   // from raylet client connection, so it cannot guarantee the rpc reply arrives
   // at raylet after a previous `NotifyUnblocked` message.
   raylet_client_->TaskDone();
-  done_callback(status);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 }  // namespace ray
