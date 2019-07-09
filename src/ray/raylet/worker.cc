@@ -110,12 +110,10 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   task_resource_ids_.Release(cpu_resources);
 }
 
-bool Worker::UsePush() const {
-  return rpc_client_ != nullptr;
-}
+bool Worker::UsePush() const { return rpc_client_ != nullptr; }
 
 void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
-    const std::function<void(Status)> finish_assign_callback) {
+                        const std::function<void(Status)> finish_assign_callback) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (rpc_client_ != nullptr) {
     // Use push mode.
@@ -140,13 +138,14 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     flatbuffers::FlatBufferBuilder fbb;
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-    auto message = protocol::CreateGetTaskReply(
-        fbb, fbb.CreateString(spec.Serialize()), fbb.CreateVector(resource_id_set_flatbuf));
+    auto message =
+        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
+                                     fbb.CreateVector(resource_id_set_flatbuf));
     fbb.Finish(message);
     Connection()->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
         fbb.GetBufferPointer(), finish_assign_callback);
-  }     
+  }
 }
 
 }  // namespace raylet

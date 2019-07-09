@@ -841,8 +841,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto client_id = from_flatbuf<ClientID>(*message->worker_id());
   client->SetClientID(client_id);
   Language language = static_cast<Language>(message->language());
-  auto worker = std::make_shared<Worker>(message->worker_pid(), language,
-                                         message->port(), client, client_call_manager_);
+  auto worker = std::make_shared<Worker>(message->worker_pid(), language, message->port(),
+                                         client, client_call_manager_);
   if (message->is_worker()) {
     // Register the new worker.
     bool use_push_task = worker->UsePush();
@@ -1781,8 +1781,9 @@ bool NodeManager::AssignTask(const Task &task) {
       // expense of calling `MoveTask` for each of the assigned tasks.
       // TODO(zhijunfu): after all workers are fully migrated to push mode, the
       // `post` below and swap queue can be removed.
-      io_service_.post(
-          [this, status, worker, task_id]() { FinishAssignTask(task_id, *worker, status.ok()); });
+      io_service_.post([this, status, worker, task_id]() {
+        FinishAssignTask(task_id, *worker, status.ok());
+      });
     } else {
       FinishAssignTask(task_id, *worker, status.ok());
     }

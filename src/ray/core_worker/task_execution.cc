@@ -19,8 +19,8 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
                         std::placeholders::_1);
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(raylet_client, main_service_, worker_server_, func)));
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+          raylet_client, main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();

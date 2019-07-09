@@ -10,7 +10,6 @@
 #include "ray/raylet/task.h"
 #include "ray/rpc/worker/worker_client.h"
 
-
 namespace ray {
 
 namespace raylet {
@@ -58,10 +57,10 @@ class Worker {
   void ResetTaskResourceIds();
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
-  
+
   bool UsePush() const;
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
-       const std::function<void(Status)> finish_assign_callback);
+                  const std::function<void(Status)> finish_assign_callback);
 
  private:
   /// The worker's PID.
@@ -91,8 +90,9 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
-  /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all workers.
-  rpc::ClientCallManager &client_call_manager_;  
+  /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
+  /// workers.
+  rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
 };
