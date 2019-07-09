@@ -2,16 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import errno
 import logging
-import numpy as np
+import os
 
+import numpy as np
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize
@@ -555,7 +555,7 @@ class LearningRateSchedule(object):
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf.get_variable("lr", initializer=lr)
+        self.cur_lr = tf.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
             self.lr_schedule = ConstantSchedule(lr)
         else:
@@ -572,3 +572,24 @@ class LearningRateSchedule(object):
     @override(TFPolicy)
     def optimizer(self):
         return tf.train.AdamOptimizer(self.cur_lr)
+
+
+@DeveloperAPI
+class EntropyCoeffSchedule(object):
+    """Mixin for TFPolicy that adds entropy coeff decay."""
+
+    @DeveloperAPI
+    def __init__(self, entropy_coeff, entropy_coeff_schedule):
+        self.entropy_coeff = tf.get_variable(
+            "entropy_coeff", initializer=entropy_coeff, trainable=False)
+        self._entropy_schedule = entropy_coeff_schedule
+
+    @override(Policy)
+    def on_global_var_update(self, global_vars):
+        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
+        if self._entropy_schedule is not None:
+            self.entropy_coeff.load(
+                self.entropy_coeff.eval(session=self._sess) *
+                (1 - global_vars["timestep"] /
+                 self.config["entropy_coeff_schedule"]),
+                session=self._sess)
