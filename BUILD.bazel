@@ -211,7 +211,7 @@ cc_library(
 
 cc_test(
     name = "common_test",
-    srcs = ["src/ray/common/**/*_test.cc"],
+    srcs = glob(["src/ray/common/**/*_test.cc"]),
     copts = COPTS,
     deps = [
         ":ray_common",
