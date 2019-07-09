@@ -33,7 +33,7 @@ ray::ActorHandleID ActorHandle::ActorHandleID() const {
 Language ActorHandle::ActorLanguage() const { return inner_.actor_language(); };
 
 std::vector<std::string> ActorHandle::ActorCreationTaskFunctionDescriptor() const {
-  return ray::rpc::VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
+  return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
 };
 
 ObjectID ActorHandle::ActorCursor() const {

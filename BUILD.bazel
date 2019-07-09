@@ -415,7 +415,7 @@ cc_test(
 
 cc_test(
     name = "task_test",
-    srcs = ["src/ray/raylet/task_test.cc"],
+    srcs = ["src/ray/common/task_test.cc"],
     copts = COPTS,
     deps = [
         ":raylet_lib",
