@@ -17,27 +17,15 @@ namespace ray {
 /// Python, etc) workers.
 class CoreWorker {
  public:
-  CoreWorker(const ::Language language, std::shared_ptr<WorkerContext> worker_context,
-             std::shared_ptr<CoreWorkerTaskInterface> task_interface,
-             std::shared_ptr<CoreWorkerObjectInterface> object_interface,
-             std::shared_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface);
-
   /// Construct a CoreWorker instance.
   ///
   /// \param[in] worker_type Type of this worker.
   /// \param[in] langauge Language of this worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  static CoreWorker CreateForClusterMode(const WorkerType worker_type,
-                                         const ::Language language,
-                                         const std::string &store_socket,
-                                         std::shared_ptr<RayletClient> raylet_client,
-                                         const WorkerID &worker_id, const JobID &job_id);
-
-  static CoreWorker CreateForSingleProcessMode(const WorkerType worker_type,
-                                               const ::Language language,
-                                               const WorkerID &worker_id,
-                                               const JobID &job_id);
+  CoreWorker(const WorkerType worker_type, const ::Language language,
+             const std::string &store_socket, const std::string &raylet_socket,
+             const JobID &job_id = JobID::Nil());
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
@@ -45,19 +33,19 @@ class CoreWorker {
   /// Language of this worker.
   ::Language Language() const { return language_; }
 
-  WorkerContext &Context() { return *worker_context_; }
+  WorkerContext &Context() { return worker_context_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
-  CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
+  CoreWorkerTaskInterface &Tasks() { return task_interface_; }
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
-  CoreWorkerObjectInterface &Objects() { return *object_interface_; }
+  CoreWorkerObjectInterface &Objects() { return object_interface_; }
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() { return *task_execution_interface_; }
+  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
 
  private:
   /// Type of this worker.
@@ -66,17 +54,23 @@ class CoreWorker {
   /// Language of this worker.
   const ::Language language_;
 
+  /// raylet socket name.
+  const std::string raylet_socket_;
+
   /// Worker context.
-  std::shared_ptr<WorkerContext> worker_context_;
+  WorkerContext worker_context_;
+
+  /// Raylet client.
+  std::shared_ptr<RayletClient> raylet_client_;
 
   /// The `CoreWorkerTaskInterface` instance.
-  std::shared_ptr<CoreWorkerTaskInterface> task_interface_;
+  CoreWorkerTaskInterface task_interface_;
 
   /// The `CoreWorkerObjectInterface` instance.
-  std::shared_ptr<CoreWorkerObjectInterface> object_interface_;
+  CoreWorkerObjectInterface object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  std::shared_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
+  CoreWorkerTaskExecutionInterface task_execution_interface_;
 };
 
 }  // namespace ray

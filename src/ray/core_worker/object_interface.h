@@ -17,8 +17,9 @@ class CoreWorkerStoreProvider;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(std::shared_ptr<WorkerContext> worker_context,
-                            std::shared_ptr<CoreWorkerStoreProvider> store_provider);
+  CoreWorkerObjectInterface(WorkerContext &worker_context,
+                            std::shared_ptr<RayletClient> raylet_client,
+                            const std::string &store_socket);
 
   /// Put an object into object store.
   ///
@@ -65,10 +66,12 @@ class CoreWorkerObjectInterface {
 
  private:
   /// Reference to the parent CoreWorker's context.
-  std::shared_ptr<WorkerContext> worker_context_;
+  WorkerContext &worker_context_;
+  /// Reference to the parent CoreWorker's raylet client.
+  std::shared_ptr<RayletClient> raylet_client_;
 
-  /// The store provider.
-  std::shared_ptr<CoreWorkerStoreProvider> store_provider_;
+  /// All the store providers supported.
+  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
 };
 
 }  // namespace ray

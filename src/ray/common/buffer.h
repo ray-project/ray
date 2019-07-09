@@ -49,7 +49,7 @@ class LocalMemoryBuffer : public Buffer {
 class MemoryCopyBuffer : public Buffer {
  public:
   MemoryCopyBuffer(uint8_t *data, size_t size) : size_(size) {
-    data_ = reinterpret_cast<uint8_t*>(malloc(size));
+    data_ = reinterpret_cast<uint8_t *>(malloc(size));
     memcpy(data_, data, size);
   }
 
