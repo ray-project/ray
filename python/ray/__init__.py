@@ -67,12 +67,11 @@ from ray._raylet import (
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (global_state, nodes, tasks, objects, timeline,
+from ray.state import (global_state, jobs, nodes, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
     LOCAL_MODE,
-    PYTHON_MODE,
     SCRIPT_MODE,
     WORKER_MODE,
     connect,
@@ -101,6 +100,7 @@ __version__ = "0.8.0.dev2"
 
 __all__ = [
     "global_state",
+    "jobs",
     "nodes",
     "tasks",
     "objects",

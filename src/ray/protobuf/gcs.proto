@@ -227,6 +227,12 @@ message JobTableData {
   bytes job_id = 1;
   // Whether it's dead.
   bool is_dead = 2;
+  // The UNIX timestamp corresponding to this event (job added or removed).
+  int64 timestamp = 3;
+  // IP of the node this job was started on.
+  string node_manager_address = 4;
+  // Process ID of the driver running this job.
+  int64 driver_pid = 5;
 }
 
 // This table stores the actor checkpoint data. An actor checkpoint

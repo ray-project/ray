@@ -111,7 +111,8 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(WorkerContext &worker_context, RayletClient &raylet_client);
+  CoreWorkerTaskInterface(WorkerContext &worker_context,
+                          std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a normal task.
   ///

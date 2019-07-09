@@ -198,8 +198,8 @@ class Monitor(object):
                                "entries from redis shard {}.".format(
                                    len(keys) - num_deleted, shard_index))
 
-    def xray_job_removed_handler(self, unused_channel, data):
-        """Handle a notification that a job has been removed.
+    def xray_job_notification_handler(self, unused_channel, data):
+        """Handle a notification that a job has been added or removed.
 
         Args:
             unused_channel: The message channel.
@@ -209,10 +209,11 @@ class Monitor(object):
         job_data = gcs_entries.entries[0]
         message = ray.gcs_utils.JobTableData.FromString(job_data)
         job_id = message.job_id
-        logger.info("Monitor: "
-                    "XRay Driver {} has been removed.".format(
-                        binary_to_hex(job_id)))
-        self._xray_clean_up_entries_for_job(job_id)
+        if message.is_dead:
+            logger.info("Monitor: "
+                        "XRay Driver {} has been removed.".format(
+                            binary_to_hex(job_id)))
+            self._xray_clean_up_entries_for_job(job_id)
 
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
@@ -242,7 +243,7 @@ class Monitor(object):
                     message_handler = self.xray_heartbeat_batch_handler
                 elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
                     # Handles driver death.
-                    message_handler = self.xray_job_removed_handler
+                    message_handler = self.xray_job_notification_handler
                 else:
                     raise Exception("This code should be unreachable.")
 

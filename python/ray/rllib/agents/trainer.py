@@ -70,6 +70,7 @@ COMMON_CONFIG = {
     # Execute TF loss functions in eager mode. This is currently experimental
     # and only really works with the basic PG algorithm.
     "use_eager": False,
+    "log_sys_usage": True,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
