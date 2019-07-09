@@ -35,8 +35,8 @@ cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
         const c_string &SerializeAsString()
 
 
-cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
-    cdef cppclass CTaskSpec "ray::raylet::TaskSpecification":
+cdef extern from "ray/common/task_spec.h" namespace "ray" nogil:
+    cdef cppclass CTaskSpec "ray::TaskSpecification":
         CTaskSpec(const RpcTaskSpec message)
         CTaskSpec(const c_string &serialized_binary)
         const RpcTaskSpec &GetMessage()
@@ -74,8 +74,8 @@ cdef extern from "ray/raylet/task_spec.h" namespace "ray::raylet" nogil:
         c_vector[CActorHandleID] NewActorHandles() const
 
 
-cdef extern from "ray/raylet/task_util.h" namespace "ray::raylet" nogil:
-    cdef cppclass TaskSpecBuilder "ray::raylet::TaskSpecBuilder":
+cdef extern from "ray/common/task_util.h" namespace "ray" nogil:
+    cdef cppclass TaskSpecBuilder "ray::TaskSpecBuilder":
         TaskSpecBuilder &SetCommonTaskSpec(
             const CLanguage &language, const c_vector[c_string] &function_descriptor,
             const CJobID &job_id, const CTaskID &parent_task_id, uint64_t parent_counter,
@@ -98,14 +98,14 @@ cdef extern from "ray/raylet/task_util.h" namespace "ray::raylet" nogil:
         RpcTaskSpec GetMessage();
 
 
-cdef extern from "ray/raylet/task_execution_spec.h" namespace "ray::raylet" nogil:
-    cdef cppclass CTaskExecutionSpec "ray::raylet::TaskExecutionSpecification":
+cdef extern from "ray/common/task_execution_spec.h" namespace "ray" nogil:
+    cdef cppclass CTaskExecutionSpec "ray::TaskExecutionSpecification":
         CTaskExecutionSpec(RpcTaskExecutionSpec message)
         CTaskExecutionSpec(const c_string &serialized_binary)
         const RpcTaskExecutionSpec &GetMessage()
         c_vector[CObjectID] ExecutionDependencies()
         uint64_t NumForwards()
 
-cdef extern from "ray/raylet/task.h" namespace "ray::raylet" nogil:
-    cdef cppclass CTask "ray::raylet::Task":
+cdef extern from "ray/common/task.h" namespace "ray" nogil:
+    cdef cppclass CTask "ray::Task":
         CTask(CTaskSpec task_spec, CTaskExecutionSpec task_execution_spec)

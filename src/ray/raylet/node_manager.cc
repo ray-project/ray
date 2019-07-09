@@ -379,8 +379,8 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   ResourceSet resources_total(
-      rpc::VectorFromProtobuf(client_data.resources_total_label()),
-      rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
+      VectorFromProtobuf(client_data.resources_total_label()),
+      VectorFromProtobuf(client_data.resources_total_capacity()));
   cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 }
 
@@ -440,8 +440,8 @@ void NodeManager::ResourceCreateUpdated(const ClientTableData &client_data) {
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id "
                  << client_id << ". Updating resource map.";
   ResourceSet new_res_set(
-      rpc::VectorFromProtobuf(client_data.resources_total_label()),
-      rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
+      VectorFromProtobuf(client_data.resources_total_label()),
+      VectorFromProtobuf(client_data.resources_total_capacity()));
 
   const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
   ResourceSet difference_set = old_res_set.FindUpdatedResources(new_res_set);
@@ -475,8 +475,8 @@ void NodeManager::ResourceDeleted(const ClientTableData &client_data) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
   ResourceSet new_res_set(
-      rpc::VectorFromProtobuf(client_data.resources_total_label()),
-      rpc::VectorFromProtobuf(client_data.resources_total_capacity()));
+      VectorFromProtobuf(client_data.resources_total_label()),
+      VectorFromProtobuf(client_data.resources_total_capacity()));
   RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
                  << " with new resources: " << new_res_set.ToString()
                  << ". Updating resource map.";
@@ -535,11 +535,11 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   SchedulingResources &remote_resources = it->second;
 
   ResourceSet remote_available(
-      rpc::VectorFromProtobuf(heartbeat_data.resources_total_label()),
-      rpc::VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+      VectorFromProtobuf(heartbeat_data.resources_total_label()),
+      VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
   ResourceSet remote_load(
-      rpc::VectorFromProtobuf(heartbeat_data.resource_load_label()),
-      rpc::VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
+      VectorFromProtobuf(heartbeat_data.resource_load_label()),
+      VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.

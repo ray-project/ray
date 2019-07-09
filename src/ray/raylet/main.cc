@@ -2,13 +2,11 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "ray/protobuf/common.pb.h"
+#include "ray/common/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
 #include "gflags/gflags.h"
-
-using ray::rpc::Language;
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");

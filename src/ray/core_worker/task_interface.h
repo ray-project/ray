@@ -15,8 +15,6 @@
 
 namespace ray {
 
-using rpc::Language;
-
 class CoreWorker;
 
 /// Options of a non-actor-creation task.

@@ -8,14 +8,14 @@
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/task.h"
-#include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
-#include "ray/protobuf/common.pb.h"
+#include "ray/common/task_common.h"
+#include "ray/common/scheduling_resources.h"
+#include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
-#include "ray/common/scheduling_resources.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
@@ -32,7 +32,6 @@ using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
-using rpc::Language;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
