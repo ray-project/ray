@@ -52,7 +52,6 @@ class BaseID {
   std::string Hex() const;
 
  protected:
-
   BaseID(const std::string &binary) {
     std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), T::Size());
   }
@@ -66,7 +65,6 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-
   static size_t Size() { return kUniqueIDSize; }
 
   UniqueID() : BaseID() {}
@@ -106,7 +104,6 @@ class TaskID : public BaseID<TaskID> {
 
 class ObjectID : public BaseID<ObjectID> {
  public:
-
   ObjectID() : BaseID() {}
   static size_t Size() { return kUniqueIDSize; }
   plasma::ObjectID ToPlasmaId() const;
