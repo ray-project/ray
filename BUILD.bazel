@@ -12,9 +12,26 @@ COPTS = ["-DRAY_USE_GLOG"]
 # === Begin of protobuf definitions ===
 
 proto_library(
+    name = "common_proto",
+    srcs = ["src/ray/protobuf/common.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "common_cc_proto",
+    deps = [":common_proto"],
+)
+
+python_proto_compile(
+    name = "common_py_proto",
+    deps = [":common_proto"],
+)
+
+proto_library(
     name = "gcs_proto",
     srcs = ["src/ray/protobuf/gcs.proto"],
     visibility = ["//java:__subpackages__"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -30,6 +47,7 @@ python_proto_compile(
 proto_library(
     name = "node_manager_proto",
     srcs = ["src/ray/protobuf/node_manager.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -50,6 +68,7 @@ cc_proto_library(
 proto_library(
     name = "worker_proto",
     srcs = ["src/ray/protobuf/worker.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -60,6 +79,7 @@ cc_proto_library(
 proto_library(
     name = "core_worker_proto",
     srcs = ["src/ray/protobuf/core_worker.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -242,8 +262,8 @@ cc_library(
     copts = COPTS,
     linkopts = ["-pthread"],
     deps = [
+        ":common_cc_proto",
         ":gcs",
-        ":gcs_fbs",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
@@ -491,11 +511,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
-    includes = [
-        "src/ray/gcs/format",
-    ],
     deps = [
-        ":gcs_fbs",
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
@@ -550,15 +566,10 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
-        "src/ray/gcs/format/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src/ray/gcs/format",
-    ],
     deps = [
         ":gcs_cc_proto",
-        ":gcs_fbs",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -599,13 +610,6 @@ FLATC_ARGS = [
 ]
 
 flatbuffer_cc_library(
-    name = "gcs_fbs",
-    srcs = ["src/ray/gcs/format/gcs.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/gcs/format/",
-)
-
-flatbuffer_cc_library(
     name = "common_fbs",
     srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
     flatc_args = FLATC_ARGS,
@@ -616,8 +620,6 @@ flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
-    include_paths = ["src/ray/gcs/format"],
-    includes = [":gcs_fbs_includes"],
     out_prefix = "src/ray/raylet/format/",
 )
 
@@ -687,43 +689,6 @@ filegroup(
 )
 
 filegroup(
-    name = "gcs_fbs_file",
-    srcs = ["src/ray/gcs/format/gcs.fbs"],
-    visibility = ["//java:__subpackages__"],
-)
-
-flatbuffer_py_library(
-    name = "python_node_manager_fbs",
-    srcs = [
-        "src/ray/raylet/format/node_manager.fbs",
-    ],
-    outs = [
-        "ray/protocol/DisconnectClient.py",
-        "ray/protocol/FetchOrReconstruct.py",
-        "ray/protocol/ForwardTaskRequest.py",
-        "ray/protocol/FreeObjectsRequest.py",
-        "ray/protocol/GetTaskReply.py",
-        "ray/protocol/MessageType.py",
-        "ray/protocol/NotifyUnblocked.py",
-        "ray/protocol/PushErrorRequest.py",
-        "ray/protocol/RegisterClientReply.py",
-        "ray/protocol/RegisterClientRequest.py",
-        "ray/protocol/RegisterNodeManagerRequest.py",
-        "ray/protocol/ResourceIdSetInfo.py",
-        "ray/protocol/SubmitTaskRequest.py",
-        "ray/protocol/Task.py",
-        "ray/protocol/TaskExecutionSpecification.py",
-        "ray/protocol/WaitReply.py",
-        "ray/protocol/WaitRequest.py",
-    ],
-    include_paths = [
-        "src/ray/gcs/format/",
-    ],
-    includes = ["src/ray/gcs/format/gcs.fbs"],
-    out_prefix = "python/ray/core/generated/",
-)
-
-filegroup(
     name = "python_sources",
     srcs = glob([
         "python/ray/*.py",
@@ -781,13 +746,20 @@ cc_binary(
     ],
 )
 
+filegroup(
+    name = "all_py_proto",
+    srcs = [
+        "common_py_proto",
+        "gcs_py_proto",
+    ],
+)
+
 genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
         "//:python_sources",
-        "//:gcs_py_proto",
-        "//:python_node_manager_fbs",
+        "//:all_py_proto",
         "//:redis-server",
         "//:redis-cli",
         "//:libray_redis_module.so",
@@ -809,12 +781,12 @@ genrule(
         cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
         cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
         mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
-        for f in $(locations //:python_node_manager_fbs); do
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/ray/protocol/;
-        done &&
-        for f in $(locations //:gcs_py_proto); do
+        for f in $(locations //:all_py_proto); do
             cp -f $$f $$WORK_DIR/python/ray/core/generated/;
         done &&
+        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
+        # command to change the import path in the generated file.
+        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/gcs_pb2.py &&
         echo $$WORK_DIR > $@
     """,
     local = 1,

@@ -121,12 +121,14 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     // Use push mode.
     RAY_CHECK(port_ > 0);
     rpc::AssignTaskRequest request;
-    request.set_task_id(spec.TaskId().Binary());
-    request.set_task_spec(task.Serialize());
+    request.mutable_task()->mutable_task_spec()->CopyFrom(
+        task.GetTaskSpecification().GetMessage());
+    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
+        task.GetTaskExecutionSpec().GetMessage());
     request.set_resource_ids(resource_id_set.Serialize());
 
     auto status = rpc_client_->AssignTask(
-        request, [this](Status status, const rpc::AssignTaskReply &reply) {
+        request, [](Status status, const rpc::AssignTaskReply &reply) {
           // Worker has finished this task. There's nothing to do here
           // and assigning new task will be done when raylet receives
           // `TaskDone` message.
@@ -139,7 +141,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
     auto message = protocol::CreateGetTaskReply(
-        fbb, spec.ToFlatbuffer(fbb), fbb.CreateVector(resource_id_set_flatbuf));
+        fbb, fbb.CreateString(spec.Serialize()), fbb.CreateVector(resource_id_set_flatbuf));
     fbb.Finish(message);
     Connection()->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),

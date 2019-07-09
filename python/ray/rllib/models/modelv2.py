@@ -120,11 +120,11 @@ class ModelV2(object):
 
     def variables(self):
         """Returns the list of variables for this model."""
-        return self.var_list
+        return list(self.var_list)
 
     def trainable_variables(self):
         """Returns the list of trainable variables for this model."""
-        return self.variables()
+        return [v for v in self.variables() if v.trainable]
 
     def __call__(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.

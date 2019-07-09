@@ -25,11 +25,8 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::RequestDoneCallback done_callback) {
-  const std::string &task_message = request.task_spec();
-  const raylet::Task task(*flatbuffers::GetRoot<protocol::Task>(
-      reinterpret_cast<const uint8_t *>(task_message.data())));
+  const raylet::Task task(request.task());
   const auto &spec = task.GetTaskSpecification();
-
   auto status = task_handler_(spec);
   // Notify raylet the current done is done. This is to ensure that the task
   // is marked as finished by raylet only after previous raylet client calls are
