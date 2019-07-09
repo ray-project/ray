@@ -1,16 +1,18 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.CountDownLatch;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.WorkerMode;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
-  private final List<Thread> workerThreads = new ArrayList<>();
-  private final List<Worker> workers = new ArrayList<>();
+  private final Queue<Thread> workerThreads = new ConcurrentLinkedDeque<>();
+  private final Queue<Worker> workers = new ConcurrentLinkedDeque<>();
+  private CountDownLatch countDownLatch;
 
   public RayDevRuntime(RayConfig rayConfig) {
     super(rayConfig);
@@ -26,6 +28,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
         rayConfig.get().jobId));
 
 //    System.setProperty("ray.worker.mode", "WORKER");
+    Preconditions.checkState(countDownLatch == null);
+    countDownLatch = new CountDownLatch(rayConfig.get().numberExecThreadsForDevRuntime);
     for (int i = 0; i < rayConfig.get().numberExecThreadsForDevRuntime; i++) {
       Thread thread = new Thread(() -> {
 //        rayConfig.set(RayConfig.create());
@@ -34,24 +38,32 @@ public class RayDevRuntime extends AbstractRayRuntime {
             UniqueId.NIL);
         worker.set(newWorker);
         workers.add(newWorker);
+        countDownLatch.countDown();
         newWorker.loop();
       });
       thread.start();
       workerThreads.add(thread);
     }
+    try {
+      countDownLatch.await();
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Override
   public void shutdown() {
-    for (Worker worker : workers) {
+    while (!workers.isEmpty()) {
+      Worker worker = workers.poll();
       worker.stop();
     }
-    for (Thread thread : workerThreads) {
+    while (!workerThreads.isEmpty()) {
       try {
-        thread.join();
+        workerThreads.poll().join();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
     }
+    countDownLatch = null;
   }
 }

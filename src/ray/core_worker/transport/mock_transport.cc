@@ -48,6 +48,7 @@ Status CoreWorkerMockTaskPool::GetTasks(std::shared_ptr<WorkerContext> worker_co
     } else if (!other_ready_tasks_.empty()) {
       task = other_ready_tasks_.front();
       other_ready_tasks_.pop_front();
+      break;
     }
   }
   RAY_CHECK((*tasks).empty());
@@ -58,6 +59,7 @@ Status CoreWorkerMockTaskPool::GetTasks(std::shared_ptr<WorkerContext> worker_co
 }
 
 void CoreWorkerMockTaskPool::OnObjectPut(const ObjectID &object_id) {
+  std::lock_guard<std::mutex> guard(mutex_);
   auto it = waiting_tasks_.find(object_id);
   if (it != waiting_tasks_.end()) {
     auto tasks = it->second;
@@ -102,6 +104,12 @@ std::unordered_set<ObjectID> CoreWorkerMockTaskPool::GetUnreadyObjects(
           unready_objects.insert(object_id);
         }
       }
+    }
+  }
+  // TODO (kfstorm): how to add dummy object to unlock actor cursor dependency?
+  for (auto &object_id : task.GetDependencies()) {
+    if (!mock_store_provider_->IsObjectReady(object_id)) {
+      unready_objects.insert(object_id);
     }
   }
   return unready_objects;
