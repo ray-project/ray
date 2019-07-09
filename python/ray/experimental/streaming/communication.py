@@ -472,8 +472,7 @@ class DataOutput(object):
         if self.logging:  # Log rate (records/s)
             self.__log(force=True)
 
-    # Used for record-at-a-time operators and when _push_batch()
-    # is not applicable, e.g. when shuffling is needed
+    # Used for record-at-a-time operators
     def _push(self, record):
         """Pushes a record to the output buffers."""
         # Simple forwarding
