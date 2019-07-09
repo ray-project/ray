@@ -169,7 +169,7 @@ class ModelCatalog(object):
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
 
-        return dist, dist.parameter_shape_for_action_space(action_space)
+        return dist, dist.parameter_shape_for_action_space(action_space, config)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))

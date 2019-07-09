@@ -29,11 +29,14 @@ class ActionDistribution(object):
 
     Args:
       inputs (Tensor): The input vector to compute samples from.
+      model_config (dict): Optional model config dict
+          (as defined in catalog.py)
     """
 
     @DeveloperAPI
-    def __init__(self, inputs):
+    def __init__(self, inputs, model_config=None):
         self.inputs = inputs
+        self.model_config = model_config
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -72,7 +75,7 @@ class ActionDistribution(object):
 
     @DeveloperAPI
     @staticmethod
-    def parameter_shape_for_action_space(action_space, options_dict=None):
+    def parameter_shape_for_action_space(action_space, model_config=None):
         """Returns the required shape of an input parameter tensor for a
         particular action space and an optional dict of distribution-specific
         options.
@@ -81,8 +84,7 @@ class ActionDistribution(object):
             action_space (gym.Space): The action space this distribution will
                 be used for, whose shape attributes will be used to determine
                 the required shape of the input parameter tensor.
-            options_dict (dict): Optional args used for this method. This will
-                be the "custom_options" dict in the model options dict.
+            model_config (dict): Model's config dict (as defined in catalog.py)
 
         Returns:
             dist_dim (np.ndarray) int array of the size of the required input
@@ -145,19 +147,20 @@ class Categorical(ActionDistribution):
 
     @staticmethod
     @override(ActionDistribution)
-    def parameter_shape_for_action_space(action_space, options_dict=None):
+    def parameter_shape_for_action_space(action_space, model_config=None):
         return action_space.n
 
 
 class MultiCategorical(ActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
-    def __init__(self, inputs, input_lens):
+    def __init__(self, inputs, input_lens, model_config=None):
         self.cats = [
             Categorical(input_)
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
+        self.model_config = model_config
 
     def logp(self, actions):
         # If tensor is provided, unstack it into list
@@ -184,12 +187,12 @@ class DiagGaussian(ActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, model_config=None):
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        ActionDistribution.__init__(self, inputs)
+        ActionDistribution.__init__(self, inputs, model_config)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -219,7 +222,7 @@ class DiagGaussian(ActionDistribution):
 
     @staticmethod
     @override(ActionDistribution)
-    def parameter_shape_for_action_space(action_space, options_dict=None):
+    def parameter_shape_for_action_space(action_space, model_config=None):
         return action_space.shape[0] * 2
 
 
@@ -239,7 +242,7 @@ class Deterministic(ActionDistribution):
 
     @staticmethod
     @override(ActionDistribution)
-    def parameter_shape_for_action_space(action_space, options_dict=None):
+    def parameter_shape_for_action_space(action_space, model_config=None):
         return action_space.shape[0]
 
 
@@ -250,13 +253,16 @@ class MultiActionDistribution(ActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, action_space, child_distributions, input_lens):
+    def __init__(self, inputs, action_space, child_distributions, input_lens,
+                 model_config=None):
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i]))
+            child_list.append(distribution(split_inputs[i],
+                                           model_config=model_config))
         self.child_distributions = child_list
+        self.model_config = model_config
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -314,7 +320,7 @@ class Dirichlet(ActionDistribution):
 
     e.g. actions that represent resource allocation."""
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, model_config=None):
         """Input is a tensor of logits. The exponential of logits is used to
         parametrize the Dirichlet distribution as all parameters need to be
         positive. An arbitrary small epsilon is added to the concentration
@@ -329,7 +335,7 @@ class Dirichlet(ActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        ActionDistribution.__init__(self, concentration)
+        ActionDistribution.__init__(self, concentration, model_config)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -354,5 +360,5 @@ class Dirichlet(ActionDistribution):
 
     @staticmethod
     @override(ActionDistribution)
-    def parameter_shape_for_action_space(action_space, options_dict=None):
+    def parameter_shape_for_action_space(action_space, model_config=None):
         return action_space.shape[0]

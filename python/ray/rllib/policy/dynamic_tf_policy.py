@@ -168,7 +168,8 @@ class DynamicTFPolicy(TFPolicy):
                 self, self.model, self.input_dict, obs_space, action_space,
                 config)
         else:
-            self.action_dist = self.dist_class(self.model_out)
+            self.action_dist = self.dist_class(
+                self.model_out, model_config=self.config["model"])
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
 

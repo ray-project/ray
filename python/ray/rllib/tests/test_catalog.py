@@ -114,22 +114,22 @@ class ModelCatalogTest(unittest.TestCase):
         action_space = Box(0, 1, shape=(5,), dtype=np.float32)
 
         # test retrieving it
-        options_dict = MODEL_DEFAULTS.copy()
-        options_dict["custom_action_dist"] = "test"
+        model_config = MODEL_DEFAULTS.copy()
+        model_config["custom_action_dist"] = "test"
         dist_cls, param_shape = ModelCatalog.get_action_dist(action_space,
-                                                             options_dict)
+                                                             model_config)
         self.assertEqual(str(dist_cls), str(CustomActionDistribution))
         self.assertEqual(param_shape, action_space.shape)
 
         # test passing the options to it
-        options_dict["custom_options"].update({"output_dim": 3})
+        model_config["custom_options"].update({"output_dim": 3})
         dist_cls, param_shape = ModelCatalog.get_action_dist(action_space,
-                                                             options_dict)
+                                                             model_config)
         self.assertEqual(param_shape, 3)
 
         # test the class works as a distribution
         dist_input = tf.ones(param_shape, dtype=tf.float32)
-        dist = dist_cls(dist_input)
+        dist = dist_cls(dist_input, model_config=model_config)
         self.assertEqual(dist.sample().shape, dist_input.shape)
         self.assertIsInstance(dist.sample(), tf.Tensor)
         with self.assertRaises(NotImplementedError):
