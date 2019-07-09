@@ -7,7 +7,6 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/worker_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
@@ -455,16 +454,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// Handle the case where a worker is available. This should be called when a new
-  /// worker is registered with a port greater than zero (which indicates it will
-  /// act as a rpc server), and when a worker finishes it assigned task, which is
-  /// indicated by a `GetTask` message (or a rpc reply if the worker is a rpc server).
-  /// Later all the workers will be migrated to use rpc server, in that case tasks are
-  /// pushed by raylet to workers, instead of workers pulling from raylet.
+  /// Finish assigning a task to a worker.
   ///
-  /// \param worker Worker that is available.
+  /// \param task_id Id of the task.
+  /// \param worker Worker which the task is assigned to.
+  /// \param success Whether the task is successfully assigned to the worker.
   /// \return void.
-  void HandleWorkerAvailable(std::shared_ptr<Worker> worker);
+  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -537,9 +533,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
-
-  /// Map from worker ids to rpc clients of workers.
-  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerTaskClient>> worker_clients_;
 };
 
 }  // namespace raylet

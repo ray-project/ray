@@ -3,6 +3,8 @@
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
 
+using namespace std::placeholders;
+
 namespace ray {
 
 /// A mock C++ worker used by core_worker_test.cc to verify the task submission/execution
@@ -16,43 +18,41 @@ namespace ray {
 /// for more details on how this class is used.
 class MockWorker {
  public:
-  MockWorker(const std::string &store_socket, const std::string &raylet_socket) {
-    auto executor_func = [this](const RayFunction &ray_function,
-                                const std::vector<std::shared_ptr<RayObject>> &args,
-                                const TaskInfo &task_info, int num_returns) {
-      // Note that this doesn't include dummy object id.
-      RAY_CHECK(num_returns >= 0);
-
-      // Merge all the content from input args.
-      std::vector<uint8_t> buffer;
-      for (const auto &arg : args) {
-        auto &data = arg->GetData();
-        buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
-      }
-
-      auto return_value = RayObject(
-          std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
-
-      // Write the merged content to each of return ids.
-      for (int i = 0; i < num_returns; i++) {
-        ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
-        RAY_CHECK_OK(worker_->Objects().Put(return_value, id));
-      }
-      return Status::OK();
-    };
-
-    worker_ = std::unique_ptr<CoreWorker>(
-        new CoreWorker(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                       JobID::FromRandom(), executor_func));
-  }
+  MockWorker(const std::string &store_socket, const std::string &raylet_socket)
+    : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+              JobID::FromRandom(), std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {
     // Start executing tasks.
-    worker_->Execution().Run();
+    worker_.Execution().Run();
   }
 
  private:
-  std::unique_ptr<CoreWorker> worker_;
+  Status ExecuteTask(const RayFunction &ray_function,
+                     const std::vector<std::shared_ptr<RayObject>> &args,
+                     const TaskInfo &task_info, int num_returns) {
+    // Note that this doesn't include dummy object id.
+    RAY_CHECK(num_returns >= 0);
+
+    // Merge all the content from input args.
+    std::vector<uint8_t> buffer;
+    for (const auto &arg : args) {
+      auto &data = arg->GetData();
+      buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
+    }
+
+    auto return_value = RayObject(
+        std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
+
+    // Write the merged content to each of return ids.
+    for (int i = 0; i < num_returns; i++) {
+      ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
+      RAY_CHECK_OK(worker_.Objects().Put(return_value, id));
+    }
+    return Status::OK();
+  }
+
+  CoreWorker worker_;
 };
 
 }  // namespace ray

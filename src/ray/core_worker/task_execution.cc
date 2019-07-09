@@ -20,7 +20,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(main_service_, worker_server_, func)));
+          new CoreWorkerRayletTaskReceiver(raylet_client, main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -60,12 +60,12 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   return status;
 }
 
-Status CoreWorkerTaskExecutionInterface::Run() {
+void CoreWorkerTaskExecutionInterface::Run() {
   // Run main IO service.
   main_service_.run();
 
   // should never reach here.
-  return Status::OK();
+  RAY_LOG(FATAL) << "should never reach here after running main io service";
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(

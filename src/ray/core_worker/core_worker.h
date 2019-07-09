@@ -26,7 +26,7 @@ class CoreWorker {
   CoreWorker(const WorkerType worker_type, const ::Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id,
-             CoreWorkerTaskExecutionInterface::TaskExecutor execution_callback = nullptr);
+             CoreWorkerTaskExecutionInterface::TaskExecutor execution_callback);
 
   /// Type of this worker.
   enum WorkerType WorkerType() const { return worker_type_; }
