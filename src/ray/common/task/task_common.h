@@ -1,7 +1,7 @@
 #ifndef RAY_COMMON_TASK_COMMON_H
 #define RAY_COMMON_TASK_COMMON_H
 
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/protobuf/common.pb.h"
 
 namespace ray {
 

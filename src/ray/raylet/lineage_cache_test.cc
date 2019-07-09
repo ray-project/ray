@@ -8,7 +8,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/common/task_util.h"
+#include "ray/common/task/task_util.h"
 
 namespace ray {
 

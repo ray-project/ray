@@ -1,7 +1,7 @@
 #ifndef RAY_RAYLET_TASK_UTIL_H
 #define RAY_RAYLET_TASK_UTIL_H
 
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/common/task/task_spec.h"
 
 namespace ray {
