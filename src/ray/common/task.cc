@@ -2,8 +2,6 @@
 
 namespace ray {
 
-namespace raylet {
-
 const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
 }
@@ -33,7 +31,5 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_ = task.task_execution_spec_;
   ComputeDependencies();
 }
-
-}  // namespace raylet
 
 }  // namespace ray

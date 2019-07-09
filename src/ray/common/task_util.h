@@ -1,12 +1,10 @@
 #ifndef RAY_RAYLET_TASK_UTIL_H
 #define RAY_RAYLET_TASK_UTIL_H
 
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/task_spec.h"
+#include "src/ray/protobuf/common.pb.h"
+#include "src/ray/common/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// Helper class for building a `TaskSpecification` object.
 class TaskSpecBuilder {
@@ -114,7 +112,6 @@ class TaskSpecBuilder {
   rpc::TaskSpec message_;
 };
 
-}  // namespace raylet
 }  // namespace ray
 
 #endif  // RAY_RAYLET_TASK_UTIL_H

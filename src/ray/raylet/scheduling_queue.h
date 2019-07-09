@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/raylet/task.h"
+#include "ray/common/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
 

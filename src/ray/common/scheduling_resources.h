@@ -10,8 +10,6 @@
 
 namespace ray {
 
-namespace raylet {
-
 /// Conversion factor that is the amount in internal units is equivalent to
 /// one actual resource. Multiply to convert from actual to interal and
 /// divide to convert from internal to actual.
@@ -531,14 +529,12 @@ class SchedulingResources {
   ResourceSet resources_load_;
 };
 
-}  // namespace raylet
-
 }  // namespace ray
 
 namespace std {
 template <>
-struct hash<ray::raylet::ResourceSet> {
-  size_t operator()(ray::raylet::ResourceSet const &k) const {
+struct hash<ray::ResourceSet> {
+  size_t operator()(ray::ResourceSet const &k) const {
     size_t seed = k.GetResourceMap().size();
     for (auto &elem : k.GetResourceMap()) {
       seed ^= std::hash<std::string>()(elem.first);

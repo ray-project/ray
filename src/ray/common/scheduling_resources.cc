@@ -7,8 +7,6 @@
 
 namespace ray {
 
-namespace raylet {
-
 FractionalResourceQuantity::FractionalResourceQuantity() { resource_quantity_ = 0; }
 
 FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity) {
@@ -285,7 +283,7 @@ const std::unordered_map<std::string, FractionalResourceQuantity>
 };
 
 ResourceSet ResourceSet::FindUpdatedResources(
-    const ray::raylet::ResourceSet &new_resource_set) const {
+    const ResourceSet &new_resource_set) const {
   // Find any new resources and return a ResourceSet with the resource and new capacities
   ResourceSet updated_resource_set;
   for (const auto &resource_pair : new_resource_set.GetResourceAmountMap()) {
@@ -307,7 +305,7 @@ ResourceSet ResourceSet::FindUpdatedResources(
 }
 
 ResourceSet ResourceSet::FindDeletedResources(
-    const ray::raylet::ResourceSet &new_resource_set) const {
+    const ResourceSet &new_resource_set) const {
   // Find any new resources and return a ResourceSet with the resource and new capacities
   ResourceSet deleted_resource_set;
   auto &new_resource_map = new_resource_set.GetResourceAmountMap();
@@ -822,7 +820,5 @@ std::string SchedulingResources::DebugString() const {
   result << "\n- avail: " << resources_available_.ToString();
   return result.str();
 };
-
-}  // namespace raylet
 
 }  // namespace ray

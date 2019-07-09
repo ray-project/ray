@@ -1,16 +1,10 @@
 
 #include <sstream>
 
-#include "ray/raylet/task_spec.h"
-#include "ray/rpc/util.h"
+#include "ray/common/task_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray {
-
-namespace raylet {
-
-using rpc::MapFromProtobuf;
-using rpc::VectorFromProtobuf;
 
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_.required_resources());
@@ -95,14 +89,14 @@ bool TaskSpecification::IsDriverTask() const {
   return FunctionDescriptor().empty();
 }
 
-rpc::Language TaskSpecification::GetLanguage() const { return message_.language(); }
+Language TaskSpecification::GetLanguage() const { return message_.language(); }
 
 bool TaskSpecification::IsActorCreationTask() const {
-  return message_.type() == rpc::TaskType::ACTOR_CREATION_TASK;
+  return message_.type() == TaskType::ACTOR_CREATION_TASK;
 }
 
 bool TaskSpecification::IsActorTask() const {
-  return message_.type() == rpc::TaskType::ACTOR_TASK;
+  return message_.type() == TaskType::ACTOR_TASK;
 }
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -159,15 +153,13 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
   if (!IsActorTask()) {
     return {};
   }
-  return rpc::IdVectorFromProtobuf<ActorHandleID>(
+  return IdVectorFromProtobuf<ActorHandleID>(
       message_.actor_task_spec().new_actor_handles());
 }
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
-  return rpc::VectorFromProtobuf(
+  return VectorFromProtobuf(
       message_.actor_creation_task_spec().dynamic_worker_options());
 }
-
-}  // namespace raylet
 
 }  // namespace ray

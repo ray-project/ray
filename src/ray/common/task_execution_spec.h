@@ -4,15 +4,10 @@
 #include <vector>
 
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/rpc/message_wrapper.h"
-#include "ray/rpc/util.h"
+#include "ray/common/task_common.h"
+#include "ray/common/grpc_util.h"
 
 namespace ray {
-
-namespace raylet {
-
-using rpc::MessageWrapper;
 
 /// Wrapper class of protobuf `TaskExecutionSpec`, see `common.proto` for details.
 class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec> {
@@ -44,8 +39,6 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
 };
-
-}  // namespace raylet
 
 }  // namespace ray
 

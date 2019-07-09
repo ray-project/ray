@@ -8,10 +8,10 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/raylet/task_util.h"
-#include "ray/rpc/util.h"
+#include "ray/common/task.h"
+#include "ray/common/task_spec.h"
+#include "ray/common/task_util.h"
+#include "ray/common/grpc_util.h"
 
 namespace ray {
 

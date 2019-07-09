@@ -3,15 +3,11 @@
 
 #include <inttypes.h>
 
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/rpc/message_wrapper.h"
+#include "ray/common/task_common.h"
+#include "ray/common/task_execution_spec.h"
+#include "ray/common/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// \class Task
 ///
@@ -77,8 +73,6 @@ class Task {
   /// TaskExecutionSpecification.
   std::vector<ObjectID> dependencies_;
 };
-
-}  // namespace raylet
 
 }  // namespace ray
 

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "ray/common/status.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task_spec.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;

@@ -7,7 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task_spec.h"
 
 namespace ray {
 

@@ -7,21 +7,15 @@
 #include <vector>
 
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/scheduling_resources.h"
-#include "ray/rpc/message_wrapper.h"
+#include "ray/common/scheduling_resources.h"
+#include "ray/common/task_common.h"
+#include "ray/common/grpc_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
 
 namespace ray {
-
-namespace raylet {
-
-using rpc::Language;
-using rpc::MessageWrapper;
-using rpc::TaskType;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
@@ -124,8 +118,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initalized in constructor.
   ResourceSet required_placement_resources_;
 };
-
-}  // namespace raylet
 
 }  // namespace ray
 

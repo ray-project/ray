@@ -6,7 +6,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task_spec.h"
 
 namespace ray {
 

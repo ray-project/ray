@@ -6,7 +6,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/scheduling_resources.h"
 
 namespace ray {
 

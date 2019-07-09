@@ -5,7 +5,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/common/status.h"
-#include "ray/rpc/util.h"
+#include "ray/common/grpc_util.h"
 
 namespace ray {
 namespace rpc {

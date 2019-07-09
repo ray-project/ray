@@ -9,7 +9,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/gcs/client.h"
 #include "ray/protobuf/common.pb.h"
-#include "ray/raylet/task.h"
+#include "ray/common/task.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
