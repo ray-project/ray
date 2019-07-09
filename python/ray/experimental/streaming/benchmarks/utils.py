@@ -7,17 +7,15 @@ import math
 import multiprocessing
 import numpy as np
 import subprocess
-import sys
 import time
 
 try:  # Python 3
     from itertools import zip_longest as zip_longest
-except:  # Python 2
+except ImportError:  # Python 2
     from itertools import izip_longest as zip_longest
 
 import ray
 from ray.tests.cluster_utils import Cluster
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -34,14 +32,14 @@ def pin_processes():
     cmd_pids = ["pgrep", "python"]
     result = subprocess.check_output(cmd_pids)
     pids = [pid for pid in str(result.decode("ascii").strip()).split("\n")]
-    logger.info("Found {} python processes with PIDs: {}".format(len(pids),
-                                                                        pids))
+    logger.info("Found {} python processes with PIDs: {}".format(
+        len(pids), pids))
     if num_cpus < len(pids):
         raise Exception("CPUs are less than python processes.")
 
     cmd_pin = ["taskset", "-p", None, None]
     for i, pid in enumerate(pids):
-        cmd_pin[2] = str(hex(i+1))  # Affinity mask
+        cmd_pin[2] = str(hex(i + 1))  # Affinity mask
         cmd_pin[3] = pid
         subprocess.call(cmd_pin)
 
@@ -77,8 +75,9 @@ def start_virtual_cluster(num_nodes, num_redis_shards, plasma_memory,
     # 'actors_per_stage'. Sinks are always placed at the last node whereas
     # the progress monitoring actor is always placed at the first node
     actors_per_stage = [num_sources]
-    actors_per_stage.extend([stage_parallelism[n] for n in range(
-                    len(stage_parallelism) - 1)])  # -1 to exclude sink actors
+    actors_per_stage.extend([
+        stage_parallelism[n] for n in range(len(stage_parallelism) - 1)
+    ])  # -1 to exclude sink actors
     stages_per_node = math.trunc(math.ceil(len(actors_per_stage) / num_nodes))
     message = "Number of stages per node: {} (incl. source stage)"
     logger.info(message.format(stages_per_node))
@@ -143,8 +142,8 @@ def parse_placement(placement_file, cluster_node_ids):
                 for node_id in node_ids:
                     new_id = ids.setdefault(node_id, node_id)
                     operator_placement.append(new_id)
-                existing_lacement = placement.setdefault(name,
-                                                         operator_placement)
+                existing_lacement = placement.setdefault(
+                    name, operator_placement)
                 if existing_lacement != operator_placement:
                     error_message = "Looks like there are two dataflow"
                     error_message += "  operators with the same name."
@@ -157,8 +156,8 @@ def parse_placement(placement_file, cluster_node_ids):
 
 # Collects sampled latencies and throughputs from
 # actors in the dataflow and writes the log files
-def write_log_files(all_parameters, latency_filename,
-                    throughput_filename,  dump_filename, dataflow):
+def write_log_files(all_parameters, latency_filename, throughput_filename,
+                    dump_filename, dataflow):
     time.sleep(2)  # Wait a bit for everything to finish
     # Dump timeline
     if dump_filename:
@@ -168,8 +167,10 @@ def write_log_files(all_parameters, latency_filename,
     # Collect sampled per-record latencies from all sink instances
     sink_id = dataflow.operator_id("sink")
     local_states = ray.get(dataflow.state_of(sink_id))
-    latencies = [latency for state in local_states for latency in state
-                 if state is not None][1:]  # Omit first measurement
+    latencies = [
+        latency for state in local_states for latency in state
+        if state is not None
+    ][1:]  # Omit first measurement
     latencies = [latency for l in latencies for latency in l]
     latency_filename = latency_filename + all_parameters
     with open(latency_filename, "w") as tf:
@@ -197,8 +198,7 @@ def write_log_files(all_parameters, latency_filename,
             operator_name = dataflow.name_of(operator_id)
             for i, o in zip_longest(in_rate, out_rate, fillvalue=0):
                 tf.write(
-                    str("(" + str(operator_id) + ", " + str(
-                     operator_name) + ", " + str(
-                     instance_id)) + ")" + " | " + str(
-                     i) + " | " + str(o) + "\n")
+                    str("(" + str(operator_id) + ", " + str(operator_name) +
+                        ", " + str(instance_id)) + ")" + " | " + str(i) +
+                    " | " + str(o) + "\n")
                 all_rates.append(o)

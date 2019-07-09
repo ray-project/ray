@@ -3,20 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import math
-import msgpack
 import time
 import types
 
 import ray
-import ray.cloudpickle as pickle
 import ray.experimental.signal as signal
 
-from ray.experimental import named_actors
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Auction
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Bid
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Person
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
 
 logger = logging.getLogger(__name__)
@@ -29,10 +21,12 @@ class ActorExit(signal.Signal):
     def __init__(self, value=None):
         self.value = value
 
+
 # Signal denoting that a streaming data source has started emitting records
 class ActorStart(signal.Signal):
     def __init__(self, value=None):
         self.value = value
+
 
 class OperatorInstance(object):
     """A streaming operator instance.
@@ -47,22 +41,18 @@ class OperatorInstance(object):
         checkpoint_dir (str): The checkpoints directory
     """
 
-    def __init__(self,
-                 instance_id,
-                 operator_metadata,
-                 input_gate,
-                 output_gate,
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
                  checkpoint_dir):
         self.instance_id = instance_id  # (Operator id, local instance id)
         self.metadata = operator_metadata
         self.input = input_gate
         self.output = output_gate
-        self.this_actor = None      # Owns actor handle
+        self.this_actor = None  # Owns actor handle
 
-        self.key_index = None       # Index for key selection
-        self.key_attribute = None   # Attribute name for key selection
+        self.key_index = None  # Index for key selection
+        self.key_attribute = None  # Attribute name for key selection
 
-        self.num_records_seen = 0   # Number of records seen by the actor
+        self.num_records_seen = 0  # Number of records seen by the actor
 
         # TODO (john): Should be initialized based on the user-defined offset
         self.last_emitted_watermark = 0
@@ -140,7 +130,7 @@ class OperatorInstance(object):
         previous_epoch = self.input.input_channels[input_channel_id]
         current_epoch = watermark["event_time"]
         # Epochs from the same input can only increase monotonically
-        assert prev_epoch < current_epoch
+        assert previous_epoch < current_epoch
         self.epochs[input_channel_id] = current_epoch
         # Find minimum watermark amongst all input channels
         minimum_watermark = min(self.epochs.values())
@@ -197,6 +187,7 @@ class OperatorInstance(object):
     def logs(self):
         return (self.instance_id, self.input.rates, self.output.rates)
 
+
 # A monitoring actor used to keep track of the execution's progress
 @ray.remote
 class ProgressMonitor(object):
@@ -207,7 +198,7 @@ class ProgressMonitor(object):
         executing the physical dataflow.
     """
 
-    def __init__(self,running_actors):
+    def __init__(self, running_actors):
         self.running_actors = running_actors  # Actor handles
         self.start_signals = []
         self.exit_signals = []
@@ -248,11 +239,10 @@ class Map(OperatorInstance):
     the input stream.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
-        OperatorInstance.__init__(self, instance_id,
-                                  operator_metadata, input_gate, output_gate,
-                                  checkpoint_dir)
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
+                 checkpoint_dir):
+        OperatorInstance.__init__(self, instance_id, operator_metadata,
+                                  input_gate, output_gate, checkpoint_dir)
         # The user-defined map function
         self.map_fn = operator_metadata.logic
 
@@ -276,11 +266,10 @@ class FlatMap(OperatorInstance):
     the input stream.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
+                 checkpoint_dir):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
-                                  input_gate, output_gate,
-                                  checkpoint_dir)
+                                  input_gate, output_gate, checkpoint_dir)
         # The user-defined flatmap function
         self.flatmap_fn = operator_metadata.logic
         self.max_batch_size = input_gate[0].queue_config.max_batch_size
@@ -305,11 +294,10 @@ class Union(OperatorInstance):
     """A union operator instance that concatenates two or more streams.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
+                 checkpoint_dir):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
-                                  input_gate, output_gate,
-                                  checkpoint_dir)
+                                  input_gate, output_gate, checkpoint_dir)
         pass
 
     # Merges all input records into a single output
@@ -320,6 +308,7 @@ class Union(OperatorInstance):
 # Used as default attribute selection in the Reduce operator
 def _identity(element):
     return element
+
 
 # Reduce actor
 @ray.remote
@@ -334,13 +323,17 @@ class Reduce(OperatorInstance):
         state (dict): A mapping from keys to values.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir, config=None):
+    def __init__(self,
+                 instance_id,
+                 operator_metadata,
+                 input_gate,
+                 output_gate,
+                 checkpoint_dir,
+                 config=None):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
-                                  input_gate, output_gate,
-                                  checkpoint_dir)
-        self.state = {}                             # key -> value
-        self.reduce_fn = operator_metadata.logic    # Reduce function
+                                  input_gate, output_gate, checkpoint_dir)
+        self.state = {}  # key -> value
+        self.reduce_fn = operator_metadata.logic  # Reduce function
         # Set the attribute selector
         self.attribute_selector = operator_metadata.attribute_selector
         if self.attribute_selector is None:
@@ -387,11 +380,10 @@ class KeyBy(OperatorInstance):
         (assuming tuple records).
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
+                 checkpoint_dir):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
-                                  input_gate, output_gate,
-                                  checkpoint_dir)
+                                  input_gate, output_gate, checkpoint_dir)
         # Set the key selector
         self.key_selector = operator_metadata.key_selector
         if isinstance(self.key_selector, int):
@@ -420,18 +412,16 @@ class Source(OperatorInstance):
         - close()
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
+                 checkpoint_dir):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
-                                  input_gate, output_gate,
-                                  checkpoint_dir)
+                                  input_gate, output_gate, checkpoint_dir)
         # The user-defined source
         self.source = operator_metadata.source
         self.source.init()  # Initialize the source
         # The watermark interval in ms
         self.watermark_interval = operator_metadata.watermark_interval
         self.max_event_time = 0  # Max event timestamp seen so far
-
 
     def __generate_watermark(self, record_batch):
         """Generates one or more watermarks.
@@ -450,17 +440,16 @@ class Source(OperatorInstance):
             except KeyError as e:
                 raise Exception(e)
             max_timestamp = max(event_time, self.max_event_time)
-        if (max_timestamp >=
-                self.max_event_time + self.watermark_interval):
+        if (max_timestamp >= self.max_event_time + self.watermark_interval):
             # Emit watermark
             log_message = "Source emitting watermark {} due to {}"
             log_message += "on interval {}"
-            logger.debug(log_message.format(self.max_event_time,
-                                            max_timestamp,
-                                            self.watermark_interval))
+            logger.debug(
+                log_message.format(self.max_event_time, max_timestamp,
+                                   self.watermark_interval))
             # Use obj.__dict__ instead of the object itself
-            self.output._broadcast_watermark(Watermark(self.max_event_time,
-                                                       time.time()).__dict__)
+            self.output._broadcast_watermark(
+                Watermark(self.max_event_time, time.time()).__dict__)
             # Update max event time seen so far
             self.max_event_time = max_timestamp
 
@@ -473,8 +462,7 @@ class Source(OperatorInstance):
             record_batch = self.source.get_next(batch_size)
             if record_batch is None:  # Source is exhausted
                 logger.info("Source throuhgput: {}".format(
-                            self.num_records_seen / (
-                            time.time() - self.start_time)))
+                    self.num_records_seen / (time.time() - self.start_time)))
                 self.output._close()  # Flush and close output
                 signal.send(ActorExit(self.instance_id))  # Send exit signal
                 self.source.close()
@@ -502,11 +490,10 @@ class Sink(OperatorInstance):
         - evict(record)
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
-                 output_gate, checkpoint_dir):
+    def __init__(self, instance_id, operator_metadata, input_gate, output_gate,
+                 checkpoint_dir):
         OperatorInstance.__init__(self, instance_id, operator_metadata,
-                                  input_gate, output_gate,
-                                  checkpoint_dir)
+                                  input_gate, output_gate, checkpoint_dir)
         # The user-defined sink
         self.sink = operator_metadata.sink
 

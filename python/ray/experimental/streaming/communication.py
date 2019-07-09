@@ -11,12 +11,9 @@ import uuid
 import ray
 from ray.experimental.streaming.benchmarks.utils import LOGGING_PERIOD
 from ray.experimental.streaming.operator import PStrategy
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
-
 
 # Round robin and rescale partitioning strategies (default)
 round_robin_strategies = [PStrategy.RoundRobin, PStrategy.Rescale]
@@ -24,18 +21,20 @@ round_robin_strategies = [PStrategy.RoundRobin, PStrategy.Rescale]
 # Forward and broadcast stream partitioning strategies
 forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
 
+
 # Generates UUIDs
 def _generate_uuid():
     return str(uuid.uuid4())
+
 
 # Used to choose output channel in case of hash-based shuffling
 # TODO (john): Replace pickle
 def _hash(value):
     if isinstance(value, int):
         return value
-    elif isinstance(value,str):
+    elif isinstance(value, str):
         return int(hashlib.sha1(value.encode("utf-8")).hexdigest(), 16)
-    else: # All other data types
+    else:  # All other data types
         try:  # Try hashing the value
             return int(hashlib.sha1(value).hexdigest(), 16)
         except TypeError:  # Serialize object and hash
@@ -59,10 +58,11 @@ class QueueConfig(object):
          the actor's logic (i.e., there is no background flush thread).
     """
 
-    def __init__(self,
-                 max_size=100,         # Size in number of batches
-                 max_batch_size=1000,  # Size in number of records
-                 max_batch_time=0.1):  # Time in secs
+    def __init__(
+            self,
+            max_size=100,  # Size in number of batches
+            max_batch_size=1000,  # Size in number of records
+            max_batch_time=0.1):  # Time in secs
         self.max_size = max_size
         self.max_batch_size = max_batch_size
         self.max_batch_time = max_batch_time
@@ -100,14 +100,14 @@ class DataChannel(object):
 
         self.last_flush_time = 0
         self.num_batches_sent = 0
-        self.task_queue = []    # A list of pending downstream tasks (futures)
+        self.task_queue = []  # A list of pending downstream tasks (futures)
         self.write_buffer = []  # A list of records to push downstream
 
     # For pretty print
     def __repr__(self):
         return "DataChannel({},{},{},{})".format(
-                                self.src_operator_id, self.dst_operator_id,
-                                self.src_instance_id, self.dst_instance_id)
+            self.src_operator_id, self.dst_operator_id, self.src_instance_id,
+            self.dst_instance_id)
 
     # Registers source actor handle (for recovery purposes)
     def _register_source_actor(self, actor_handle):
@@ -122,9 +122,7 @@ class DataChannel(object):
         """Pushes a watermark to the destination operator."""
         args = [watermark, self.id]
         obj_id = self.destination_actor._update_progress._remote(
-                args=args,
-                kwargs={},
-                num_return_vals=1)
+            args=args, kwargs={}, num_return_vals=1)
         assert obj_id is not None
 
     # Pushes a record to the output buffer
@@ -150,14 +148,10 @@ class DataChannel(object):
         args = [batch, self.id]
         if self.use_micro_batch_api:
             obj_id = self.destination_actor._apply_batch._remote(
-                    args=args,
-                    kwargs={},
-                    num_return_vals=1)
+                args=args, kwargs={}, num_return_vals=1)
         else:
             obj_id = self.destination_actor._apply._remote(
-                    args=args,
-                    kwargs={},
-                    num_return_vals=1)
+                args=args, kwargs={}, num_return_vals=1)
         self.task_queue.append(obj_id)
         self._wait_for_consumer()
         self.last_flush_time = time.time()
@@ -172,14 +166,10 @@ class DataChannel(object):
         args = [self.write_buffer, self.id]
         if self.use_micro_batch_api:
             obj_id = self.destination_actor._apply_batch._remote(
-                    args=args,
-                    kwargs={},
-                    num_return_vals=1)
+                args=args, kwargs={}, num_return_vals=1)
         else:
             obj_id = self.destination_actor._apply._remote(
-                    args=args,
-                    kwargs={},
-                    num_return_vals=1)
+                args=args, kwargs={}, num_return_vals=1)
         self.task_queue.append(obj_id)
         self.write_buffer = []
         self._wait_for_consumer()
@@ -194,26 +184,23 @@ class DataChannel(object):
             return  # Has not exceeded max size
         # Check pending downstream tasks
         _, self.task_queue = ray.wait(
-                self.task_queue,
-                num_returns=len(self.task_queue),
-                timeout=0)  # Return immediately
+            self.task_queue, num_returns=len(self.task_queue),
+            timeout=0)  # Return immediately
         # Wait for downstream operator instance to catch up
         while len(self.task_queue) > self.queue_config.max_size:
             # logger.debug("Waiting for ({},{}) to catch up".format(
             #              self.dst_operator_id, self.dst_instance_id))
             _, self.task_queue = ray.wait(
-                    self.task_queue,
-                    num_returns=len(self.task_queue),
-                    timeout=0.01)  # Wait for 10ms before calling wait() again
+                self.task_queue,
+                num_returns=len(self.task_queue),
+                timeout=0.01)  # Wait for 10ms before calling wait() again
 
     # Closes the channel at the destination
     def _close(self):
         """Schedules a task at the destination to close its input."""
         args = [self.id]
         obj_id = self.destination_actor._close_input._remote(
-                args=args,
-                kwargs={},
-                num_return_vals=1)
+            args=args, kwargs={}, num_return_vals=1)
         assert obj_id is not None
 
 
@@ -233,10 +220,10 @@ class DataInput(object):
         self.closed_channels = []  # Drained input data streams
 
         # Logging-related attributes
-        self.logging = False    # Default
-        self.records = 0        # Counter
-        self.rates = []         # Input rates
-        self.start = 0.0        # Start timestamp
+        self.logging = False  # Default
+        self.records = 0  # Counter
+        self.rates = []  # Input rates
+        self.start = 0.0  # Start timestamp
         # Measure input rate every RECORDS_PER_ROUND
         self.period = LOGGING_PERIOD
 
@@ -258,8 +245,7 @@ class DataInput(object):
             self.start = time.time()
             time.sleep(0.001)
         self.records += batch_size
-        if self.records >= self.period or (
-           force is True and self.records > 0):
+        if self.records >= self.period or (force is True and self.records > 0):
             self.rates.append(self.records / (time.time() - self.start))
             self.records = 0
             self.start = time.time()
@@ -291,8 +277,8 @@ class DataOutput(object):
     """
 
     def __init__(self, channels, partitioning_schemes):
-        self.max_batch_size = channels[0].queue_config.max_batch_size if len(
-                                                        channels) > 0 else 0
+        self.max_batch_size = channels[
+            0].queue_config.max_batch_size if len(channels) > 0 else 0
         self.custom_partitioning_functions = None
         self.channel_index = 0
         self.key_selector = None
@@ -322,8 +308,10 @@ class DataOutput(object):
         self.custom_partitioning_channels = [[]] * slots
         # Custom partitioning functions (one funtion per destination operator)
         self.custom_partitioning_functions = [
-        scheme.partition_fn for scheme in self.partitioning_schemes.values()
-                                    if scheme.strategy == PStrategy.Custom]
+            scheme.partition_fn
+            for scheme in self.partitioning_schemes.values()
+            if scheme.strategy == PStrategy.Custom
+        ]
 
         # Distinct round robin destinations
         round_robin_destinations = {}
@@ -355,7 +343,7 @@ class DataOutput(object):
                 self.shuffle_key_channels[pos].append(channel)
                 if pos == index_2:
                     index_2 += 1
-            elif strategy in round_robin_strategies :
+            elif strategy in round_robin_strategies:
                 pos = round_robin_destinations.setdefault(
                     channel.dst_operator_id, index_3)
                 self.round_robin_channels[pos].append(channel)
@@ -363,8 +351,7 @@ class DataOutput(object):
                     index_3 += 1
             elif strategy == PStrategy.Custom:  # User-defined partitioning
                 pos = custom_partitioning_destinations.setdefault(
-                                                    channel.dst_operator_id,
-                                                    index_4)
+                    channel.dst_operator_id, index_4)
                 self.custom_partitioning_channels[pos].append(channel)
                 if pos == index_4:
                     index_4 += 1
@@ -387,10 +374,10 @@ class DataOutput(object):
         assert not (self.shuffle_key_exists and self.shuffle_exists)
 
         # Logging-related attributes
-        self.logging = False    # Default
-        self.records = 0        # Counter
-        self.rates = []         # Output rates
-        self.start = 0.0        # Start timestamp
+        self.logging = False  # Default
+        self.records = 0  # Counter
+        self.rates = []  # Output rates
+        self.start = 0.0  # Start timestamp
         # Measure input rate every RECORDS_PER_ROUND
         self.period = LOGGING_PERIOD
 
@@ -512,8 +499,7 @@ class DataOutput(object):
                 #     record, channel))
                 channel._push_next(record)
         elif self.custom_partitioning_exists:  # Custom partitioning
-            for i, channels in enumerate(
-                                    self.custom_partitioning_channels):
+            for i, channels in enumerate(self.custom_partitioning_channels):
                 # Set the right function. In general, there might be
                 # multiple destinations, each one with a different
                 # custom partitioning
@@ -579,7 +565,7 @@ class DataOutput(object):
         elif self.custom_partitioning_exists:  # Custom partitioning
             for record in batch:
                 for i, channels in enumerate(
-                                        self.custom_partitioning_channels):
+                        self.custom_partitioning_channels):
                     # Set the right function. In general, there might be
                     # multiple destinations, each one with a different
                     # custom partitioning
@@ -607,8 +593,7 @@ class DataOutput(object):
             self.start = time.time()
             time.sleep(0.001)
         self.records += batch_size
-        if self.records >= self.period or (
-           force is True and self.records > 0):
+        if self.records >= self.period or (force is True and self.records > 0):
             rate = self.records / (time.time() - self.start)
             self.rates.append(rate)
             logger.info("Output rate: {}".format(rate))
