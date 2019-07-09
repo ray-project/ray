@@ -1739,7 +1739,8 @@ def connect(node,
         # Code path of local mode
         if job_id is None:
             job_id = JobID.from_int(random.randint(1, 100000))
-        worker.worker_id = ray.utils.compute_driver_id_from_job(job_id).binary()
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
     else:
         # This is the code path of driver mode.
         if job_id is None:
@@ -1750,7 +1751,8 @@ def connect(node,
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
         # the correct driver.
-        worker.worker_id = ray.utils.compute_driver_id_from_job(job_id).binary()
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")

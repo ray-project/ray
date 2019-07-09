@@ -114,8 +114,9 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        in_the_same_job = (self._last_session_index == worker._session_index
-                           and worker.current_job_id != self._last_job_id_exported_for)
+        in_the_same_job = (
+            self._last_session_index == worker._session_index
+            and worker.current_job_id != self._last_job_id_exported_for)
         if not in_the_same_job:
             # If this function was exported in a previous session, we need to
             # export this function again, because current GCS doesn't have it.

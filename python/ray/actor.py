@@ -345,8 +345,9 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            in_the_same_job = (self._last_session_index == worker._session_index
-                               and worker.current_job_id != self._last_job_id_exported_for)
+            in_the_same_job = (
+                self._last_session_index == worker._session_index
+                and worker.current_job_id != self._last_job_id_exported_for)
             if not in_the_same_job:
                 # If this actor class was exported in a previous session, we
                 # need to export this function again, because current GCS
@@ -616,10 +617,11 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
-        in_the_same_job = (self._ray_session_index == worker._session_index and
-            self._ray_actor_job_id == ray.utils.compute_job_id_from_driver(ray.WorkerID(worker.worker_id)))
-        if (worker.mode == ray.worker.SCRIPT_MODE
-                and not in_the_same_job):
+        in_the_same_job = (
+            self._ray_session_index == worker._session_index
+            and self._ray_actor_job_id == ray.utils.compute_job_id_from_driver(
+                ray.WorkerID(worker.worker_id)))
+        if worker.mode == ray.worker.SCRIPT_MODE and not in_the_same_job:
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
