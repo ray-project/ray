@@ -18,6 +18,9 @@ from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
+from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin
 
 tf = try_import_tf()
 
@@ -246,7 +249,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             dist_class=Categorical if is_multidiscrete else policy.dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.entropy_coeff,
+            entropy_coeff=policy.config["entropy_coeff"],
             clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=policy.config[
                 "vtrace_clip_pg_rho_threshold"],
@@ -267,7 +270,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             value_targets=make_time_major(
                 batch_tensors[Postprocessing.VALUE_TARGETS]),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.entropy_coeff,
+            entropy_coeff=policy.config["entropy_coeff"],
             clip_param=policy.config["clip_param"],
             cur_kl_coeff=policy.kl_coeff,
             use_kl_loss=policy.config["use_kl_loss"])
@@ -349,32 +352,27 @@ def choose_optimizer(policy, config):
         return tf.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
                                          config["momentum"], config["epsilon"])
 
-
 def clip_gradients(policy, optimizer, loss):
     grads = tf.gradients(loss, policy.var_list)
     policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
     clipped_grads = list(zip(policy.grads, policy.var_list))
     return clipped_grads
+    def __init__(self):
+        self.value_function = self.model.value_function()
+        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                          tf.get_variable_scope().name)
 
-class KLCoeffMixin(object):
-    def __init__(self, config):
-        # KL Coefficient
-        self.kl_coeff_val = config["kl_coeff"]
-        self.kl_target = config["kl_target"]
-        self.kl_coeff = tf.get_variable(
-            initializer=tf.constant_initializer(self.kl_coeff_val),
-            name="kl_coeff",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
-
-    def update_kl(self, sampled_kl):
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
-        return self.kl_coeff_val
+    def value(self, ob, *args):
+        feed_dict = {
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.model.seq_lens: [1]
+        }
+        assert len(args) == len(self.model.state_in), \
+            (args, self.model.state_in)
+        for k, v in zip(self.model.state_in, args):
+            feed_dict[k] = v
+        vf = self.get_session().run(self.value_function, feed_dict)
+        return vf[0]
 
 class ValueNetworkMixin(object):
     def __init__(self):
@@ -394,12 +392,10 @@ class ValueNetworkMixin(object):
         vf = self.get_session().run(self.value_function, feed_dict)
         return vf[0]
 
-
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy)
-
 
 AsyncPPOTFPolicy = build_tf_policy(
     name="AsyncPPOTFPolicy",
