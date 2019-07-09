@@ -33,7 +33,7 @@ class GrpcServer {
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
   GrpcServer(const std::string &name, const uint32_t port)
-      : name_(name), port_(port), is_closed_(false) {}
+      : name_(name), port_(port), is_closed_(true) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }

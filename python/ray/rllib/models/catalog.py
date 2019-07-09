@@ -16,12 +16,16 @@ from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
                                           MultiActionDistribution, Dirichlet)
 from ray.rllib.models.torch_action_dist import (TorchCategorical,
                                                 TorchDiagGaussian)
+from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.lstm import LSTM
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.error import UnsupportedSpaceException
 
 tf = try_import_tf()
 
@@ -41,8 +45,12 @@ MODEL_DEFAULTS = {
     "fcnet_hiddens": [256, 256],
     # For control envs, documented in ray.rllib.models.Model
     "free_log_std": False,
-    # (deprecated) Whether to use sigmoid to squash actions to space range
-    "squash_to_range": False,
+    # Whether to skip the final linear layer used to resize the hidden layer
+    # outputs to size `num_outputs`. If True, then the last hidden layer
+    # should already match num_outputs.
+    "no_final_linear": False,
+    # Whether layers should be shared for the value function.
+    "vf_share_layers": True,
 
     # == LSTM ==
     # Whether to wrap the model with a LSTM
@@ -53,6 +61,9 @@ MODEL_DEFAULTS = {
     "lstm_cell_size": 256,
     # Whether to feed a_{t-1}, r_{t-1} to LSTM
     "lstm_use_prev_action_reward": False,
+    # When using modelv1 models with a modelv2 algorithm, you may have to
+    # define the state shape here (e.g., [256, 256]).
+    "state_shape": None,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs
@@ -110,17 +121,13 @@ class ModelCatalog(object):
         config = config or MODEL_DEFAULTS
         if isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
-                raise ValueError(
+                raise UnsupportedSpaceException(
                     "Action space has multiple dimensions "
                     "{}. ".format(action_space.shape) +
                     "Consider reshaping this into a single dimension, "
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
                 dist = TorchDiagGaussian if torch else DiagGaussian
-                if config.get("squash_to_range"):
-                    raise ValueError(
-                        "The squash_to_range option is deprecated. See the "
-                        "clip_actions agent option instead.")
                 return dist, action_space.shape[0] * 2
             elif dist_type == "deterministic":
                 return Deterministic, action_space.shape[0]
@@ -195,6 +202,90 @@ class ModelCatalog(object):
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
+
+    @staticmethod
+    def get_model_v2(obs_space,
+                     action_space,
+                     num_outputs,
+                     model_config,
+                     framework="tf",
+                     name=None,
+                     model_interface=None,
+                     **model_kwargs):
+        """Returns a suitable model compatible with given spaces and output.
+
+        Args:
+            obs_space (Space): Observation space of the target gym env. This
+                may have an `original_space` attribute that specifies how to
+                unflatten the tensor into a ragged tensor.
+            action_space (Space): Action space of the target gym env.
+            num_outputs (int): The size of the output vector of the model.
+            framework (str): Either "tf" or "torch".
+            name (str): Name (scope) for the model.
+            model_interface (cls): Interface required for the model
+            model_kwargs (dict): args to pass to the ModelV2 constructor
+
+        Returns:
+            model (ModelV2): Model to use for the policy.
+        """
+
+        if model_config.get("custom_model"):
+            model_cls = _global_registry.get(RLLIB_MODEL,
+                                             model_config["custom_model"])
+            if issubclass(model_cls, ModelV2):
+                if model_interface and not issubclass(model_cls,
+                                                      model_interface):
+                    raise ValueError("The given model must subclass",
+                                     model_interface)
+                created = set()
+
+                # Track and warn if variables were created but no registered
+                def track_var_creation(next_creator, **kw):
+                    v = next_creator(**kw)
+                    created.add(v)
+                    return v
+
+                with tf.variable_creator_scope(track_var_creation):
+                    instance = model_cls(obs_space, action_space, num_outputs,
+                                         model_config, name, **model_kwargs)
+                registered = set(instance.variables())
+                not_registered = set()
+                for var in created:
+                    if var not in registered:
+                        not_registered.add(var)
+                if not_registered:
+                    raise ValueError(
+                        "It looks like variables {} were created as part of "
+                        "{} but does not appear in model.variables() ({}). "
+                        "Did you forget to call model.register_variables() "
+                        "on the variables in question?".format(
+                            not_registered, instance, registered))
+                return instance
+
+        if framework == "tf":
+            legacy_model_cls = ModelCatalog.get_model
+            wrapper = ModelCatalog._wrap_if_needed(
+                make_v1_wrapper(legacy_model_cls), model_interface)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
+
+        raise NotImplementedError("TODO: support {} models".format(framework))
+
+    @staticmethod
+    def _wrap_if_needed(model_cls, model_interface):
+        assert issubclass(model_cls, TFModelV2)
+
+        if not model_interface or issubclass(model_cls, model_interface):
+            return model_cls
+
+        class wrapper(model_interface, model_cls):
+            pass
+
+        name = "{}_as_{}".format(model_cls.__name__, model_interface.__name__)
+        wrapper.__name__ = name
+        wrapper.__qualname__ = name
+
+        return wrapper
 
     @staticmethod
     @DeveloperAPI
@@ -284,10 +375,10 @@ class ModelCatalog(object):
         Returns:
             model (models.Model): Neural network model.
         """
-        from ray.rllib.models.pytorch.fcnet import (FullyConnectedNetwork as
-                                                    PyTorchFCNet)
-        from ray.rllib.models.pytorch.visionnet import (VisionNetwork as
-                                                        PyTorchVisionNet)
+        from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                  PyTorchFCNet)
+        from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                      PyTorchVisionNet)
 
         options = options or MODEL_DEFAULTS
 

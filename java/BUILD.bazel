@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "flatbuffer_java_library", "define_java_module")
+load("//bazel:ray.bzl", "define_java_module")
 load("@build_stack_rules_proto//java:java_proto_compile.bzl", "java_proto_compile")
 
 exports_files([
@@ -50,8 +50,10 @@ define_java_module(
 define_java_module(
     name = "runtime",
     additional_srcs = [
-        ":generate_java_gcs_fbs",
-        ":gcs_java_proto",
+        ":all_java_proto",
+    ],
+    exclude_srcs = [
+        "runtime/src/main/java/org/ray/runtime/generated/*.java",
     ],
     additional_resources = [
         ":java_native_deps",
@@ -68,7 +70,6 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@maven//:com_github_davidmoten_flatbuffers_java",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_typesafe_config",
@@ -152,38 +153,21 @@ java_binary(
 )
 
 java_proto_compile(
+    name = "common_java_proto",
+    deps = ["@//:common_proto"],
+)
+
+java_proto_compile(
     name = "gcs_java_proto",
     deps = ["@//:gcs_proto"],
 )
 
-flatbuffers_generated_files = [
-    "Arg.java",
-    "Language.java",
-    "TaskInfo.java",
-    "ResourcePair.java",
-]
-
-flatbuffer_java_library(
-    name = "java_gcs_fbs",
-    srcs = ["//:gcs_fbs_file"],
-    outs = flatbuffers_generated_files,
-    out_prefix = "",
-)
-
-genrule(
-    name = "generate_java_gcs_fbs",
-    srcs = [":java_gcs_fbs"],
-    outs = [
-        "runtime/src/main/java/org/ray/runtime/generated/" + file for file in flatbuffers_generated_files
+filegroup(
+    name = "all_java_proto",
+    srcs = [
+        ":common_java_proto",
+        ":gcs_java_proto",
     ],
-    cmd = """
-        for f in $(locations //java:java_gcs_fbs); do
-            chmod +w $$f
-            mv -f $$f $(@D)/runtime/src/main/java/org/ray/runtime/generated
-        done
-        python $$(pwd)/java/modify_generated_java_flatbuffers_files.py $(@D)/..
-    """,
-    local = 1,
 )
 
 filegroup(
@@ -202,8 +186,7 @@ filegroup(
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":gcs_java_proto",
-        ":generate_java_gcs_fbs",
+        ":all_java_proto",
         ":java_native_deps",
         ":copy_pom_file",
         "@plasma//:org_apache_arrow_arrow_plasma",
@@ -212,6 +195,11 @@ genrule(
     cmd = """
         set -x
         WORK_DIR=$$(pwd)
+        # Copy protobuf-generated files.
+        rm -rf $$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        for f in $(locations //java:all_java_proto); do
+            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/java/runtime/src/main/java
+        done
         # Copy native dependecies.
         NATIVE_DEPS_DIR=$$WORK_DIR/java/runtime/native_dependencies/
         rm -rf $$NATIVE_DEPS_DIR
@@ -219,18 +207,6 @@ genrule(
         for f in $(locations //java:java_native_deps); do
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
-        done
-        # Copy protobuf-generated files.
-        GENERATED_DIR=$$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        for f in $(locations //java:gcs_java_proto); do
-            unzip $$f
-            mv org/ray/runtime/generated/* $$GENERATED_DIR
-        done
-        # Copy flatbuffers-generated files
-        for f in $(locations //java:generate_java_gcs_fbs); do
-            cp $$f $$GENERATED_DIR
         done
         # Install plasma jar to local maven repo.
         mvn install:install-file -Dfile=$(locations @plasma//:org_apache_arrow_arrow_plasma) -Dpackaging=jar \

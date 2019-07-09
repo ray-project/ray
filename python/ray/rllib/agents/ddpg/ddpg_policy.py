@@ -7,8 +7,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy import (_huber_loss, _minimize_and_clip,
-                                             _scope_vars, _postprocess_dqn)
+from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
@@ -17,6 +16,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, scope_vars
 
 tf = try_import_tf()
 
@@ -75,6 +75,12 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
                     action_space))
+        if len(action_space.shape) > 1:
+            raise UnsupportedSpaceException(
+                "Action space has multiple dimensions "
+                "{}. ".format(action_space.shape) +
+                "Consider reshaping this into a single dimension, "
+                "using a Tuple action space, or the multi-agent API.")
 
         self.config = config
         self.cur_noise_scale = 1.0
@@ -105,7 +111,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(POLICY_SCOPE) as scope:
             policy_out, self.policy_model = self._build_policy_network(
                 self.cur_observations, observation_space, action_space)
-            self.policy_vars = _scope_vars(scope.name)
+            self.policy_vars = scope_vars(scope.name)
 
         # Noise vars for P network except for layer normalization vars
         if self.config["parameter_noise"]:
@@ -154,7 +160,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(POLICY_TARGET_SCOPE) as scope:
             policy_tp1, _ = self._build_policy_network(
                 self.obs_tp1, observation_space, action_space)
-            target_policy_vars = _scope_vars(scope.name)
+            target_policy_vars = scope_vars(scope.name)
 
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE, reuse=True):
@@ -179,7 +185,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             # Q-values for given actions & observations in given current
             q_t, self.q_model = self._build_q_network(
                 self.obs_t, observation_space, action_space, self.act_t)
-            self.q_func_vars = _scope_vars(scope.name)
+            self.q_func_vars = scope_vars(scope.name)
         self.stats = {
             "mean_q": tf.reduce_mean(q_t),
             "max_q": tf.reduce_max(q_t),
@@ -193,7 +199,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, self.twin_q_model = self._build_q_network(
                     self.obs_t, observation_space, action_space, self.act_t)
-                self.twin_q_func_vars = _scope_vars(scope.name)
+                self.twin_q_func_vars = scope_vars(scope.name)
         q_batchnorm_update_ops = list(
             set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
@@ -201,13 +207,13 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
                                              action_space, policy_tp1_smoothed)
-            target_q_func_vars = _scope_vars(scope.name)
+            target_q_func_vars = scope_vars(scope.name)
         if self.config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
                     self.obs_tp1, observation_space, action_space,
                     policy_tp1_smoothed)
-                twin_target_q_func_vars = _scope_vars(scope.name)
+                twin_target_q_func_vars = scope_vars(scope.name)
 
         if self.config["twin_q"]:
             self.critic_loss, self.actor_loss, self.td_error \
@@ -330,12 +336,12 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     @override(TFPolicy)
     def gradients(self, optimizer, loss):
         if self.config["grad_norm_clipping"] is not None:
-            actor_grads_and_vars = _minimize_and_clip(
+            actor_grads_and_vars = minimize_and_clip(
                 self._actor_optimizer,
                 self.actor_loss,
                 var_list=self.policy_vars,
                 clip_val=self.config["grad_norm_clipping"])
-            critic_grads_and_vars = _minimize_and_clip(
+            critic_grads_and_vars = minimize_and_clip(
                 self._critic_optimizer,
                 self.critic_loss,
                 var_list=self.q_func_vars + self.twin_q_func_vars
@@ -559,15 +565,15 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             twin_td_error = twin_q_t_selected - q_t_selected_target
             td_error = td_error + twin_td_error
             if use_huber:
-                errors = _huber_loss(td_error, huber_threshold) \
-                    + _huber_loss(twin_td_error, huber_threshold)
+                errors = huber_loss(td_error, huber_threshold) \
+                    + huber_loss(twin_td_error, huber_threshold)
             else:
                 errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(
                     twin_td_error)
         else:
             td_error = q_t_selected - q_t_selected_target
             if use_huber:
-                errors = _huber_loss(td_error, huber_threshold)
+                errors = huber_loss(td_error, huber_threshold)
             else:
                 errors = 0.5 * tf.square(td_error)
 

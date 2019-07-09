@@ -133,7 +133,7 @@ class Dashboard(object):
             try:
                 with open(
                         Path("~/ray_bootstrap_config.yaml").expanduser()) as f:
-                    cfg = yaml.load(f)
+                    cfg = yaml.safe_load(f)
             except Exception:
                 return await json_response(error="No config")
 
