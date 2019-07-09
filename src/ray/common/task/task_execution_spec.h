@@ -1,5 +1,5 @@
-#ifndef RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
-#define RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
+#ifndef RAY_COMMON_TASK_TASK_EXECUTION_SPEC_H
+#define RAY_COMMON_TASK_TASK_EXECUTION_SPEC_H
 
 #include <vector>
 
@@ -42,4 +42,4 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
 
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
+#endif  // RAY_COMMON_TASK_TASK_EXECUTION_SPEC_H

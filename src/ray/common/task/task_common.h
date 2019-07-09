@@ -1,5 +1,5 @@
-#ifndef RAY_COMMON_TASK_COMMON_H
-#define RAY_COMMON_TASK_COMMON_H
+#ifndef RAY_COMMON_TASK_TASK_COMMON_H
+#define RAY_COMMON_TASK_TASK_COMMON_H
 
 #include "ray/protobuf/common.pb.h"
 

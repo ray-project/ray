@@ -1,5 +1,5 @@
-#ifndef RAY_RAYLET_TASK_UTIL_H
-#define RAY_RAYLET_TASK_UTIL_H
+#ifndef RAY_COMMON_TASK_TASK_UTIL_H
+#define RAY_COMMON_TASK_TASK_UTIL_H
 
 #include "ray/protobuf/common.pb.h"
 #include "ray/common/task/task_spec.h"
@@ -114,4 +114,4 @@ class TaskSpecBuilder {
 
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_UTIL_H
+#endif  // RAY_COMMON_TASK_TASK_UTIL_H

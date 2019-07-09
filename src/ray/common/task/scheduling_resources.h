@@ -1,5 +1,5 @@
-#ifndef RAY_RAYLET_SCHEDULING_RESOURCES_H
-#define RAY_RAYLET_SCHEDULING_RESOURCES_H
+#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
 
 #include <string>
 #include <unordered_map>
@@ -545,4 +545,4 @@ struct hash<ray::ResourceSet> {
 };
 }  // namespace std
 
-#endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H
+#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

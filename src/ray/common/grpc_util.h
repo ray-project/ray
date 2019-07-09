@@ -1,5 +1,5 @@
-#ifndef RAY_RPC_UTIL_H
-#define RAY_RPC_UTIL_H
+#ifndef RAY_COMMON_GRPC_UTIL_H
+#define RAY_COMMON_GRPC_UTIL_H
 
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>

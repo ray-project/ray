@@ -1,5 +1,5 @@
-#ifndef RAY_RAYLET_TASK_H
-#define RAY_RAYLET_TASK_H
+#ifndef RAY_COMMON_TASK_TASK_H
+#define RAY_COMMON_TASK_TASK_H
 
 #include <inttypes.h>
 
@@ -76,4 +76,4 @@ class Task {
 
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_H
+#endif  // RAY_COMMON_TASK_TASK_H
