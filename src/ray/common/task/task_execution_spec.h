@@ -3,9 +3,9 @@
 
 #include <vector>
 
-#include "ray/common/id.h"
-#include "ray/common/task_common.h"
-#include "ray/common/grpc_util.h"
+#include "src/ray/common/id.h"
+#include "src/ray/common/task/task_common.h"
+#include "src/ray/common/grpc_util.h"
 
 namespace ray {
 

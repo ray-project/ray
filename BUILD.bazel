@@ -187,15 +187,15 @@ cc_library(
     name = "ray_common",
     srcs = glob(
         [
-            "src/ray/common/*.cc",
+            "src/ray/common/**/*.cc",
         ],
         exclude = [
-            "src/ray/common/*_test.cc",
+            "src/ray/common/**/*_test.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/common/*.h",
+            "src/ray/common/**/*.h",
         ],
     ),
     copts = COPTS,
@@ -206,6 +206,16 @@ cc_library(
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@plasma//:plasma_client",
+    ],
+)
+
+cc_test(
+    name = "common_test",
+    srcs = ["src/ray/common/**/*_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -406,16 +416,6 @@ cc_test(
 cc_test(
     name = "task_dependency_manager_test",
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "task_test",
-    srcs = ["src/ray/common/task_test.cc"],
     copts = COPTS,
     deps = [
         ":raylet_lib",

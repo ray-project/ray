@@ -5,9 +5,9 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
-#include "ray/common/task.h"
-#include "ray/common/task_execution_spec.h"
-#include "ray/common/task_spec.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/common/task_util.h"
 
 namespace ray {

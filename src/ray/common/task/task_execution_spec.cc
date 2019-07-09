@@ -1,4 +1,4 @@
-#include "ray/common/task_execution_spec.h"
+#include "ray/common/task/task_execution_spec.h"
 
 namespace ray {
 

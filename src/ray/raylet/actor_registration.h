@@ -5,7 +5,7 @@
 
 #include "ray/common/id.h"
 #include "ray/protobuf/gcs.pb.h"
-#include "ray/common/task.h"
+#include "ray/common/task/task.h"
 
 namespace ray {
 

@@ -2,7 +2,7 @@
 #define RAY_RAYLET_TASK_UTIL_H
 
 #include "src/ray/protobuf/common.pb.h"
-#include "src/ray/common/task_spec.h"
+#include "ray/common/task/task_spec.h"
 
 namespace ray {
 

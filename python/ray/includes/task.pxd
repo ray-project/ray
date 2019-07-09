@@ -35,7 +35,7 @@ cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
         const c_string &SerializeAsString()
 
 
-cdef extern from "ray/common/task_spec.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
     cdef cppclass CTaskSpec "ray::TaskSpecification":
         CTaskSpec(const RpcTaskSpec message)
         CTaskSpec(const c_string &serialized_binary)
@@ -74,7 +74,7 @@ cdef extern from "ray/common/task_spec.h" namespace "ray" nogil:
         c_vector[CActorHandleID] NewActorHandles() const
 
 
-cdef extern from "ray/common/task_util.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
     cdef cppclass TaskSpecBuilder "ray::TaskSpecBuilder":
         TaskSpecBuilder &SetCommonTaskSpec(
             const CLanguage &language, const c_vector[c_string] &function_descriptor,
@@ -98,7 +98,7 @@ cdef extern from "ray/common/task_util.h" namespace "ray" nogil:
         RpcTaskSpec GetMessage();
 
 
-cdef extern from "ray/common/task_execution_spec.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task_execution_spec.h" namespace "ray" nogil:
     cdef cppclass CTaskExecutionSpec "ray::TaskExecutionSpecification":
         CTaskExecutionSpec(RpcTaskExecutionSpec message)
         CTaskExecutionSpec(const c_string &serialized_binary)
@@ -106,6 +106,6 @@ cdef extern from "ray/common/task_execution_spec.h" namespace "ray" nogil:
         c_vector[CObjectID] ExecutionDependencies()
         uint64_t NumForwards()
 
-cdef extern from "ray/common/task.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task.h" namespace "ray" nogil:
     cdef cppclass CTask "ray::Task":
         CTask(CTaskSpec task_spec, CTaskExecutionSpec task_execution_spec)

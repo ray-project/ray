@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "ray/common/common_protocol.h"
-#include "ray/common/task_spec.h"
+#include "ray/common/task/task_spec.h"
 
 namespace ray {
 

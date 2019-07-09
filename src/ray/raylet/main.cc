@@ -2,7 +2,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "ray/common/task_common.h"
+#include "ray/common/task/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 

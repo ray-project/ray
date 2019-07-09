@@ -1,6 +1,6 @@
 
 #include "ray/core_worker/transport/raylet_transport.h"
-#include "ray/common/task.h"
+#include "ray/common/task/task.h"
 
 namespace ray {
 

@@ -1,7 +1,7 @@
 
 #include <sstream>
 
-#include "ray/common/task_spec.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray {

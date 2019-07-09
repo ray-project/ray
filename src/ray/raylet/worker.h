@@ -5,8 +5,8 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/common/task_common.h"
-#include "ray/common/scheduling_resources.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/scheduling_resources.h"
 
 namespace ray {
 
