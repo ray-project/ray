@@ -88,7 +88,6 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Constructor of GcsClientInterface.
   ///
   /// \param option Options for client.
-  /// \param info Information of this client, client id and so on.
   GcsClientInterface(const ClientOption &option) : option_(option) {}
 
   ClientOption option_;

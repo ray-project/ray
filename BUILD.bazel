@@ -580,7 +580,7 @@ cc_binary(
     ],
 )
 
-cc_test(
+cc_binary(
     name = "actor_state_accessor_test",
     testonly = 1,
     srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],

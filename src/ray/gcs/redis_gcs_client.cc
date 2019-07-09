@@ -70,9 +70,7 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const ClientOption &option)
-    : GcsClientInterface(option) {
-}
+RedisGcsClient::RedisGcsClient(const ClientOption &option) : GcsClientInterface(option) {}
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -84,9 +82,9 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   primary_context_ = std::make_shared<RedisContext>();
 
-  RAY_CHECK_OK(
-      primary_context_->Connect(option_.server_ip_, option_.server_port_,
-                                /*sharding=*/true, /*password=*/option_.password_));
+  RAY_CHECK_OK(primary_context_->Connect(option_.server_ip_, option_.server_port_,
+                                         /*sharding=*/true,
+                                         /*password=*/option_.password_));
 
   if (!option_.is_test_client_) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -109,8 +107,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
     RAY_CHECK_OK(shard_contexts_[0]->Connect(option_.server_ip_, option_.server_port_,
-                                              /*sharding=*/true,
-                                              /*password=*/option_.password_));
+                                             /*sharding=*/true,
+                                             /*password=*/option_.password_));
   }
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
@@ -123,8 +121,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this));
-  raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this,
-                                                 option_.command_type_));
+  raylet_task_table_.reset(
+      new raylet::TaskTable(shard_contexts_, this, option_.command_type_));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));

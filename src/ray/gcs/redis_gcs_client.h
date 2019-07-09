@@ -18,7 +18,8 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
- friend class ActorStateAccessor;
+  friend class ActorStateAccessor;
+
  public:
   /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
