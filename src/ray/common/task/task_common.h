@@ -5,7 +5,10 @@
 
 namespace ray {
 
+// Alias `ray::rpc::Language` in `ray` namespace.
 using rpc::Language;
+
+// Alias `ray::rpc::TaskType` in `ray` namespace.
 using rpc::TaskType;
 
 }  // namespace ray
