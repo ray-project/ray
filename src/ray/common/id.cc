@@ -29,7 +29,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
   std::vector<uint8_t> data(WorkerID::Size(), 0);
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
-  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xff);
+  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xFF);
   return WorkerID::FromBinary(
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
