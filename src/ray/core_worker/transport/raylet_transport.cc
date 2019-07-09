@@ -28,7 +28,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   const raylet::Task task(request.task());
   const auto &spec = task.GetTaskSpecification();
   auto status = task_handler_(spec);
-  // Notify raylet the current done is done. This is to ensure that the task
+  // Notify raylet the current task is done. This is to ensure that the task
   // is marked as finished by raylet only after previous raylet client calls are
   // completed. The rpc `done_callback` is sent via a different connection
   // from raylet client connection, so it cannot guarantee the rpc reply arrives
