@@ -376,6 +376,7 @@ ray::Status RayletClient::RegisterClient() {
   register_client_request.set_worker_pid(getpid());
   register_client_request.set_job_id(job_id_.Binary());
   register_client_request.set_language(static_cast<int32_t>(language_));
+  register_client_request.set_port(port_);
 
   // This promise and future are only used to make this call synchronized.
   std::promise<Status> p;

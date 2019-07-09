@@ -884,8 +884,9 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(task, Lineage());
-
+  RAY_LOG(INFO) << "Finish submit task.";
   send_reply_callback(Status::OK(), nullptr, nullptr);
+  RAY_LOG(INFO) << "Finsih send reply task request.";
 }
 
 /// Handle a `HandleFetchOrReconstruct` request.
@@ -1648,6 +1649,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
       ScheduleTasks(cluster_resource_map_);
+      RAY_LOG(INFO) << "after scheduler task";
+
       // TODO(atumanov): assert that !placeable.isempty() => insufficient
       // available resources locally.
     }
@@ -1676,7 +1679,6 @@ void NodeManager::HandleTaskBlocked(const WorkerID &worker_id,
       cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
           cpu_resources);
       worker->MarkBlocked();
-      RAY_LOG(INFO) << "Before dispatch.";
 
       // Try dispatching tasks since we may have released some resources.
       DispatchTasks(local_queues_.GetReadyTasksWithResources());
@@ -1826,7 +1828,8 @@ bool NodeManager::AssignTask(const Task &task) {
   ResourceIdSet resource_id_set =
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
-  auto request = get_task_requests_.find(worker->GetWorkerId());
+  const WorkerID& worker_id = worker->GetWorkerId();
+  auto request = get_task_requests_.find(worker_id);
   RAY_CHECK(request != get_task_requests_.end());
 
   rpc::GetTaskReply *reply = request->second.first;
@@ -1838,11 +1841,10 @@ bool NodeManager::AssignTask(const Task &task) {
   }
 
   const TaskID& task_id = spec.TaskId();
-  const WorkerID& worker_id = worker->GetWorkerId();
-
   // Invoke callback to send reply to worker.
   request->second.second(Status::OK(),
   /* success callback */ [this, worker, task_id]() {
+  RAY_LOG(INFO) << "actually assign task.";
   // Remove the ASSIGNED task from the SWAP queue.
   TaskState state;
   auto assigned_task = local_queues_.RemoveTask(task_id, &state);
@@ -1885,6 +1887,7 @@ bool NodeManager::AssignTask(const Task &task) {
     } else {
       RAY_CHECK(spec.NewActorHandles().empty());
     }
+    RAY_LOG(INFO) << "Finish assign task.";
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
@@ -1900,12 +1903,15 @@ bool NodeManager::AssignTask(const Task &task) {
     // DispatchTasks() removed it from the ready queue. The task will be
     // assigned to a worker once one becomes available.
     // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.MoveTasks({const_cast<TaskID>(task_id)}, TaskState::SWAP, TaskState::READY);
+    std::unordered_set<TaskID> tasks;
+    tasks.emplace(task_id);
+    local_queues_.MoveTasks(tasks, TaskState::SWAP, TaskState::READY);
     const auto& assigned_task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
     DispatchTasks(MakeTasksWithResources({assigned_task}));
   });
 
   get_task_requests_.erase(request);
+
   RAY_LOG(INFO) << "Finish assign task " << spec.TaskId();
 
   // We assigned this task to a worker.

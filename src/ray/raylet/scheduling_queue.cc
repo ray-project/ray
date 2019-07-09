@@ -127,8 +127,6 @@ const std::unordered_map<ResourceSet, ordered_set<TaskID>>
 const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
                                             TaskState task_state) const {
   const auto &queue = GetTaskQueue(task_state);
-  RAY_LOG(INFO) << "Get task " << task_id
-                << ", task state: " << static_cast<int>(task_state);
   return queue->GetTask(task_id);
 }
 
