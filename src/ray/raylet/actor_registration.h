@@ -4,8 +4,8 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
-#include "ray/protobuf/gcs.pb.h"
 #include "ray/common/task/task.h"
+#include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

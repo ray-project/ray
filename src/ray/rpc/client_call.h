@@ -4,8 +4,8 @@
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
 
-#include "ray/common/status.h"
 #include "ray/common/grpc_util.h"
+#include "ray/common/status.h"
 
 namespace ray {
 namespace rpc {

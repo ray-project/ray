@@ -80,8 +80,7 @@ struct TaskInfo {
 /// TODO(zhijunfu): this can be removed after everything is moved to protobuf.
 class TaskSpec {
  public:
-  TaskSpec(const TaskSpecification &task_spec,
-           const std::vector<ObjectID> &dependencies)
+  TaskSpec(const TaskSpecification &task_spec, const std::vector<ObjectID> &dependencies)
       : task_spec_(task_spec), dependencies_(dependencies) {}
 
   TaskSpec(const TaskSpecification &&task_spec,

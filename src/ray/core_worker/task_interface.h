@@ -2,16 +2,16 @@
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
 #include "ray/common/buffer.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
-#include "ray/common/task/task.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/common/task/task_util.h"
-#include "ray/common/grpc_util.h"
 
 namespace ray {
 

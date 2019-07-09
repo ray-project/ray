@@ -20,9 +20,7 @@ struct WorkerThreadContext {
     put_index = 0;
   }
 
-  void SetCurrentTask(const TaskSpecification &spec) {
-    SetCurrentTask(spec.TaskId());
-  }
+  void SetCurrentTask(const TaskSpecification &spec) { SetCurrentTask(spec.TaskId()); }
 
  private:
   /// The task ID for current task.

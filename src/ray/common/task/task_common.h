@@ -8,6 +8,6 @@ namespace ray {
 using rpc::Language;
 using rpc::TaskType;
 
-}
+}  // namespace ray
 
 #endif

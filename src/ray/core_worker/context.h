@@ -1,8 +1,8 @@
 #ifndef RAY_CORE_WORKER_CONTEXT_H
 #define RAY_CORE_WORKER_CONTEXT_H
 
-#include "ray/core_worker/common.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
 
