@@ -1942,9 +1942,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             const TaskTableData &parent_task_data) {
           // The task was in the GCS task table. Use the stored task spec to
           // get the parent actor id.
-          auto message =
-              flatbuffers::GetRoot<protocol::Task>(parent_task_data.task().data());
-          Task parent_task(*message);
+          Task parent_task(parent_task_data.task());
           ActorID parent_actor_id;
           if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
             parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
