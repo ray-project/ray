@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 message ActorHandle {
   // ID of the actor.
   bytes actor_id = 1;
@@ -10,7 +12,7 @@ message ActorHandle {
   bytes actor_handle_id = 2;
 
   // Language of the actor.
-  int32 actor_language = 3;
+  Language actor_language = 3;
 
   // Function descriptor of actor creation task.
   repeated string actor_creation_task_function_descriptor = 4;

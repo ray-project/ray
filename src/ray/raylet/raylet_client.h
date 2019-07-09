@@ -1,6 +1,7 @@
 #ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
+#include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
 #include <mutex>
 #include <unordered_map>
@@ -16,6 +17,9 @@ using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
+
+using ray::rpc::Language;
+using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -69,7 +73,8 @@ class RayletClient {
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-               bool is_worker, const JobID &job_id, const Language &language);
+               bool is_worker, const JobID &job_id, const Language &language,
+               int port = -1);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -137,7 +142,7 @@ class RayletClient {
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableDataT &profile_events);
+  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
 
   /// Free a list of objects from object stores.
   ///
@@ -188,6 +193,7 @@ class RayletClient {
   const bool is_worker_;
   const JobID job_id_;
   const Language language_;
+  const int port_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

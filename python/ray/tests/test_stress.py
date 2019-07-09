@@ -13,7 +13,7 @@ from ray.tests.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
 
-@pytest.fixture(params=[1, 20])
+@pytest.fixture(params=[1, 4])
 def ray_start_sharded(request):
     num_redis_shards = request.param
 
@@ -24,7 +24,10 @@ def ray_start_sharded(request):
 
     # Start the Ray processes.
     ray.init(
-        num_cpus=10, num_redis_shards=num_redis_shards, redis_max_memory=10**7)
+        object_store_memory=int(0.1 * 10**9),
+        num_cpus=10,
+        num_redis_shards=num_redis_shards,
+        redis_max_memory=10**7)
 
     yield None
 

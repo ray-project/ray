@@ -5,13 +5,13 @@
 namespace ray {
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
-    WorkerContext &worker_context, std::shared_ptr<RayletClient> raylet_client,
+    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     const std::string &store_socket)
     : worker_context_(worker_context), raylet_client_(raylet_client) {
   store_providers_.emplace(
       static_cast<int>(StoreProviderType::PLASMA),
       std::unique_ptr<CoreWorkerStoreProvider>(
-          new CoreWorkerPlasmaStoreProvider(store_socket, *raylet_client_)));
+          new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_)));
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {

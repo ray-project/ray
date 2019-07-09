@@ -54,5 +54,5 @@ public class RayletClientImpl implements RayletClient {
                                                                     byte[] checkpointId);
 
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
-                                               byte[] nodeId) throws RayException;
+      byte[] nodeId) throws RayException;
 }
