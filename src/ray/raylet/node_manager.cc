@@ -20,8 +20,8 @@ namespace {
 /// the task's counter is equal to the returned value, then the task should be
 /// the next to run.
 int64_t GetExpectedTaskCounter(
-    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
-        &actor_registry,
+    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration> &
+        actor_registry,
     const ray::ActorID &actor_id, const ray::ActorHandleID &actor_handle_id) {
   auto actor_entry = actor_registry.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry.end());
@@ -110,13 +110,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
 
-  RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
-      [this](const object_manager::protocol::ObjectInfoT &object_info) {
-        ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
-        HandleObjectLocal(object_id);
-      }));
-  RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
-      [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](
+      const object_manager::protocol::ObjectInfoT &object_info) {
+    ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
+    HandleObjectLocal(object_id);
+  }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjDeleted([this](const ObjectID &object_id) {
+    HandleObjectMissing(object_id);
+  }));
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
@@ -130,11 +131,9 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to task entry commits in the GCS. These notifications are
   // forwarded to the lineage cache, which requests notifications about tasks
   // that were executed remotely.
-  const auto task_committed_callback = [this](gcs::AsyncGcsClient *client,
-                                              const TaskID &task_id,
-                                              const TaskTableData &task_data) {
-    lineage_cache_.HandleEntryCommitted(task_id);
-  };
+  const auto task_committed_callback = [this](
+      gcs::AsyncGcsClient *client, const TaskID &task_id,
+      const TaskTableData &task_data) { lineage_cache_.HandleEntryCommitted(task_id); };
   RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
       task_committed_callback, nullptr, nullptr));
@@ -178,37 +177,36 @@ ray::Status NodeManager::RegisterGcs() {
       JobID::Nil(), ClientID::Nil(), actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
-  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                          const ClientTableData &data) {
-    ClientAdded(data);
-  };
+  auto node_manager_client_added = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ClientTableData &data) { ClientAdded(data); };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableData &data) { ClientRemoved(data); };
+  auto node_manager_client_removed = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ClientTableData &data) { ClientRemoved(data); };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Register a callback on the client table for resource create/update requests
-  auto node_manager_resource_createupdated =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableData &data) { ResourceCreateUpdated(data); };
+  auto node_manager_resource_createupdated = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ClientTableData &data) { ResourceCreateUpdated(data); };
   gcs_client_->client_table().RegisterResourceCreateUpdatedCallback(
       node_manager_resource_createupdated);
 
   // Register a callback on the client table for resource delete requests
-  auto node_manager_resource_deleted =
-      [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-             const ClientTableData &data) { ResourceDeleted(data); };
+  auto node_manager_resource_deleted = [this](
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const ClientTableData &data) { ResourceDeleted(data); };
   gcs_client_->client_table().RegisterResourceDeletedCallback(
       node_manager_resource_deleted);
 
   // Subscribe to heartbeat batches from the monitor.
-  const auto &heartbeat_batch_added =
-      [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableData &heartbeat_batch) {
-        HeartbeatBatchAdded(heartbeat_batch);
-      };
+  const auto &heartbeat_batch_added = [this](
+      gcs::AsyncGcsClient *client, const ClientID &id,
+      const HeartbeatBatchTableData &heartbeat_batch) {
+    HeartbeatBatchAdded(heartbeat_batch);
+  };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
       JobID::Nil(), ClientID::Nil(), heartbeat_batch_added,
       /*subscribe_callback=*/nullptr,
@@ -342,11 +340,11 @@ void NodeManager::GetObjectManagerProfileInfo() {
 
   // Reset the timer.
   object_manager_profile_timer_.expires_from_now(heartbeat_period_);
-  object_manager_profile_timer_.async_wait(
-      [this](const boost::system::error_code &error) {
-        RAY_CHECK(!error);
-        GetObjectManagerProfileInfo();
-      });
+  object_manager_profile_timer_.async_wait([this](
+      const boost::system::error_code &error) {
+    RAY_CHECK(!error);
+    GetObjectManagerProfileInfo();
+  });
 
   int64_t interval = current_time_ms() - start_time_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
@@ -599,8 +597,8 @@ void NodeManager::PublishActorStateTransition(
     auto redis_context = client->primary_context();
     if (data.state() == ActorTableData::DEAD ||
         data.state() == ActorTableData::RECONSTRUCTING) {
-      std::vector<std::string> args = {"XADD", id.Hex(), "*", "signal",
-                                       "ACTOR_DIED_SIGNAL"};
+      std::vector<std::string> args = {"XADD",   id.Hex(),           "*",
+                                       "signal", "ACTOR_DIED_SIGNAL"};
       RAY_CHECK_OK(redis_context->RunArgvAsync(args));
     }
   };
@@ -919,8 +917,8 @@ void NodeManager::ProcessGetTaskMessage(
   worker_pool_.PushWorker(std::move(worker));
   // Local resource availability changed: invoke scheduling policy for local node.
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(
-      local_queues_.GetResourceLoad());
+  cluster_resource_map_[local_client_id]
+      .SetLoadResources(local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
   DispatchTasks(local_queues_.GetReadyTasksWithResources());
 }
@@ -1219,7 +1217,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
     const std::string &task_message = request.uncommitted_tasks(i);
     const Task task(*flatbuffers::GetRoot<protocol::Task>(
-        reinterpret_cast<const uint8_t *>(task_message.data())));
+                         reinterpret_cast<const uint8_t *>(task_message.data())));
     RAY_CHECK(uncommitted_lineage.SetEntry(std::move(task), GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
@@ -1356,8 +1354,8 @@ void NodeManager::ScheduleTasks(
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
     RAY_CHECK(!task.GetTaskSpecification().GetRequiredPlacementResources().IsSubset(
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-            .GetTotalResources()));
+                   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                       .GetTotalResources()));
   }
 
   // Assumption: all remaining placeable tasks are infeasible and are moved to the
@@ -1612,8 +1610,8 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       // Release the CPU resources.
       auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
       local_available_resources_.Release(cpu_resource_ids);
-      cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-          cpu_resources);
+      cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+          .Release(cpu_resources);
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
@@ -1666,8 +1664,8 @@ void NodeManager::HandleTaskUnblocked(
         // reacquire here may be different from the ones that the task started with.
         auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
         worker->AcquireTaskCpuResources(resource_ids);
-        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-            cpu_resources);
+        cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+            .Acquire(cpu_resources);
       } else {
         // In this case, we simply don't reacquire the CPU resources for the worker.
         // The worker can keep running and when the task finishes, it will simply
@@ -1850,8 +1848,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
   local_available_resources_.ReleaseConstrained(
       task_resources, cluster_resource_map_[client_id].GetTotalResources());
-  cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-      task_resources.ToResourceSet());
+  cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+      .Release(task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
 
   // If this was an actor or actor creation task, handle the actor's new state.
@@ -1872,7 +1870,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 }
 
-ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec) {
+ActorTableData NodeManager::CreateActorTableDataFromCreationTask(
+    const TaskSpecification &task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
@@ -1888,12 +1887,10 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const TaskSpeci
     new_actor_data.set_actor_creation_dummy_object_id(
         task_spec.ActorDummyObject().Binary());
     new_actor_data.set_job_id(task_spec.JobId().Binary());
-    new_actor_data.set_max_reconstructions(
-        task_spec.MaxActorReconstructions());
+    new_actor_data.set_max_reconstructions(task_spec.MaxActorReconstructions());
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
-    new_actor_data.set_remaining_reconstructions(
-        task_spec.MaxActorReconstructions());
+    new_actor_data.set_remaining_reconstructions(task_spec.MaxActorReconstructions());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -1939,44 +1936,49 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         /*success_callback=*/
-        [this, task_spec, resumed_from_checkpoint]
-           (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id,
-               const TaskTableData &parent_task_data) {
+        [this, task_spec, resumed_from_checkpoint](
+            ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id,
+            const TaskTableData &parent_task_data) {
           // The task was in the GCS task table. Use the stored task spec to
           // get the parent actor id.
-          auto message = flatbuffers::GetRoot<protocol::Task>(parent_task_data.task().data());
+          auto message =
+              flatbuffers::GetRoot<protocol::Task>(parent_task_data.task().data());
           Task parent_task(*message);
           ActorID parent_actor_id;
-          if (parent_task.GetTaskSpecification().IsActorCreationTask()){
+          if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
             parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-          } else{
+          } else {
             parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
-          FinishAssignedActorCreationTask(parent_actor_id, task_spec, resumed_from_checkpoint);
+          FinishAssignedActorCreationTask(parent_actor_id, task_spec,
+                                          resumed_from_checkpoint);
         },
         /*failure_callback=*/
-        [this, task_spec, resumed_from_checkpoint]
-            (ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id) {
-          // The parent task was not in the GCS task table. It should most likely be in the
+        [this, task_spec, resumed_from_checkpoint](ray::gcs::AsyncGcsClient *client,
+                                                   const TaskID &parent_task_id) {
+          // The parent task was not in the GCS task table. It should most likely be in
+          // the
           // lineage cache.
           ActorID parent_actor_id = ActorID::Nil();
-          if(lineage_cache_.ContainsTask(parent_task_id)){
+          if (lineage_cache_.ContainsTask(parent_task_id)) {
             // Use a copy of the cached task spec to get the parent actor id.
             Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
-            if (parent_task.GetTaskSpecification().IsActorCreationTask()){
+            if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
               parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-            } else{
+            } else {
               parent_actor_id = parent_task.GetTaskSpecification().ActorId();
             }
-          } else{
+          } else {
             RAY_LOG(WARNING)
-                << "Task metadata not found in either GCS or lineage cache. It may have been "
+                << "Task metadata not found in either GCS or lineage cache. It may have "
+                   "been "
                    "evicted "
                 << "by the redis LRU configuration. Consider increasing the memory "
                    "allocation via "
                 << "ray.init(redis_max_memory=<max_memory_bytes>).";
           }
-          FinishAssignedActorCreationTask(parent_actor_id, task_spec, resumed_from_checkpoint);
+          FinishAssignedActorCreationTask(parent_actor_id, task_spec,
+                                          resumed_from_checkpoint);
         }));
   } else {
     // The actor was not resumed from a checkpoint. We extend the actor's
@@ -1986,7 +1988,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 }
 
 void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
-                           const ActorID &actor_id, const ActorHandleID &actor_handle_id){
+                                      const ActorID &actor_id,
+                                      const ActorHandleID &actor_handle_id) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   // Extend the actor's frontier to include the executed task.
@@ -2008,8 +2011,9 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
   HandleObjectLocal(dummy_object);
 }
 
-void NodeManager::FinishAssignedActorCreationTask(const ActorID& parent_actor_id, 
-                  const TaskSpecification& task_spec, bool resumed_from_checkpoint) {
+void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
+                                                  const TaskSpecification &task_spec,
+                                                  bool resumed_from_checkpoint) {
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
@@ -2036,18 +2040,17 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID& parent_actor_id
             HandleObjectLocal(entry.first);
           }
           HandleActorStateTransition(actor_id, std::move(actor_registration));
-          PublishActorStateTransition(
-              actor_id, new_actor_data,
-              /*failure_callback=*/
-              [](gcs::AsyncGcsClient *client, const ActorID &id,
-                 const ActorTableData &data) {
-                // Only one node at a time should succeed at creating the actor.
-                RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
-              });
+          PublishActorStateTransition(actor_id, new_actor_data,
+                                      /*failure_callback=*/
+                                      [](gcs::AsyncGcsClient *client, const ActorID &id,
+                                         const ActorTableData &data) {
+            // Only one node at a time should succeed at creating the actor.
+            RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
+          });
         },
         [actor_id](ray::gcs::AsyncGcsClient *client, const UniqueID &checkpoint_id) {
-          RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
-                         << " for actor " << actor_id << " in GCS.";
+          RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id << " for actor "
+                         << actor_id << " in GCS.";
         }));
   } else {
     // The actor did not resume from a checkpoint. Immediately notify the
@@ -2061,7 +2064,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID& parent_actor_id
           RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
         });
   }
-  if(!resumed_from_checkpoint){
+  if (!resumed_from_checkpoint) {
     // The actor was not resumed from a checkpoint. We extend the actor's
     // frontier as usual since there is no frontier to restore.
     ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, ActorHandleID::Nil());
@@ -2198,55 +2201,53 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   /// TODO(rkn): Should we check that the node manager is remote and not local?
   /// TODO(rkn): Should we check if the remote node manager is known to be dead?
   // Attempt to forward the task.
-  ForwardTask(
-      task, node_manager_id,
-      [this, node_manager_id](ray::Status error, const Task &task) {
-        const TaskID task_id = task.GetTaskSpecification().TaskId();
-        RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
-                      << node_manager_id;
+  ForwardTask(task, node_manager_id,
+              [this, node_manager_id](ray::Status error, const Task &task) {
+    const TaskID task_id = task.GetTaskSpecification().TaskId();
+    RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
+                  << node_manager_id;
 
-        // Mark the failed task as pending to let other raylets know that we still
-        // have the task. TaskDependencyManager::TaskPending() is assumed to be
-        // idempotent.
-        task_dependency_manager_.TaskPending(task);
+    // Mark the failed task as pending to let other raylets know that we still
+    // have the task. TaskDependencyManager::TaskPending() is assumed to be
+    // idempotent.
+    task_dependency_manager_.TaskPending(task);
 
-        // Actor tasks can only be executed at the actor's location, so they are
-        // retried after a timeout. All other tasks that fail to be forwarded are
-        // deemed to be placeable again.
-        if (task.GetTaskSpecification().IsActorTask()) {
-          // The task is for an actor on another node.  Create a timer to resubmit
-          // the task in a little bit. TODO(rkn): Really this should be a
-          // unique_ptr instead of a shared_ptr. However, it's a little harder to
-          // move unique_ptrs into lambdas.
-          auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-          auto retry_duration = boost::posix_time::milliseconds(
-              RayConfig::instance()
-                  .node_manager_forward_task_retry_timeout_milliseconds());
-          retry_timer->expires_from_now(retry_duration);
-          retry_timer->async_wait(
-              [this, task_id, retry_timer](const boost::system::error_code &error) {
-                // Timer killing will receive the boost::asio::error::operation_aborted,
-                // we only handle the timeout event.
-                RAY_CHECK(!error);
-                RAY_LOG(INFO) << "Resubmitting task " << task_id
-                              << " because ForwardTask failed.";
-                // Remove the RESUBMITTED task from the SWAP queue.
-                TaskState state;
-                const auto task = local_queues_.RemoveTask(task_id, &state);
-                RAY_CHECK(state == TaskState::SWAP);
-                // Submit the task again.
-                SubmitTask(task, Lineage());
-              });
-          // Temporarily move the RESUBMITTED task to the SWAP queue while the
-          // timer is active.
-          local_queues_.QueueTasks({task}, TaskState::SWAP);
-        } else {
-          // The task is not for an actor and may therefore be placed on another
-          // node immediately. Send it to the scheduling policy to be placed again.
-          local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
-          ScheduleTasks(cluster_resource_map_);
-        }
+    // Actor tasks can only be executed at the actor's location, so they are
+    // retried after a timeout. All other tasks that fail to be forwarded are
+    // deemed to be placeable again.
+    if (task.GetTaskSpecification().IsActorTask()) {
+      // The task is for an actor on another node.  Create a timer to resubmit
+      // the task in a little bit. TODO(rkn): Really this should be a
+      // unique_ptr instead of a shared_ptr. However, it's a little harder to
+      // move unique_ptrs into lambdas.
+      auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+      auto retry_duration = boost::posix_time::milliseconds(
+          RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
+      retry_timer->expires_from_now(retry_duration);
+      retry_timer->async_wait([this, task_id, retry_timer](
+          const boost::system::error_code &error) {
+        // Timer killing will receive the boost::asio::error::operation_aborted,
+        // we only handle the timeout event.
+        RAY_CHECK(!error);
+        RAY_LOG(INFO) << "Resubmitting task " << task_id
+                      << " because ForwardTask failed.";
+        // Remove the RESUBMITTED task from the SWAP queue.
+        TaskState state;
+        const auto task = local_queues_.RemoveTask(task_id, &state);
+        RAY_CHECK(state == TaskState::SWAP);
+        // Submit the task again.
+        SubmitTask(task, Lineage());
       });
+      // Temporarily move the RESUBMITTED task to the SWAP queue while the
+      // timer is active.
+      local_queues_.QueueTasks({task}, TaskState::SWAP);
+    } else {
+      // The task is not for an actor and may therefore be placed on another
+      // node immediately. Send it to the scheduling policy to be placed again.
+      local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+      ScheduleTasks(cluster_resource_map_);
+    }
+  });
 }
 
 void NodeManager::ForwardTask(
