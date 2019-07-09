@@ -1215,7 +1215,7 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
                                     rpc::ForwardTaskReply *reply,
-                                    rpc::RequestDoneCallback done_callback) {
+                                    rpc::SendReplyCallback send_reply_callback) {
   // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
@@ -1228,7 +1228,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
                  << " on node " << gcs_client_->client_table().GetLocalClientId()
                  << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
   SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
-  done_callback(Status::OK());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::ProcessSetResourceRequest(
