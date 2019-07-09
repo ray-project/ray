@@ -247,7 +247,8 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   return removed_tasks;
 }
 
-boost::optional<Task> SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_state) {
+boost::optional<Task> SchedulingQueue::RemoveTask(const TaskID &task_id,
+                                                  TaskState *removed_task_state) {
   std::vector<Task> removed_tasks;
   std::unordered_set<TaskID> task_id_set = {task_id};
   // Try to find the task to remove in the queues.
@@ -278,8 +279,9 @@ boost::optional<Task> SchedulingQueue::RemoveTask(const TaskID &task_id, TaskSta
     RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
     return task;
   }
-  RAY_LOG(DEBUG) << "Task " << task_id << " that is to be removed "
-                 " could not be found any more. Probably its driver was removed.";
+  RAY_LOG(DEBUG) << "Task " << task_id
+                 << " that is to be removed could not be found any more."
+                 << " Probably its driver was removed.";
   return boost::optional<Task>();
 }
 
