@@ -1,6 +1,7 @@
 #ifndef RAY_RPC_RAYLET_CLIENT_H
 #define RAY_RPC_RAYLET_CLIENT_H
 
+#include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
 #include <future>
 #include <mutex>
@@ -26,6 +27,9 @@ using ray::ObjectID;
 using ray::TaskID;
 using ray::WorkerID;
 
+using ray::rpc::Language;
+using ray::rpc::ProfileTableData;
+
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
@@ -44,7 +48,7 @@ class RayletClient {
   ///
   /// \param[in] raylet_socket Unix domain socket of the raylet server.
   RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
-               bool is_worker, const JobID &job_id, const ::Language &language, int port = -1);
+               bool is_worker, const JobID &job_id, const Language &language, int port = -1);
 
   ~RayletClient();
 
@@ -145,7 +149,7 @@ class RayletClient {
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
-  ::Language GetLanguage() const { return language_; }
+  Language GetLanguage() const { return language_; }
 
   WorkerID GetWorkerId() const { return worker_id_; }
 
@@ -171,7 +175,7 @@ class RayletClient {
   /// Driver is treated as a special worker.
   const bool is_worker_;
   const JobID job_id_;
-  const ::Language language_;
+  const Language language_;
   const int port_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

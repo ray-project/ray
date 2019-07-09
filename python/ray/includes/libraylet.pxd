@@ -20,22 +20,23 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CUniqueID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpec
 
-cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
-    cdef cppclass PbProfileEvent "ray::rpc::ProfileTableData::ProfileEvent":
-        PbProfileEvent()
-        void set_event_type(c_string)
-        void set_start_time(double)
-        void set_end_time(double)
-        void set_extra_data(c_string)
+cdef extern from "ray/protobuf/gcs.pb.h" nogil:
+    cdef cppclass GCSProfileEvent "ray::rpc::ProfileTableData::ProfileEvent":
+        void set_event_type(const c_string &value)
+        void set_start_time(double value)
+        void set_end_time(double value)
+        c_string set_extra_data(const c_string &value)
+        GCSProfileEvent()
 
-    cdef cppclass PbProfileTableData "ray::rpc::ProfileTableData":
-        PbProfileTableData()
-        void set_component_type(c_string)
-        void set_component_id(c_string)
-        void set_node_ip_address(c_string)
-        PbProfileEvent* add_profile_events()
+    cdef cppclass GCSProfileTableData "ray::rpc::ProfileTableData":
+        void set_component_type(const c_string &value)
+        void set_component_id(const c_string &value)
+        void set_node_ip_address(const c_string &value)
+        GCSProfileEvent *add_profile_events()
+        GCSProfileTableData()
+
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
@@ -50,8 +51,8 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
                       const CLanguage &language)
         CRayStatus SubmitTask(
             const c_vector[CObjectID] &execution_dependencies,
-            const CTaskSpecification &task_spec)
-        CRayStatus GetTask(unique_ptr[CTaskSpecification] *task_spec)
+            const CTaskSpec &task_spec)
+        CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
                                       c_bool fetch_only,
                                       const CTaskID &current_task_id)
@@ -62,7 +63,8 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
                         WaitResultPair *result)
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
-        CRayStatus PushProfileEvents(PbProfileTableData *profile_events)
+        CRayStatus PushProfileEvents(
+            GCSProfileTableData *profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
                                c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,

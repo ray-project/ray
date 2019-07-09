@@ -24,8 +24,8 @@ from ray.includes.common cimport (
 )
 from ray.includes.libraylet cimport (
     CRayletClient,
-    PbProfileEvent,
-    PbProfileTableData,
+    GCSProfileEvent,
+    GCSProfileTableData,
     ResourceMappingType,
     WaitResultPair,
 )
@@ -34,7 +34,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.utils import decode
 
@@ -232,18 +232,22 @@ cdef class RayletClient:
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def submit_task(self, Task task_spec):
+    def submit_task(self, TaskSpec task_spec, execution_dependencies):
+        cdef:
+            CObjectID c_id
+            c_vector[CObjectID] c_dependencies
+        for dep in execution_dependencies:
+            c_dependencies.push_back((<ObjectID>dep).native())
         check_status(self.client.get().SubmitTask(
-            task_spec.execution_dependencies.get()[0],
-            task_spec.task_spec.get()[0]))
+            c_dependencies, task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:
-            unique_ptr[CTaskSpecification] task_spec
+            unique_ptr[CTaskSpec] task_spec
 
         with nogil:
             check_status(self.client.get().GetTask(&task_spec))
-        return Task.make(task_spec)
+        return TaskSpec.make(task_spec)
 
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
@@ -300,45 +304,42 @@ cdef class RayletClient:
     def push_profile_events(self, component_type, UniqueID component_id,
                             node_ip_address, profile_data):
         cdef:
-            PbProfileTableData* profile_info
-            PbProfileEvent *profile_event
+            GCSProfileTableData *profile_info
+            GCSProfileEvent *profile_event
             c_string event_type
 
         if len(profile_data) == 0:
             return  # Short circuit if there are no profile events.
 
-        # The profile table data object would be deleted by protobuf itself
-        profile_info = new PbProfileTableData()
+        profile_info = new GCSProfileTableData()
         profile_info.set_component_type(component_type.encode("ascii"))
         profile_info.set_component_id(component_id.binary())
         profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
 
         for py_profile_event in profile_data:
+            profile_event = profile_info.add_profile_events()
             if not isinstance(py_profile_event, dict):
                 raise TypeError(
                     "Incorrect type for a profile event. Expected dict "
                     "instead of '%s'" % str(type(py_profile_event)))
-            profile_event = profile_info.add_profile_events()
             # TODO(rkn): If the dictionary is formatted incorrectly, that
             # could lead to errors. E.g., if any of the strings are empty,
             # that will cause segfaults in the node manager.
             for key_string, event_data in py_profile_event.items():
                 if key_string == "event_type":
-                    ev_type = event_data.encode("ascii")
-                    profile_event.set_event_type(ev_type)
-                    if len(ev_type) == 0:
+                    if len(event_data) == 0:
                         raise ValueError(
                             "'event_type' should not be a null string.")
+                    profile_event.set_event_type(event_data.encode("ascii"))
                 elif key_string == "start_time":
                     profile_event.set_start_time(float(event_data))
                 elif key_string == "end_time":
                     profile_event.set_end_time(float(event_data))
                 elif key_string == "extra_data":
-                    ev_data = event_data.encode("ascii")
-                    profile_event.set_extra_data(ev_data)
-                    if len(ev_data) == 0:
+                    if len(event_data) == 0:
                         raise ValueError(
                             "'extra_data' should not be a null string.")
+                    profile_event.set_extra_data(event_data.encode("ascii"))
                 else:
                     raise ValueError(
                         "Unknown profile event key '%s'" % key_string)
@@ -373,11 +374,7 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return WorkerID(self.client.get().GetWorkerId().Binary())
-
-    @property
-    def worker_id(self):
-        return WorkerID(self.client.get().GetWorkerId().Binary())
+        return ClientID(self.client.get().GetWorkerId().Binary())
 
     @property
     def job_id(self):

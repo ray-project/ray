@@ -42,10 +42,10 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with
 /// (num_worker_processes * num_workers_per_process) workers for each language.
-WorkerPool::WorkerPool(
-    int num_worker_processes, int num_workers_per_process,
-    int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-    const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
+WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
+                       int maximum_startup_concurrency,
+                       std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+                       const WorkerCommandMap &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
@@ -306,7 +306,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(RemoveWorker(state.registered_workers, worker->GetWorkerId()));
 
   stats::CurrentWorker().Record(
-      0, {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+      0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
 
   return (state.idle.erase(worker) > 0);
@@ -316,7 +316,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver->GetWorkerId()));
   stats::CurrentDriver().Record(
-      0, {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+      0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
 }
 
@@ -390,7 +390,7 @@ void WorkerPool::RecordMetrics() const {
     for (auto worker_pair : entry.second.registered_workers) {
       auto &worker = worker_pair.second;
       stats::CurrentWorker().Record(
-          worker->Pid(), {{stats::LanguageKey, EnumNameLanguage(worker->GetLanguage())},
+          worker->Pid(), {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
     }
 
@@ -398,7 +398,7 @@ void WorkerPool::RecordMetrics() const {
     for (auto driver_pair : entry.second.registered_drivers) {
       auto &driver = driver_pair.second;
       stats::CurrentDriver().Record(
-          driver->Pid(), {{stats::LanguageKey, EnumNameLanguage(driver->GetLanguage())},
+          driver->Pid(), {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
     }
   }

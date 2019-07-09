@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
 // Data structure.
@@ -27,7 +28,7 @@ message RegisterClientRequest {
   // The job ID.
   bytes job_id = 4;
   // Language of this worker.
-  int32 language = 5;
+  Language language = 5;
   // Port that this worker is listening on.
   // If port > 0, then worker will listen to this port and wait for
   // raylet to push tasks, instead of invoking GetTask().
@@ -38,8 +39,8 @@ message RegisterClientReply {
 }
 
 message SubmitTaskRequest {
-  repeated bytes execution_dependencies = 1;
-  bytes task_spec = 2;
+  bytes task_spec = 1;
+  repeated bytes execution_dependencies = 2;
 }
 message SubmitTaskReply {
 }

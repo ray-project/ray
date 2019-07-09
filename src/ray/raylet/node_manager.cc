@@ -6,7 +6,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-#include "ray/raylet/format/node_manager_generated.h"
+//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 
 namespace {
@@ -877,14 +877,18 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Handle submit task request.";
 
-  TaskExecutionSpecification task_execution_spec(
-      rpc::IdVectorFromProtobuf<ObjectID>(request.execution_dependencies()));
-  TaskSpecification task_spec(request.task_spec());
-  Task task(task_execution_spec, task_spec);
+  rpc::Task task;
+  task.mutable_task_spec()->ParseFromString(request.task_spec());
+  auto exec_spec = task.mutable_task_execution_spec();
+  for (auto const& e: request.execution_dependencies()) {
+    exec_spec->add_dependencies(e);
+  }
+  exec_spec->set_last_timestamp(0.0);
+  exec_spec->set_num_forwards(0);
+
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(task, Lineage());
-  RAY_LOG(INFO) << "Finish submit task.";
+  SubmitTask(Task(task), Lineage());
   send_reply_callback(Status::OK(), nullptr, nullptr);
   RAY_LOG(INFO) << "Finsih send reply task request.";
 }
@@ -1046,10 +1050,8 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
-    const std::string &task_message = request.uncommitted_tasks(i);
-    const Task task(*flatbuffers::GetRoot<protocol::Task>(
-        reinterpret_cast<const uint8_t *>(task_message.data())));
-    RAY_CHECK(uncommitted_lineage.SetEntry(std::move(task), GcsStatus::UNCOMMITTED));
+    Task task(request.uncommitted_tasks(i));
+    RAY_CHECK(uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
   RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
@@ -1835,7 +1837,7 @@ bool NodeManager::AssignTask(const Task &task) {
   RAY_CHECK(request != get_task_requests_.end());
 
   rpc::GetTaskReply *reply = request->second.first;
-  reply->set_task_spec(spec.SpecToString());
+  reply->set_task_spec(spec.Serialize());
 
   for (const auto &e : resource_id_set.ToProtobuf()) {
     auto resource = reply->add_fractional_resource_ids();
@@ -2104,9 +2106,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
              const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
-        auto message = flatbuffers::GetRoot<protocol::Task>(task_data.task().data());
-        const Task task(*message);
-        ResubmitTask(task);
+        ResubmitTask(Task(task_data.task()));
       },
       /*failure_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
@@ -2321,8 +2321,12 @@ void NodeManager::ForwardTask(
   // Prepare the request message.
   rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
-  for (auto &entry : uncommitted_lineage.GetEntries()) {
-    request.add_uncommitted_tasks(entry.second.TaskData().Serialize());
+  for (auto &task_entry : uncommitted_lineage.GetEntries()) {
+    auto task = request.add_uncommitted_tasks();
+    task->mutable_task_spec()->CopyFrom(
+        task_entry.second.TaskData().GetTaskSpecification().GetMessage());
+    task->mutable_task_execution_spec()->CopyFrom(
+        task_entry.second.TaskData().GetTaskExecutionSpec().GetMessage());
   }
 
   // Move the FORWARDING task to the SWAP queue so that we remember that we

@@ -6,7 +6,7 @@ namespace rpc {
 
 RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id,
-                           const ::Language &language, int port)
+                           const Language &language, int port)
     : worker_id_(worker_id),
       is_worker_(is_worker),
       job_id_(job_id),
@@ -73,8 +73,7 @@ ray::Status RayletClient::Disconnect() {
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                                      const ray::raylet::TaskSpecification &task_spec) {
   SubmitTaskRequest submit_task_request;
-  std::string spec_str = task_spec.SpecToString();
-  submit_task_request.set_task_spec(spec_str);
+  submit_task_request.set_task_spec(task_spec.Serialize());
   IdVectorToProtobuf<ObjectID, SubmitTaskRequest>(
       execution_dependencies, submit_task_request,
       &SubmitTaskRequest::add_execution_dependencies);
@@ -375,7 +374,7 @@ ray::Status RayletClient::RegisterClient() {
   register_client_request.set_worker_id(worker_id_.Binary());
   register_client_request.set_worker_pid(getpid());
   register_client_request.set_job_id(job_id_.Binary());
-  register_client_request.set_language(static_cast<int32_t>(language_));
+  register_client_request.set_language(language_);
   register_client_request.set_port(port_);
 
   // This promise and future are only used to make this call synchronized.
