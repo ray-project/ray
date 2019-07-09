@@ -213,7 +213,7 @@ const std::shared_ptr<TaskQueue> &SchedulingQueue::GetTaskQueue(
 // queue, and append them to the given vector removed_tasks.
 void SchedulingQueue::RemoveTasksFromQueue(
     ray::raylet::TaskState task_state, std::unordered_set<ray::TaskID> &task_ids,
-    std::vector<ray::raylet::Task> *removed_tasks) {
+    std::vector<ray::Task> *removed_tasks) {
   auto &queue = GetTaskQueue(task_state);
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     const auto &task_id = *it;

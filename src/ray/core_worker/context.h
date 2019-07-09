@@ -20,7 +20,7 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec);
+  void SetCurrentTask(const TaskSpecification &spec);
 
   int GetNextTaskIndex();
 

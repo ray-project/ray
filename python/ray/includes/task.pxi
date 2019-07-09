@@ -15,7 +15,7 @@ from ray.includes.task cimport (
 
 
 cdef class TaskSpec:
-    """Cython wrapper class of C++ `ray::raylet::TaskSpecification`."""
+    """Cython wrapper class of C++ `ray::TaskSpecification`."""
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
@@ -223,7 +223,7 @@ cdef class TaskSpec:
 
 
 cdef class TaskExecutionSpec:
-    """Cython wrapper class of C++ `ray::raylet::TaskExecutionSpecification`."""
+    """Cython wrapper class of C++ `ray::TaskExecutionSpecification`."""
     cdef:
         unique_ptr[CTaskExecutionSpec] c_spec
 
@@ -259,7 +259,7 @@ cdef class TaskExecutionSpec:
 
 
 cdef class Task:
-    """Cython wrapper class of C++ `ray::raylet::Task`."""
+    """Cython wrapper class of C++ `ray::Task`."""
     cdef:
         unique_ptr[CTask] c_task
 

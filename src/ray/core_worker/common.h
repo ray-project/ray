@@ -83,21 +83,21 @@ struct TaskInfo {
 /// TODO(zhijunfu): this can be removed after everything is moved to protobuf.
 class TaskSpec {
  public:
-  TaskSpec(const raylet::TaskSpecification &task_spec,
+  TaskSpec(const TaskSpecification &task_spec,
            const std::vector<ObjectID> &dependencies)
       : task_spec_(task_spec), dependencies_(dependencies) {}
 
-  TaskSpec(const raylet::TaskSpecification &&task_spec,
+  TaskSpec(const TaskSpecification &&task_spec,
            const std::vector<ObjectID> &&dependencies)
       : task_spec_(task_spec), dependencies_(dependencies) {}
 
-  const raylet::TaskSpecification &GetTaskSpecification() const { return task_spec_; }
+  const TaskSpecification &GetTaskSpecification() const { return task_spec_; }
 
   const std::vector<ObjectID> &GetDependencies() const { return dependencies_; }
 
  private:
   /// Raylet task specification.
-  raylet::TaskSpecification task_spec_;
+  TaskSpecification task_spec_;
 
   /// Dependencies.
   std::vector<ObjectID> dependencies_;

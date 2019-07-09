@@ -98,12 +98,12 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
-raylet::TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
+TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
-  raylet::TaskSpecBuilder builder;
+  TaskSpecBuilder builder;
   auto next_task_index = worker_context_.GetNextTaskIndex();
   // Build common task spec.
   builder.SetCommonTaskSpec(
