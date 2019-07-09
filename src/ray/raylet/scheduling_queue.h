@@ -229,11 +229,13 @@ class SchedulingQueue {
   ///
   /// \param task_id The task ID to remove from the queue. The corresponding
   /// task must be contained in the queue.
+  /// \param task The removed task will be written here.
   /// \param task_state If this is not nullptr, then the state of the removed
   /// task will be written here.
-  /// \return The task that was removed, if any.
-  boost::optional<Task> RemoveTask(const TaskID &task_id,
-                                   TaskState *task_state = nullptr);
+  /// \return true if the task was removed, false if it is not in the queue.
+  bool RemoveTask(const TaskID &task_id,
+                  Task *task,
+                  TaskState *task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
