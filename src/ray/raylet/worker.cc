@@ -2,7 +2,6 @@
 
 #include <boost/bind.hpp>
 
-//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
 
 namespace ray {

@@ -1848,7 +1848,6 @@ bool NodeManager::AssignTask(const Task &task) {
   // Invoke callback to send reply to worker.
   request->second.second(Status::OK(),
   /* success callback */ [this, worker, task_id]() {
-  RAY_LOG(INFO) << "actually assign task.";
   // Remove the ASSIGNED task from the SWAP queue.
   TaskState state;
   auto assigned_task = local_queues_.RemoveTask(task_id, &state);
@@ -1891,7 +1890,6 @@ bool NodeManager::AssignTask(const Task &task) {
     } else {
       RAY_CHECK(spec.NewActorHandles().empty());
     }
-    RAY_LOG(INFO) << "Finish assign task.";
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
