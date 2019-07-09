@@ -405,7 +405,7 @@ class Environment(object):
         self.config.queue_config = queue_config
 
     # Sets the same level of parallelism for all operators in the environment
-    def use_microbatch_api(self):
+    def use_micro_batch_api(self):
         self.config.use_micro_batch_api = True
 
     # Enables actor logging
