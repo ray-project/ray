@@ -48,56 +48,6 @@ TEST(IdPropertyTest, TestIdProperty) {
   ASSERT_TRUE(ObjectID::Nil().IsNil());
 }
 
-TEST(TaskSpecTest, TaskInfoSize) {
-  std::vector<ObjectID> references = {ObjectID::FromRandom(), ObjectID::FromRandom()};
-  auto arguments_1 = std::make_shared<TaskArgumentByReference>(references);
-  std::string one_arg("This is an value argument.");
-  auto arguments_2 = std::make_shared<TaskArgumentByValue>(
-      reinterpret_cast<const uint8_t *>(one_arg.c_str()), one_arg.size());
-  std::vector<std::shared_ptr<TaskArgument>> task_arguments({arguments_1, arguments_2});
-  auto task_id = TaskID::FromRandom();
-  {
-    flatbuffers::FlatBufferBuilder fbb;
-    std::vector<flatbuffers::Offset<Arg>> arguments;
-    for (auto &argument : task_arguments) {
-      arguments.push_back(argument->ToFlatbuffer(fbb));
-    }
-    // General task.
-    auto spec = CreateTaskInfo(
-        fbb, to_flatbuf(fbb, JobID::FromRandom()), to_flatbuf(fbb, task_id),
-        to_flatbuf(fbb, TaskID::FromRandom()), 0, to_flatbuf(fbb, ActorID::Nil()),
-        to_flatbuf(fbb, ObjectID::Nil()), 0, to_flatbuf(fbb, ActorID::Nil()),
-        to_flatbuf(fbb, ActorHandleID::Nil()), 0,
-        ids_to_flatbuf(fbb, std::vector<ObjectID>()), fbb.CreateVector(arguments), 1,
-        map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}), Language::PYTHON,
-        string_vec_to_flatbuf(fbb, {"PackageName", "ClassName", "FunctionName"}));
-    fbb.Finish(spec);
-    RAY_LOG(ERROR) << "Ordinary task info size: " << fbb.GetSize();
-  }
-
-  {
-    flatbuffers::FlatBufferBuilder fbb;
-    std::vector<flatbuffers::Offset<Arg>> arguments;
-    for (auto &argument : task_arguments) {
-      arguments.push_back(argument->ToFlatbuffer(fbb));
-    }
-    // General task.
-    auto spec = CreateTaskInfo(
-        fbb, to_flatbuf(fbb, JobID::FromRandom()), to_flatbuf(fbb, task_id),
-        to_flatbuf(fbb, TaskID::FromRandom()), 10, to_flatbuf(fbb, ActorID::FromRandom()),
-        to_flatbuf(fbb, ObjectID::FromRandom()), 10000000,
-        to_flatbuf(fbb, ActorID::FromRandom()),
-        to_flatbuf(fbb, ActorHandleID::FromRandom()), 20,
-        ids_to_flatbuf(
-            fbb, std::vector<ObjectID>({ObjectID::FromRandom(), ObjectID::FromRandom()})),
-        fbb.CreateVector(arguments), 2, map_to_flatbuf(fbb, {}), map_to_flatbuf(fbb, {}),
-        Language::PYTHON,
-        string_vec_to_flatbuf(fbb, {"PackageName", "ClassName", "FunctionName"}));
-    fbb.Finish(spec);
-    RAY_LOG(ERROR) << "Actor task info size: " << fbb.GetSize();
-  }
-}
-
 }  // namespace raylet
 
 }  // namespace ray

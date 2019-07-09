@@ -13,7 +13,7 @@ namespace rpc {
 /// handling a request.
 /// \param status The status would be returned to client.
 /// \param success Success callback which will be invoked when the reply is successfully
-/// sent to the client. 
+/// sent to the client.
 /// \param failure Failure callback which will be invoked when the reply fails to be
 /// sent to the client.
 using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
@@ -146,8 +146,8 @@ class ServerCallImpl : public ServerCall {
           // request, tell gRPC to finish this
           // request.
           SendReply(status);
-          send_reply_success_callback_ = success;
-          send_reply_failure_callback_ = failure;
+          send_reply_success_callback_ = std::move(success);
+          send_reply_failure_callback_ = std::move(failure);
         });
   }
 
@@ -155,13 +155,15 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() {
     if (send_reply_success_callback_ && !io_service_.stopped()) {
-      io_service_.post([this]() { send_reply_success_callback_(); });
+      auto callback = std::move(send_reply_success_callback_);
+      io_service_.post([callback]() { callback(); });
     }
   }
 
   void OnReplyFailed() {
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      io_service_.post([this]() { send_reply_failure_callback_(); });
+      auto callback = std::move(send_reply_failure_callback_);
+      io_service_.post([callback]() { callback(); });
     }
   }
 
