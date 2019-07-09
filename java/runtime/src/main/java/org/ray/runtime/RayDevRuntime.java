@@ -6,7 +6,6 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CountDownLatch;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.WorkerMode;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 

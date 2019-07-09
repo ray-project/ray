@@ -121,7 +121,7 @@ class ActorHandle {
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(WorkerContext &worker_context,
+  CoreWorkerTaskInterface(RunMode run_mode, WorkerContext &worker_context,
                           std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a normal task.
@@ -175,11 +175,15 @@ class CoreWorkerTaskInterface {
       const std::unordered_map<std::string, double> &required_placement_resources,
       std::vector<ObjectID> *return_ids);
 
+  std::shared_ptr<CoreWorkerTaskSubmitter> GetTaskSubmitter();
+
+  RunMode run_mode_;
+
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
 
   /// All the task submitters supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;
+  std::unordered_map<int, std::shared_ptr<CoreWorkerTaskSubmitter>> task_submitters_;
 };
 
 }  // namespace ray

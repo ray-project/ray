@@ -10,8 +10,6 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.config.RunMode;
-import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;

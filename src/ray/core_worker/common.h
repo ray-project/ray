@@ -5,16 +5,16 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
+#include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/raylet/task_spec.h"
 
 namespace ray {
 
 using rpc::Language;
+using rpc::RunMode;
 using rpc::TaskType;
-
-/// Type of this worker.
-enum class WorkerType { WORKER, DRIVER };
+using rpc::WorkerType;
 
 /// Information about a remote function.
 struct RayFunction {

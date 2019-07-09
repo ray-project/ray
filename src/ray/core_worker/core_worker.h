@@ -22,7 +22,7 @@ class CoreWorker {
   /// \param[in] langauge Language of this worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  CoreWorker(const WorkerType worker_type, const Language language,
+  CoreWorker(const WorkerType worker_type, RunMode run_mode, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id = JobID::Nil());
 

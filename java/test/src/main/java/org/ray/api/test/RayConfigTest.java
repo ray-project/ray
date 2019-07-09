@@ -1,7 +1,6 @@
 package org.ray.api.test;
 
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.WorkerMode;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

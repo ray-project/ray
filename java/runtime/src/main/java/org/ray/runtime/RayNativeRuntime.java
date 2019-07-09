@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.runner.RunManager;

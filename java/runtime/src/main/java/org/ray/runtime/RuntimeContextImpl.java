@@ -5,7 +5,6 @@ import java.util.List;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.api.runtimecontext.RuntimeContext;
-import org.ray.runtime.config.RunMode;
 import org.ray.runtime.task.TaskInfo;
 import org.ray.runtime.task.TaskType;
 

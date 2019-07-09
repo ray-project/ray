@@ -23,7 +23,7 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
+  CoreWorkerTaskExecutionInterface(RunMode run_mode, WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface);
 
@@ -57,13 +57,17 @@ class CoreWorkerTaskExecutionInterface {
   Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
                               std::vector<std::shared_ptr<RayObject>> *args);
 
+  std::shared_ptr<CoreWorkerTaskReceiver> GetTaskReceiver();
+
+  RunMode run_mode_;
+
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
   /// Reference to the parent CoreWorker's objects interface.
   CoreWorkerObjectInterface &object_interface_;
 
   /// All the task task receivers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers_;
+  std::unordered_map<int, std::shared_ptr<CoreWorkerTaskReceiver>> task_receivers_;
 
   /// The RPC server.
   rpc::GrpcServer worker_server_;
@@ -73,7 +77,6 @@ class CoreWorkerTaskExecutionInterface {
 
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
-
 
   /// A flag to make the loop stop.
   volatile std::atomic<bool> running_;

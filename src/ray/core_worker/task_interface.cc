@@ -1,6 +1,7 @@
 #include "ray/core_worker/task_interface.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/single_process.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
@@ -91,11 +92,23 @@ std::vector<ray::ActorHandleID> ActorHandle::NewActorHandles() const {
 void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
-    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client)
-    : worker_context_(worker_context) {
-  task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
-                           std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-                               new CoreWorkerRayletTaskSubmitter(raylet_client)));
+    RunMode run_mode, WorkerContext &worker_context,
+    std::unique_ptr<RayletClient> &raylet_client)
+    : run_mode_(run_mode), worker_context_(worker_context) {
+  switch (run_mode) {
+  case RunMode::CLUSTER:
+    task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
+                             std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
+                                 new CoreWorkerRayletTaskSubmitter(raylet_client)));
+    break;
+  case RunMode::SINGLE_PROCESS:
+    task_submitters_.emplace(static_cast<int>(TaskTransportType::MOCK),
+                             std::make_shared<CoreWorkerMockTaskSubmitter>(
+                                 worker_context_, SingleProcess::Instance().TaskPool()));
+    break;
+  default:
+    RAY_LOG(FATAL) << "Invalid run mode.";
+  }
 }
 
 raylet::TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
@@ -135,7 +148,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   auto builder = BuildCommonTaskSpec(function, args, task_options.num_returns,
                                      task_options.resources, {}, return_ids);
   TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return GetTaskSubmitter()->SubmitTask(task);
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -156,7 +169,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   const TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return GetTaskSubmitter()->SubmitTask(task);
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -189,12 +202,22 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   guard.unlock();
 
   // Submit task.
-  auto status =
-      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  auto status = GetTaskSubmitter()->SubmitTask(task);
 
   // Remove cursor from return ids.
   (*return_ids).pop_back();
   return status;
+}
+
+std::shared_ptr<CoreWorkerTaskSubmitter> CoreWorkerTaskInterface::GetTaskSubmitter() {
+  switch (run_mode_) {
+  case RunMode::CLUSTER:
+    return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)];
+  case RunMode::SINGLE_PROCESS:
+    return task_submitters_[static_cast<int>(TaskTransportType::MOCK)];
+  default:
+    RAY_LOG(FATAL) << "Invalid run mode.";
+  }
 }
 
 }  // namespace ray

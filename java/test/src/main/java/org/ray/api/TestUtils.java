@@ -3,7 +3,6 @@ package org.ray.api;
 import java.util.function.Supplier;
 import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.config.RunMode;
 import org.testng.Assert;
 import org.testng.SkipException;
 

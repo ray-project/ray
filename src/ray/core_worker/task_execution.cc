@@ -1,22 +1,36 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/single_process.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
+    RunMode run_mode, WorkerContext &worker_context,
+    std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface)
-    : worker_context_(worker_context),
+    : run_mode_(run_mode),
+      worker_context_(worker_context),
       object_interface_(object_interface),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_work_(main_service_),
       running_(false) {
-  task_receivers_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, main_service_, worker_server_)));
+  switch (run_mode) {
+  case RunMode::CLUSTER:
+    task_receivers_.emplace(
+        static_cast<int>(TaskTransportType::RAYLET),
+        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+            raylet_client, main_service_, worker_server_)));
+    break;
+  case RunMode::SINGLE_PROCESS:
+    task_receivers_.emplace(static_cast<int>(TaskTransportType::MOCK),
+                            std::make_shared<CoreWorkerMockTaskReceiver>(
+                                worker_context_, SingleProcess::Instance().TaskPool()));
+    break;
+  default:
+    RAY_LOG(FATAL) << "Invalid run mode.";
+  };
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -26,8 +40,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
   running_ = true;
   while (running_) {
     std::vector<TaskSpec> tasks;
-    auto status =
-        task_receivers_[static_cast<int>(TaskTransportType::RAYLET)]->GetTasks(&tasks);
+    auto status = GetTaskReceiver()->GetTasks(&tasks);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Getting task failed with error: "
                      << ray::Status::IOError(status.message());
@@ -110,6 +123,18 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   return status;
+}
+
+std::shared_ptr<CoreWorkerTaskReceiver>
+CoreWorkerTaskExecutionInterface::GetTaskReceiver() {
+  switch (run_mode_) {
+  case RunMode::CLUSTER:
+    return task_receivers_[static_cast<int>(TaskTransportType::RAYLET)];
+  case RunMode::SINGLE_PROCESS:
+    return task_receivers_[static_cast<int>(TaskTransportType::MOCK)];
+  default:
+    RAY_LOG(FATAL) << "Invalid run mode.";
+  }
 }
 
 }  // namespace ray
