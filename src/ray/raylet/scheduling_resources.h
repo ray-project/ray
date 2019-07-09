@@ -446,6 +446,7 @@ class ResourceIdSet {
   /// \brief Serialize this object as a string.
   ///
   /// \return A serialized string of this object.
+  /// TODO(zhijunfu): this can be removed after raylet client is migrated to grpc.
   const std::string Serialize() const;
 
  private:

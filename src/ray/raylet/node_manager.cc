@@ -763,9 +763,11 @@ void NodeManager::ProcessClientMessage(
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::GetTask: {
+    RAY_CHECK(!registered_worker->UsePush());
     ProcessGetTaskMessage(client);
   } break;
   case protocol::MessageType::TaskDone: {
+    RAY_CHECK(registered_worker->UsePush());
     ProcessGetTaskMessage(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
