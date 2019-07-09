@@ -100,7 +100,7 @@ cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 
-cdef extern from "ray/common/scheduling_resources.h" \
+cdef extern from "ray/common/task/scheduling_resources.h" \
         namespace "ray" nogil:
     cdef cppclass ResourceSet "ResourceSet":
         ResourceSet()
