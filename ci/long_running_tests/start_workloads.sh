@@ -9,6 +9,11 @@ pushd "$ROOT_DIR"
 # store it in a temporary file.
 CLUSTER_CONFIG="config.yaml"
 
+if grep -q RAY_WHEEL_TO_TEST_HERE $CLUSTER_CONFIG; then
+    echo "You must replace the RAY_WHEEL_TO_TEST_HERE string in $CLUSTER_CONFIG."
+    exit 1
+fi
+
 # Start one instance per workload.
 for workload_file in "$ROOT_DIR"/workloads/*; do
   file_name=$(basename -- "$workload_file")
