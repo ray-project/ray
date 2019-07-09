@@ -984,8 +984,9 @@ void NodeManager::ProcessDisconnectClientMessage(
       // `HandleDisconnectedActor`.
       if (actor_id.IsNil()) {
         Task task;
-        RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
-        TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
+        if (local_queues_.RemoveTask(task_id, &task)) {
+          TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
+        }
       }
 
       if (!intentional_disconnect) {

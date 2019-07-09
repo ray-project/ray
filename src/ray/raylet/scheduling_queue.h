@@ -7,8 +7,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional.hpp>
-
 #include "ray/raylet/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
