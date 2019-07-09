@@ -5,10 +5,14 @@
 
 namespace ray {
 
-// Alias `ray::rpc::Language` in `ray` namespace.
-using rpc::Language;
+// NOTE(hchen): Below we alias `ray::rpc::Language|TaskType)` in  `ray` namespace.
+// The reason is because other code should use them as if they were defined in this
+// `task_common.h` file, shouldn't care about the implementation detail that they
+// are defined in protobuf.
 
-// Alias `ray::rpc::TaskType` in `ray` namespace.
+/// See `common.proto` for definition of `Language` enum.
+using rpc::Language;
+/// See `common.proto` for definition of `TaskSpec` enum.
 using rpc::TaskType;
 
 }  // namespace ray

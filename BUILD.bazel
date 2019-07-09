@@ -343,6 +343,8 @@ cc_library(
         ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
+        # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
+        # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
         ":raylet_lib",
         ":worker_rpc",
     ],
