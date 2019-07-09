@@ -63,12 +63,15 @@ class TuneExampleTest(unittest.TestCase):
 
     def testTensorFlowMNIST(self):
         from ray.tune.examples.tune_mnist_ray_hyperband import TrainMNIST
+        from torchvision import datasets
+        datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
 
-    @unittest.skip("cifar10.load_data is currently flaky.")
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
+        from tensorflow.python.keras.datasets import cifar10
+        cifar10.load_data()
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
 
