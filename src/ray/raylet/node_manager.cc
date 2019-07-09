@@ -2188,10 +2188,11 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                 // Remove the RESUBMITTED task from the SWAP queue.
                 Task task;
                 TaskState state;
-                RAY_CHECK(local_queues_.RemoveTask(task_id, &task, &state));
-                RAY_CHECK(state == TaskState::SWAP);
-                // Submit the task again.
-                SubmitTask(task, Lineage());
+                if (local_queues_.RemoveTask(task_id, &task, &state)) {
+                  RAY_CHECK(state == TaskState::SWAP);
+                  // Submit the task again.
+                  SubmitTask(task, Lineage());
+                }
               });
           // Temporarily move the RESUBMITTED task to the SWAP queue while the
           // timer is active.
