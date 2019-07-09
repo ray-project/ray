@@ -37,11 +37,11 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::RequestDoneCallback done_callback) {
   const raylet::Task task(request.task());
   const auto &spec = task.GetTaskSpecification();
   auto status = task_handler_(spec);
-  send_reply_callback(status, nullptr, nullptr);
+  done_callback(status);
 }
 
 }  // namespace ray

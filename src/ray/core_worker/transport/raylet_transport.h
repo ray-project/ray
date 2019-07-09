@@ -44,14 +44,14 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   ///
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `send_reply_callback` should be called.
+  /// `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
+  /// \param[in] done_callback The callback to be called when the request is done.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+                        rpc::RequestDoneCallback done_callback) override;
 
  private:
   /// Raylet client.

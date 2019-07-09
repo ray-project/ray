@@ -11,13 +11,7 @@ namespace rpc {
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
-/// \param status The status would be returned to client.
-/// \param success Success callback which will be invoked when the reply is successfully
-/// sent to the client.
-/// \param failure Failure callback which will be invoked when the reply fails to be
-/// sent to the client.
-using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
-                                             std::function<void()> failure)>;
+using RequestDoneCallback = std::function<void(Status)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
@@ -65,11 +59,8 @@ class ServerCall {
   /// Get the factory that created this `ServerCall`.
   virtual const ServerCallFactory &GetFactory() const = 0;
 
-  /// Invoked when sending reply successes.
-  virtual void OnReplySent() = 0;
-
-  // Invoked when sending reply fails.
-  virtual void OnReplyFailed() = 0;
+  /// Finish the `ServerCall`.
+  virtual void Finish(Status status) = 0;
 
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
@@ -93,7 +84,7 @@ class ServerCallFactory {
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
 using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
-                                                       SendReplyCallback);
+                                                       RequestDoneCallback);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
@@ -132,48 +123,30 @@ class ServerCallImpl : public ServerCall {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
-      SendReply(Status::Invalid("HandleServiceClosed"));
+      Finish(Status::Invalid("HandleServiceClosed"));
     }
   }
 
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
-    (service_handler_.*handle_request_function_)(
-        request_, &reply_,
-        [this](Status status, std::function<void()> success,
-               std::function<void()> failure) {
-          // When the handler is done with the
-          // request, tell gRPC to finish this
-          // request.
-          SendReply(status);
-          send_reply_success_callback_ = std::move(success);
-          send_reply_failure_callback_ = std::move(failure);
-        });
+    (service_handler_.*handle_request_function_)(request_, &reply_,
+                                                 [this](Status status) {
+                                                   // When the handler is done with the
+                                                   // request, tell gRPC to finish this
+                                                   // request.
+                                                   Finish(status);
+                                                 });
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
-  void OnReplySent() {
-    if (send_reply_success_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { callback(); });
-    }
-  }
-
-  void OnReplyFailed() {
-    if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_failure_callback_);
-      io_service_.post([callback]() { callback(); });
-    }
-  }
-
- private:
-  /// Tell gRPC to finish this request and send reply asynchronously.
-  void SendReply(Status status) {
+  /// Tell gRPC to finish this request.
+  void Finish(Status status) override {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 
+ private:
   /// State of this call.
   ServerCallState state_;
 
@@ -201,12 +174,6 @@ class ServerCallImpl : public ServerCall {
 
   /// The reply message.
   Reply reply_;
-
-  /// The callback when sending reply successes.
-  std::function<void()> send_reply_success_callback_ = nullptr;
-
-  /// The callback when sending reply fails.
-  std::function<void()> send_reply_failure_callback_ = nullptr;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;
