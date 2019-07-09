@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import logging
 from functools import wraps
 
@@ -44,7 +43,7 @@ class RemoteFunction(object):
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_driver_id_exported_for: The ID of the driver ID of the last Ray
+        _last_job_id_exported_for: The ID of the job ID of the last Ray
             session during which this remote function definition was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -73,7 +72,7 @@ class RemoteFunction(object):
         self._function_signature = ray.signature.extract_signature(
             self._function)
 
-        self._last_driver_id_exported_for = None
+        self._last_job_id_exported_for = None
 
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -115,11 +114,11 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if (self._last_driver_id_exported_for is None
-                or self._last_driver_id_exported_for != worker.task_driver_id):
+        if (self._last_job_id_exported_for is None
+                or self._last_job_id_exported_for != worker.current_job_id):
             # If this function was exported in a previous session, we need to
             # export this function again, because current GCS doesn't have it.
-            self._last_driver_id_exported_for = worker.task_driver_id
+            self._last_job_id_exported_for = worker.current_job_id
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
@@ -137,17 +136,16 @@ class RemoteFunction(object):
                                              kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                # In LOCAL_MODE, remote calls simply execute the function.
-                # We copy the arguments to prevent the function call from
-                # mutating them and to match the usual behavior of
-                # immutable remote objects.
-                result = self._function(*copy.deepcopy(args))
-                return result
-            object_ids = worker.submit_task(
-                self._function_descriptor,
-                args,
-                num_return_vals=num_return_vals,
-                resources=resources)
+                object_ids = worker.local_mode_manager.execute(
+                    self._function, self._function_descriptor, args,
+                    num_return_vals)
+            else:
+                object_ids = worker.submit_task(
+                    self._function_descriptor,
+                    args,
+                    num_return_vals=num_return_vals,
+                    resources=resources)
+
             if len(object_ids) == 1:
                 return object_ids[0]
             elif len(object_ids) > 1:

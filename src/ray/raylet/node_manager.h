@@ -5,11 +5,12 @@
 
 // clang-format off
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/node_manager_server.h"
-#include "ray/rpc/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
@@ -27,14 +28,17 @@ namespace raylet {
 
 using rpc::ActorTableData;
 using rpc::ClientTableData;
-using rpc::DriverTableData;
 using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
+using rpc::JobTableData;
+using rpc::Language;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
   ResourceSet resource_config;
+  /// The IP address this node manager is running on.
+  std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
@@ -46,7 +50,7 @@ struct NodeManagerConfig {
   /// worker pool.
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
-  std::unordered_map<Language, std::vector<std::string>> worker_commands;
+  WorkerCommandMap worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -326,12 +330,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const ActorID &actor_id, const ActorTableData &data,
       const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
-  /// When a driver dies, loop over all of the queued tasks for that driver and
+  /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
   ///
-  /// \param driver_id The driver that died.
+  /// \param job_id The job that exited.
   /// \return Void.
-  void CleanUpTasksForDeadDriver(const DriverID &driver_id);
+  void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
@@ -346,13 +350,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
-  /// Handles updates to driver table.
+  /// Handles updates to job table.
   ///
   /// \param id An unused value. TODO(rkn): Should this be removed?
-  /// \param driver_data Data associated with a driver table event.
+  /// \param job_data Data associated with a job table event.
   /// \return Void.
-  void HandleDriverTableUpdate(const DriverID &id,
-                               const std::vector<DriverTableData> &driver_data);
+  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
@@ -456,7 +459,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   // GCS client ID for this node.
   ClientID client_id_;

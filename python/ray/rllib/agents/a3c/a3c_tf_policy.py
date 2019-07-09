@@ -56,7 +56,7 @@ def postprocess_advantages(policy,
         last_r = 0.0
     else:
         next_state = []
-        for i in range(len(policy.model.state_in)):
+        for i in range(len(policy.state_in)):
             next_state.append([sample_batch["state_out_{}".format(i)][-1]])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
@@ -79,11 +79,11 @@ class ValueNetworkMixin(object):
             self.get_placeholder(SampleBatch.CUR_OBS): [ob],
             self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
             self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
-            self.model.seq_lens: [1]
+            self.seq_lens: [1]
         }
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
+        assert len(args) == len(self.state_in), \
+            (args, self.state_in)
+        for k, v in zip(self.state_in, args):
             feed_dict[k] = v
         vf = self.get_session().run(self.vf, feed_dict)
         return vf[0]
@@ -91,10 +91,11 @@ class ValueNetworkMixin(object):
 
 def stats(policy, batch_tensors):
     return {
-        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(policy.var_list),
+        "var_gnorm": tf.global_norm(
+            [policy.convert_to_eager(x) for x in policy.var_list]),
         "vf_loss": policy.loss.vf_loss,
     }
 

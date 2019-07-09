@@ -14,6 +14,9 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def to_aws_format(tags):
     """Convert the Ray node name tag to the AWS-specific 'Name' tag."""
@@ -212,7 +215,15 @@ class AWSNodeProvider(NodeProvider):
             "SubnetId": subnet_id,
             "TagSpecifications": tag_specs
         })
-        self.ec2.create_instances(**conf)
+
+        logger.info(
+            "NodeProvider: Calling create_instances (count={}).".format(count))
+        L = self.ec2.create_instances(**conf)
+        for x in L:
+            logger.info("NodeProvider: Created instance "
+                        "[id={}, name={}, info={}]".format(
+                            x.instance_id, x.state["Name"],
+                            x.state_reason["Message"]))
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)

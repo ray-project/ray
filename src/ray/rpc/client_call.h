@@ -30,6 +30,8 @@ class ClientCall {
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
   virtual void OnReplyReceived() = 0;
+  /// Return status.
+  virtual ray::Status GetStatus() = 0;
 
   virtual ~ClientCall() = default;
 };
@@ -49,7 +51,12 @@ using ClientCallback = std::function<void(const Status &status, const Reply &rep
 template <class Reply>
 class ClientCallImpl : public ClientCall {
  public:
-  void OnReplyReceived() override { callback_(GrpcStatusToRayStatus(status_), reply_); }
+  Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
+  void OnReplyReceived() override {
+    if (callback_ != nullptr) {
+      callback_(GrpcStatusToRayStatus(status_), reply_);
+    }
+  }
 
  private:
   /// Constructor.
