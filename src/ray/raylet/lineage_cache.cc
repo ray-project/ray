@@ -63,15 +63,6 @@ void LineageEntry::UpdateTaskData(const Task &task) {
 
 Lineage::Lineage() {}
 
-Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
-  // Deserialize and set entries for the uncommitted tasks.
-  auto tasks = task_request.uncommitted_tasks();
-  for (auto it = tasks->begin(); it != tasks->end(); it++) {
-    const auto &task = **it;
-    RAY_CHECK(SetEntry(task, GcsStatus::UNCOMMITTED));
-  }
-}
-
 boost::optional<const LineageEntry &> Lineage::GetEntry(const TaskID &task_id) const {
   auto entry = entries_.find(task_id);
   if (entry != entries_.end()) {
@@ -151,20 +142,6 @@ const std::unordered_map<const TaskID, LineageEntry> &Lineage::GetEntries() cons
   return entries_;
 }
 
-flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
-    flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const {
-  RAY_CHECK(GetEntry(task_id));
-  // Serialize the task and object entries.
-  std::vector<flatbuffers::Offset<protocol::Task>> uncommitted_tasks;
-  for (const auto &entry : entries_) {
-    uncommitted_tasks.push_back(entry.second.TaskData().ToFlatbuffer(fbb));
-  }
-
-  auto request = protocol::CreateForwardTaskRequest(fbb, to_flatbuf(fbb, task_id),
-                                                    fbb.CreateVector(uncommitted_tasks));
-  return request;
-}
-
 const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) const {
   static const std::unordered_set<TaskID> empty_children;
   const auto it = children_.find(task_id);
@@ -176,7 +153,7 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
 }
 
 LineageCache::LineageCache(const ClientID &client_id,
-                           gcs::TableInterface<TaskID, protocol::Task> &task_storage,
+                           gcs::TableInterface<TaskID, TaskTableData> &task_storage,
                            gcs::PubsubInterface<TaskID> &task_pubsub,
                            uint64_t max_lineage_size)
     : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
@@ -268,8 +245,8 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   }
 }
 
-Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
-                                                 const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
+                                            const ClientID &node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
@@ -279,8 +256,9 @@ Lineage LineageCache::GetUncommittedLineageOrDie(const TaskID &task_id,
   // already explicitly forwarded to this node before.
   if (uncommitted_lineage.GetEntries().empty()) {
     auto entry = lineage_.GetEntry(task_id);
-    RAY_CHECK(entry);
-    RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+    if (entry) {
+      RAY_CHECK(uncommitted_lineage.SetEntry(entry->TaskData(), entry->GetStatus()));
+    }
   }
   return uncommitted_lineage;
 }
@@ -292,18 +270,15 @@ void LineageCache::FlushTask(const TaskID &task_id) {
 
   gcs::raylet::TaskTable::WriteCallback task_callback =
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
-             const protocol::TaskT &data) { HandleEntryCommitted(id); };
+             const TaskTableData &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
-  // TODO(swang): Make this better...
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = task->TaskData().ToFlatbuffer(fbb);
-  fbb.Finish(message);
-  auto task_data = std::make_shared<protocol::TaskT>();
-  auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
-  root->UnPackTo(task_data.get());
-  RAY_CHECK_OK(
-      task_storage_.Add(DriverID(task->TaskData().GetTaskSpecification().DriverId()),
-                        task_id, task_data, task_callback));
+  auto task_data = std::make_shared<TaskTableData>();
+  task_data->mutable_task()->mutable_task_spec()->CopyFrom(
+      task->TaskData().GetTaskSpecification().GetMessage());
+  task_data->mutable_task()->mutable_task_execution_spec()->CopyFrom(
+      task->TaskData().GetTaskExecutionSpec().GetMessage());
+  RAY_CHECK_OK(task_storage_.Add(JobID(task->TaskData().GetTaskSpecification().JobId()),
+                                 task_id, task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
@@ -316,7 +291,7 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
   if (unsubscribed) {
     // Request notifications for the task if we haven't already requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.RequestNotifications(DriverID::Nil(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::Nil(), task_id, client_id_));
   }
   // Return whether we were previously unsubscribed to this task and are now
   // subscribed.
@@ -329,7 +304,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   if (subscribed) {
     // Cancel notifications for the task if we previously requested
     // notifications for it.
-    RAY_CHECK_OK(task_pubsub_.CancelNotifications(DriverID::Nil(), task_id, client_id_));
+    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::Nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now
@@ -365,8 +340,6 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   for (const auto &child_id : children) {
     EvictTask(child_id);
   }
-
-  return;
 }
 
 void LineageCache::HandleEntryCommitted(const TaskID &task_id) {

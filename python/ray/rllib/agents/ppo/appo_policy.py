@@ -10,14 +10,12 @@ import numpy as np
 import logging
 import gym
 
-import ray
 from ray.rllib.agents.impala import vtrace
+from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
+        BEHAVIOUR_LOGITS, VTraceTFPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
 
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
-#Classic PPO Loss, no changes made to loss function
+# Classic PPO Loss, no changes made to loss function
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
 
@@ -84,7 +82,7 @@ class PPOSurrogateLoss(object):
         if use_kl_loss:
             self.total_loss+=cur_kl_coeff*self.mean_kl
 
-#APPO Loss, with IS modifications and V-trace for Advantage Estimation
+# APPO Loss, with IS modifications and V-trace for Advantage Estimation
 class VTraceSurrogateLoss(object):
     def __init__(self,
                  actions,
@@ -178,41 +176,6 @@ class VTraceSurrogateLoss(object):
             self.total_loss+=cur_kl_coeff*self.mean_kl
 
 
-def _make_time_major(policy, tensor, drop_last=False):
-    """Swaps batch and trajectory axis.
-
-    Arguments:
-        policy: Policy reference
-        tensor: A tensor or list of tensors to reshape.
-        drop_last: A bool indicating whether to drop the last
-        trajectory item.
-
-    Returns:
-        res: A tensor with swapped axes or a list of tensors with
-        swapped axes.
-    """
-    if isinstance(tensor, list):
-        return [_make_time_major(policy, t, drop_last) for t in tensor]
-
-    if policy.model.state_init:
-        B = tf.shape(policy.model.seq_lens)[0]
-        T = tf.shape(tensor)[0] // B
-    else:
-        # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
-        T = policy.config["sample_batch_size"]
-        B = tf.shape(tensor)[0] // T
-    rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
-
-    # swap B and T axes
-    res = tf.transpose(
-        rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
-
-    if drop_last:
-        return res[:-1]
-    return res
-
-
 def build_appo_surrogate_loss(policy, batch_tensors):
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
@@ -239,17 +202,15 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_old_policy_behaviour_logits = tf.split(
             old_policy_behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(
-        policy.model.outputs, output_hidden_shape, axis=1)
-    
+    unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
     old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits)
     prev_action_dist = policy.dist_class(behaviour_logits)
-    
     values = policy.value_function
-    if policy.model.state_in:
-        max_seq_len = tf.reduce_max(policy.model.seq_lens) - 1
-        mask = tf.sequence_mask(policy.model.seq_lens, max_seq_len)
+
+    if policy.state_in:
+        max_seq_len = tf.reduce_max(policy.seq_lens) - 1
+        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(rewards)
@@ -285,7 +246,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             dist_class=Categorical if is_multidiscrete else policy.dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
+            entropy_coeff=policy.entropy_coeff,
             clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=policy.config[
                 "vtrace_clip_pg_rho_threshold"],
@@ -306,13 +267,12 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             value_targets=make_time_major(
                 batch_tensors[Postprocessing.VALUE_TARGETS]),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
+            entropy_coeff=policy.entropy_coeff,
             clip_param=policy.config["clip_param"],
             cur_kl_coeff=policy.kl_coeff,
             use_kl_loss=policy.config["use_kl_loss"])
 
     return policy.loss.total_loss
-
 
 def stats(policy, batch_tensors):
     values_batched = _make_time_major(
@@ -346,7 +306,6 @@ def grad_stats(policy, grads):
         "grad_gnorm": tf.global_norm(grads),
     }
 
-
 def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
@@ -357,7 +316,7 @@ def postprocess_trajectory(policy,
             last_r = 0.0
         else:
             next_state = []
-            for i in range(len(policy.model.state_in)):
+            for i in range(len(policy.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = policy.value(sample_batch["new_obs"][-1], *next_state)
         batch = compute_advantages(
@@ -373,11 +332,10 @@ def postprocess_trajectory(policy,
 
 
 def add_values_and_logits(policy):
-    out = {BEHAVIOUR_LOGITS: policy.model.outputs}
+    out = {BEHAVIOUR_LOGITS: policy.model_out}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.value_function
     return out
-
 
 def validate_config(policy, obs_space, action_space, config):
     assert config["batch_mode"] == "truncate_episodes", \
@@ -445,10 +403,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 AsyncPPOTFPolicy = build_tf_policy(
     name="AsyncPPOTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
     loss_fn=build_appo_surrogate_loss,
-    stats_fn=stats,
-    grad_stats_fn=grad_stats,
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,

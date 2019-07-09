@@ -67,6 +67,7 @@ class Model(object):
         self.options = options
         self.scope = tf.get_variable_scope()
         self.session = tf.get_default_session()
+        self.input_dict = input_dict
         if seq_lens is not None:
             self.seq_lens = seq_lens
         else:
@@ -77,6 +78,8 @@ class Model(object):
         if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
+
+        ok = True
         try:
             restored = input_dict.copy()
             restored["obs"] = restore_original_dimensions(
@@ -84,6 +87,10 @@ class Model(object):
             self.outputs, self.last_layer = self._build_layers_v2(
                 restored, num_outputs, options)
         except NotImplementedError:
+            ok = False
+        # In TF 1.14, you cannot construct variable scopes in exception
+        # handlers so we have to set the OK flag and check it here:
+        if not ok:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
 
@@ -192,6 +199,12 @@ class Model(object):
         """Deprecated: use self.custom_loss()."""
         return None
 
+    @classmethod
+    def get_initial_state(cls, obs_space, action_space, num_outputs, options):
+        raise NotImplementedError(
+            "In order to use recurrent models with ModelV2, you should define "
+            "the get_initial_state @classmethod on your custom model class.")
+
     def _validate_output_shape(self):
         """Checks that the model has the correct number of outputs."""
         try:
@@ -226,6 +239,11 @@ def restore_original_dimensions(obs, obs_space, tensorlib=tf):
     """
 
     if hasattr(obs_space, "original_space"):
+        if tensorlib == "tf":
+            tensorlib = tf
+        elif tensorlib == "torch":
+            import torch
+            tensorlib = torch
         return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
     else:
         return obs

@@ -128,6 +128,7 @@ def chop_into_sequences(episode_ids,
                         state_columns,
                         max_seq_len,
                         dynamic_max=True,
+                        shuffle=False,
                         _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -143,6 +144,7 @@ def chop_into_sequences(episode_ids,
         dynamic_max (bool): Whether to dynamically shrink the max seq len.
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
+        shuffle (bool): Whether to shuffle the sequence outputs.
         _extra_padding (int): Add extra padding to the end of sequences.
 
     Returns:
@@ -186,6 +188,7 @@ def chop_into_sequences(episode_ids,
     if seq_len:
         seq_lens.append(seq_len)
     assert sum(seq_lens) == len(unique_ids)
+    seq_lens = np.array(seq_lens)
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
@@ -215,4 +218,17 @@ def chop_into_sequences(episode_ids,
             i += l
         initial_states.append(np.array(s_init))
 
-    return feature_sequences, initial_states, np.array(seq_lens)
+    if shuffle:
+        permutation = np.random.permutation(len(seq_lens))
+        for i, f in enumerate(feature_sequences):
+            orig_shape = f.shape
+            f = np.reshape(f, (len(seq_lens), -1) + f.shape[2:])
+            f = f[permutation]
+            f = np.reshape(f, orig_shape)
+            feature_sequences[i] = f
+        for i, s in enumerate(initial_states):
+            s = s[permutation]
+            initial_states[i] = s
+        seq_lens = seq_lens[permutation]
+
+    return feature_sequences, initial_states, seq_lens

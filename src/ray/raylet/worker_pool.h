@@ -8,13 +8,18 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/gcs/client.h"
-#include "ray/gcs/format/util.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
 
 namespace raylet {
+
+using rpc::Language;
+
+using WorkerCommandMap =
+    std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
 class Worker;
 
@@ -36,10 +41,10 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(
-      int num_worker_processes, int num_workers_per_process,
-      int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-      const std::unordered_map<Language, std::vector<std::string>> &worker_commands);
+  WorkerPool(int num_worker_processes, int num_workers_per_process,
+             int maximum_startup_concurrency,
+             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+             const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -102,12 +107,12 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size(const Language &language) const;
 
-  /// Get all the workers which are running tasks for a given driver.
+  /// Get all the workers which are running tasks for a given job.
   ///
-  /// \param driver_id The driver ID.
-  /// \return A list containing all the workers which are running tasks for the driver.
-  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForDriver(
-      const DriverID &driver_id) const;
+  /// \param job_id The job ID.
+  /// \return A list containing all the workers which are running tasks for the job.
+  std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
+      const JobID &job_id) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
@@ -179,7 +184,7 @@ class WorkerPool {
   /// The number of workers per process.
   int num_workers_per_process_;
   /// Pool states per language.
-  std::unordered_map<Language, State> states_by_lang_;
+  std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
   /// A helper function that returns the reference of the pool state
