@@ -38,6 +38,8 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
 
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
+
+  std::string DebugString() const;
 };
 
 }  // namespace ray

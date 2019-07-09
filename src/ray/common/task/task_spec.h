@@ -47,9 +47,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> FunctionDescriptor() const;
 
-  // Output the function descriptor as a string for log purpose.
-  std::string FunctionDescriptorString() const;
-
   size_t NumArgs() const;
 
   size_t NumReturns() const;
@@ -110,6 +107,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::vector<ActorHandleID> NewActorHandles() const;
 
   std::vector<std::string> DynamicWorkerOptions() const;
+
+  std::string DebugString() const;
 
  private:
   void ComputeResources();

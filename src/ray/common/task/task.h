@@ -58,6 +58,8 @@ class Task {
   /// \param task Task structure with updated dynamic information.
   void CopyTaskExecutionSpec(const Task &task);
 
+  std::string DebugString() const;
+
  private:
   void ComputeDependencies();
 

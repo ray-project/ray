@@ -1463,13 +1463,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
-  RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
-                 << ", actor_id=" << spec.ActorId()
-                 << ", actor_creation_id=" << spec.ActorCreationId()
-                 << ", actor_handle_id=" << spec.ActorHandleId()
-                 << ", actor_counter=" << spec.ActorCounter()
-                 << ", task_descriptor=" << spec.FunctionDescriptorString() << " on node "
-                 << gcs_client_->client_table().GetLocalClientId();
+  RAY_LOG(DEBUG) << "Submitting task: " << task.DebugString();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
