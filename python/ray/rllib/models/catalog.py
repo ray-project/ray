@@ -126,11 +126,8 @@ class ModelCatalog(object):
             logger.debug("Using custom action distribution {}".format(
                 action_dist_name))
             dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
-            n = dist.parameter_shape_for_action_space(action_space,
-                                                      config["custom_options"])
-            return dist, n
 
-        if isinstance(action_space, gym.spaces.Box):
+        elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
                     "Action space has multiple dimensions "
@@ -145,6 +142,9 @@ class ModelCatalog(object):
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = TorchCategorical if torch else Categorical
         elif isinstance(action_space, gym.spaces.Tuple):
+            if torch:
+                raise NotImplementedError("Tuple action spaces not supported "
+                                          "for Pytorch.")
             child_dist = []
             input_lens = []
             for action in action_space.spaces:
@@ -152,8 +152,6 @@ class ModelCatalog(object):
                     action, config)
                 child_dist.append(dist)
                 input_lens.append(action_size)
-            if torch:
-                raise NotImplementedError
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
@@ -161,11 +159,13 @@ class ModelCatalog(object):
                 input_lens=input_lens), sum(input_lens)
         elif isinstance(action_space, Simplex):
             if torch:
-                raise NotImplementedError
+                raise NotImplementedError("Simplex action spaces not "
+                                          "supported for Pytorch.")
             dist = Dirichlet
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if torch:
-                raise NotImplementedError
+                raise NotImplementedError("MultiDiscrete action spaces not "
+                                          "supported for Pytorch.")
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
 
