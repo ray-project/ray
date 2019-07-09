@@ -247,8 +247,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   return removed_tasks;
 }
 
-bool SchedulingQueue::RemoveTask(const TaskID &task_id,
-                                 Task *removed_task,
+bool SchedulingQueue::RemoveTask(const TaskID &task_id, Task *removed_task,
                                  TaskState *removed_task_state) {
   std::vector<Task> removed_tasks;
   std::unordered_set<TaskID> task_id_set = {task_id};

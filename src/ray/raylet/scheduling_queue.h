@@ -231,8 +231,7 @@ class SchedulingQueue {
   /// \param task_state If this is not nullptr, then the state of the removed
   /// task will be written here.
   /// \return true if the task was removed, false if it is not in the queue.
-  bool RemoveTask(const TaskID &task_id,
-                  Task *removed_task,
+  bool RemoveTask(const TaskID &task_id, Task *removed_task,
                   TaskState *removed_task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
