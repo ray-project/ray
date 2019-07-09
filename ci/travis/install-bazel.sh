@@ -26,4 +26,5 @@ if [[ "$TRAVIS" == "true"  ]]; then
   # Use bazel disk cache if this script is running in Travis.
   mkdir -p $HOME/ray-bazel-cache
   echo "build --disk_cache=$HOME/ray-bazel-cache" >> $HOME/.bazelrc
+  cat $HOME/.bazelrc
 fi
