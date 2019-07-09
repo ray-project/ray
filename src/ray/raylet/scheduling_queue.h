@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/optional.hpp>
+
 #include "ray/raylet/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
@@ -229,8 +231,8 @@ class SchedulingQueue {
   /// task must be contained in the queue.
   /// \param task_state If this is not nullptr, then the state of the removed
   /// task will be written here.
-  /// \return The task that was removed.
-  Task RemoveTask(const TaskID &task_id, TaskState *task_state = nullptr);
+  /// \return The task that was removed, if any.
+  boost::optional<Task> RemoveTask(const TaskID &task_id, TaskState *task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
