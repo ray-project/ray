@@ -121,6 +121,18 @@ cdef class TaskSpec:
         """
         return self.task_spec.get().Serialize()
 
+    def is_normal_task(self):
+        """Whether this task is a normal task."""
+        return self.task_spec.get().IsNormalTask()
+
+    def is_actor_task(self):
+        """Whether this task is an actor task."""
+        return self.task_spec.get().IsActorTask()
+
+    def is_actor_creation_task(self):
+        """Whether this task is an actor creation task."""
+        return self.task_spec.get().IsActorCreationTask()
+
     def job_id(self):
         """Return the job ID for this task."""
         return JobID(self.task_spec.get().JobId().Binary())

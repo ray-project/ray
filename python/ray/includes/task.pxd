@@ -61,7 +61,7 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         const ResourceSet GetRequiredPlacementResources() const
         c_bool IsDriverTask() const
         CLanguage GetLanguage() const
-
+        c_bool IsNormalTask() const
         c_bool IsActorCreationTask() const
         c_bool IsActorTask() const
         CActorID ActorCreationId() const

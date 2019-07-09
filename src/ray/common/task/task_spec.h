@@ -85,16 +85,24 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   Language GetLanguage() const;
 
-  // Methods specific to actor tasks.
+  /// Whether this task is a normal task.
+  bool IsNormalTask() const;
+
+  /// Whether this task is an actor creation task.
   bool IsActorCreationTask() const;
 
+  /// Whether this task is an actor task.
   bool IsActorTask() const;
+
+  // Methods specific to actor creation tasks.
 
   ActorID ActorCreationId() const;
 
-  ObjectID ActorCreationDummyObjectId() const;
-
   uint64_t MaxActorReconstructions() const;
+
+  std::vector<std::string> DynamicWorkerOptions() const;
+
+  // Methods specific to actor tasks.
 
   ActorID ActorId() const;
 
@@ -102,11 +110,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   uint64_t ActorCounter() const;
 
-  ObjectID ActorDummyObject() const;
+  ObjectID ActorCreationDummyObjectId() const;
 
   std::vector<ActorHandleID> NewActorHandles() const;
 
-  std::vector<std::string> DynamicWorkerOptions() const;
+  ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
 

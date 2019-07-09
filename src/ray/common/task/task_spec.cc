@@ -76,6 +76,10 @@ bool TaskSpecification::IsDriverTask() const {
 
 Language TaskSpecification::GetLanguage() const { return message_.language(); }
 
+bool TaskSpecification::IsNormalTask() const {
+  return message_.type() == TaskType::NORMAL_TASK;
+}
+
 bool TaskSpecification::IsActorCreationTask() const {
   return message_.type() == TaskType::ACTOR_CREATION_TASK;
 }
@@ -84,7 +88,7 @@ bool TaskSpecification::IsActorTask() const {
   return message_.type() == TaskType::ACTOR_TASK;
 }
 
-// === Below are getter methods for actor creation tasks.
+// === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
   RAY_CHECK(IsActorCreationTask());
@@ -101,7 +105,7 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
   return VectorFromProtobuf(message_.actor_creation_task_spec().dynamic_worker_options());
 }
 
-// === Below are getter methods for actor tasks.
+// === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {
   RAY_CHECK(IsActorTask());
