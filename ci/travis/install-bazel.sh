@@ -24,8 +24,6 @@ rm -f install.sh
 
 if [[ "$TRAVIS" == "TRAVIS"  ]]; then
   # Use bazel disk cache if this script is running in Travis.
-  FILE_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-  BAZELRC="$FILE_DIR/../../.bazelrc"
   mkdir -p $HOME/ray-bazel-cache
-  echo "build --disk_cache=$HOME/ray-bazel-cache" >> $BAZELRC
+  echo "build --disk_cache=$HOME/ray-bazel-cache" >> $HOME/.bazelrc
 fi
