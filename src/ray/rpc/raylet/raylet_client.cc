@@ -5,8 +5,8 @@ namespace ray {
 namespace rpc {
 
 RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
-                           bool is_worker, const JobID &job_id,
-                           const Language &language, int port)
+                           bool is_worker, const JobID &job_id, const Language &language,
+                           int port)
     : worker_id_(worker_id),
       is_worker_(is_worker),
       job_id_(job_id),
@@ -39,8 +39,9 @@ void RayletClient::TryRegisterClient(int times) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
-  RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_ << ", pid: "
-                 << static_cast<int>(getpid()) << ", is worker: " << is_worker_;
+  RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_
+                 << ", pid: " << static_cast<int>(getpid())
+                 << ", is worker: " << is_worker_;
 }
 
 RayletClient::~RayletClient() {
@@ -382,7 +383,8 @@ ray::Status RayletClient::RegisterClient() {
   std::future<Status> f(p.get_future());
   auto callback = [&p](const Status &status, const RegisterClientReply &reply) {
     if (!status.ok()) {
-      RAY_LOG(DEBUG) << "[RayletClient] Register client failed, msg: " << status.message();
+      RAY_LOG(DEBUG) << "[RayletClient] Register client failed, msg: "
+                     << status.message();
     }
     p.set_value(status);
   };

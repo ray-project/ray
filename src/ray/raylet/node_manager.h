@@ -120,9 +120,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetTaskRequest(const rpc::GetTaskRequest &request, rpc::GetTaskReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `HandleFetchOrReconstruct` request.
-  void HandleFetchOrReconstructRequest(const rpc::FetchOrReconstructRequest &request,
-                                       rpc::FetchOrReconstructReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) override;
+  void HandleFetchOrReconstructRequest(
+      const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `HandleNotifyUnblocked` request.
   void HandleNotifyUnblockedRequest(const rpc::NotifyUnblockedRequest &request,
                                     rpc::NotifyUnblockedReply *reply,
@@ -135,9 +135,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                               rpc::PushErrorReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `PushProfileEvents` request.
-  void HandlePushProfileEventsRequest(const rpc::PushProfileEventsRequest &request,
-                                      rpc::PushProfileEventsReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePushProfileEventsRequest(
+      const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `FreeObjectsInObjectStore` request.
   void HandleFreeObjectsInObjectStoreRequest(
       const rpc::FreeObjectsInObjectStoreRequest &request,

@@ -12,9 +12,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include "src/ray/common/status.h"
-#include "src/ray/raylet/task_spec.h"
 #include "src/ray/protobuf/raylet.grpc.pb.h"
 #include "src/ray/protobuf/raylet.pb.h"
+#include "src/ray/raylet/task_spec.h"
 #include "src/ray/rpc/client_call.h"
 
 namespace ray {
@@ -48,7 +48,8 @@ class RayletClient {
   ///
   /// \param[in] raylet_socket Unix domain socket of the raylet server.
   RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
-               bool is_worker, const JobID &job_id, const Language &language, int port = -1);
+               bool is_worker, const JobID &job_id, const Language &language,
+               int port = -1);
 
   ~RayletClient();
 
@@ -160,8 +161,8 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  /// Try to register client in raylet, if failed we would retry serveral time to reconnect.
-  /// We need this because raylet client may start before raylet server.
+  /// Try to register client in raylet, if failed we would retry serveral time to
+  /// reconnect. We need this because raylet client may start before raylet server.
   ///
   /// \param times Retry times.
   void TryRegisterClient(int times);
