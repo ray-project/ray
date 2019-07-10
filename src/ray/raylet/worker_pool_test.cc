@@ -74,7 +74,7 @@ class WorkerPoolTest : public ::testing::Test {
       : worker_pool_(),
         io_service_(),
         error_message_type_(1),
-        client_call_manager_(io_service) {}
+        client_call_manager_(io_service_) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
