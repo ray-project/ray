@@ -102,45 +102,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
             std::make_shared<PlasmaBuffer>(object_buffers[i].data),
             std::make_shared<PlasmaBuffer>(object_buffers[i].metadata));
         unready.erase(object_id);
-        // TODO (kfstorm): metadata should be structured.
-        std::string metadata = object_buffers[i].metadata->ToString();
-        auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
-        for (int i = 0; i < error_type_descriptor->value_count(); i++) {
-          auto error_type_number = error_type_descriptor->value(i)->number();
-          if (metadata == std::to_string(error_type_number)) {
-            should_break = true;
-          }
+        if (IsException(object_buffers[i])) {
+          should_break = true;
         }
       }
     }
 
     num_attempts += 1;
-    if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
-        0) {
-      // Print a warning if we've attempted too many times, but some objects are still
-      // unavailable.
-      std::ostringstream oss;
-      size_t printed = 0;
-      for (auto &entry : unready) {
-        if (printed >=
-            RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
-          break;
-        }
-        if (printed > 0) {
-          oss << ", ";
-        }
-        oss << entry.first.Hex();
-      }
-      if (printed < unready.size()) {
-        oss << ", etc";
-      }
-      RAY_LOG(WARNING)
-          << "Attempted " << num_attempts << " times to reconstruct objects, but "
-          << "some objects are still unavailable. If this message continues to print,"
-          << " it may indicate that object's creating task is hanging, or something wrong"
-          << " happened in raylet backend. " << unready.size()
-          << " object(s) pending: " << oss.str() << ".";
-    }
+    WarnIfAttemptedTooManyTimes(num_attempts, unready);
   }
 
   if (was_blocked) {
@@ -177,6 +146,46 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
                                              bool local_only,
                                              bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+}
+
+bool CoreWorkerPlasmaStoreProvider::IsException(const Buffer &buffer) {
+  // TODO (kfstorm): metadata should be structured.
+  std::string metadata = buffer.metadata->ToString();
+  auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
+  for (int i = 0; i < error_type_descriptor->value_count(); i++) {
+    auto error_type_number = error_type_descriptor->value(i)->number();
+    if (metadata == std::to_string(error_type_number)) {
+      return true;
+    }
+  }
+}
+
+void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
+    int num_attempts, const std::unordered_map<ObjectID, int> &unready) {
+  if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
+      0) {
+    std::ostringstream oss;
+    size_t printed = 0;
+    for (auto &entry : unready) {
+      if (printed >=
+          RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
+        break;
+      }
+      if (printed > 0) {
+        oss << ", ";
+      }
+      oss << entry.first.Hex();
+    }
+    if (printed < unready.size()) {
+      oss << ", etc";
+    }
+    RAY_LOG(WARNING)
+        << "Attempted " << num_attempts << " times to reconstruct objects, but "
+        << "some objects are still unavailable. If this message continues to print,"
+        << " it may indicate that object's creating task is hanging, or something wrong"
+        << " happened in raylet backend. " << unready.size()
+        << " object(s) pending: " << oss.str() << ".";
+  }
 }
 
 }  // namespace ray

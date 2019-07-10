@@ -45,8 +45,10 @@ Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__JLorg_ray_runtime_ob
         status = GetObjectInterface(nativeObjectInterface)->Put(*rayObject, &object_id);
         return object_id;
       });
-  ThrowRayExceptionIfNotOK(env, status);
-  return JByteArrayFromUniqueId<ray::ObjectID>(env, object_id).GetJByteArray();
+  if (ThrowRayExceptionIfNotOK(env, status)) {
+    return nullptr;
+  }
+  return UniqueIDToJavaByteArray<ray::ObjectID>(env, object_id);
 }
 
 /*
@@ -84,7 +86,9 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
   std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status = GetObjectInterface(nativeObjectInterface)
                     ->Get(object_ids, (int64_t)timeoutMs, &results);
-  ThrowRayExceptionIfNotOK(env, status);
+  if (ThrowRayExceptionIfNotOK(env, status)) {
+    return nullptr;
+  }
   return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(env, results,
                                                                  ToJavaRayObjectProxy);
 }
@@ -106,7 +110,9 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
   std::vector<bool> results;
   auto status = GetObjectInterface(nativeObjectInterface)
                     ->Wait(object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
-  ThrowRayExceptionIfNotOK(env, status);
+  if (ThrowRayExceptionIfNotOK(env, status)) {
+    return nullptr;
+  }
   return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
     return env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
   });

@@ -7,64 +7,68 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 
+/// Boolean class
 extern jclass java_boolean_class;
+/// Constructor of Boolean class
 extern jmethodID java_boolean_init;
 
+/// List class
 extern jclass java_list_class;
+/// size method of List class
 extern jmethodID java_list_size;
+/// get method of List class
 extern jmethodID java_list_get;
+/// add method of List class
 extern jmethodID java_list_add;
 
+/// ArrayList class
 extern jclass java_array_list_class;
+/// Constructor of ArrayList class
 extern jmethodID java_array_list_init;
+/// Constructor of ArrayList class with single parameter capacity
 extern jmethodID java_array_list_init_with_capacity;
 
+/// RayException class
+extern jclass java_ray_exception_class;
+
+/// RayObjectProxy class
 extern jclass java_ray_object_proxy_class;
+/// Constructor of RayObjectProxy class
 extern jmethodID java_ray_object_proxy_init;
+/// data field of RayObjectProxy class
 extern jfieldID java_ray_object_proxy_data;
+/// metadata field of RayObjectProxy class
 extern jfieldID java_ray_object_proxy_metadata;
 
+/// Throws a Java RayException if the status is not OK.
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
-    jclass exception_class = env->FindClass("org/ray/api/exception/RayException");
-    env->ThrowNew(exception_class, status.message().c_str());
+    env->ThrowNew(java_ray_exception_class, status.message().c_str());
     return true;
   } else {
     return false;
   }
 }
 
+/// Convert a C++ UniqueID to a Java byte array.
 template <typename ID>
-class UniqueIdFromJByteArray {
- public:
-  const ID &GetId() const { return id; }
+inline ID JavaByteArrayToUniqueId(JNIEnv *env, const jbyteArray &bytes) {
+  std::string id_str(ID::Size(), 0);
+  env->GetByteArrayRegion(bytes, 0, ID::Size(),
+                          reinterpret_cast<jbyte *>(&id_str.front()));
+  return ID::FromBinary(id_str);
+}
 
-  UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray &bytes) {
-    std::string id_str(ID::Size(), 0);
-    env->GetByteArrayRegion(bytes, 0, ID::Size(),
-                            reinterpret_cast<jbyte *>(&id_str.front()));
-    id = ID::FromBinary(id_str);
-  }
-
- private:
-  ID id;
-};
-
+/// Convert a Java byte array to C++ UniqueID.
 template <typename ID>
-class JByteArrayFromUniqueId {
- public:
-  const jbyteArray &GetJByteArray() const { return jbytearray; }
+inline jbyteArray UniqueIdToJavaByteArray(JNIEnv *env, const ID &id) {
+  jbytearray = env->NewByteArray(ID::Size());
+  env->SetByteArrayRegion(jbytearray, 0, ID::Size(),
+                          reinterpret_cast<const jbyte *>(id.Data()));
+  return jbytearray;
+}
 
-  JByteArrayFromUniqueId(JNIEnv *env, const ID &id) {
-    jbytearray = env->NewByteArray(ID::Size());
-    env->SetByteArrayRegion(jbytearray, 0, ID::Size(),
-                            reinterpret_cast<const jbyte *>(id.Data()));
-  }
-
- private:
-  jbyteArray jbytearray;
-};
-
+/// Convert a Java String to C++ std::string.
 inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
   const char *c_str = env->GetStringUTFChars(jstr, nullptr);
   std::string result(c_str);
@@ -72,6 +76,7 @@ inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
   return result;
 }
 
+/// Convert a Java List to C++ std::vector.
 template <typename NativeT>
 inline void JavaListToNativeVector(
     JNIEnv *env, jobject java_list, std::vector<NativeT> *native_vector,
@@ -84,6 +89,7 @@ inline void JavaListToNativeVector(
   }
 }
 
+/// Convert a C++ std::vector to a Java List.
 template <typename NativeT>
 inline jobject NativeVectorToJavaList(
     JNIEnv *env, const std::vector<NativeT> &native_vector,
@@ -97,6 +103,7 @@ inline jobject NativeVectorToJavaList(
   return java_list;
 }
 
+/// Convert a C++ ray::Buffer to a Java byte array.
 inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
                                               const std::shared_ptr<ray::Buffer> buffer) {
   if (!buffer) {
@@ -110,6 +117,12 @@ inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
   return java_byte_array;
 }
 
+/// A helper method to help access a Java RayObjectProxy instance and ensure memory
+/// safety.
+///
+/// \param[in] java_obj The Java RayObjectProxy object.
+/// \param[in] reader The callback function to access a C++ ray::RayObject instance.
+/// \return The return value of callback function.
 template <typename ReturnT>
 inline ReturnT ReadJavaRayObjectProxy(
     JNIEnv *env, const jobject &java_obj,
@@ -145,6 +158,7 @@ inline ReturnT ReadJavaRayObjectProxy(
   return result;
 }
 
+/// Convert a C++ ray::RayObject to a Java RayObjectProxy.
 inline jobject ToJavaRayObjectProxy(JNIEnv *env,
                                     const std::shared_ptr<ray::RayObject> &rayObject) {
   if (!rayObject) {

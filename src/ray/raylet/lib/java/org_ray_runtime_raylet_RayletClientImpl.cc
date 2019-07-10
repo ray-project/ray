@@ -47,8 +47,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
   UniqueIdFromJByteArray<ClientID> worker_id(env, workerId);
   UniqueIdFromJByteArray<JobID> job_id(env, jobId);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto raylet_client = new std::unique_ptr<RayletClient>(new RayletClient(nativeString, worker_id.GetId(), isWorker,
-                                        job_id.GetId(), Language::JAVA));
+  auto raylet_client = new std::unique_ptr<RayletClient>(new RayletClient(
+      nativeString, worker_id.GetId(), isWorker, job_id.GetId(), Language::JAVA));
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(raylet_client);
 }

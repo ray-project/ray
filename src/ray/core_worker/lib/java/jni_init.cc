@@ -12,6 +12,8 @@ jclass java_array_list_class;
 jmethodID java_array_list_init;
 jmethodID java_array_list_init_with_capacity;
 
+jclass java_ray_exception_class;
+
 jclass java_ray_object_proxy_class;
 jmethodID java_ray_object_proxy_init;
 jfieldID java_ray_object_proxy_data;
@@ -46,6 +48,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_array_list_init_with_capacity =
       env->GetMethodID(java_array_list_class, "<init>", "(I)V");
 
+  LOAD_CLASS(java_ray_exception_class, "org/ray/api/exception/RayException");
+
   LOAD_CLASS(java_ray_object_proxy_class, "org/ray/runtime/objectstore/RayObjectProxy");
   java_ray_object_proxy_init =
       env->GetMethodID(java_ray_object_proxy_class, "<init>", "([B[B)V");
@@ -63,5 +67,6 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
+  env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_ray_object_proxy_class);
 }

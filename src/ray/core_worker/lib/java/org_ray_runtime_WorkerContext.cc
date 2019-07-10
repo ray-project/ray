@@ -32,7 +32,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerContext_nativeCreateWorkerCon
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentTaskId(
     JNIEnv *env, jclass, jlong nativeWorkerContext) {
   auto task_id = GetWorkerContext(nativeWorkerContext)->GetCurrentTaskID();
-  return JByteArrayFromUniqueId<ray::TaskID>(env, task_id).GetJByteArray();
+  return UniqueIDToJavaByteArray<ray::TaskID>(env, task_id);
 }
 
 /*
@@ -80,7 +80,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(
     JNIEnv *env, jclass, jlong nativeWorkerContext) {
   auto job_id = GetWorkerContext(nativeWorkerContext)->GetCurrentJobID();
-  return JByteArrayFromUniqueId<ray::JobID>(env, job_id).GetJByteArray();
+  return UniqueIDToJavaByteArray<ray::JobID>(env, job_id);
 }
 
 /*
@@ -91,7 +91,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(
     JNIEnv *env, jclass, jlong nativeWorkerContext) {
   auto worker_id = GetWorkerContext(nativeWorkerContext)->GetWorkerID();
-  return JByteArrayFromUniqueId<ray::WorkerID>(env, worker_id).GetJByteArray();
+  return UniqueIDToJavaByteArray<ray::WorkerID>(env, worker_id);
 }
 
 /*
