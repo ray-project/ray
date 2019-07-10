@@ -27,11 +27,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import time
 
 import ray
 from ray import tune
-from ray.tune import grid_search, Trainable, sample_from
+from ray.tune import Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -148,7 +149,7 @@ class TrainMNIST(Trainable):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y_ = tf.placeholder(tf.float32, [None, 10])
 
-        activation_fn = getattr(tf.nn, config["activation"])
+        activation_fn = getattr(tf.nn, config.get("activation", "relu"))
 
         # Build the graph for the deep net
         y_conv, self.keep_prob = setupCNN(self.x)
@@ -160,7 +161,7 @@ class TrainMNIST(Trainable):
 
         with tf.name_scope("adam_optimizer"):
             train_step = tf.train.AdamOptimizer(
-                config["learning_rate"]).minimize(cross_entropy)
+                config.get("learning_rate", 1e-4)).minimize(cross_entropy)
 
         self.train_step = train_step
 
@@ -172,8 +173,7 @@ class TrainMNIST(Trainable):
 
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
-        self.iterations = 0
-        self.saver = tf.train.Saver()
+        self.saver = tf.train.Saver(save_relative_paths=True)
 
     def _train(self):
         for i in range(10):
@@ -194,18 +194,14 @@ class TrainMNIST(Trainable):
                 self.y_: batch[1],
                 self.keep_prob: 1.0
             })
-
-        self.iterations += 1
         return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
-        prefix = self.saver.save(
-            self.sess, checkpoint_dir + "/save", global_step=self.iterations)
-        return {"prefix": prefix}
+        path = self.saver.save(self.sess, os.path.join(checkpoint_dir, "save"))
+        return path
 
-    def _restore(self, ckpt_data):
-        prefix = ckpt_data["prefix"]
-        return self.saver.restore(self.sess, prefix)
+    def _restore(self, checkpoint_path):
+        self.saver.restore(self.sess, checkpoint_path)
 
 
 # !!! Example of using the ray.tune Python API !!!
@@ -222,14 +218,14 @@ if __name__ == "__main__":
         "config": {
             "learning_rate": sample_from(
                 lambda spec: 10**np.random.uniform(-5, -3)),
-            "activation": grid_search(["relu", "elu", "tanh"]),
+            "activation": "relu",
         },
         "num_samples": 10,
     }
 
     if args.smoke_test:
         mnist_spec["stop"]["training_iteration"] = 20
-        mnist_spec["num_samples"] = 2
+        mnist_spec["num_samples"] = 1
 
     ray.init()
     hyperband = HyperBandScheduler(

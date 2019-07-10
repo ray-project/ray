@@ -228,7 +228,7 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
+      fbb, execution_dependencies_message, fbb.CreateString(task_spec.Serialize()));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
@@ -335,9 +335,9 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_events) {
+ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateProfileTableData(fbb, &profile_events);
+  auto message = fbb.CreateString(profile_events.SerializeAsString());
   fbb.Finish(message);
 
   auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
