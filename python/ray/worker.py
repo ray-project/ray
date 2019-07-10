@@ -934,9 +934,10 @@ class Worker(object):
                 # Store the outputs in the local object store.
                 try:
                     with profiling.profile("task:store_outputs"):
-                        # If this is an actor task, then the last object ID returned by
-                        # the task is a dummy output, not returned by the function
-                        # itself. Decrement to get the correct number of return values.
+                        # If this is an actor task, then the last object ID
+                        # returned by the task is a dummy output,
+                        # not returned by the function itself. Decrement to
+                        # get the correct number of return values.
                         num_returns = len(return_object_ids)
                         if num_returns == 1:
                             outputs = (outputs, )
