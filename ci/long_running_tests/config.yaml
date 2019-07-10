@@ -34,9 +34,17 @@ worker_nodes:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
+    # Install latest TensorFlow
+    - source activate tensorflow_p36 && conda remove -y --force wrapt || true
+    - source activate tensorflow_p36 && pip install -U tensorflow==1.14
     # Install nightly Ray wheels.
-    - source activate tensorflow_p36 && pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/<<<RAY_BRANCH>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-cp36-cp36m-manylinux1_x86_64.whl
+    # Example: https://s3-us-west-2.amazonaws.com/ray-wheels/<<<RAY_BRANCH>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-cp36-cp36m-manylinux1_x86_64.whl
+    - source activate tensorflow_p36 && pip install -U RAY_WHEEL_TO_TEST_HERE
     - source activate tensorflow_p36 && pip install ray[rllib] ray[debug] gym[atari]
+    - source activate tensorflow_p36 && pip install ray[debug]
+    - echo set-window-option -g mouse on > ~/.tmux.conf
+    - echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
+
     # Uncomment the following if you wish to build Ray instead.
     # - sudo apt-get update
     # - sudo apt-get install -y build-essential curl unzip

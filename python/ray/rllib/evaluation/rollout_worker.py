@@ -299,6 +299,8 @@ class RolloutWorker(EvaluatorInterface):
                 logger.info("Creating policy evaluation worker {}".format(
                     worker_index) +
                             " on CPU (please ignore any CUDA init errors)")
+            if not tf:
+                raise ImportError("Could not import tensorflow")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
@@ -748,10 +750,11 @@ def _validate_multiagent_config(policy, allow_none_graph=False):
         if not isinstance(k, str):
             raise ValueError("policy keys must be strs, got {}".format(
                 type(k)))
-        if not isinstance(v, tuple) or len(v) != 4:
+        if not isinstance(v, (tuple, list)) or len(v) != 4:
             raise ValueError(
-                "policy values must be tuples of "
-                "(cls, obs_space, action_space, config), got {}".format(v))
+                "policy values must be tuples/lists of "
+                "(cls or None, obs_space, action_space, config), got {}".
+                format(v))
         if allow_none_graph and v[0] is None:
             pass
         elif not issubclass(v[0], Policy):

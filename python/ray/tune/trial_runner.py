@@ -111,6 +111,7 @@ class TrialRunner(object):
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
+                 checkpoint_period=10,
                  trial_executor=None):
         """Initializes a new TrialRunner.
 
@@ -174,6 +175,8 @@ class TrialRunner(object):
             logger.info("Starting a new experiment.")
 
         self._start_time = time.time()
+        self._last_checkpoint_time = -float("inf")
+        self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -235,18 +238,20 @@ class TrialRunner(object):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
-        is instantiated.
+        is instantiated. Throttle depends on self._checkpoint_period.
         """
         if not self._local_checkpoint_dir:
             return
-
+        if time.time() - self._last_checkpoint_time < self._checkpoint_period:
+            return
+        self._last_checkpoint_time = time.time()
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__(),
             "stats": {
                 "start_time": self._start_time,
-                "timestamp": time.time()
+                "timestamp": self._last_checkpoint_time
             }
         }
         tmp_file_name = os.path.join(self._local_checkpoint_dir,

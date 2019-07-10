@@ -7,7 +7,6 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
-#include "ray/gcs/format/gcs_generated.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -23,7 +22,7 @@ class CoreWorker {
   /// \param[in] langauge Language of this worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  CoreWorker(const WorkerType worker_type, const ::Language language,
+  CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id = JobID::Nil());
 
@@ -31,7 +30,7 @@ class CoreWorker {
   enum WorkerType WorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  ::Language Language() const { return language_; }
+  enum Language Language() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -43,14 +42,17 @@ class CoreWorker {
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
+  CoreWorkerTaskExecutionInterface &Execution() {
+    RAY_CHECK(task_execution_interface_ != nullptr);
+    return *task_execution_interface_;
+  }
 
  private:
   /// Type of this worker.
   const enum WorkerType worker_type_;
 
   /// Language of this worker.
-  const ::Language language_;
+  const enum Language language_;
 
   /// raylet socket name.
   const std::string raylet_socket_;
@@ -59,7 +61,7 @@ class CoreWorker {
   WorkerContext worker_context_;
 
   /// Raylet client.
-  RayletClient raylet_client_;
+  std::unique_ptr<RayletClient> raylet_client_;
 
   /// The `CoreWorkerTaskInterface` instance.
   CoreWorkerTaskInterface task_interface_;
@@ -68,7 +70,8 @@ class CoreWorker {
   CoreWorkerObjectInterface object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  CoreWorkerTaskExecutionInterface task_execution_interface_;
+  /// This is only available if it's not a driver.
+  std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
 };
 
 }  // namespace ray

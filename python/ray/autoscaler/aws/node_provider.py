@@ -16,6 +16,7 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -214,7 +215,8 @@ class AWSNodeProvider(NodeProvider):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
                 logger.info(
-                    "create_instances: Trying with {}.".format(subnet_id))
+                    "NodeProvider: calling create_instances "
+                    "with {} (count={}).".format(subnet_id, count))
                 self.subnet_idx += 1
                 conf.update({
                     "MinCount": 1,
@@ -222,7 +224,13 @@ class AWSNodeProvider(NodeProvider):
                     "SubnetId": subnet_id,
                     "TagSpecifications": tag_specs
                 })
-                self.ec2.create_instances(**conf)
+                created = self.ec2.create_instances(**conf)
+                for instance in created:
+                    logger.info("NodeProvider: Created instance "
+                                "[id={}, name={}, info={}]".format(
+                                    instance.instance_id,
+                                    instance.state["Name"],
+                                    instance.state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == max_retries:
