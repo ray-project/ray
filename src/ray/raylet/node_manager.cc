@@ -576,43 +576,6 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
   }
 }
 
-void NodeManager::PublishActorStateTransition(const ActorID &actor_id,
-                                              const ActorTableData &data,
-                                              bool tolerate_failure) {
-  // Copy the actor notification data.
-  auto actor_notification = std::make_shared<ActorTableData>(data);
-
-  // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
-  // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
-  // reconstructions. This is followed optionally by a DEAD entry.
-  int log_length = 2 * (actor_notification->max_reconstructions() -
-                        actor_notification->remaining_reconstructions());
-  if (actor_notification->state() != ActorTableData::ALIVE) {
-    // RECONSTRUCTING or DEAD entries have an odd index.
-    log_length += 1;
-  }
-  // If we successful appended a record to the GCS table of the actor that
-  // has died, signal this to anyone receiving signals from this actor.
-  auto done = [this, actor_id, actor_notification, tolerate_failure](Status status) {
-    if (status.ok()) {
-      auto redis_context = gcs_client_->primary_context();
-      if (actor_notification->state() == ActorTableData::DEAD ||
-          actor_notification->state() == ActorTableData::RECONSTRUCTING) {
-        std::vector<std::string> args = {"XADD", actor_id.Hex(), "*", "signal",
-                                         "ACTOR_DIED_SIGNAL"};
-        RAY_CHECK_OK(redis_context->RunArgvAsync(args));
-      }
-    } else {
-      if (!tolerate_failure) {
-        RAY_LOG(FATAL) << "Failed to update state for actor " << actor_id << " state is "
-                       << actor_notification->state();
-      }
-    }
-  };
-  RAY_CHECK_OK(
-      gcs_client_->Actors().AsyncAdd(JobID::Nil(), actor_id, actor_notification, done));
-}
-
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                                              ActorRegistration &&actor_registration) {
   // Update local registry.
@@ -905,9 +868,16 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
   }
 
-  // If the disconnected actor was local, only this node will try to update actor
-  // state. So the update shouldn't fail.
-  PublishActorStateTransition(actor_id, new_actor_data, !was_local);
+  gcs::StatusCallback done = [was_local, actor_id](Status status) {
+    if (was_local && !status.ok()) {
+      // If the disconnected actor was local, only this node will try to update actor
+      // state. So the update shouldn't fail.
+      RAY_LOG(FATAL) << "Failed to update state for actor " << actor_id;
+    }
+  };
+  auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(JobID::Nil(), actor_id,
+                                                 actor_notification, done));
 }
 
 void NodeManager::ProcessGetTaskMessage(
@@ -1939,6 +1909,13 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     worker.AssignActorId(actor_id);
     // Notify the other node managers that the actor has been created.
     const auto new_actor_data = CreateActorTableDataFromCreationTask(task);
+    auto on_gcs_callback = [actor_id](Status status) {
+      if (!status.ok()) {
+        // Only one node at a time should succeed at creating the actor.
+        RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << actor_id;
+      }
+    };
+
     if (resumed_from_checkpoint) {
       // This actor was resumed from a checkpoint. In this case, we first look
       // up the checkpoint in GCS and use it to restore the actor registration
@@ -1949,9 +1926,9 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                      << actor_id;
       RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
           JobID::Nil(), checkpoint_id,
-          [this, actor_id, new_actor_data](ray::gcs::RedisGcsClient *client,
-                                           const UniqueID &checkpoint_id,
-                                           const ActorCheckpointData &checkpoint_data) {
+          [this, actor_id, new_actor_data, on_gcs_callback](
+              ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id,
+              const ActorCheckpointData &checkpoint_data) {
             RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
                           << " from checkpoint " << checkpoint_id;
             ActorRegistration actor_registration =
@@ -1961,7 +1938,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
               HandleObjectLocal(entry.first);
             }
             HandleActorStateTransition(actor_id, std::move(actor_registration));
-            PublishActorStateTransition(actor_id, new_actor_data, false);
+            auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
+            // The actor was created before.
+            RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
+                JobID::Nil(), actor_id, actor_notification, on_gcs_callback));
           },
           [actor_id](ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id) {
             RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
@@ -1971,7 +1951,16 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
       // The actor did not resume from a checkpoint. Immediately notify the
       // other node managers that the actor has been created.
       HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
-      PublishActorStateTransition(actor_id, new_actor_data, false);
+      auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
+      if (actor_registry_.find(actor_id) != actor_registry_.end()) {
+        // The actor was created before.
+        RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
+            JobID::Nil(), actor_id, actor_notification, on_gcs_callback));
+      } else {
+        // The actor never created before.
+        RAY_CHECK_OK(gcs_client_->Actors().AsyncAdd(JobID::Nil(), actor_id,
+                                                    actor_notification, on_gcs_callback));
+      }
     }
   }
 

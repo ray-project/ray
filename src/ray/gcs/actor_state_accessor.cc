@@ -25,6 +25,28 @@ Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id
 Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id,
                                     std::shared_ptr<ActorTableData> data_ptr,
                                     const StatusCallback &callback) {
+  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                               const ActorTableData &data) {
+    if (callback != nullptr) {
+      callback(Status::OK());
+    }
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                               const ActorTableData &data) {
+    if (callback != nullptr) {
+      callback(Status::Invalid("Add actor failed."));
+    }
+  };
+
+  ActorTable &actor_table = client_impl_.actor_table();
+  return actor_table.AppendAt(job_id, actor_id, data_ptr, on_success, on_failure,
+                              /*log_length*/ 0);
+}
+
+Status ActorStateAccessor::AsyncUpdate(const JobID &job_id, const ActorID &actor_id,
+                                       std::shared_ptr<ActorTableData> data_ptr,
+                                       const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
   // reconstructions. This is followed optionally by a DEAD entry.
@@ -35,23 +57,33 @@ Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id
     log_length += 1;
   }
 
+  // If we successful appended a record to the GCS table of the actor that
+  // has died, signal this to anyone receiving signals from this actor.
+  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                               const ActorTableData &data) {
+    if (data.state() == ActorTableData::DEAD ||
+        data.state() == ActorTableData::RECONSTRUCTING) {
+      std::vector<std::string> args = {"XADD", actor_id.Hex(), "*", "signal",
+                                       "ACTOR_DIED_SIGNAL"};
+      auto redis_context = client->primary_context();
+      RAY_CHECK_OK(redis_context->RunArgvAsync(args));
+    }
+
+    if (callback != nullptr) {
+      callback(Status::OK());
+    }
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                               const ActorTableData &data) {
+    if (callback != nullptr) {
+      callback(Status::Invalid("Update actor failed."));
+    }
+  };
+
   ActorTable &actor_table = client_impl_.actor_table();
-  if (callback != nullptr) {
-    auto on_success = [callback, data_ptr](
-                          RedisGcsClient *client, const ActorID &actor_id,
-                          const ActorTableData &data) { callback(Status::OK()); };
-
-    auto on_failure = [callback, data_ptr](RedisGcsClient *client,
-                                           const ActorID &actor_id,
-                                           const ActorTableData &data) {
-      callback(Status::Invalid("Add failed, maybe exceeds max reconstruct number."));
-    };
-
-    return actor_table.AppendAt(job_id, actor_id, data_ptr, on_success, on_failure,
-                                log_length);
-  }
-
-  return actor_table.AppendAt(job_id, actor_id, data_ptr, nullptr, nullptr, log_length);
+  return actor_table.AppendAt(job_id, actor_id, data_ptr, on_success, on_failure,
+                              log_length);
 }
 
 Status ActorStateAccessor::AsyncSubscribe(

@@ -34,11 +34,24 @@ class ActorStateAccessor {
   ///
   /// \param job_id The ID of the job (driver or app).
   /// \param actor_id The ID of actor that is add to the GCS.
+  /// \param data_ptr The actor that is add to the GCS.
   /// \param callback Callback that is called after the data has been written to the GCS.
   /// \return Status
   Status AsyncAdd(const JobID &job_id, const ActorID &actor_id,
                   std::shared_ptr<ActorTableData> data_ptr,
                   const StatusCallback &callback);
+
+  /// Update actor runtime state to gcs asynchronously.
+  ///
+  /// \param job_id The ID of the job (driver or app).
+  /// \param actor_id The ID of actor that is update to the GCS.
+  /// \param data_ptr The actor that is update to the GCS.
+  /// \param callback Callback that is called after the data has been written to the GCS.
+  /// \return Status
+  /// TODO(micafan) Modify parameter 3 from ActorTableData to 'ActorRuntimeState'
+  Status AsyncUpdate(const JobID &job_id, const ActorID &actor_id,
+                     std::shared_ptr<ActorTableData> data_ptr,
+                     const StatusCallback &callback);
 
   /// Subscribe to any add operations of actor. The caller may choose
   /// to subscribe to all add, or to subscribe only to actors that it
