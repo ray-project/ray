@@ -19,7 +19,7 @@ import tensorflow as tf
 from tensorflow.python.keras.datasets import cifar10
 from tensorflow.python.keras.layers import Input, Dense, Dropout, Flatten
 from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D
-from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
@@ -163,11 +163,13 @@ class Cifar10Model(Trainable):
 
     def _save(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
-        self.model.save_weights(file_path)
+        self.model.save(file_path)
         return file_path
 
     def _restore(self, path):
-        self.model.load_weights(path)
+        # See https://stackoverflow.com/a/42763323
+        del self.model
+        self.model = load_model(path)
 
     def _stop(self):
         # If need, save your model when exit.
