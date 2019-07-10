@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.core.generated.ray.protocol.Task import Task
-
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
     ClientTableData,
@@ -34,7 +32,6 @@ __all__ = [
     "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
-    "Task",
     "TaskTableData",
     "RayResource",
     "construct_error_message",
@@ -61,6 +58,7 @@ TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_OBJECT_string = "OBJECT"
 TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
+TablePrefix_JOB_string = "JOB"
 
 
 def construct_error_message(job_id, error_type, message, timestamp):

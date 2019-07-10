@@ -812,19 +812,10 @@ void NodeManager::ProcessClientMessage(
     ProcessPushErrorRequestMessage(message_data);
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
-    ProfileTableDataT fbs_message;
-    flatbuffers::GetRoot<ProfileTableData>(message_data)->UnPackTo(&fbs_message);
+    auto fbs_message = flatbuffers::GetRoot<flatbuffers::String>(message_data);
     rpc::ProfileTableData profile_table_data;
-    profile_table_data.set_component_type(fbs_message.component_type);
-    profile_table_data.set_component_id(fbs_message.component_id);
-    for (const auto &fbs_event : fbs_message.profile_events) {
-      rpc::ProfileTableData::ProfileEvent *event =
-          profile_table_data.add_profile_events();
-      event->set_event_type(fbs_event->event_type);
-      event->set_start_time(fbs_event->start_time);
-      event->set_end_time(fbs_event->end_time);
-      event->set_extra_data(fbs_event->extra_data);
-    }
+    RAY_CHECK(
+        profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size()));
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
@@ -859,25 +850,28 @@ void NodeManager::ProcessClientMessage(
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  client->SetClientID(from_flatbuf<ClientID>(*message->client_id()));
+  client->SetClientID(from_flatbuf<ClientID>(*message->worker_id()));
+  Language language = static_cast<Language>(message->language());
   auto worker =
-      std::make_shared<Worker>(message->worker_pid(), message->language(), client);
+      std::make_shared<Worker>(message->worker_pid(), language, message->port(), client);
   if (message->is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(std::move(worker));
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else {
-    // Register the new driver. Note that here the driver_id in RegisterClientRequest
-    // message is actually the ID of the driver task, while client_id represents the
-    // real driver ID, which can associate all the tasks/actors for a given driver,
-    // which is set to the worker ID.
-    // TODO(qwang): Use driver_task_id instead here.
-    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->driver_id());
-    TaskID driver_task_id = TaskID::GetDriverTaskID(driver_id);
+    // Register the new driver.
+    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->worker_id());
+    const JobID job_id = from_flatbuf<JobID>(*message->job_id());
+    // Compute a dummy driver task id from a given driver.
+    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
     worker->AssignTaskId(driver_task_id);
-    worker->AssignJobId(from_flatbuf<JobID>(*message->client_id()));
+    worker->AssignJobId(job_id);
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
+    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
+        JobID(driver_id),
+        /*is_dead=*/false, std::time(nullptr), initial_config_.node_manager_address,
+        message->worker_pid()));
   }
 }
 
@@ -1043,8 +1037,10 @@ void NodeManager::ProcessDisconnectClientMessage(
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else if (is_driver) {
     // The client is a driver.
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(JobID(client->GetClientId()),
-                                                        /*is_dead=*/true));
+    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
+        JobID(client->GetClientId()),
+        /*is_dead=*/true, std::time(nullptr), initial_config_.node_manager_address,
+        worker->Pid()));
     auto job_id = worker->GetAssignedTaskId();
     RAY_CHECK(!job_id.IsNil());
     local_queues_.RemoveDriverTaskId(job_id);
@@ -1061,14 +1057,18 @@ void NodeManager::ProcessDisconnectClientMessage(
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
-  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  TaskExecutionSpecification task_execution_spec(
-      from_flatbuf<ObjectID>(*message->execution_dependencies()));
-  TaskSpecification task_spec(*message->task_spec());
-  Task task(task_execution_spec, task_spec);
+  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+  rpc::Task task_message;
+  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
+      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
+  for (const auto &dependency :
+       string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
+    task_message.mutable_task_execution_spec()->add_dependencies(dependency);
+  }
+
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(task, Lineage());
+  SubmitTask(Task(task_message), Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1230,22 +1230,20 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
                                     rpc::ForwardTaskReply *reply,
-                                    rpc::RequestDoneCallback done_callback) {
+                                    rpc::SendReplyCallback send_reply_callback) {
   // Get the forwarded task and its uncommitted lineage from the request.
   TaskID task_id = TaskID::FromBinary(request.task_id());
   Lineage uncommitted_lineage;
   for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
-    const std::string &task_message = request.uncommitted_tasks(i);
-    const Task task(*flatbuffers::GetRoot<protocol::Task>(
-        reinterpret_cast<const uint8_t *>(task_message.data())));
-    RAY_CHECK(uncommitted_lineage.SetEntry(std::move(task), GcsStatus::UNCOMMITTED));
+    Task task(request.uncommitted_tasks(i));
+    RAY_CHECK(uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED));
   }
   const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
   RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
                  << " on node " << gcs_client_->client_table().GetLocalClientId()
                  << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
   SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
-  done_callback(Status::OK());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::ProcessSetResourceRequest(
@@ -1769,7 +1767,7 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+  auto message = protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
                                               fbb.CreateVector(resource_id_set_flatbuf));
   fbb.Finish(message);
   const auto &task_id = spec.TaskId();
@@ -2025,9 +2023,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
              const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
-        auto message = flatbuffers::GetRoot<protocol::Task>(task_data.task().data());
-        const Task task(*message);
-        ResubmitTask(task);
+        ResubmitTask(Task(task_data.task()));
       },
       /*failure_callback=*/
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
@@ -2238,8 +2234,12 @@ void NodeManager::ForwardTask(
   // Prepare the request message.
   rpc::ForwardTaskRequest request;
   request.set_task_id(task_id.Binary());
-  for (auto &entry : uncommitted_lineage.GetEntries()) {
-    request.add_uncommitted_tasks(entry.second.TaskData().Serialize());
+  for (auto &task_entry : uncommitted_lineage.GetEntries()) {
+    auto task = request.add_uncommitted_tasks();
+    task->mutable_task_spec()->CopyFrom(
+        task_entry.second.TaskData().GetTaskSpecification().GetMessage());
+    task->mutable_task_execution_spec()->CopyFrom(
+        task_entry.second.TaskData().GetTaskExecutionSpec().GetMessage());
   }
 
   // Move the FORWARDING task to the SWAP queue so that we remember that we

@@ -400,6 +400,31 @@ def get_system_memory():
         return memory_in_bytes
 
 
+def estimate_available_memory():
+    """Return the currently available amount of system memory in bytes.
+
+    Returns:
+        The total amount of available memory in bytes. It may be an
+        overestimate if psutil is not installed.
+    """
+
+    # Use psutil if it is available.
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except ImportError:
+        pass
+
+    # Handle Linux.
+    if sys.platform == "linux" or sys.platform == "linux2":
+        bytes_in_kilobyte = 1024
+        return (
+            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
+
+    # Give up
+    return get_system_memory()
+
+
 def get_shared_memory_bytes():
     """Get the size of the shared memory file system.
 

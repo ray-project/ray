@@ -1,5 +1,7 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
+COPTS = ["-DARROW_USE_GLOG"]
+
 java_library(
     name = "org_apache_arrow_arrow_plasma",
     srcs = glob(["java/plasma/src/main/java/**/*.java"]),
@@ -45,19 +47,23 @@ cc_library(
         "cpp/src/arrow/util/macros.h",
         "cpp/src/arrow/util/memory.h",
         "cpp/src/arrow/util/stl.h",
+        "cpp/src/arrow/util/string.h",
         "cpp/src/arrow/util/string_builder.h",
         "cpp/src/arrow/util/string_view.h",
         "cpp/src/arrow/util/thread-pool.h",
         "cpp/src/arrow/util/type_traits.h",
+        "cpp/src/arrow/util/ubsan.h",
         "cpp/src/arrow/util/visibility.h",
         "cpp/src/arrow/util/windows_compatibility.h",
         "cpp/src/arrow/vendored/string_view.hpp",
         "cpp/src/arrow/vendored/xxhash/xxhash.c",
         "cpp/src/arrow/vendored/xxhash/xxhash.h",
     ],
+    copts = COPTS,
     strip_include_prefix = "cpp/src",
     deps = [
         "@boost//:filesystem",
+        "@com_github_google_glog//:glog",
     ],
 )
 
@@ -85,12 +91,14 @@ cc_library(
         "cpp/src/plasma/plasma_generated.h",
         "cpp/src/plasma/protocol.h",
     ],
+    copts = COPTS,
     strip_include_prefix = "cpp/src",
     visibility = ["//visibility:public"],
     deps = [
         ":arrow",
         ":common_fbs",
         ":plasma_fbs",
+        "@com_github_google_glog//:glog",
     ],
 )
 
@@ -171,8 +179,12 @@ cc_library(
         "cpp/src/plasma/thirdparty/ae/zmalloc.h",
         "cpp/src/plasma/thirdparty/dlmalloc.c",
     ],
+    copts = COPTS,
     strip_include_prefix = "cpp/src",
-    deps = [":plasma_client"],
+    deps = [
+        ":plasma_client",
+        "@com_github_google_glog//:glog",
+    ],
 )
 
 cc_binary(
