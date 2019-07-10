@@ -547,7 +547,7 @@ class ActorHandle(object):
                     actor_counter=self._ray_actor_counter,
                     actor_creation_dummy_object_id=(
                         self._ray_actor_creation_dummy_object_id),
-                    execution_dependencies=[self._ray_actor_cursor],
+                    previous_actor_task_dummy_object_id=self._ray_actor_cursor,
                     new_actor_handles=self._ray_new_actor_handles,
                     # We add one for the dummy return ID.
                     num_return_vals=num_return_vals + 1,

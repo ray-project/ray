@@ -341,6 +341,8 @@ class GlobalState(object):
             "ActorCreationID": task.actor_creation_id().hex(),
             "ActorCreationDummyObjectID": (
                 task.actor_creation_dummy_object_id().hex()),
+            "PreviousActorTaskDummyObjectID": (
+                task.previous_actor_task_dummy_object_id().hex()),
             "ActorCounter": task.actor_counter(),
             "Args": task.arguments(),
             "ReturnObjectIDs": task.returns(),
@@ -356,7 +358,6 @@ class GlobalState(object):
             task_table_data.task.task_execution_spec.SerializeToString())
         return {
             "ExecutionSpec": {
-                "Dependencies": execution_spec.dependencies(),
                 "NumForwards": execution_spec.num_forwards(),
             },
             "TaskSpec": task_spec_info
