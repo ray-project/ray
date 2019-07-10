@@ -123,8 +123,8 @@ class ModelCatalog(object):
         config = config or MODEL_DEFAULTS
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
-            logger.debug("Using custom action distribution {}".format(
-                action_dist_name))
+            logger.debug(
+                "Using custom action distribution {}".format(action_dist_name))
             dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
 
         elif isinstance(action_space, gym.spaces.Box):
@@ -169,7 +169,8 @@ class ModelCatalog(object):
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
 
-        return dist, dist.parameter_shape_for_action_space(action_space, config)
+        return dist, dist.parameter_shape_for_action_space(
+            action_space, config)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
@@ -186,14 +187,14 @@ class ModelCatalog(object):
         """
 
         if isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None,), name="action")
+            return tf.placeholder(tf.int64, shape=(None, ), name="action")
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
             return tf.placeholder(
-                tf.float32, shape=(None,) + action_space.shape, name="action")
+                tf.float32, shape=(None, ) + action_space.shape, name="action")
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             return tf.placeholder(
                 tf.as_dtype(action_space.dtype),
-                shape=(None,) + action_space.shape,
+                shape=(None, ) + action_space.shape,
                 name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0

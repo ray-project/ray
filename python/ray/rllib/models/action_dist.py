@@ -5,7 +5,6 @@ from __future__ import print_function
 from collections import namedtuple
 import distutils.version
 import numpy as np
-import gym
 
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf
@@ -251,16 +250,22 @@ class MultiActionDistribution(ActionDistribution):
 
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.
+        model_config (dict): Config dict for the model (as defined in
+            catalog.py)
     """
 
-    def __init__(self, inputs, action_space, child_distributions, input_lens,
+    def __init__(self,
+                 inputs,
+                 action_space,
+                 child_distributions,
+                 input_lens,
                  model_config=None):
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i],
-                                           model_config=model_config))
+            child_list.append(
+                distribution(split_inputs[i], model_config=model_config))
         self.child_distributions = child_list
         self.model_config = model_config
 
