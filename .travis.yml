@@ -112,6 +112,8 @@ matrix:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
 
+        - # Mount bazel cache dir to the docker container.
+        - mkdir -p $HOME/ray-bazel-cache
         - export MOUNT_BAZEL_CACHE="-v $HOME/ray-bazel-cache:/root/ray-bazel-cache"
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the `$MOUNT_BAZEL_CACHE` part.
