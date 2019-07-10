@@ -32,7 +32,7 @@ using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ProfileTableData;
-using rpc::RayResource;
+using rpc::ResourceTableData;
 using rpc::TablePrefix;
 using rpc::TablePubsub;
 using rpc::TaskLeaseData;
@@ -593,7 +593,7 @@ class Hash : private Log<ID, Data>,
   using Log<ID, Data>::num_lookups_;
 };
 
-class DynamicResourceTable : public Hash<ClientID, RayResource> {
+class DynamicResourceTable : public Hash<ClientID, ResourceTableData> {
  public:
   DynamicResourceTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                        AsyncGcsClient *client)

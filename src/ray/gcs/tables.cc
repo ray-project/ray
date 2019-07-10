@@ -735,8 +735,8 @@ template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
 
-template class Log<ClientID, RayResource>;
-template class Hash<ClientID, RayResource>;
+template class Log<ClientID, ResourceTableData>;
+template class Hash<ClientID, ResourceTableData>;
 
 }  // namespace gcs
 

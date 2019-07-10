@@ -191,10 +191,11 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Subscribe to resource changes.
   const auto &resources_changed =
-      [this](gcs::AsyncGcsClient *client, const ClientID &id,
-             const gcs::GcsChangeMode change_mode,
-             const std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>>
-                 &data) {
+      [this](
+          gcs::AsyncGcsClient *client, const ClientID &id,
+          const gcs::GcsChangeMode change_mode,
+          const std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>>
+              &data) {
         if (change_mode == gcs::GcsChangeMode::APPEND_OR_ADD) {
           ResourceSet resource_set;
           for (auto &entry : data) {
@@ -395,8 +396,8 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
   RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
       JobID::Nil(), client_id,
       [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
-             const std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>>
-                 &pairs) {
+             const std::unordered_map<std::string,
+                                      std::shared_ptr<gcs::ResourceTableData>> &pairs) {
         ResourceSet resource_set;
         for (auto &resource_entry : pairs) {
           resource_set.AddOrUpdateResource(resource_entry.first,
@@ -489,13 +490,15 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
                                   const std::vector<std::string> &resource_names) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
-  std::ostringstream oss;
-  for (auto &resource_name : resource_names) {
-    oss << resource_name << ", ";
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    std::ostringstream oss;
+    for (auto &resource_name : resource_names) {
+      oss << resource_name << ", ";
+    }
+    RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
+                   << " with deleted resources: " << oss.str()
+                   << ". Updating resource map.";
   }
-  RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
-                 << " with deleted resources: " << oss.str()
-                 << ". Updating resource map.";
 
   SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
 
@@ -1272,11 +1275,10 @@ void NodeManager::ProcessSetResourceRequest(
     RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(JobID::Nil(), client_id,
                                                              {resource_name}, nullptr));
   } else {
-    std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>> data_map;
-    auto ray_resource = std::make_shared<gcs::RayResource>();
-    ray_resource->set_resource_name(resource_name);
-    ray_resource->set_resource_capacity(capacity);
-    data_map.emplace(resource_name, ray_resource);
+    std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> data_map;
+    auto resource_table_data = std::make_shared<gcs::ResourceTableData>();
+    resource_table_data->set_resource_capacity(capacity);
+    data_map.emplace(resource_name, resource_table_data);
     RAY_CHECK_OK(
         gcs_client_->resource_table().Update(JobID::Nil(), client_id, data_map, nullptr));
   }

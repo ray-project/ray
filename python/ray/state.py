@@ -113,9 +113,10 @@ def _parse_resource_table(redis_client, client_id):
                         str(entries_len))
 
     for i in range(0, entries_len, 2):
-        ray_resource = gcs_utils.RayResource.FromString(
+        resource_table_data = gcs_utils.ResourceTableData.FromString(
             gcs_entry.entries[i + 1])
-        resources[ray_resource.resource_name] = ray_resource.resource_capacity
+        resources[decode(
+            gcs_entry.entries[i])] = resource_table_data.resource_capacity
     return resources
 
 

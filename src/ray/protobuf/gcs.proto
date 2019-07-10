@@ -144,11 +144,9 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
-message RayResource {
-  // The type of the resource.
-  string resource_name = 1;
+message ResourceTableData {
   // The total capacity of this resource type.
-  double resource_capacity = 2;
+  double resource_capacity = 1;
 }
 
 message ClientTableData {

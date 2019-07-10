@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,7 +73,7 @@ public class GcsClient {
       final UniqueId clientId = UniqueId
           .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
 
-      if (data.isInsertion()) {
+      if (data.getIsInsertion()) {
         //Code path of node insertion.
         NodeInfo nodeInfo = new NodeInfo(
             clientId, data.getNodeManagerAddress(), true, ImmutableMap.of());
@@ -102,14 +101,15 @@ public class GcsClient {
     final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
     Map<byte[], byte[]> results = primary.hgetAll(key);
     Map<String, Double> resources = new HashMap<>();
-    for (byte[] value : results.values()) {
-      Gcs.RayResource rayResource;
+    for (Map.Entry<byte[], byte[]> entry : results.entrySet()) {
+      String resourceName = new String(entry.getKey());
+      Gcs.ResourceTableData resourceTableData;
       try {
-        rayResource = Gcs.RayResource.parseFrom(value);
+        resourceTableData = Gcs.ResourceTableData.parseFrom(entry.getValue());
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
-      resources.put(rayResource.getResourceName(), rayResource.getResourceCapacity());
+      resources.put(resourceName, resourceTableData.getResourceCapacity());
     }
     return resources;
   }
