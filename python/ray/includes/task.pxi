@@ -233,6 +233,8 @@ cdef class TaskSpec:
 
     def previous_actor_task_dummy_object_id(self):
         """Return the object ID of the previously executed actor task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
         return ObjectID(
             self.task_spec.get().PreviousActorTaskDummyObjectId().Binary())
 

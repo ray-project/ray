@@ -26,7 +26,7 @@ class CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpec &task) = 0;
+  virtual Status SubmitTask(const TaskSpecification &task) = 0;
 };
 
 /// This class receives tasks for execution.

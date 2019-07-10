@@ -134,8 +134,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            std::vector<ObjectID> *return_ids) {
   auto builder = BuildCommonTaskSpec(function, args, task_options.num_returns,
                                      task_options.resources, {}, return_ids);
-  TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -155,8 +154,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
-  const TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -177,10 +175,9 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
   builder.SetActorTaskSpec(actor_handle.ActorID(), actor_handle.ActorHandleID(),
                            actor_creation_dummy_object_id,
+			   actor_handle.ActorCursor(), // previous_actor_task_dummy_object_id
                            actor_handle.IncreaseTaskCounter(),
                            actor_handle.NewActorHandles());
-
-  const TaskSpec task(builder.Build(), {actor_handle.ActorCursor()});
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();
@@ -190,7 +187,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   // Submit task.
   auto status =
-      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(builder.Build());
 
   // Remove cursor from return ids.
   (*return_ids).pop_back();

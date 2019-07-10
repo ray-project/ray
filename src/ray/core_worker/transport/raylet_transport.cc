@@ -8,9 +8,9 @@ CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
     std::unique_ptr<RayletClient> &raylet_client)
     : raylet_client_(raylet_client) {}
 
-Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
+Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) {
   RAY_CHECK(raylet_client_ != nullptr);
-  return raylet_client_->SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
+  return raylet_client_->SubmitTask(task);
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
