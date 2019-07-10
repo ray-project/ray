@@ -282,8 +282,7 @@ const std::unordered_map<std::string, FractionalResourceQuantity>
   return resource_capacity_;
 };
 
-ResourceSet ResourceSet::FindUpdatedResources(
-    const ResourceSet &new_resource_set) const {
+ResourceSet ResourceSet::FindUpdatedResources(const ResourceSet &new_resource_set) const {
   // Find any new resources and return a ResourceSet with the resource and new capacities
   ResourceSet updated_resource_set;
   for (const auto &resource_pair : new_resource_set.GetResourceAmountMap()) {
@@ -304,8 +303,7 @@ ResourceSet ResourceSet::FindUpdatedResources(
   return updated_resource_set;
 }
 
-ResourceSet ResourceSet::FindDeletedResources(
-    const ResourceSet &new_resource_set) const {
+ResourceSet ResourceSet::FindDeletedResources(const ResourceSet &new_resource_set) const {
   // Find any new resources and return a ResourceSet with the resource and new capacities
   ResourceSet deleted_resource_set;
   auto &new_resource_map = new_resource_set.GetResourceAmountMap();

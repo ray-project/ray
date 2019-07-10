@@ -1,8 +1,8 @@
 #ifndef RAY_COMMON_TASK_TASK_UTIL_H
 #define RAY_COMMON_TASK_TASK_UTIL_H
 
-#include "ray/protobuf/common.pb.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/protobuf/common.pb.h"
 
 namespace ray {
 

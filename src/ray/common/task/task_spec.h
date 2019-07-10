@@ -6,10 +6,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
-#include "ray/common/grpc_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
