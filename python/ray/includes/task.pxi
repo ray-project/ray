@@ -218,19 +218,27 @@ cdef class TaskSpec:
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
+        if not self.is_actor_creation_task():
+            return ActorID.nil()
         return ActorID(self.task_spec.get().ActorCreationId().Binary())
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
         return ObjectID(
             self.task_spec.get().ActorCreationDummyObjectId().Binary())
 
     def actor_id(self):
         """Return the actor ID for this task."""
+        if not self.is_actor_task():
+            return ActorID.nil()
         return ActorID(self.task_spec.get().ActorId().Binary())
 
     def actor_counter(self):
         """Return the actor counter for this task."""
+        if not self.is_actor_task():
+            return 0
         return self.task_spec.get().ActorCounter()
 
 
