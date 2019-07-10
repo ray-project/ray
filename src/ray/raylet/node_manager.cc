@@ -2034,8 +2034,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
         RAY_CHECK(lineage_cache_.ContainsTask(task_id))
-            << "Task metadata not found in either GCS or lineage cache. It may have been "
-               "evicted "
+            << "Metadata of task " << task_id
+            << " not found in either GCS or lineage cache. It may have been evicted "
             << "by the redis LRU configuration. Consider increasing the memory "
                "allocation via "
             << "ray.init(redis_max_memory=<max_memory_bytes>).";
