@@ -372,11 +372,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
-  /// Process client message of GetTask
+  /// Handle the case that a worker is available.
   ///
-  /// \param client The client that sent the message.
+  /// \param client The connection for the worker.
   /// \return Void.
-  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client

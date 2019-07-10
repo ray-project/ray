@@ -764,11 +764,11 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::GetTask: {
     RAY_CHECK(!registered_worker->UsePush());
-    ProcessGetTaskMessage(client);
+    HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::TaskDone: {
     RAY_CHECK(registered_worker->UsePush());
-    ProcessGetTaskMessage(client);
+    HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client);
@@ -851,8 +851,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     auto connection = worker->Connection();
     worker_pool_.RegisterWorker(std::move(worker));
     if (use_push_task) {
-      // only call `ProcessGetTaskMessage` when push mode is used.
-      ProcessGetTaskMessage(connection);
+      // only call `HandleWorkerAvailable` when push mode is used.
+      HandleWorkerAvailable(connection);
     }
   } else {
     // Register the new driver.
@@ -915,7 +915,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   PublishActorStateTransition(actor_id, new_actor_data, failure_callback);
 }
 
-void NodeManager::ProcessGetTaskMessage(
+void NodeManager::HandleWorkerAvailable(
     const std::shared_ptr<LocalClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker);
