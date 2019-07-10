@@ -109,7 +109,6 @@ cdef class UniqueID(BaseID):
     def nil(cls):
         return cls(CUniqueID.Nil().Binary())
 
-
     @classmethod
     def from_random(cls):
         return cls(os.urandom(CUniqueID.Size()))

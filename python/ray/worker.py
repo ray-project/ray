@@ -1698,6 +1698,7 @@ def is_initialized():
     """
     return ray.worker.global_worker.connected
 
+
 def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,

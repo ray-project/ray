@@ -344,11 +344,13 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if self._last_export_session_and_job != worker.current_session_and_job:
+            if (self._last_export_session_and_job !=
+                    worker.current_session_and_job):
                 # If this actor class was not exported in this session and job,
                 # we need to export this function again, because current GCS
                 # doesn't have it.
-                self._last_export_session_and_job = worker.current_session_and_job
+                self._last_export_session_and_job = (
+                    worker.current_session_and_job)
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
 
@@ -612,7 +614,8 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
-        in_correct_job = self._ray_session_and_job == worker.current_session_and_job
+        in_correct_job = (
+            self._ray_session_and_job == worker.current_session_and_job)
         if worker.mode == ray.worker.SCRIPT_MODE and not in_correct_job:
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
