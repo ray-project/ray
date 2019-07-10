@@ -39,7 +39,7 @@ inline void GetActorTasksFromQueue(const TaskQueue &queue, const ray::ActorID &a
   const auto &tasks = queue.GetTasks();
   for (const auto &task : tasks) {
     auto const &spec = task.GetTaskSpecification();
-    if (actor_id == spec.ActorId()) {
+    if (spec.IsActorTask() && actor_id == spec.ActorId()) {
       task_ids.insert(spec.TaskId());
     }
   }
