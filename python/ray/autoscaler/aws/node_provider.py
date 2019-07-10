@@ -16,7 +16,6 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -214,9 +213,8 @@ class AWSNodeProvider(NodeProvider):
         for attempt in range(1, max_retries + 1):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-                logger.info(
-                    "NodeProvider: calling create_instances "
-                    "with {} (count={}).".format(subnet_id, count))
+                logger.info("NodeProvider: calling create_instances "
+                            "with {} (count={}).".format(subnet_id, count))
                 self.subnet_idx += 1
                 conf.update({
                     "MinCount": 1,
