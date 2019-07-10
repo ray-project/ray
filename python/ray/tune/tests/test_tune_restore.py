@@ -63,12 +63,8 @@ class TuneExampleTest(unittest.TestCase):
 
     def testTensorFlowMNIST(self):
         from ray.tune.examples.tune_mnist_ray_hyperband import TrainMNIST
-        from torchvision import datasets
-        tmpdir = tempfile.mkdtemp()
-        datasets.MNIST(tmpdir, train=True, download=True)
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
-        shutil.rmtree(tmpdir)
 
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
@@ -79,6 +75,8 @@ class TuneExampleTest(unittest.TestCase):
 
     def testPyTorchMNIST(self):
         from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
+        from torchvision import datasets
+        datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
 
