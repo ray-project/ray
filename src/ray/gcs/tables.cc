@@ -495,8 +495,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() &&
-        (entry.second.is_insertion())) {
+    if (!entry.first.IsNil() && (entry.second.is_insertion())) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }

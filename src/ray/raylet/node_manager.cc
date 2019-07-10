@@ -373,28 +373,8 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
   RAY_LOG(DEBUG) << "[ClientAdded] Received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
-
-    // Delay execution to make sure,
-    // 1) Client cache is up to date.
-    // 2) Lookup resource table after subscribe.
-    io_service_.post([this]() {
-      // Fetch resource info for all clients and update cluster resource map.
-      for (auto &client_entry : gcs_client_->client_table().GetAllClients()) {
-        auto &client_id = client_entry.first;
-        RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
-            JobID::Nil(), client_id,
-            [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
-                   const std::unordered_map<std::string,
-                                            std::shared_ptr<gcs::RayResource>> &pairs) {
-              ResourceSet resource_set;
-              for (auto &resource_entry : pairs) {
-                resource_set.AddOrUpdateResource(
-                    resource_entry.first, resource_entry.second->resource_capacity());
-              }
-              ResourceCreateUpdated(client_id, resource_set);
-            }));
-      }
-    });
+    // Save this NodeManager's resource information in the cluster resource map.
+    cluster_resource_map_[client_id] = initial_config_.resource_config;
     return;
   }
 
@@ -410,6 +390,20 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
       new rpc::NodeManagerClient(client_data.node_manager_address(),
                                  client_data.node_manager_port(), client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
+
+  // Fetch resource info for the remote client and update cluster resource map.
+  RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
+      JobID::Nil(), client_id,
+      [this](gcs::AsyncGcsClient *client, const ClientID &client_id,
+             const std::unordered_map<std::string, std::shared_ptr<gcs::RayResource>>
+                 &pairs) {
+        ResourceSet resource_set;
+        for (auto &resource_entry : pairs) {
+          resource_set.AddOrUpdateResource(resource_entry.first,
+                                           resource_entry.second->resource_capacity());
+        }
+        ResourceCreateUpdated(client_id, resource_set);
+      }));
 }
 
 void NodeManager::ClientRemoved(const ClientTableData &client_data) {

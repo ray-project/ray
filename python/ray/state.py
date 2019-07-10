@@ -828,8 +828,7 @@ class GlobalState(object):
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
             client["ClientID"]
-            for client in self.client_table()
-            if (client["IsInsertion"])
+            for client in self.client_table() if (client["IsInsertion"])
         }
 
     def available_resources(self):
