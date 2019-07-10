@@ -59,7 +59,7 @@ Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__JLorg_ray_runtime_ob
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__J_3BLorg_ray_runtime_objectstore_RayObjectProxy_2(
     JNIEnv *env, jclass, jlong nativeObjectInterface, jbyteArray objectId, jobject obj) {
-  auto object_id = UniqueIdFromJByteArray<ray::ObjectID>(env, objectId).GetId();
+  auto object_id = JavaByteArrayToUniqueId<ray::ObjectID>(env, objectId);
   auto status = ReadJavaRayObjectProxy<ray::Status>(
       env, obj,
       [nativeObjectInterface,
@@ -80,8 +80,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, ids, &object_ids, [](JNIEnv *env, jobject id) {
-        return UniqueIdFromJByteArray<ray::ObjectID>(env, static_cast<jbyteArray>(id))
-            .GetId();
+        return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status = GetObjectInterface(nativeObjectInterface)
@@ -104,8 +103,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
-        return UniqueIdFromJByteArray<ray::ObjectID>(env, static_cast<jbyteArray>(id))
-            .GetId();
+        return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<bool> results;
   auto status = GetObjectInterface(nativeObjectInterface)
@@ -129,8 +127,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDe
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
-        return UniqueIdFromJByteArray<ray::ObjectID>(env, static_cast<jbyteArray>(id))
-            .GetId();
+        return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   auto status = GetObjectInterface(nativeObjectInterface)
                     ->Delete(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);

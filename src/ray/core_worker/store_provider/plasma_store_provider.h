@@ -64,7 +64,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   ///
   /// \param[in] buffer the object buffer.
   /// \return Whether it represents an exception object.
-  bool IsException(const Buffer &buffer);
+  bool IsException(const plasma::ObjectBuffer &buffer);
 
   /// Print a warning if we've attempted too many times, but some objects are still
   /// unavailable.

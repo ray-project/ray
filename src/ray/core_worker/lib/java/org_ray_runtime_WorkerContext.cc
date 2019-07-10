@@ -20,8 +20,8 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerContext_nativeCreateWorkerContext(
     JNIEnv *env, jclass, jint workerType, jbyteArray jobId) {
   return reinterpret_cast<jlong>(
-      new ray::WorkerContext(static_cast<ray::WorkerType>(workerType),
-                             UniqueIdFromJByteArray<ray::JobID>(env, jobId).GetId()));
+      new ray::WorkerContext(static_cast<ray::rpc::WorkerType>(workerType),
+                             JavaByteArrayToUniqueId<ray::JobID>(env, jobId)));
 }
 
 /*

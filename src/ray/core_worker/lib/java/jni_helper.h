@@ -61,11 +61,11 @@ inline ID JavaByteArrayToUniqueId(JNIEnv *env, const jbyteArray &bytes) {
 
 /// Convert a Java byte array to C++ UniqueID.
 template <typename ID>
-inline jbyteArray UniqueIdToJavaByteArray(JNIEnv *env, const ID &id) {
-  jbytearray = env->NewByteArray(ID::Size());
-  env->SetByteArrayRegion(jbytearray, 0, ID::Size(),
+inline jbyteArray UniqueIDToJavaByteArray(JNIEnv *env, const ID &id) {
+  jbyteArray array = env->NewByteArray(ID::Size());
+  env->SetByteArrayRegion(array, 0, ID::Size(),
                           reinterpret_cast<const jbyte *>(id.Data()));
-  return jbytearray;
+  return array;
 }
 
 /// Convert a Java String to C++ std::string.

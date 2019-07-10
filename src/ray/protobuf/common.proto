@@ -11,6 +11,12 @@ enum Language {
   CPP = 2;
 }
 
+// Type of a worker.
+enum WorkerType {
+  WORKER = 0;
+  DRIVER = 1;
+}
+
 // Type of a task.
 enum TaskType {
   // Normal task.

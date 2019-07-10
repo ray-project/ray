@@ -148,7 +148,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
 }
 
-bool CoreWorkerPlasmaStoreProvider::IsException(const Buffer &buffer) {
+bool CoreWorkerPlasmaStoreProvider::IsException(const plasma::ObjectBuffer &buffer) {
   // TODO (kfstorm): metadata should be structured.
   std::string metadata = buffer.metadata->ToString();
   auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
@@ -158,6 +158,7 @@ bool CoreWorkerPlasmaStoreProvider::IsException(const Buffer &buffer) {
       return true;
     }
   }
+  return false;
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(

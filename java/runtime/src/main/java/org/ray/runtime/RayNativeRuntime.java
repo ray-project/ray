@@ -3,9 +3,9 @@ package org.ray.runtime;
 import java.util.HashMap;
 import java.util.Map;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.RedisClient;
+import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.objectstore.ObjectInterface;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
@@ -41,7 +41,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     rayletClient = new RayletClientImpl(
         rayConfig.rayletSocketName,
         workerContext.getCurrentWorkerId(),
-        rayConfig.workerMode == WorkerMode.WORKER,
+        rayConfig.workerMode == WorkerType.WORKER,
         workerContext.getCurrentJobId()
     );
 
@@ -71,7 +71,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
     Map<String, String> workerInfo = new HashMap<>();
     String workerId = new String(workerContext.getCurrentWorkerId().getBytes());
-    if (rayConfig.workerMode == WorkerMode.DRIVER) {
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
       workerInfo.put("node_ip_address", rayConfig.nodeIp);
       workerInfo.put("driver_id", workerId);
       workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
