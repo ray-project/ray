@@ -297,6 +297,7 @@ cc_library(
         ":ray_util",
         ":raylet_lib",
         ":worker_rpc",
+        ":gcs",
     ],
 )
 
@@ -581,6 +582,17 @@ cc_binary(
     name = "gcs_client_test",
     testonly = 1,
     srcs = ["src/ray/gcs/client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "new_gcs_client_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/gcs_client_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",

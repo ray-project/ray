@@ -213,7 +213,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task The actor creation task that created the actor.
-  ActorTableData CreateActorTableDataFromCreationTask(const Task &task);
+  /// \param worker The worker that finishes the actor creation task and becomes
+  /// and actor.
+  ActorTableData CreateActorTableDataFromCreationTask(const Task &task,
+                                                      const Worker &worker);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creationt ask.

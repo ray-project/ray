@@ -12,10 +12,7 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
       store_socket_(store_socket),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
-      io_work_(io_service_),
-      task_interface_(*this),
-      object_interface_(*this),
-      task_execution_interface_(*this) {
+      io_work_(io_service_) {
   auto status = store_client_.Connect(store_socket_);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
@@ -32,10 +29,30 @@ CoreWorker::CoreWorker(const enum WorkerType worker_type,
     InitializeRayletClient(0);
   }
 
+  std::vector<std::pair<std::string, int>> server_list;
+  server_list.emplace_back("127.0.0.1", 6379);
+  gcs::ClientOption option;
+  option.server_list_ = server_list;
+  option.command_type_ = gcs::CommandType::kRegular;
+  gcs::ClientInfo info{ gcs::ClientInfo::ClientType::kClientTypeWorker,
+      ClientID::FromBinary(worker_context_.GetWorkerID().Binary()) };
+  gcs_client_ = std::unique_ptr<gcs::GcsClient>(new gcs::GcsClient(
+      option, info, io_service_));
+
+  RAY_CHECK_OK(gcs_client_->Connect());
+
+  object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
+      new CoreWorkerObjectInterface(*this));
+  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(
+      new CoreWorkerTaskInterface(*this));      
+  task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
+      new CoreWorkerTaskExecutionInterface(*this));
+
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 }
 
  CoreWorker::~CoreWorker() {
+  gcs_client_->Disconnect();
   io_service_.stop();
   io_thread_.join();  
 }

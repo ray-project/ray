@@ -6,6 +6,7 @@
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
+#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
@@ -32,7 +33,8 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
   CoreWorkerRayletTaskReceiver(boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server);
+                               rpc::GrpcServer &server,
+                               CoreWorkerObjectInterface &object_interface);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -52,6 +54,8 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   TaskHandler task_handler_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
+
+  CoreWorkerObjectInterface &object_interface_;
 };
 
 }  // namespace ray

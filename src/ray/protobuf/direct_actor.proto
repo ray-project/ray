@@ -14,6 +14,10 @@ message PushTaskRequest {
 }
 
 message PushTaskReply {
+  // The IDs for the returned objects.
+  repeated bytes return_object_ids = 1;
+  // The content for returned objects.
+  repeated bytes return_objects = 2;
 }
 
 // Service for direct actor.

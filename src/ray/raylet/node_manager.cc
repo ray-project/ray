@@ -1943,7 +1943,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 }
 
-ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &task) {
+ActorTableData NodeManager::CreateActorTableDataFromCreationTask(
+    const Task &task, const Worker &worker) {
   RAY_CHECK(task.GetTaskSpecification().IsActorCreationTask());
   auto actor_id = task.GetTaskSpecification().ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
@@ -1977,6 +1978,11 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(const Task &tas
         new_actor_data.remaining_reconstructions() - 1);
   }
 
+  // Set the ip address & port, which could change after reconstruction.
+  new_actor_data.set_ip_address(gcs_client_->client_table().GetLocalClient().
+      node_manager_address());
+  new_actor_data.set_port(worker.Port());
+
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
   new_actor_data.set_node_manager_id(
@@ -2004,7 +2010,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
     // Notify the other node managers that the actor has been created.
-    const auto new_actor_data = CreateActorTableDataFromCreationTask(task);
+    const auto new_actor_data = CreateActorTableDataFromCreationTask(task, worker);
     if (resumed_from_checkpoint) {
       // This actor was resumed from a checkpoint. In this case, we first look
       // up the checkpoint in GCS and use it to restore the actor registration
@@ -2097,6 +2103,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
+        // TODO: this is a hack (zhijunfu)
+        if (!lineage_cache_.ContainsTask(task_id)) {
+          return;
+        }
+
         RAY_CHECK(lineage_cache_.ContainsTask(task_id))
             << "Task metadata not found in either GCS or lineage cache. It may have been "
                "evicted "

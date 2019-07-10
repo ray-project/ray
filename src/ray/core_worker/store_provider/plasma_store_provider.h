@@ -57,8 +57,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// the cluster.
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects. \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks) override;
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                bool delete_creating_tasks = false) override;
 
  private:
   /// Plasma store client.

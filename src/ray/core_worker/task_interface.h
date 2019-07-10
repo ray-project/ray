@@ -62,10 +62,10 @@ class ActorHandle {
   /// ID of this actor handle.
   const ray::ActorHandleID &ActorHandleID() const { return actor_handle_id_; };
 
- private:
+ public:
   /// Cursor of this actor.
   const ObjectID &ActorCursor() const { return actor_cursor_; };
-
+ private:
   /// Set actor cursor.
   void SetActorCursor(const ObjectID &actor_cursor) { actor_cursor_ = actor_cursor; };
 

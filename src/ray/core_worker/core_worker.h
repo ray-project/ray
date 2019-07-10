@@ -8,6 +8,7 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/gcs/gcs_client.h"
 
 namespace ray {
 
@@ -36,15 +37,15 @@ class CoreWorker {
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
-  CoreWorkerTaskInterface &Tasks() { return task_interface_; }
+  CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
-  CoreWorkerObjectInterface &Objects() { return object_interface_; }
+  CoreWorkerObjectInterface &Objects() { return *object_interface_; }
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() { return task_execution_interface_; }
+  CoreWorkerTaskExecutionInterface &Execution() { return *task_execution_interface_; }
 
  private:
   /// Translate from WorkLanguage to Language type (required by raylet client).
@@ -95,14 +96,17 @@ class CoreWorker {
   /// Raylet client.
   std::unique_ptr<RayletClient> raylet_client_;
 
+  /// GCS client.
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
+
   /// The `CoreWorkerTaskInterface` instance.
-  CoreWorkerTaskInterface task_interface_;
+  std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
 
   /// The `CoreWorkerObjectInterface` instance.
-  CoreWorkerObjectInterface object_interface_;
+  std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
-  CoreWorkerTaskExecutionInterface task_execution_interface_;
+  std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
 
   friend class CoreWorkerTaskInterface;
   friend class CoreWorkerObjectInterface;

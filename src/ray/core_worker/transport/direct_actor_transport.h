@@ -5,8 +5,10 @@
 
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
+#include  "ray/gcs/gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
+#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
@@ -16,7 +18,10 @@ namespace ray {
 
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service);
+  CoreWorkerDirectActorTaskSubmitter(
+      boost::asio::io_service &io_service,
+      std::unique_ptr<gcs::GcsClient> &gcs_client,
+      const std::string &store_socket);
 
   /// Submit a task for execution to raylet.
   ///
@@ -25,14 +30,34 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   virtual Status SubmitTask(const TaskSpec &task) override;
 
  private:
+  /// Subscribe to actor table.
+  Status SubscribeActorTable();
+
+  Status PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request);
+
   /// The IO event loop.
   boost::asio::io_service &io_service_;
+
+  /// Gcs client.
+  std::unique_ptr<gcs::GcsClient> &gcs_client_;
 
   /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
   rpc::ClientCallManager client_call_manager_;
 
+  /// Mutex to proect `rpc_clients_` below.
+  std::mutex rpc_clients_mutex_;
+
   /// Map from actor ids to direct actor call rpc clients.
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
+
+  /// Pending requests to send out on a per-actor basis.
+  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>> pending_requests_;
+
+  int counter_;
+
+  plasma::PlasmaClient store_client_;
+
+  Status Put(const Buffer &buffer, const ObjectID &object_id);
 };
 
 class CoreWorkerDirectActorTaskReceiver

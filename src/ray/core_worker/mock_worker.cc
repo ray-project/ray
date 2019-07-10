@@ -22,22 +22,22 @@ class MockWorker {
   void Run() {
     auto executor_func = [this](const RayFunction &ray_function,
                                 const std::vector<std::shared_ptr<Buffer>> &args,
-                                const TaskInfo &task_info, int num_returns) {
+                                const TaskInfo &task_info, int num_returns,
+                                std::vector<std::shared_ptr<Buffer>> *results) {
       // Note that this doesn't include dummy object id.
       RAY_CHECK(num_returns >= 0);
 
       // Merge all the content from input args.
-      std::vector<uint8_t> buffer;
+      auto memory_buffer = std::make_shared<AccumulativeBuffer>();
       for (const auto &arg : args) {
-        buffer.insert(buffer.end(), arg->Data(), arg->Data() + arg->Size());
+        memory_buffer->Append(arg->Data(), arg->Size());
       }
-
-      LocalMemoryBuffer memory_buffer(buffer.data(), buffer.size());
 
       // Write the merged content to each of return ids.
       for (int i = 0; i < num_returns; i++) {
-        ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
-        RAY_CHECK_OK(worker_.Objects().Put(memory_buffer, id));
+        // ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
+        // RAY_CHECK_OK(worker_.Objects().Put(memory_buffer, id));
+        (*results).push_back(memory_buffer);
       }
       return Status::OK();
     };

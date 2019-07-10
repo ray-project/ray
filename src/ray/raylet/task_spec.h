@@ -169,6 +169,12 @@ class TaskSpecification {
     return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
   }
 
+  std::string SpecToString() const {
+    std::string spec_str;
+    spec_str.assign(spec_.begin(), spec_.end());
+    return spec_str;
+  }
+ 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
   JobID JobId() const;

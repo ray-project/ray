@@ -16,7 +16,8 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(CoreWorker &core_worker)
   task_submitters_.emplace(
       static_cast<int>(TaskTransportType::DIRECT_ACTOR),
       std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-          new CoreWorkerDirectActorTaskSubmitter(core_worker_.io_service_)));          
+          new CoreWorkerDirectActorTaskSubmitter(core_worker_.io_service_,
+          core_worker_.gcs_client_, core_worker_.store_socket_)));          
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
@@ -89,6 +90,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
+RAY_LOG(DEBUG) << "SubmitActorTask";
   auto &context = core_worker_.worker_context_;
   auto next_task_index = context.GetNextTaskIndex();
   const auto task_id = GenerateTaskId(context.GetCurrentJobID(),
@@ -128,9 +130,10 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   }
 
   TaskSpec task(std::move(spec), execution_dependencies);
+RAY_LOG(DEBUG) << "SubmitTask begin";  
   TaskTransportType trasnport_type = use_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
   auto status = task_submitters_[static_cast<int>(trasnport_type)]->SubmitTask(task);
-
+RAY_LOG(DEBUG) << "SubmitTask end";
   if (!use_direct_call) {
     // remove cursor from return ids.
     (*return_ids).pop_back();

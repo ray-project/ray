@@ -15,7 +15,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       static_cast<int>(TaskTransportType::RAYLET),
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(
           new CoreWorkerRayletTaskReceiver(
-          main_service_, worker_server_)));
+          main_service_, worker_server_, core_worker_.Objects())));
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::DIRECT_ACTOR),
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
@@ -24,7 +24,8 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 }
 
 Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
-  auto callback = [this, executor](const raylet::TaskSpecification &spec) {
+  auto callback = [this, executor](const raylet::TaskSpecification &spec,
+                                   std::vector<std::shared_ptr<Buffer>> *results) {
     core_worker_.worker_context_.SetCurrentTask(spec);
 
     WorkerLanguage language = (spec.GetLanguage() == ::Language::JAVA)
@@ -47,14 +48,17 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
     TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
 
     auto num_returns = spec.NumReturns();
-    if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+    if (spec.IsActorCreationTask() || (spec.IsActorTask() &&
+        !spec.ActorCreationDummyObjectId().IsNil())) {
+      // Note for direct actor call doesn't use dummy object id,
+      // and in that case it's set to nil in task spec.
       RAY_CHECK(num_returns > 0);
-      // Decrease to account for the dummy object id.
-      // TODO (zhijunfu): note this logic only applies to task submitted via raylet.
+      // Decrease to account for the dummy object id, this logic only
+      // applies to task submitted via raylet.
       num_returns--;
     }
 
-    auto status = executor(func, args, task_info, num_returns);
+    auto status = executor(func, args, task_info, num_returns, results);
     // TODO(zhijunfu):
     // 1. Check and handle failure.
     // 2. Save or load checkpoint.
@@ -104,7 +108,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   std::vector<std::shared_ptr<Buffer>> results;
-  auto status = core_worker_.object_interface_.Get(object_ids_to_fetch, -1, &results);
+  auto status = core_worker_.Objects().Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];
