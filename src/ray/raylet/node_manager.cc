@@ -549,8 +549,11 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
+    Task task;
     TaskState state;
-    const auto task = local_queues_.RemoveTask(task_id, &state);
+    if (!local_queues_.RemoveTask(task_id, &task, &state)) {
+      return;
+    }
     // Since we are spilling back from the ready and waiting queues, we need
     // to unsubscribe the dependencies.
     if (state != TaskState::INFEASIBLE) {
@@ -980,8 +983,10 @@ void NodeManager::ProcessDisconnectClientMessage(
       // If the worker was an actor, the task was already cleaned up in
       // `HandleDisconnectedActor`.
       if (actor_id.IsNil()) {
-        const Task &task = local_queues_.RemoveTask(task_id);
-        TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
+        Task task;
+        if (local_queues_.RemoveTask(task_id, &task)) {
+          TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
+        }
       }
 
       if (!intentional_disconnect) {
@@ -1034,6 +1039,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
                    << "job_id: " << worker->GetAssignedJobId();
   }
+
+  client->Close();
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
@@ -1315,10 +1322,12 @@ void NodeManager::ScheduleTasks(
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
       // (See design_docs/task_states.rst for the state transition diagram.)
-      const auto task = local_queues_.RemoveTask(task_id);
-      // Attempt to forward the task. If this fails to forward the task,
-      // the task will be resubmit locally.
-      ForwardTaskOrResubmit(task, client_id);
+      Task task;
+      if (local_queues_.RemoveTask(task_id, &task)) {
+        // Attempt to forward the task. If this fails to forward the task,
+        // the task will be resubmit locally.
+        ForwardTaskOrResubmit(task, client_id);
+      }
     }
   }
 
@@ -1604,7 +1613,8 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
     // worker as blocked. This temporarily releases any resources that the
     // worker holds while it is blocked.
     if (!worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
-      const auto task = local_queues_.RemoveTask(current_task_id);
+      Task task;
+      RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
       local_queues_.QueueTasks({task}, TaskState::RUNNING);
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -1653,7 +1663,8 @@ void NodeManager::HandleTaskUnblocked(
     // the worker.
     if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
       // (See design_docs/task_states.rst for the state transition diagram.)
-      const auto task = local_queues_.RemoveTask(current_task_id);
+      Task task;
+      RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
       local_queues_.QueueTasks({task}, TaskState::RUNNING);
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
@@ -1771,8 +1782,12 @@ bool NodeManager::AssignTask(const Task &task) {
       static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
       fbb.GetBufferPointer(), [this, worker, task_id](ray::Status status) {
         // Remove the ASSIGNED task from the SWAP queue.
+        Task assigned_task;
         TaskState state;
-        auto assigned_task = local_queues_.RemoveTask(task_id, &state);
+        if (!local_queues_.RemoveTask(task_id, &assigned_task, &state)) {
+          return;
+        }
+
         RAY_CHECK(state == TaskState::SWAP);
 
         if (status.ok()) {
@@ -1844,7 +1859,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   // (See design_docs/task_states.rst for the state transition diagram.)
-  const auto task = local_queues_.RemoveTask(task_id);
+  Task task;
+  RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
 
   // Release task's resources. The worker's lifetime resources are still held.
   auto const &task_resources = worker.GetTaskResourceIds();
@@ -2171,11 +2187,13 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                 RAY_LOG(INFO) << "Resubmitting task " << task_id
                               << " because ForwardTask failed.";
                 // Remove the RESUBMITTED task from the SWAP queue.
+                Task task;
                 TaskState state;
-                const auto task = local_queues_.RemoveTask(task_id, &state);
-                RAY_CHECK(state == TaskState::SWAP);
-                // Submit the task again.
-                SubmitTask(task, Lineage());
+                if (local_queues_.RemoveTask(task_id, &task, &state)) {
+                  RAY_CHECK(state == TaskState::SWAP);
+                  // Submit the task again.
+                  SubmitTask(task, Lineage());
+                }
               });
           // Temporarily move the RESUBMITTED task to the SWAP queue while the
           // timer is active.
@@ -2246,8 +2264,11 @@ void NodeManager::ForwardTask(
   client->ForwardTask(request, [this, on_error, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
     // Remove the FORWARDING task from the SWAP queue.
+    Task task;
     TaskState state;
-    const auto task = local_queues_.RemoveTask(task_id, &state);
+    if (!local_queues_.RemoveTask(task_id, &task, &state)) {
+      return;
+    }
     RAY_CHECK(state == TaskState::SWAP);
 
     if (status.ok()) {
