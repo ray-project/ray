@@ -616,8 +616,8 @@ class ActorHandle(object):
         worker = ray.worker.get_global_worker()
         exported_in_current_session_and_job = (
             self._ray_session_and_job == worker.current_session_and_job)
-        if (worker.mode == ray.worker.SCRIPT_MODE and
-                not exported_in_current_session_and_job):
+        if (worker.mode == ray.worker.SCRIPT_MODE
+                and not exported_in_current_session_and_job):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
