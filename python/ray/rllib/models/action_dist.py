@@ -86,8 +86,8 @@ class ActionDistribution(object):
             model_config (dict): Model's config dict (as defined in catalog.py)
 
         Returns:
-            dist_dim (np.ndarray) int array of the size of the required input
-                vector.
+            dist_dim (int or np.ndarray of ints): size of the required
+                input vector (minus leading batch dimension).
         """
         raise NotImplementedError
 
