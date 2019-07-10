@@ -15,7 +15,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &l
       port_(port),
       language_(language),
       // dead_(false),
-      blocked_(false) {}
+      blocked_(false),
+      heartbeat_timeout_times_(0) {}
 
 // void Worker::MarkDead() { dead_ = true; }
 

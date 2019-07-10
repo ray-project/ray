@@ -332,7 +332,7 @@ void NodeManager::Heartbeat() {
                               dead_workers);
   if (!dead_workers.empty()) {
     for (const auto &worker : dead_workers) {
-      RAY_LOG(INFO) << "Worker " << worker->GetWorkerId() << " dead, pid: " << worker->Pid();
+      RAY_LOG(INFO) << "Worker " << worker->GetWorkerId() << " dead because of timeout, pid: " << worker->Pid();
       ProcessDisconnectClientMessage(worker->GetWorkerId());
     }
   }
@@ -746,7 +746,6 @@ void NodeManager::DispatchTasks(
   // it queued locally. Once the GetTaskReply has been sent, the task will get
   // re-queued, depending on whether the message succeeded or not.
   local_queues_.MoveTasks(assigned_task_ids, TaskState::READY, TaskState::SWAP);
-  //local_queues_.MoveTasks(assigned_task_ids, TaskState::READY, TaskState::RUNNING);
 }
 
 bool NodeManager::WorkerIsDead(const WorkerID &worker_id) {
@@ -846,6 +845,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker);
+
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
     FinishAssignedTask(*worker);

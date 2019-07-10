@@ -23,8 +23,9 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 /// The duration between heartbeats. These are sent by the raylet.
 RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100)
 /// Limit of worker timeout times, a worker would be marked as dead once its
-/// timeout times is greater than this value. e.g: 100ms * 20 times = 2s
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_times, 20)
+/// timeout times is greater than this value. e.g: 100ms * 30 times = 3s
+/// Worker heartbeat also use `heartbeat_timeout_milliseconds` as period.
+RAY_CONFIG(int64_t, worker_heartbeat_timeout_times, 30)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
