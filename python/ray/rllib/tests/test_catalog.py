@@ -33,14 +33,21 @@ class CustomModel(Model):
 
 
 class CustomActionDistribution(ActionDistribution):
-    def parameter_shape_for_action_space(action_space, options_dict=None):
-        if options_dict is not None and options_dict.get("output_dim"):
-            return int(options_dict.get("output_dim"))
+    @staticmethod
+    def parameter_shape_for_action_space(action_space, model_config=None):
+        custom_options = model_config["custom_options"] or {}
+        if custom_options is not None and custom_options.get("output_dim"):
+            return custom_options.get("output_dim")
         return action_space.shape
 
     def _build_sample_op(self):
-        return tf.random_uniform(tf.shape(self.inputs), minval=-self.inputs,
-                                 maxval=self.inputs)
+        custom_options = self.model_config["custom_options"]
+        if "output_dim" in custom_options:
+            output_shape = tf.concat([tf.shape(self.inputs)[:1],
+                                      custom_options["output_dim"]], axis=0)
+        else:
+            output_shape = tf.shape(self.inputs)
+        return tf.random_uniform(output_shape)
 
 
 class ModelCatalogTest(unittest.TestCase):
@@ -111,7 +118,7 @@ class ModelCatalogTest(unittest.TestCase):
         # registration
         ModelCatalog.register_custom_action_dist("test",
                                                  CustomActionDistribution)
-        action_space = Box(0, 1, shape=(5,), dtype=np.float32)
+        action_space = Box(0, 1, shape=(5, 3), dtype=np.float32)
 
         # test retrieving it
         model_config = MODEL_DEFAULTS.copy()
@@ -121,20 +128,25 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(str(dist_cls), str(CustomActionDistribution))
         self.assertEqual(param_shape, action_space.shape)
 
-        # test passing the options to it
-        model_config["custom_options"].update({"output_dim": 3})
-        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space,
-                                                             model_config)
-        self.assertEqual(param_shape, 3)
-
         # test the class works as a distribution
-        dist_input = tf.ones(param_shape, dtype=tf.float32)
+        dist_input = tf.placeholder(tf.float32, (None,) + param_shape)
         dist = dist_cls(dist_input, model_config=model_config)
-        self.assertEqual(dist.sample().shape, dist_input.shape)
+        self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
         self.assertIsInstance(dist.sample(), tf.Tensor)
         with self.assertRaises(NotImplementedError):
             dist.entropy()
 
+        # test passing the options to it
+        model_config["custom_options"].update({"output_dim": (3,)})
+        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space,
+                                                             model_config)
+        self.assertEqual(param_shape, (3,))
+        dist_input = tf.placeholder(tf.float32, (None,) + param_shape)
+        dist = dist_cls(dist_input, model_config=model_config)
+        self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
+        self.assertIsInstance(dist.sample(), tf.Tensor)
+        with self.assertRaises(NotImplementedError):
+            dist.entropy()
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
