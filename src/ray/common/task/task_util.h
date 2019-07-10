@@ -25,7 +25,7 @@ class TaskSpecBuilder {
       uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
-    message_.set_type(rpc::TaskType::NORMAL_TASK);
+    message_.set_type(TaskType::NORMAL_TASK);
     message_.set_language(language);
     for (const auto &fd : function_descriptor) {
       message_.add_function_descriptor(fd);

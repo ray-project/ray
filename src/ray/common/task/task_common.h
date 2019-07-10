@@ -12,8 +12,8 @@ namespace ray {
 
 /// See `common.proto` for definition of `Language` enum.
 using Language = rpc::Language;
-/// See `common.proto` for definition of `TaskSpec` enum.
-using TaskSpec = rpc::TaskType;
+/// See `common.proto` for definition of `TaskType` enum.
+using TaskType = rpc::TaskType;
 
 }  // namespace ray
 
