@@ -143,7 +143,7 @@ class ServerCallImpl : public ServerCall {
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
-          // is aysnc and this callback might be deleted right after `SendReply`.
+          // is aysnc and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
 
