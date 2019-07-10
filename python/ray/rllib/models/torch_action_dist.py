@@ -39,6 +39,11 @@ class TorchCategorical(TorchDistributionWrapper):
         self.dist = torch.distributions.categorical.Categorical(logits=inputs)
         self.model_config = model_config
 
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, model_config=None):
+        return action_space.n
+
 
 class TorchDiagGaussian(TorchDistributionWrapper):
     """Wrapper class for PyTorch Normal distribution."""
@@ -52,3 +57,8 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     @override(TorchDistributionWrapper)
     def logp(self, actions):
         return TorchDistributionWrapper.logp(self, actions).sum(-1)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, model_config=None):
+        return action_space.shape[0] * 2
