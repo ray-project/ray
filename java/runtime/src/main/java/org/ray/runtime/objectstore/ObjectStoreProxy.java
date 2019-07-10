@@ -37,9 +37,9 @@ public class ObjectStoreProxy {
 
   private final WorkerContext workerContext;
 
-  private final ObjectInterfaceProtocol objectInterface;
+  private final BaseObjectInterface objectInterface;
 
-  public ObjectStoreProxy(WorkerContext workerContext, ObjectInterfaceProtocol objectInterface) {
+  public ObjectStoreProxy(WorkerContext workerContext, BaseObjectInterface objectInterface) {
     this.workerContext = workerContext;
     this.objectInterface = objectInterface;
   }
@@ -47,9 +47,9 @@ public class ObjectStoreProxy {
   /**
    * Get an object from the object store.
    *
-   * @param id        Id of the object.
+   * @param id Id of the object.
    * @param timeoutMs Timeout in milliseconds.
-   * @param <T>       Type of the object.
+   * @param <T> Type of the object.
    * @return The GetResult object.
    */
   public <T> GetResult<T> get(ObjectId id, int timeoutMs) {
@@ -60,9 +60,9 @@ public class ObjectStoreProxy {
   /**
    * Get a list of objects from the object store.
    *
-   * @param ids       List of the object ids.
+   * @param ids List of the object ids.
    * @param timeoutMs Timeout in milliseconds.
-   * @param <T>       Type of these objects.
+   * @param <T> Type of these objects.
    * @return A list of GetResult objects.
    */
   public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {

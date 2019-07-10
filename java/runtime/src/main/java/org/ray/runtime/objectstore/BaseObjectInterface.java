@@ -3,7 +3,7 @@ package org.ray.runtime.objectstore;
 import java.util.List;
 import org.ray.api.id.ObjectId;
 
-public interface ObjectInterfaceProtocol {
+public interface BaseObjectInterface {
   ObjectId put(RayObjectProxy obj);
 
   void put(RayObjectProxy obj, ObjectId objectId);

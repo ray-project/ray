@@ -13,7 +13,7 @@ import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MockObjectInterface implements ObjectInterfaceProtocol {
+public class MockObjectInterface implements BaseObjectInterface {
   private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectInterface.class);
 
   private static final int GET_CHECK_INTERVAL_MS = 100;

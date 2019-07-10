@@ -12,7 +12,7 @@ import org.ray.runtime.raylet.RayletClientImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class ObjectInterface implements ObjectInterfaceProtocol {
+public class ObjectInterface implements BaseObjectInterface {
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
 
   private final long nativeObjectInterface;

@@ -25,7 +25,7 @@ public class WorkerContext {
   private RunMode runMode;
 
   public WorkerContext(WorkerMode workerMode, UniqueId jobId, RunMode runMode) {
-    this.nativeWorkerContext = nativeCreateWorkerContext(workerMode.value(), jobId.getBytes());
+    this.nativeWorkerContext = nativeCreateWorkerContext(workerMode.ordinal(), jobId.getBytes());
     mainThreadId = Thread.currentThread().getId();
     this.runMode = runMode;
     currentClassLoader = null;
