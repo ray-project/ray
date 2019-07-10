@@ -496,7 +496,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
     if (!entry.first.IsNil() &&
-        (entry.second.entry_type() == ClientTableData::INSERTION)) {
+        (entry.second.is_insertion())) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -506,7 +506,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type() == ClientTableData::DELETION) {
+    if (!entry.first.IsNil() && !entry.second.is_insertion()) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
@@ -525,14 +525,14 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   } else {
     // If the entry is in the cache, then the notification is new if the client
     // was alive and is now dead or resources have been updated.
-    bool was_not_deleted = (entry->second.entry_type() != ClientTableData::DELETION);
-    bool is_deleted = (data.entry_type() == ClientTableData::DELETION);
+    bool was_not_deleted = entry->second.is_insertion();
+    bool is_deleted = !data.is_insertion();
     is_notif_new = was_not_deleted && is_deleted;
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
     // that this new notification is not an insertion.
-    if (entry->second.entry_type() == ClientTableData::DELETION) {
-      RAY_CHECK((data.entry_type() == ClientTableData::DELETION))
+    if (!entry->second.is_insertion()) {
+      RAY_CHECK(!data.is_insertion())
           << "Notification for addition of a client that was already removed:"
           << client_id;
     }
@@ -542,14 +542,14 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   // Add as is
   RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
                     "notification for client id "
-                 << client_id << ". EntryType: " << int(data.entry_type())
+                 << client_id << ". IsInsertion: " << data.is_insertion()
                  << ". Setting the client cache to data.";
   client_cache_[client_id] = data;
 
   // If the notification is new, call any registered callbacks.
   ClientTableData &cache_data = client_cache_[client_id];
   if (is_notif_new) {
-    if (data.entry_type() == ClientTableData::INSERTION) {
+    if (data.is_insertion()) {
       if (client_added_callback_ != nullptr) {
         client_added_callback_(client, client_id, cache_data);
       }
@@ -588,7 +588,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
 
   // Construct the data to add to the client table.
   auto data = std::make_shared<ClientTableData>(local_client_);
-  data->set_entry_type(ClientTableData::INSERTION);
+  data->set_is_insertion(true);
   // Callback to handle our own successful connection once we've added
   // ourselves.
   auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
@@ -606,7 +606,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
       for (auto &notification : notifications) {
         // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
         // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-        if (notification.entry_type() != ClientTableData::DELETION) {
+        if (notification.is_insertion()) {
           connected_nodes.emplace(notification.client_id(), notification);
         } else {
           auto iter = connected_nodes.find(notification.client_id());
@@ -637,7 +637,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableData>(local_client_);
-  data->set_entry_type(ClientTableData::DELETION);
+  data->set_is_insertion(false);
   auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
                                        const ClientTableData &data) {
     HandleConnected(client, data);
@@ -655,7 +655,7 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<ClientTableData>();
   data->set_client_id(dead_client_id.Binary());
-  data->set_entry_type(ClientTableData::DELETION);
+  data->set_is_insertion(false);
   return Append(JobID::Nil(), client_log_key_, data, nullptr);
 }
 

@@ -1,6 +1,7 @@
 package org.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,7 +18,6 @@ import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import org.ray.runtime.generated.Gcs.ClientTableData;
-import org.ray.runtime.generated.Gcs.ClientTableData.EntryType;
 import org.ray.runtime.generated.Gcs.TablePrefix;
 import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
@@ -74,16 +74,15 @@ public class GcsClient {
       final UniqueId clientId = UniqueId
           .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
 
-      if (data.getEntryType() == EntryType.INSERTION) {
+      if (data.isInsertion()) {
         //Code path of node insertion.
         NodeInfo nodeInfo = new NodeInfo(
-            clientId, data.getNodeManagerAddress(), true, new HashMap<>());
+            clientId, data.getNodeManagerAddress(), true, ImmutableMap.of());
         clients.put(clientId, nodeInfo);
       } else {
         // Code path of node deletion.
-        Preconditions.checkState(data.getEntryType() == EntryType.DELETION);
         NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
-            false, new HashMap<>());
+            false, ImmutableMap.of());
         clients.put(clientId, nodeInfo);
       }
     }

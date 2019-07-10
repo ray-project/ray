@@ -1149,12 +1149,12 @@ void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client
   ASSERT_EQ(client_id, added_id);
   ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
   ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
-  ASSERT_EQ(data.entry_type() == ClientTableData::INSERTION, is_insertion);
+  ASSERT_EQ(data.is_insertion(), is_insertion);
 
   ClientTableData cached_client;
   client->client_table().GetClient(added_id, cached_client);
   ASSERT_EQ(ClientID::FromBinary(cached_client.client_id()), added_id);
-  ASSERT_EQ(cached_client.entry_type() == ClientTableData::INSERTION, is_insertion);
+  ASSERT_EQ(cached_client.is_insertion(), is_insertion);
 }
 
 void TestClientTableConnect(const JobID &job_id,

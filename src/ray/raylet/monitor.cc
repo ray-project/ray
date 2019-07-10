@@ -53,26 +53,13 @@ void Monitor::Tick() {
           bool marked = false;
           for (const auto &data : all_data) {
             if (client_id.Binary() == data.client_id() &&
-                data.entry_type() == ClientTableData::DELETION) {
+                !data.is_insertion()) {
               // The node has been marked dead by itself.
               marked = true;
             }
           }
           if (!marked) {
             RAY_CHECK_OK(gcs_client_.client_table().MarkDisconnected(client_id));
-            // Remove all resources of this client from GCS
-            RAY_CHECK_OK(gcs_client_.resource_table().Lookup(
-                JobID::Nil(), client_id,
-                [](gcs::AsyncGcsClient *client, const ClientID &client_id,
-                   const std::unordered_map<std::string,
-                                            std::shared_ptr<gcs::RayResource>> &pairs) {
-                  std::vector<std::string> resource_names;
-                  for (auto &entry : pairs) {
-                    resource_names.push_back(entry.first);
-                  }
-                  RAY_CHECK_OK(client->resource_table().RemoveEntries(
-                      JobID::Nil(), client_id, resource_names, nullptr));
-                }));
             // Broadcast a warning to all of the drivers indicating that the node
             // has been marked as dead.
             // TODO(rkn): Define this constant somewhere else.

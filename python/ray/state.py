@@ -52,11 +52,11 @@ def _parse_client_table(redis_client):
 
         client_id = ray.utils.binary_to_hex(client.client_id)
 
-        if client.entry_type == gcs_utils.ClientTableData.INSERTION:
+        if client.is_insertion:
             ordered_client_ids.append(client_id)
             node_info[client_id] = {
                 "ClientID": client_id,
-                "EntryType": client.entry_type,
+                "IsInsertion": client.is_insertion,
                 "NodeManagerAddress": client.node_manager_address,
                 "NodeManagerPort": client.node_manager_port,
                 "ObjectManagerPort": client.object_manager_port,
@@ -69,16 +69,13 @@ def _parse_client_table(redis_client):
         # it cannot have previously been removed.
         else:
             assert client_id in node_info, "Client not found!"
-            is_deletion = (node_info[client_id]["EntryType"] !=
-                           gcs_utils.ClientTableData.DELETION)
-            assert is_deletion, "Unexpected updation of deleted client."
-            node_info[client_id]["EntryType"] = client.entry_type
+            assert node_info[client_id]["IsInsertion"], (
+                "Unexpected duplicate removal of client.")
+            node_info[client_id]["IsInsertion"] = client.is_insertion
     # Fill resource info.
     for client_id in ordered_client_ids:
-        if node_info[client_id][
-                "EntryType"] == gcs_utils.ClientTableData.INSERTION:
-            resources = _parse_resource_table(
-                redis_client, ray.utils.hex_to_binary(client_id))
+        if node_info[client_id]["IsInsertion"]:
+            resources = _parse_resource_table(redis_client, client_id)
         else:
             resources = {}
         node_info[client_id]["Resources"] = resources
@@ -96,14 +93,14 @@ def _parse_resource_table(redis_client, client_id):
 
     Args:
         redis_client: A client to the primary Redis shard.
-        client_id: The client ID of the node.
+        client_id: The client ID of the node in hex.
 
     Returns:
         A dict of resources about this node.
     """
     message = redis_client.execute_command(
         "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("NODE_RESOURCE"), "",
-        client_id)
+        ray.utils.hex_to_binary(client_id))
 
     if message is None:
         return {}
@@ -822,7 +819,7 @@ class GlobalState(object):
         clients = self.client_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
-            if client["EntryType"] != gcs_utils.ClientTableData.DELETION:
+            if client["IsInsertion"]:
                 for key, value in client["Resources"].items():
                     resources[key] += value
         return dict(resources)
@@ -832,7 +829,7 @@ class GlobalState(object):
         return {
             client["ClientID"]
             for client in self.client_table()
-            if (client["EntryType"] != gcs_utils.ClientTableData.DELETION)
+            if (client["IsInsertion"])
         }
 
     def available_resources(self):
