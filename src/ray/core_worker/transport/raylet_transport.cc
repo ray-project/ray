@@ -30,7 +30,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   auto status = task_handler_(spec);
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous
-  // raylet client calls are completed. For example, if the worker sends a 
+  // raylet client calls are completed. For example, if the worker sends a
   // NotifyUnblocked message that it is no longer blocked in a `ray.get`
   // on the normal raylet socket, then completes an assigned task, we
   // need to guarantee that raylet gets the former message first before
