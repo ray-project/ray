@@ -84,6 +84,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
       // Second, server has sent reply to client and failed, the server call's status is
       // SENDING_REPLY
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
+        RAY_LOG(INFO) << "Received reply failed call.";
         server_call->OnReplyFailed();
       }
       delete_call = true;

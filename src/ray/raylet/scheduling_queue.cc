@@ -308,6 +308,12 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);
   }
 
+  if (!task_ids.empty()) {
+    for (const auto & e: task_ids) {
+      RAY_LOG(INFO) << "unmoved task: " << e;
+    }
+  }
+
   // Make sure that all tasks were able to be moved.
   RAY_CHECK(task_ids.empty());
 

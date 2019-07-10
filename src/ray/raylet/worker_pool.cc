@@ -230,17 +230,14 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
   if (it != state.dedicated_workers_to_tasks.end()) {
     // The worker is used for the actor creation task with dynamic options.
     // Put it into idle dedicated worker pool.
-    RAY_LOG(INFO) << "Push into dedicated worker.";
     const auto task_id = it->second;
     state.idle_dedicated_workers[task_id] = std::move(worker);
   } else {
     // The worker is not used for the actor creation task without dynamic options.
     // Put the worker to the corresponding idle pool.
     if (worker->GetActorId().IsNil()) {
-      RAY_LOG(INFO) << "Push into normal worker.";
       state.idle.insert(std::move(worker));
     } else {
-      RAY_LOG(INFO) << "Push into idle_actor worker.";
       state.idle_actor[worker->GetActorId()] = std::move(worker);
     }
   }
@@ -285,8 +282,6 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     }
   } else {
     // Code path of actor task.
-    RAY_LOG(INFO) << "Find worker for actor " << actor_id
-                  << ", idle actor: " << state.idle_actor.count(actor_id);
     auto actor_entry = state.idle_actor.find(actor_id);
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);

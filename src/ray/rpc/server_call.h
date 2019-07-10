@@ -13,8 +13,9 @@ namespace rpc {
 /// handling a request.
 /// \param status The status would be returned to client.
 /// \param success Success callback which will be invoked when the reply is successfully
-/// sent to client. \param failure Failure callback which will be invoked when fail to
-/// send reply to client.
+/// sent to the client.
+/// \param failure Failure callback which will be invoked when the reply fails to be
+/// sent to the client.
 using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
                                              std::function<void()> failure)>;
 
@@ -141,12 +142,15 @@ class ServerCallImpl : public ServerCall {
         request_, &reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
-          // When the handler is done with the
-          // request, tell gRPC to finish this
-          // request.
-          SendReply(status);
+          // These two callbacks must be set before `SendReply`, because `SendReply`
+          // is aysnc and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
+
+          // When the handler is done with the request, tell gRPC to finish this request.
+          // Must send reply at the bottom of this callback, once we invoke this funciton,
+          // this server call might be deleted
+          SendReply(status);
         });
   }
 
@@ -154,17 +158,15 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() {
     if (send_reply_success_callback_ && !io_service_.stopped()) {
-      RAY_LOG(INFO) << "send reply callback";
       auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { RAY_LOG(INFO) << "in reply sent.";
-      callback();});
+      io_service_.post([callback]() { callback(); });
     }
   }
 
   void OnReplyFailed() {
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() {callback();});
+      auto callback = std::move(send_reply_failure_callback_);
+      io_service_.post([callback]() { callback(); });
     }
   }
 

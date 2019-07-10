@@ -774,6 +774,7 @@ void NodeManager::HandleRegisterClientRequest(const rpc::RegisterClientRequest &
   RAY_LOG(INFO) << "Register client request, worker id: " << worker_id
                 << ", is worker: " << request.is_worker()
                 << ", pid: " << request.worker_pid();
+
   if (request.is_worker()) {
     // Register the new worker.
     worker_pool_.RegisterWorker(worker_id, std::move(worker));
@@ -785,6 +786,10 @@ void NodeManager::HandleRegisterClientRequest(const rpc::RegisterClientRequest &
     worker->AssignJobId(JobID::FromBinary(request.job_id()));
     worker_pool_.RegisterDriver(worker_id, std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
+    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
+        JobID(worker_id),
+        /*is_dead=*/false, std::time(nullptr), initial_config_.node_manager_address,
+        request.worker_pid()));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -867,7 +872,7 @@ void NodeManager::HandleDisconnectClientRequest(
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   bool intentional_disconnect = request.intentional();
 
-  ProcessDisconnectClientMessage(worker_id, intentional_disconnect);
+  ProcessDisconnectClientMessage(worker_id, true);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1218,7 +1223,9 @@ void NodeManager::HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
   } else {
     worker = worker_pool_.GetRegisteredDriver(worker_id);
   }
-  worker->ClearHeartbeat();
+  if (worker) {
+    worker->ClearHeartbeat();
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1260,14 +1267,6 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
   }
 
   if (is_worker) {
-    /*
-    // The client is a worker.
-    if (worker->IsDead()) {
-      // If the worker was killed by us because the driver exited,
-      // treat it as intentionally disconnected.
-      intentional_disconnect = true;
-    }
-    */
 
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.IsNil()) {
