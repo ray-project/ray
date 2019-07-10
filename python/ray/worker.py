@@ -223,7 +223,7 @@ class Worker(object):
         """Get the current session index and job id as pair."""
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
-        return str(self._session_index) + self.current_job_id.hex()
+        return self._session_index, self.current_job_id
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""

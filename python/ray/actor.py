@@ -185,11 +185,11 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _last_export_session_and_job: The last export session and job pair.
-            session during which this actor class definition was exported. This
-            is an imperfect mechanism used to determine if we need to export
-            the remote function again. It is imperfect in the sense that the
-            actor class definition could be exported multiple times by
+        _last_export_session_and_job: A pair of the last exported session
+            and job to help us to know whether this function was exported.
+            This is an imperfect mechanism used to determine if we need to
+            export the remote function again. It is imperfect in the sense that
+            the actor class definition could be exported multiple times by
             different workers.
         _actor_methods: The actor methods.
         _method_decorators: Optional decorators that should be applied to the
@@ -614,9 +614,10 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
-        in_correct_job = (
+        exported_in_current_session_and_job = (
             self._ray_session_and_job == worker.current_session_and_job)
-        if worker.mode == ray.worker.SCRIPT_MODE and not in_correct_job:
+        if (worker.mode == ray.worker.SCRIPT_MODE and
+                not exported_in_current_session_and_job):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
