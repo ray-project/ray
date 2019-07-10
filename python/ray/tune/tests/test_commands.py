@@ -67,16 +67,13 @@ def test_ls(start_ray, tmpdir):
     experiment_name = "test_ls"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 3
-    tune.run_experiments({
-        experiment_name: {
-            "run": "__fake",
-            "stop": {
-                "training_iteration": 1
-            },
-            "num_samples": num_samples,
-            "local_dir": str(tmpdir)
-        }
-    })
+    tune.run(
+        "__fake",
+        name=experiment_name,
+        stop={"training_iteration": 1},
+        num_samples=num_samples,
+        local_dir=str(tmpdir),
+        global_checkpoint_period=0)
 
     columns = ["status", "episode_reward_mean", "training_iteration"]
     limit = 2
@@ -90,6 +87,7 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
+            sort=["status"],
             info_keys=("status", ),
             filter_op="status == TERMINATED")
     lines = output.captured
@@ -103,16 +101,13 @@ def test_lsx(start_ray, tmpdir):
     num_experiments = 3
     for i in range(num_experiments):
         experiment_name = "test_lsx{}".format(i)
-        tune.run_experiments({
-            experiment_name: {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
-                },
-                "num_samples": 1,
-                "local_dir": project_path
-            }
-        })
+        tune.run(
+            "__fake",
+            name=experiment_name,
+            stop={"training_iteration": 1},
+            num_samples=1,
+            local_dir=project_path,
+            global_checkpoint_period=0)
 
     limit = 2
     with Capturing() as output:
@@ -126,6 +121,7 @@ def test_lsx(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_experiments(
             project_path,
+            sort=["total_trials"],
             info_keys=("total_trials", ),
             filter_op="total_trials == 1")
     lines = output.captured

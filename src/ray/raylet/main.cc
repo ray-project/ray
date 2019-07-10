@@ -2,10 +2,13 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
 #include "gflags/gflags.h"
+
+using ray::rpc::Language;
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -108,6 +111,7 @@ int main(int argc, char *argv[]) {
       ray::raylet::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
+  node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =

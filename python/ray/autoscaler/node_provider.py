@@ -112,7 +112,7 @@ def get_default_config(provider_config):
             provider_config["type"]))
     path_to_default = load_config()
     with open(path_to_default) as f:
-        defaults = yaml.load(f)
+        defaults = yaml.safe_load(f)
 
     return defaults
 

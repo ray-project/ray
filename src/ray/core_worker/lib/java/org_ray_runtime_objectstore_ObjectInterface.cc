@@ -24,7 +24,7 @@ Java_org_ray_runtime_objectstore_ObjectInterface_nativeCreateObjectInterface(
     jstring storeSocketName) {
   return reinterpret_cast<jlong>(new ray::CoreWorkerObjectInterface(
       *reinterpret_cast<ray::WorkerContext *>(nativeWorkerContext),
-      *reinterpret_cast<RayletClient *>(nativeRayletClient),
+      *reinterpret_cast<std::unique_ptr<RayletClient> *>(nativeRayletClient),
       JavaStringToNativeString(env, storeSocketName)));
 }
 

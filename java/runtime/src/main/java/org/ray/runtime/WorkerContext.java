@@ -56,8 +56,8 @@ public class WorkerContext {
     }
 
     Preconditions.checkNotNull(task);
-    ByteBuffer info = RayletClientImpl.convertTaskSpecToFlatbuffer(task);
-    nativeSetCurrentTask(nativeWorkerContext, info, info.position(), info.remaining());
+    byte[] taskSpec = RayletClientImpl.convertTaskSpecToProtobuf(task);
+    nativeSetCurrentTask(nativeWorkerContext, taskSpec);
     currentClassLoader = classLoader;
   }
 
@@ -104,16 +104,14 @@ public class WorkerContext {
     if (bytes == null) {
       return null;
     }
-    ByteBuffer bb = ByteBuffer.wrap(bytes);
-    return RayletClientImpl.parseTaskSpecFromFlatbuffer(bb);
+    return RayletClientImpl.parseTaskSpecFromProtobuf(bytes);
   }
 
   private static native long nativeCreateWorkerContext(int workerType, byte[] jobId);
 
   private static native byte[] nativeGetCurrentTaskId(long nativeWorkerContext);
 
-  private static native void nativeSetCurrentTask(long nativeWorkerContext, ByteBuffer taskBuff,
-                                                  int pos, int taskSize);
+  private static native void nativeSetCurrentTask(long nativeWorkerContext, byte[] taskSpec);
 
   private static native byte[] nativeGetCurrentTask(long nativeWorkerContext);
 

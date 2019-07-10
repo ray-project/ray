@@ -26,10 +26,10 @@ Java_org_ray_runtime_WorkerContext_nativeGetCurrentTaskId(JNIEnv *, jclass, jlon
 /*
  * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeSetCurrentTask
- * Signature: (JLjava/nio/ByteBuffer;II)V
+ * Signature: (J[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeSetCurrentTask(
-    JNIEnv *, jclass, jlong, jobject, jint, jint);
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_WorkerContext

@@ -85,7 +85,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   }
 
   void Add(const JobID &job_id, const TaskID &task_id,
-           std::shared_ptr<TaskLeaseData> &task_lease_data) {
+           const std::shared_ptr<TaskLeaseData> &task_lease_data) {
     task_lease_table_[task_id] = task_lease_data;
     if (subscribed_tasks_.count(task_id) == 1) {
       notification_callback_(nullptr, task_id, *task_lease_data);
@@ -112,7 +112,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
 
   Status AppendAt(
       const JobID &job_id, const TaskID &task_id,
-      std::shared_ptr<TaskReconstructionData> &task_data,
+      const std::shared_ptr<TaskReconstructionData> &task_data,
       const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
           &success_callback,
       const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
@@ -134,7 +134,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   MOCK_METHOD4(
       Append,
       ray::Status(
-          const JobID &, const TaskID &, std::shared_ptr<TaskReconstructionData> &,
+          const JobID &, const TaskID &, const std::shared_ptr<TaskReconstructionData> &,
           const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
 
  private:

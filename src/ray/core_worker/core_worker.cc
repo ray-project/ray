@@ -3,39 +3,30 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(const enum WorkerType worker_type,
-                       const enum WorkerLanguage language,
+CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        const JobID &job_id)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
-      raylet_client_(raylet_socket_,
-                     ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
-                     (worker_type_ == ray::WorkerType::WORKER),
-                     worker_context_.GetCurrentJobID(), ToTaskLanguage(language_)),
-      task_interface_(*this),
-      object_interface_(worker_context_, raylet_client_, store_socket),
-      task_execution_interface_(*this) {
+      task_interface_(worker_context_, raylet_client_),
+      object_interface_(worker_context_, raylet_client_, store_socket) {
+  int rpc_server_port = 0;
+  if (worker_type_ == ray::WorkerType::WORKER) {
+    task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
+        new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
+                                             object_interface_));
+    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
+  }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-  // connect to Raylet after a number of retries, this needs to be changed
+  // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
-}
-
-::Language CoreWorker::ToTaskLanguage(WorkerLanguage language) {
-  switch (language) {
-  case ray::WorkerLanguage::JAVA:
-    return ::Language::JAVA;
-    break;
-  case ray::WorkerLanguage::PYTHON:
-    return ::Language::PYTHON;
-    break;
-  default:
-    RAY_LOG(FATAL) << "invalid language specified: " << static_cast<int>(language);
-    break;
-  }
+  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
+      raylet_socket_, ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
+      language_, rpc_server_port));
 }
 
 }  // namespace ray

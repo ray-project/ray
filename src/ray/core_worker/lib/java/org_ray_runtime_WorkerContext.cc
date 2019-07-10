@@ -38,13 +38,17 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
 /*
  * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeSetCurrentTask
- * Signature: (JLjava/nio/ByteBuffer;II)V
+ * Signature: (J[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeSetCurrentTask(
-    JNIEnv *env, jclass, jlong nativeWorkerContext, jobject taskBuff, jint pos,
-    jint taskSize) {
-  auto data = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(taskBuff)) + pos;
-  ray::raylet::TaskSpecification spec(data, taskSize);
+    JNIEnv *env, jclass, jlong nativeWorkerContext, jbyteArray taskSpec) {
+  jbyte *data = env->GetByteArrayElements(taskSpec, NULL);
+  jsize size = env->GetArrayLength(taskSpec);
+  ray::rpc::TaskSpec task_spec_message;
+  task_spec_message.ParseFromArray(data, size);
+  env->ReleaseByteArrayElements(taskSpec, data, JNI_ABORT);
+
+  ray::raylet::TaskSpecification spec(task_spec_message);
   GetWorkerContext(nativeWorkerContext)->SetCurrentTask(spec);
 }
 
@@ -59,15 +63,12 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
   if (!spec) {
     return nullptr;
   }
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = spec->ToFlatbuffer(fbb);
-  fbb.Finish(message);
-  auto task_message = flatbuffers::GetRoot<flatbuffers::String>(fbb.GetBufferPointer());
 
-  jbyteArray result = env->NewByteArray(task_message->size());
+  auto task_message = spec->Serialize();
+  jbyteArray result = env->NewByteArray(task_message.size());
   env->SetByteArrayRegion(
-      result, 0, task_message->size(),
-      reinterpret_cast<jbyte *>(const_cast<char *>(task_message->data())));
+      result, 0, task_message.size(),
+      reinterpret_cast<jbyte *>(const_cast<char *>(task_message.data())));
   return result;
 }
 
