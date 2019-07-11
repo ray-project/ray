@@ -26,6 +26,9 @@ using rpc::TaskType;
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
+  /// Construct an empty task specification. This should not be used directly.
+  TaskSpecification() {}
+
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
