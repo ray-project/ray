@@ -80,6 +80,7 @@ class JobID : public BaseID<JobID> {
  public:
   static constexpr int64_t length = 4;
 
+  // TODO(qwang): Use `uint32_t` to store the data.
   static JobID FromInt(uint32_t value);
 
   static size_t Size() { return length; }
