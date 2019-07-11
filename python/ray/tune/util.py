@@ -223,6 +223,46 @@ def recursive_fnmatch(dirpath, pattern):
     return matches
 
 
+def validate_save_restore(trainable_cls, config=None, use_object_store=False):
+    """Helper method to check if your Trainable class will resume correctly.
+
+    Args:
+        trainable_cls: Trainable class for evaluation.
+        config (dict): Config to pass to Trainable when testing.
+        use_object_store (bool): Whether to save and restore to Ray's object
+            store. Recommended to set this to True if planning to use
+            algorithms that pause training (i.e., PBT, HyperBand).
+    """
+    assert ray.is_initialized(), "Need Ray to be initialized."
+    remote_cls = ray.remote(trainable_cls)
+    trainable_1 = remote_cls.remote(config=config)
+    trainable_2 = remote_cls.remote(config=config)
+
+    from ray.tune.result import TRAINING_ITERATION
+
+    for _ in range(3):
+        res = ray.get(trainable_1.train.remote())
+
+    assert res.get(TRAINING_ITERATION), (
+        "Validation will not pass because it requires `training_iteration` "
+        "to be returned.")
+
+    if use_object_store:
+        restore_check = trainable_2.restore_from_object.remote(
+            trainable_1.save_to_object.remote())
+        ray.get(restore_check)
+    else:
+        restore_check = ray.get(
+            trainable_2.restore.remote(trainable_1.save.remote()))
+
+    res = ray.get(trainable_2.train.remote())
+    assert res[TRAINING_ITERATION] == 4
+
+    res = ray.get(trainable_2.train.remote())
+    assert res[TRAINING_ITERATION] == 5
+    return True
+
+
 if __name__ == "__main__":
     ray.init()
     X = pin_in_object_store("hello")

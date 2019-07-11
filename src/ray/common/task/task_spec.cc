@@ -1,16 +1,9 @@
-
 #include <sstream>
 
-#include "ray/raylet/task_spec.h"
-#include "ray/rpc/util.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray {
-
-namespace raylet {
-
-using rpc::MapFromProtobuf;
-using rpc::VectorFromProtobuf;
 
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_.required_resources());
@@ -38,20 +31,6 @@ size_t TaskSpecification::ParentCounter() const { return message_.parent_counter
 
 std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
   return VectorFromProtobuf(message_.function_descriptor());
-}
-
-std::string TaskSpecification::FunctionDescriptorString() const {
-  auto list = VectorFromProtobuf(message_.function_descriptor());
-  std::ostringstream stream;
-  // The 4th is the code hash which is binary bits. No need to output it.
-  size_t size = std::min(static_cast<size_t>(3), list.size());
-  for (int i = 0; i < size; ++i) {
-    if (i != 0) {
-      stream << ",";
-    }
-    stream << list[i];
-  }
-  return stream.str();
 }
 
 size_t TaskSpecification::NumArgs() const { return message_.args_size(); }
@@ -95,59 +74,58 @@ bool TaskSpecification::IsDriverTask() const {
   return FunctionDescriptor().empty();
 }
 
-rpc::Language TaskSpecification::GetLanguage() const { return message_.language(); }
+Language TaskSpecification::GetLanguage() const { return message_.language(); }
+
+bool TaskSpecification::IsNormalTask() const {
+  return message_.type() == TaskType::NORMAL_TASK;
+}
 
 bool TaskSpecification::IsActorCreationTask() const {
-  return message_.type() == rpc::TaskType::ACTOR_CREATION_TASK;
+  return message_.type() == TaskType::ACTOR_CREATION_TASK;
 }
 
 bool TaskSpecification::IsActorTask() const {
-  return message_.type() == rpc::TaskType::ACTOR_TASK;
+  return message_.type() == TaskType::ACTOR_TASK;
 }
 
+// === Below are getter methods specific to actor creation tasks.
+
 ActorID TaskSpecification::ActorCreationId() const {
-  // TODO(hchen) Add a check to make sure this function can only be called if
-  //   task is an actor creation task.
-  if (!IsActorCreationTask()) {
-    return ActorID::Nil();
-  }
+  RAY_CHECK(IsActorCreationTask());
   return ActorID::FromBinary(message_.actor_creation_task_spec().actor_id());
 }
 
-ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
-  if (!IsActorTask()) {
-    return ObjectID::Nil();
-  }
-  return ObjectID::FromBinary(
-      message_.actor_task_spec().actor_creation_dummy_object_id());
-}
-
 uint64_t TaskSpecification::MaxActorReconstructions() const {
-  if (!IsActorCreationTask()) {
-    return 0;
-  }
+  RAY_CHECK(IsActorCreationTask());
   return message_.actor_creation_task_spec().max_actor_reconstructions();
 }
 
+std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
+  RAY_CHECK(IsActorCreationTask());
+  return VectorFromProtobuf(message_.actor_creation_task_spec().dynamic_worker_options());
+}
+
+// === Below are getter methods specific to actor tasks.
+
 ActorID TaskSpecification::ActorId() const {
-  if (!IsActorTask()) {
-    return ActorID::Nil();
-  }
+  RAY_CHECK(IsActorTask());
   return ActorID::FromBinary(message_.actor_task_spec().actor_id());
 }
 
 ActorHandleID TaskSpecification::ActorHandleId() const {
-  if (!IsActorTask()) {
-    return ActorHandleID::Nil();
-  }
+  RAY_CHECK(IsActorTask());
   return ActorHandleID::FromBinary(message_.actor_task_spec().actor_handle_id());
 }
 
 uint64_t TaskSpecification::ActorCounter() const {
-  if (!IsActorTask()) {
-    return 0;
-  }
+  RAY_CHECK(IsActorTask());
   return message_.actor_task_spec().actor_counter();
+}
+
+ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
+  RAY_CHECK(IsActorTask());
+  return ObjectID::FromBinary(
+      message_.actor_task_spec().actor_creation_dummy_object_id());
 }
 
 ObjectID TaskSpecification::ActorDummyObject() const {
@@ -156,18 +134,43 @@ ObjectID TaskSpecification::ActorDummyObject() const {
 }
 
 std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
-  if (!IsActorTask()) {
-    return {};
-  }
-  return rpc::IdVectorFromProtobuf<ActorHandleID>(
+  RAY_CHECK(IsActorTask());
+  return IdVectorFromProtobuf<ActorHandleID>(
       message_.actor_task_spec().new_actor_handles());
 }
 
-std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
-  return rpc::VectorFromProtobuf(
-      message_.actor_creation_task_spec().dynamic_worker_options());
-}
+std::string TaskSpecification::DebugString() const {
+  std::ostringstream stream;
+  stream << "Type=" << TaskType_Name(message_.type())
+         << ", Language=" << Language_Name(message_.language())
+         << ", function_descriptor=";
 
-}  // namespace raylet
+  // Print function descriptor.
+  const auto list = VectorFromProtobuf(message_.function_descriptor());
+  // The 4th is the code hash which is binary bits. No need to output it.
+  const size_t size = std::min(static_cast<size_t>(3), list.size());
+  for (int i = 0; i < size; ++i) {
+    if (i != 0) {
+      stream << ",";
+    }
+    stream << list[i];
+  }
+
+  stream << ", task_id=" << TaskId() << ", job_id=" << JobId()
+         << ", num_args=" << NumArgs() << ", num_returns=" << NumReturns();
+
+  if (IsActorCreationTask()) {
+    // Print actor creation task spec.
+    stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
+           << ", max_reconstructions=" << MaxActorReconstructions() << "}";
+  } else if (IsActorTask()) {
+    // Print actor task spec.
+    stream << ", actor_task_spec={actor_id=" << ActorId()
+           << ", actor_handle_id=" << ActorHandleId()
+           << ", actor_counter=" << ActorCounter() << "}";
+  }
+
+  return stream.str();
+}
 
 }  // namespace ray

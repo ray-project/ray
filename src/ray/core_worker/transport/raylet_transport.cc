@@ -1,6 +1,6 @@
 
 #include "ray/core_worker/transport/raylet_transport.h"
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 
 namespace ray {
 
@@ -25,7 +25,7 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const raylet::Task task(request.task());
+  const Task task(request.task());
   const auto &spec = task.GetTaskSpecification();
   auto status = task_handler_(spec);
   // Notify raylet that current task is done via a `TaskDone` message. This is to

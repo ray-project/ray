@@ -20,7 +20,7 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromRandom(),
+                JobID::JobID::FromInt(1),
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {

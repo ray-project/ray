@@ -51,11 +51,11 @@ class CoreWorkerTaskExecutionInterface {
   /// \param spec[in] Task specification.
   /// \param args[out] The arguments for passing to task executor.
   ///
-  Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
+  Status BuildArgsForExecutor(const TaskSpecification &spec,
                               std::vector<std::shared_ptr<RayObject>> *args);
 
   /// Execute a task.
-  Status ExecuteTask(const raylet::TaskSpecification &spec);
+  Status ExecuteTask(const TaskSpecification &spec);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

@@ -7,15 +7,15 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/raylet/task.h"
-#include "ray/object_manager/object_manager.h"
+#include "ray/common/task/task.h"
 #include "ray/common/client_connection.h"
-#include "ray/protobuf/common.pb.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
-#include "ray/raylet/scheduling_resources.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
@@ -32,7 +32,6 @@ using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
-using rpc::Language;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -130,14 +129,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ClientRemoved(const ClientTableData &client_data);
 
   /// Handler for the addition or updation of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that created or updated resources.
+  /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const ClientTableData &client_data);
+  void ResourceCreateUpdated(const ClientID &client_id,
+                             const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that deleted resources.
+  /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const ClientTableData &client_data);
+  void ResourceDeleted(const ClientID &client_id,
+                       const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local client.

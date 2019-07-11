@@ -74,7 +74,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
   task_spec_message.ParseFromArray(data, size);
   env->ReleaseByteArrayElements(taskSpec, data, JNI_ABORT);
 
-  ray::raylet::TaskSpecification task_spec(task_spec_message);
+  ray::TaskSpecification task_spec(task_spec_message);
   auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
   ThrowRayExceptionIfNotOK(env, status);
 }
@@ -88,7 +88,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
     JNIEnv *env, jclass, jlong client) {
   auto raylet_client = reinterpret_cast<RayletClient *>(client);
 
-  std::unique_ptr<ray::raylet::TaskSpecification> spec;
+  std::unique_ptr<ray::TaskSpecification> spec;
   auto status = raylet_client->GetTask(&spec);
   if (ThrowRayExceptionIfNotOK(env, status)) {
     return nullptr;
