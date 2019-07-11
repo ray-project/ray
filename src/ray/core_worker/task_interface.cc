@@ -33,7 +33,7 @@ ray::ActorHandleID ActorHandle::ActorHandleID() const {
 Language ActorHandle::ActorLanguage() const { return inner_.actor_language(); };
 
 std::vector<std::string> ActorHandle::ActorCreationTaskFunctionDescriptor() const {
-  return ray::rpc::VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
+  return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
 };
 
 ObjectID ActorHandle::ActorCursor() const {
@@ -98,12 +98,12 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
-raylet::TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
+TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
-  raylet::TaskSpecBuilder builder;
+  TaskSpecBuilder builder;
   auto next_task_index = worker_context_.GetNextTaskIndex();
   // Build common task spec.
   builder.SetCommonTaskSpec(

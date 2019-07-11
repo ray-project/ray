@@ -1,6 +1,6 @@
 
 #include "ray/core_worker/transport/raylet_transport.h"
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 
 namespace ray {
 
@@ -13,7 +13,7 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
 }
 
 Status CoreWorkerRayletTaskReceiver::GetTasks(std::vector<TaskSpec> *tasks) {
-  std::unique_ptr<raylet::TaskSpecification> task_spec;
+  std::unique_ptr<TaskSpecification> task_spec;
   auto status = raylet_client_->GetTask(&task_spec);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Get task from raylet failed with error: "
@@ -38,7 +38,7 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const raylet::Task task(request.task());
+  const Task task(request.task());
   const auto &spec = task.GetTaskSpecification();
   auto status = task_handler_(spec);
   send_reply_callback(status, nullptr, nullptr);

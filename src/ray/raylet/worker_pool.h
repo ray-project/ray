@@ -7,16 +7,14 @@
 #include <vector>
 
 #include "ray/common/client_connection.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_common.h"
 #include "ray/gcs/client.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
 
 namespace raylet {
-
-using rpc::Language;
 
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;

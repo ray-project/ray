@@ -71,8 +71,7 @@ Status CoreWorkerTaskExecutionInterface::Run(const TaskExecutor &executor) {
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const raylet::TaskSpecification &spec,
-    std::vector<std::shared_ptr<RayObject>> *args) {
+    const TaskSpecification &spec, std::vector<std::shared_ptr<RayObject>> *args) {
   auto num_args = spec.NumArgs();
   (*args).resize(num_args);
 

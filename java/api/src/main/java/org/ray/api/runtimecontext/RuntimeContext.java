@@ -1,6 +1,7 @@
 package org.ray.api.runtimecontext;
 
 import java.util.List;
+import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 
 /**
@@ -11,7 +12,7 @@ public interface RuntimeContext {
   /**
    * Get the current Job ID.
    */
-  UniqueId getCurrentJobId();
+  JobId getCurrentJobId();
 
   /**
    * Get the current actor ID.

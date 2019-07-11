@@ -1,11 +1,9 @@
 #include "gtest/gtest.h"
 
 #include "ray/common/common_protocol.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 void TestTaskReturnId(const TaskID &task_id, int64_t return_index) {
   // Round trip test for computing the object ID for a task's return value,
@@ -47,8 +45,6 @@ TEST(IdPropertyTest, TestIdProperty) {
   ASSERT_TRUE(ObjectID().IsNil());
   ASSERT_TRUE(ObjectID::Nil().IsNil());
 }
-
-}  // namespace raylet
 
 }  // namespace ray
 

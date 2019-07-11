@@ -11,10 +11,11 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include "ray/common/status.h"
+#include "ray/common/task/task_spec.h"
 #include "src/ray/common/status.h"
 #include "src/ray/protobuf/raylet.grpc.pb.h"
 #include "src/ray/protobuf/raylet.pb.h"
-#include "src/ray/raylet/task_spec.h"
 #include "src/ray/rpc/client_call.h"
 
 using ray::ActorCheckpointID;
@@ -24,7 +25,7 @@ using ray::ObjectID;
 using ray::TaskID;
 using ray::WorkerID;
 
-using ray::rpc::Language;
+using ray::Language;
 using ray::rpc::ProfileTableData;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
@@ -61,7 +62,7 @@ class RayletClient {
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server
   ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                         const ray::raylet::TaskSpecification &task_spec);
+                         const ray::TaskSpecification &task_spec);
 
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
@@ -69,7 +70,7 @@ class RayletClient {
   ///
   /// \param task_spec The assigned task.
   /// \return ray::Status.
-  ray::Status GetTask(std::unique_ptr<ray::raylet::TaskSpecification> *task_spec);
+  ray::Status GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec);
 
   /// Tell the raylet to reconstruct or fetch objects.
   ///
@@ -161,8 +162,9 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  /// Try to register client in raylet, if failed we would retry serveral time to
-  /// reconnect. We need this because raylet client may start before raylet server.
+  /// Try to register client in raylet, we would retry serveral time to
+  /// reconnect if failed. We need this because raylet client may start before raylet
+  /// server.
   ///
   /// \param times Retry times.
   void TryRegisterClient(int times);

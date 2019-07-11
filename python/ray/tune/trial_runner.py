@@ -15,7 +15,8 @@ import traceback
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
+from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.sample import function
@@ -529,7 +530,8 @@ class TrialRunner(object):
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(trial)
+            self._checkpoint_trial_if_needed(
+                trial, force=result.get(SHOULD_CHECKPOINT, False))
 
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
@@ -554,9 +556,9 @@ class TrialRunner(object):
                     self.trial_executor.stop_trial(
                         trial, error=True, error_msg=error_msg)
 
-    def _checkpoint_trial_if_needed(self, trial):
+    def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
-        if trial.should_checkpoint():
+        if trial.should_checkpoint() or force:
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)

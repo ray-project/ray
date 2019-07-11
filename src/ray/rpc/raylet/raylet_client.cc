@@ -72,7 +72,7 @@ ray::Status RayletClient::Disconnect() {
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::raylet::TaskSpecification &task_spec) {
+                                     const ray::TaskSpecification &task_spec) {
   SubmitTaskRequest submit_task_request;
   submit_task_request.set_task_spec(task_spec.Serialize());
   IdVectorToProtobuf<ObjectID, SubmitTaskRequest>(
@@ -95,8 +95,7 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   return f.get();
 }
 
-ray::Status RayletClient::GetTask(
-    std::unique_ptr<ray::raylet::TaskSpecification> *task_spec) {
+ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
   GetTaskRequest get_task_request;
   get_task_request.set_worker_id(worker_id_.Binary());
 
@@ -126,7 +125,7 @@ ray::Status RayletClient::GetTask(
           acquired_resources.emplace_back(resource_id, resource_fraction);
         }
       }
-      task_spec->reset(new ray::raylet::TaskSpecification(reply.task_spec()));
+      task_spec->reset(new ray::TaskSpecification(reply.task_spec()));
     } else {
       *task_spec = nullptr;
       RAY_LOG(INFO) << "[RayletClient] Get task failed, msg: " << status.message();
