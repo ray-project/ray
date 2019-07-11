@@ -288,7 +288,7 @@ class RayTrialExecutor(TrialExecutor):
 
         return list(self._running.values())
 
-    def get_node_ips(self):
+    def get_alive_node_ips(self):
         nodes = ray.state.nodes()
         ip_addresses = set()
         for node in nodes:
