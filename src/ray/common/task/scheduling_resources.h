@@ -1,5 +1,5 @@
-#ifndef RAY_RAYLET_SCHEDULING_RESOURCES_H
-#define RAY_RAYLET_SCHEDULING_RESOURCES_H
+#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
 
 #include <string>
 #include <unordered_map>
@@ -9,8 +9,6 @@
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// Conversion factor that is the amount in internal units is equivalent to
 /// one actual resource. Multiply to convert from actual to interal and
@@ -519,14 +517,12 @@ class SchedulingResources {
   ResourceSet resources_load_;
 };
 
-}  // namespace raylet
-
 }  // namespace ray
 
 namespace std {
 template <>
-struct hash<ray::raylet::ResourceSet> {
-  size_t operator()(ray::raylet::ResourceSet const &k) const {
+struct hash<ray::ResourceSet> {
+  size_t operator()(ray::ResourceSet const &k) const {
     size_t seed = k.GetResourceMap().size();
     for (auto &elem : k.GetResourceMap()) {
       seed ^= std::hash<std::string>()(elem.first);
@@ -537,4 +533,4 @@ struct hash<ray::raylet::ResourceSet> {
 };
 }  // namespace std
 
-#endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H
+#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

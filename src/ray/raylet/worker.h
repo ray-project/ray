@@ -5,14 +5,12 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/task/task_common.h"
 
 namespace ray {
 
 namespace raylet {
-
-using rpc::Language;
 
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an

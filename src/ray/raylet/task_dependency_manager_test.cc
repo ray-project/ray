@@ -5,8 +5,8 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/task/task_util.h"
 #include "ray/raylet/task_dependency_manager.h"
-#include "ray/raylet/task_util.h"
 
 namespace ray {
 

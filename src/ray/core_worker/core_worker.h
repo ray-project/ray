@@ -27,10 +27,10 @@ class CoreWorker {
              const JobID &job_id = JobID::Nil());
 
   /// Type of this worker.
-  enum WorkerType WorkerType() const { return worker_type_; }
+  WorkerType GetWorkerType() const { return worker_type_; }
 
   /// Language of this worker.
-  enum Language Language() const { return language_; }
+  Language GetLanguage() const { return language_; }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -49,10 +49,10 @@ class CoreWorker {
 
  private:
   /// Type of this worker.
-  const enum WorkerType worker_type_;
+  const WorkerType worker_type_;
 
   /// Language of this worker.
-  const enum Language language_;
+  const Language language_;
 
   /// raylet socket name.
   const std::string raylet_socket_;

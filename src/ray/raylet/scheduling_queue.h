@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
 
@@ -321,7 +321,7 @@ class SchedulingQueue {
   /// TaskState::kNumTaskQueues).
   void RemoveTasksFromQueue(ray::raylet::TaskState task_state,
                             std::unordered_set<ray::TaskID> &task_ids,
-                            std::vector<ray::raylet::Task> *removed_tasks);
+                            std::vector<ray::Task> *removed_tasks);
 
   /// A helper function to filter out tasks of a given state from the set of
   /// task IDs. The requested task state must correspond to one of the task

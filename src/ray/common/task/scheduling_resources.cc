@@ -7,8 +7,6 @@
 
 namespace ray {
 
-namespace raylet {
-
 FractionalResourceQuantity::FractionalResourceQuantity() { resource_quantity_ = 0; }
 
 FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity) {
@@ -784,7 +782,5 @@ std::string SchedulingResources::DebugString() const {
   result << "\n- avail: " << resources_available_.ToString();
   return result.str();
 };
-
-}  // namespace raylet
 
 }  // namespace ray

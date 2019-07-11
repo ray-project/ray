@@ -1,14 +1,44 @@
-#ifndef RAY_RPC_UTIL_H
-#define RAY_RPC_UTIL_H
+#ifndef RAY_COMMON_GRPC_UTIL_H
+#define RAY_COMMON_GRPC_UTIL_H
 
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
 #include <grpcpp/grpcpp.h>
 
-#include "ray/common/status.h"
+#include "status.h"
 
 namespace ray {
-namespace rpc {
+
+/// Wrap a protobuf message.
+template <class Message>
+class MessageWrapper {
+ public:
+  /// Construct an empty message wrapper. This should not be used directly.
+  MessageWrapper() {}
+
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit MessageWrapper(const Message message) : message_(std::move(message)) {}
+
+  /// Construct from protobuf-serialized binary.
+  ///
+  /// \param serialized_binary Protobuf-serialized binary.
+  explicit MessageWrapper(const std::string &serialized_binary) {
+    message_.ParseFromString(serialized_binary);
+  }
+
+  /// Get reference of the protobuf message.
+  const Message &GetMessage() const { return message_; }
+
+  /// Serialize the message to a string.
+  const std::string Serialize() const { return message_.SerializeAsString(); }
+
+ protected:
+  /// The wrapped message.
+  Message message_;
+};
 
 /// Helper function that converts a ray status to gRPC status.
 inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
@@ -60,7 +90,6 @@ inline std::unordered_map<K, V> MapFromProtobuf(::google::protobuf::Map<K, V> pb
   return std::unordered_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
-}  // namespace rpc
 }  // namespace ray
 
 #endif

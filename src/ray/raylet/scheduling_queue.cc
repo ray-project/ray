@@ -39,7 +39,7 @@ inline void GetActorTasksFromQueue(const TaskQueue &queue, const ray::ActorID &a
   const auto &tasks = queue.GetTasks();
   for (const auto &task : tasks) {
     auto const &spec = task.GetTaskSpecification();
-    if (actor_id == spec.ActorId()) {
+    if (spec.IsActorTask() && actor_id == spec.ActorId()) {
       task_ids.insert(spec.TaskId());
     }
   }
@@ -211,9 +211,9 @@ const std::shared_ptr<TaskQueue> &SchedulingQueue::GetTaskQueue(
 
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
-void SchedulingQueue::RemoveTasksFromQueue(
-    ray::raylet::TaskState task_state, std::unordered_set<ray::TaskID> &task_ids,
-    std::vector<ray::raylet::Task> *removed_tasks) {
+void SchedulingQueue::RemoveTasksFromQueue(ray::raylet::TaskState task_state,
+                                           std::unordered_set<ray::TaskID> &task_ids,
+                                           std::vector<ray::Task> *removed_tasks) {
   auto &queue = GetTaskQueue(task_state);
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     const auto &task_id = *it;
