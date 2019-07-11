@@ -1149,12 +1149,12 @@ void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client
   ASSERT_EQ(client_id, added_id);
   ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
   ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
-  ASSERT_EQ(data.entry_type() == ClientTableData::INSERTION, is_insertion);
+  ASSERT_EQ(data.is_insertion(), is_insertion);
 
   ClientTableData cached_client;
   client->client_table().GetClient(added_id, cached_client);
   ASSERT_EQ(ClientID::FromBinary(cached_client.client_id()), added_id);
-  ASSERT_EQ(cached_client.entry_type() == ClientTableData::INSERTION, is_insertion);
+  ASSERT_EQ(cached_client.is_insertion(), is_insertion);
 }
 
 void TestClientTableConnect(const JobID &job_id,
@@ -1273,29 +1273,24 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   const int expected_count = 14;
   ClientID client_id = ClientID::FromRandom();
   // Prepare the first resource map: data_map1.
-  auto cpu_data = std::make_shared<RayResource>();
-  cpu_data->set_resource_name("CPU");
-  cpu_data->set_resource_capacity(100);
-  auto gpu_data = std::make_shared<RayResource>();
-  gpu_data->set_resource_name("GPU");
-  gpu_data->set_resource_capacity(2);
   DynamicResourceTable::DataMap data_map1;
+  auto cpu_data = std::make_shared<ResourceTableData>();
+  cpu_data->set_resource_capacity(100);
   data_map1.emplace("CPU", cpu_data);
+  auto gpu_data = std::make_shared<ResourceTableData>();
+  gpu_data->set_resource_capacity(2);
   data_map1.emplace("GPU", gpu_data);
   // Prepare the second resource map: data_map2 which decreases CPU,
   // increases GPU and add a new CUSTOM compared to data_map1.
-  auto data_cpu = std::make_shared<RayResource>();
-  data_cpu->set_resource_name("CPU");
-  data_cpu->set_resource_capacity(50);
-  auto data_gpu = std::make_shared<RayResource>();
-  data_gpu->set_resource_name("GPU");
-  data_gpu->set_resource_capacity(10);
-  auto data_custom = std::make_shared<RayResource>();
-  data_custom->set_resource_name("CUSTOM");
-  data_custom->set_resource_capacity(2);
   DynamicResourceTable::DataMap data_map2;
+  auto data_cpu = std::make_shared<ResourceTableData>();
+  data_cpu->set_resource_capacity(50);
   data_map2.emplace("CPU", data_cpu);
+  auto data_gpu = std::make_shared<ResourceTableData>();
+  data_gpu->set_resource_capacity(10);
   data_map2.emplace("GPU", data_gpu);
+  auto data_custom = std::make_shared<ResourceTableData>();
+  data_custom->set_resource_capacity(2);
   data_map2.emplace("CUSTOM", data_custom);
   data_map2["CPU"]->set_resource_capacity(50);
   // This is a common comparison function for the test.
@@ -1305,7 +1300,6 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
     for (const auto &data : data1) {
       auto iter = data2.find(data.first);
       ASSERT_TRUE(iter != data2.end());
-      ASSERT_EQ(iter->second->resource_name(), data.second->resource_name());
       ASSERT_EQ(iter->second->resource_capacity(), data.second->resource_capacity());
     }
   };

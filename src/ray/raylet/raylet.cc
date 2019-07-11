@@ -86,11 +86,6 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
   client_info.set_object_store_socket_name(object_store_socket_name);
   client_info.set_object_manager_port(object_manager_.GetServerPort());
   client_info.set_node_manager_port(node_manager_.GetServerPort());
-  // Add resource information.
-  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-    client_info.add_resources_total_label(resource_pair.first);
-    client_info.add_resources_total_capacity(resource_pair.second);
-  }
 
   RAY_LOG(DEBUG) << "Node manager " << gcs_client_->client_table().GetLocalClientId()
                  << " started on " << client_info.node_manager_address() << ":"
@@ -99,6 +94,16 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                  << client_info.object_manager_port();
   ;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
+
+  // Add resource information.
+  std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;
+  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
+    auto resource = std::make_shared<gcs::ResourceTableData>();
+    resource->set_resource_capacity(resource_pair.second);
+    resources.emplace(resource_pair.first, resource);
+  }
+  RAY_RETURN_NOT_OK(gcs_client_->resource_table().Update(
+      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(), resources, nullptr));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 
