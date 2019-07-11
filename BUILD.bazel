@@ -183,6 +183,42 @@ cc_library(
 
 # === End of rpc definitions ===
 
+cc_library(
+    name = "ray_common",
+    srcs = glob(
+        [
+            "src/ray/common/**/*.cc",
+        ],
+        exclude = [
+            "src/ray/common/**/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/common/**/*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":common_cc_proto",
+        ":node_manager_fbs",
+        ":ray_util",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@plasma//:plasma_client",
+    ],
+)
+
+cc_test(
+    name = "common_test",
+    srcs = glob(["src/ray/common/**/*_test.cc"]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -307,6 +343,8 @@ cc_library(
         ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
+        # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
+        # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
         ":raylet_lib",
         ":worker_rpc",
     ],
@@ -380,16 +418,6 @@ cc_test(
 cc_test(
     name = "task_dependency_manager_test",
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "task_test",
-    srcs = ["src/ray/raylet/task_test.cc"],
     copts = COPTS,
     deps = [
         ":raylet_lib",
@@ -491,29 +519,6 @@ cc_library(
     deps = [
         ":sha256",
         "@com_github_google_glog//:glog",
-        "@plasma//:plasma_client",
-    ],
-)
-
-cc_library(
-    name = "ray_common",
-    srcs = glob(
-        [
-            "src/ray/common/*.cc",
-        ],
-        exclude = [
-            "src/ray/common/*_test.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/common/*.h",
-        ],
-    ),
-    copts = COPTS,
-    deps = [
-        ":ray_util",
-        "@boost//:asio",
         "@plasma//:plasma_client",
     ],
 )

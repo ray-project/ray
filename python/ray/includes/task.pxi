@@ -15,7 +15,7 @@ from ray.includes.task cimport (
 
 
 cdef class TaskSpec:
-    """Cython wrapper class of C++ `ray::raylet::TaskSpecification`."""
+    """Cython wrapper class of C++ `ray::TaskSpecification`."""
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
@@ -121,6 +121,18 @@ cdef class TaskSpec:
         """
         return self.task_spec.get().Serialize()
 
+    def is_normal_task(self):
+        """Whether this task is a normal task."""
+        return self.task_spec.get().IsNormalTask()
+
+    def is_actor_task(self):
+        """Whether this task is an actor task."""
+        return self.task_spec.get().IsActorTask()
+
+    def is_actor_creation_task(self):
+        """Whether this task is an actor creation task."""
+        return self.task_spec.get().IsActorCreationTask()
+
     def job_id(self):
         """Return the job ID for this task."""
         return JobID(self.task_spec.get().JobId().Binary())
@@ -206,24 +218,32 @@ cdef class TaskSpec:
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
+        if not self.is_actor_creation_task():
+            return ActorID.nil()
         return ActorID(self.task_spec.get().ActorCreationId().Binary())
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
         return ObjectID(
             self.task_spec.get().ActorCreationDummyObjectId().Binary())
 
     def actor_id(self):
         """Return the actor ID for this task."""
+        if not self.is_actor_task():
+            return ActorID.nil()
         return ActorID(self.task_spec.get().ActorId().Binary())
 
     def actor_counter(self):
         """Return the actor counter for this task."""
+        if not self.is_actor_task():
+            return 0
         return self.task_spec.get().ActorCounter()
 
 
 cdef class TaskExecutionSpec:
-    """Cython wrapper class of C++ `ray::raylet::TaskExecutionSpecification`."""
+    """Cython wrapper class of C++ `ray::TaskExecutionSpecification`."""
     cdef:
         unique_ptr[CTaskExecutionSpec] c_spec
 
@@ -259,7 +279,7 @@ cdef class TaskExecutionSpec:
 
 
 cdef class Task:
-    """Cython wrapper class of C++ `ray::raylet::Task`."""
+    """Cython wrapper class of C++ `ray::Task`."""
     cdef:
         unique_ptr[CTask] c_task
 

@@ -14,7 +14,7 @@ struct WorkerThreadContext {
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
 
-  std::shared_ptr<const raylet::TaskSpecification> GetCurrentTask() const {
+  std::shared_ptr<const TaskSpecification> GetCurrentTask() const {
     return current_task_;
   }
 
@@ -24,9 +24,9 @@ struct WorkerThreadContext {
     put_index = 0;
   }
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec) {
+  void SetCurrentTask(const TaskSpecification &spec) {
     SetCurrentTaskId(spec.TaskId());
-    current_task_ = std::make_shared<const raylet::TaskSpecification>(spec);
+    current_task_ = std::make_shared<const TaskSpecification>(spec);
   }
 
  private:
@@ -34,7 +34,7 @@ struct WorkerThreadContext {
   TaskID current_task_id_;
 
   /// The current task.
-  std::shared_ptr<const raylet::TaskSpecification> current_task_;
+  std::shared_ptr<const TaskSpecification> current_task_;
 
   /// Number of tasks that have been submitted from current task.
   int task_index;
@@ -74,12 +74,12 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
+void WorkerContext::SetCurrentTask(const TaskSpecification &spec) {
   current_job_id_ = spec.JobId();
   GetThreadContext().SetCurrentTask(spec);
 }
 
-std::shared_ptr<const raylet::TaskSpecification> WorkerContext::GetCurrentTask() const {
+std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 

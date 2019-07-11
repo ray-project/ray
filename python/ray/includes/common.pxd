@@ -100,8 +100,8 @@ cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 
-cdef extern from "ray/raylet/scheduling_resources.h" \
-        namespace "ray::raylet" nogil:
+cdef extern from "ray/common/task/scheduling_resources.h" \
+        namespace "ray" nogil:
     cdef cppclass ResourceSet "ResourceSet":
         ResourceSet()
         ResourceSet(const unordered_map[c_string, double] &resource_map)

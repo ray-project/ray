@@ -547,11 +547,10 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   SchedulingResources &remote_resources = it->second;
 
   ResourceSet remote_available(
-      rpc::VectorFromProtobuf(heartbeat_data.resources_total_label()),
-      rpc::VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
-  ResourceSet remote_load(
-      rpc::VectorFromProtobuf(heartbeat_data.resource_load_label()),
-      rpc::VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
+      VectorFromProtobuf(heartbeat_data.resources_total_label()),
+      VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+  ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
+                          VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
@@ -1475,13 +1474,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
-  RAY_LOG(DEBUG) << "Submitting task: task_id=" << task_id
-                 << ", actor_id=" << spec.ActorId()
-                 << ", actor_creation_id=" << spec.ActorCreationId()
-                 << ", actor_handle_id=" << spec.ActorHandleId()
-                 << ", actor_counter=" << spec.ActorCounter()
-                 << ", task_descriptor=" << spec.FunctionDescriptorString() << " on node "
-                 << gcs_client_->client_table().GetLocalClientId();
+  RAY_LOG(DEBUG) << "Submitting task: " << task.DebugString();
 
   if (local_queues_.HasTask(task_id)) {
     RAY_LOG(WARNING) << "Submitted task " << task_id
@@ -1824,8 +1817,6 @@ bool NodeManager::AssignTask(const Task &task) {
             // guarantee that tasks are replayed in the same order after a
             // failure, we must update the task's execution dependency to be
             // the actor's current execution dependency.
-          } else {
-            RAY_CHECK(spec.NewActorHandles().empty());
           }
 
           // Mark the task as running.

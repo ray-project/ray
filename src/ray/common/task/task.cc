@@ -1,8 +1,8 @@
+#include <sstream>
+
 #include "task.h"
 
 namespace ray {
-
-namespace raylet {
 
 const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
@@ -34,6 +34,11 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
   ComputeDependencies();
 }
 
-}  // namespace raylet
+std::string Task::DebugString() const {
+  std::ostringstream stream;
+  stream << "task_spec={" << task_spec_.DebugString() << "}, task_execution_spec={"
+         << task_execution_spec_.DebugString() << "}";
+  return stream.str();
+}
 
 }  // namespace ray
