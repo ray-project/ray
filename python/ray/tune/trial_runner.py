@@ -602,11 +602,12 @@ class TrialRunner(object):
         self._scheduler_alg.on_trial_error(self, trial)
         self.trial_executor.set_status(trial, Trial.PENDING)
 
-        # Right now, this requeues the trial to the end of the queue. This is
+        # TODO(rliaw): Right now, this pushes the trial to the end of queue
         # because restoration can be expensive. However, this is not
         # ideal since it just hides the issue - a better fix would
         # be to use an actor table to detect the IP of the Trainable
         # and rsync the files there.
+        # See https://github.com/ray-project/ray/issues/5168
         self._trials.pop(self._trials.index(trial))
         self._trials.append(trial)
 
