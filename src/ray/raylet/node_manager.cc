@@ -853,7 +853,7 @@ void NodeManager::HandleDisconnectClientRequest(
     rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   bool intentional_disconnect = request.intentional();
-  RAY_LOG(INFO) << "Handle disconnect client request for worker " << worker_id;
+  RAY_LOG(DEBUG) << "Handle disconnect client request for worker " << worker_id;
 
   ProcessDisconnectClientMessage(worker_id, intentional_disconnect);
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1219,7 +1219,7 @@ void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &reques
 void NodeManager::HandleNotifyUnblockedRequest(
     const rpc::NotifyUnblockedRequest &request, rpc::NotifyUnblockedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle notify unblocked request.";
+  RAY_LOG(DEBUG) << "Handle notify unblocked request.";
   const TaskID current_task_id = TaskID::FromBinary(request.task_id());
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
 
@@ -1231,7 +1231,7 @@ void NodeManager::HandleNotifyUnblockedRequest(
 void NodeManager::HandlePushProfileEventsRequest(
     const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle push profile events request.";
+  RAY_LOG(DEBUG) << "Handle push profile events request.";
   rpc::ProfileTableData profile_table_data = request.profile_table_data();
   RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   send_reply_callback(Status::OK(), nullptr, nullptr);

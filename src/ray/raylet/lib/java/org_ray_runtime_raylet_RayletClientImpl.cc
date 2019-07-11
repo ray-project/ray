@@ -3,7 +3,7 @@
 #include <jni.h>
 
 #include "ray/common/id.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/util/logging.h"
 
 template <typename ID>
@@ -35,6 +35,9 @@ inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
     return false;
   }
 }
+
+using ray::ClientID;
+using ray::rpc::RayletClient;
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl

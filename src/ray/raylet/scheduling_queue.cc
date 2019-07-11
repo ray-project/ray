@@ -218,8 +218,8 @@ void SchedulingQueue::RemoveTasksFromQueue(
   for (auto it = task_ids.begin(); it != task_ids.end();) {
     const auto &task_id = *it;
     if (queue->RemoveTask(task_id, removed_tasks)) {
-      RAY_LOG(INFO) << "Removed task " << task_id << " from "
-                    << GetTaskStateString(task_state) << " queue";
+      RAY_LOG(DEBUG) << "Removed task " << task_id << " from "
+                     << GetTaskStateString(task_state) << " queue";
       it = task_ids.erase(it);
     } else {
       it++;
@@ -308,13 +308,6 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);
   }
 
-  if (!task_ids.empty()) {
-    for (const auto &e : task_ids) {
-      RAY_LOG(INFO) << "unmoved task: " << e << " from " << static_cast<int>(src_state)
-                    << " to " << static_cast<int>(dst_state);
-    }
-  }
-
   // Make sure that all tasks were able to be moved.
   RAY_CHECK(task_ids.empty());
 
@@ -347,8 +340,8 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
 void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_state) {
   auto &queue = GetTaskQueue(task_state);
   for (const auto &task : tasks) {
-    RAY_LOG(INFO) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
-                  << GetTaskStateString(task_state) << " queue";
+    RAY_LOG(DEBUG) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
+                   << GetTaskStateString(task_state) << " queue";
     queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
   }
 }

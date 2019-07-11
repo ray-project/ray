@@ -17,9 +17,6 @@
 #include "src/ray/raylet/task_spec.h"
 #include "src/ray/rpc/client_call.h"
 
-namespace ray {
-namespace rpc {
-
 using ray::ActorCheckpointID;
 using ray::ActorID;
 using ray::JobID;
@@ -29,10 +26,13 @@ using ray::WorkerID;
 
 using ray::rpc::Language;
 using ray::rpc::ProfileTableData;
+using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
+
+namespace ray {
+namespace rpc {
 
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 /// TODO(jzh): At persent, we use promise and future to wrap around the async callback
 ///            to implement synchronized call to raylet server. It's just a workaround and
 ///             we would change it to actually
