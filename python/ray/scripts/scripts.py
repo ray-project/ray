@@ -13,8 +13,8 @@ import sys
 import ray.services as services
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
-    copy_to_docker, rsync, teardown_cluster, get_head_node_ip,
-    kill_node, get_worker_node_ips)
+    copy_to_docker, rsync, teardown_cluster, get_head_node_ip, kill_node,
+    get_worker_node_ips)
 import ray.ray_constants as ray_constants
 import ray.utils
 
