@@ -2276,8 +2276,8 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
       // returned by the previous task, so the dependency will not be
       // released until this first task is submitted.
       for (auto &new_handle_id : spec.NewActorHandles()) {
-	const auto prev_actor_task_id = spec.PreviousActorTaskDummyObjectId();
-	RAY_CHECK(!prev_actor_task_id.IsNil());
+        const auto prev_actor_task_id = spec.PreviousActorTaskDummyObjectId();
+        RAY_CHECK(!prev_actor_task_id.IsNil());
         // Add the new handle and give it a reference to the finished task's
         // execution dependency.
         actor_entry->second.AddHandle(new_handle_id, prev_actor_task_id);

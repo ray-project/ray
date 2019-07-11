@@ -94,8 +94,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetActorTaskSpec(
       const ActorID &actor_id, const ActorHandleID &actor_handle_id,
       const ObjectID &actor_creation_dummy_object_id,
-      const ObjectID &previous_actor_task_dummy_object_id,
-      uint64_t actor_counter,
+      const ObjectID &previous_actor_task_dummy_object_id, uint64_t actor_counter,
       const std::vector<ActorHandleID> &new_handle_ids = {}) {
     message_.set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_.mutable_actor_task_spec();
