@@ -134,6 +134,16 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDe
   ThrowRayExceptionIfNotOK(env, status);
 }
 
+/*
+ * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Method:    nativeDestroy
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDestroy(
+    JNIEnv *env, jclass, jlong nativeObjectInterface) {
+  delete GetObjectInterface(nativeObjectInterface);
+}
+
 #ifdef __cplusplus
 }
 #endif

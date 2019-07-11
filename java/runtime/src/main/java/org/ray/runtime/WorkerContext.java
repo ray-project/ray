@@ -8,7 +8,6 @@ import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.IdUtil;
 
 public class WorkerContext {
   private final long nativeWorkerContext;
@@ -108,6 +107,10 @@ public class WorkerContext {
     return RayletClientImpl.parseTaskSpecFromProtobuf(bytes);
   }
 
+  public void destroy() {
+    nativeDestroy(nativeWorkerContext);
+  }
+
   private static native long nativeCreateWorkerContext(int workerType, byte[] jobId);
 
   private static native byte[] nativeGetCurrentTaskId(long nativeWorkerContext);
@@ -123,4 +126,6 @@ public class WorkerContext {
   private static native int nativeGetNextTaskIndex(long nativeWorkerContext);
 
   private static native int nativeGetNextPutIndex(long nativeWorkerContext);
+
+  private static native void nativeDestroy(long nativeWorkerContext);
 }

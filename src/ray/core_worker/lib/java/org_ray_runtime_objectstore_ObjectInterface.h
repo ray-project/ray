@@ -60,6 +60,14 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
 JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDelete(
     JNIEnv *, jclass, jlong, jobject, jboolean, jboolean);
 
+/*
+ * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Method:    nativeDestroy
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_objectstore_ObjectInterface_nativeDestroy(JNIEnv *, jclass, jlong);
+
 #ifdef __cplusplus
 }
 #endif

@@ -114,6 +114,16 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextPutIndex(
   return GetWorkerContext(nativeWorkerContext)->GetNextPutIndex();
 }
 
+/*
+ * Class:     org_ray_runtime_WorkerContext
+ * Method:    nativeDestroy
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeDestroy(
+    JNIEnv *env, jclass, jlong nativeWorkerContext) {
+  delete GetWorkerContext(nativeWorkerContext);
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -53,6 +53,10 @@ public class ObjectInterface implements BaseObjectInterface {
     nativeDelete(nativeObjectInterface, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
+  public void destroy() {
+    nativeDestroy(nativeObjectInterface);
+  }
+
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
@@ -75,4 +79,5 @@ public class ObjectInterface implements BaseObjectInterface {
   private static native void nativeDelete(long nativeObjectInterface, List<byte[]> objectIds,
                                           boolean localOnly, boolean deleteCreatingTasks);
 
+  private static native void nativeDestroy(long nativeObjectInterface);
 }

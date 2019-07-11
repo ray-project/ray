@@ -23,6 +23,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private RunManager manager = null;
 
+  private ObjectInterface objectInterface = null;
+
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
   }
@@ -53,7 +55,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     );
 
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    ObjectInterface objectInterface = new ObjectInterface(workerContext, rayletClient,
+    objectInterface = new ObjectInterface(workerContext, rayletClient,
         rayConfig.objectStoreSocketName);
     objectStoreProxy = new ObjectStoreProxy(workerContext, objectInterface);
 
@@ -69,6 +71,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (null != manager) {
       manager.cleanup();
     }
+    objectInterface.destroy();
+    workerContext.destroy();
   }
 
   /**

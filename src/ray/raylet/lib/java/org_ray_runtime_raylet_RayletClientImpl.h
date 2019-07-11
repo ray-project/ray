@@ -7,8 +7,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#undef org_ray_runtime_raylet_RayletClientImpl_TASK_SPEC_BUFFER_SIZE
-#define org_ray_runtime_raylet_RayletClientImpl_TASK_SPEC_BUFFER_SIZE 2097152L
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeInit
