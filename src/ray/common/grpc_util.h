@@ -13,6 +13,9 @@ namespace ray {
 template <class Message>
 class MessageWrapper {
  public:
+  /// Construct an empty message wrapper. This should not be used directly.
+  MessageWrapper() {}
+
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
