@@ -1,17 +1,13 @@
-#ifndef RAY_RAYLET_TASK_H
-#define RAY_RAYLET_TASK_H
+#ifndef RAY_COMMON_TASK_TASK_H
+#define RAY_COMMON_TASK_TASK_H
 
 #include <inttypes.h>
 
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/rpc/message_wrapper.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// \class Task
 ///
@@ -66,6 +62,8 @@ class Task {
   /// \param task Task structure with updated dynamic information.
   void CopyTaskExecutionSpec(const Task &task);
 
+  std::string DebugString() const;
+
  private:
   void ComputeDependencies();
 
@@ -82,8 +80,6 @@ class Task {
   std::vector<ObjectID> dependencies_;
 };
 
-}  // namespace raylet
-
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_H
+#endif  // RAY_COMMON_TASK_TASK_H

@@ -20,9 +20,7 @@ struct WorkerThreadContext {
     put_index = 0;
   }
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec) {
-    SetCurrentTask(spec.TaskId());
-  }
+  void SetCurrentTask(const TaskSpecification &spec) { SetCurrentTask(spec.TaskId()); }
 
  private:
   /// The task ID for current task.
@@ -64,7 +62,7 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
+void WorkerContext::SetCurrentTask(const TaskSpecification &spec) {
   current_job_id = spec.JobId();
   GetThreadContext().SetCurrentTask(spec);
 }

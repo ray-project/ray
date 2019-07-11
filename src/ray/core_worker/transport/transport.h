@@ -6,8 +6,8 @@
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
 
@@ -32,7 +32,7 @@ class CoreWorkerTaskSubmitter {
 /// This class receives tasks for execution.
 class CoreWorkerTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(const raylet::TaskSpecification &task_spec)>;
+  using TaskHandler = std::function<Status(const TaskSpecification &task_spec)>;
 
   // Get tasks for execution.
   virtual Status GetTasks(std::vector<TaskSpec> *tasks) = 0;

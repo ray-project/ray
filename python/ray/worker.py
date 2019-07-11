@@ -868,7 +868,7 @@ class Worker(object):
         assert self.current_task_id.is_nil()
         assert self.task_context.task_index == 0
         assert self.task_context.put_index == 1
-        if task.actor_id().is_nil():
+        if not task.is_actor_task():
             # If this worker is not an actor, check that `current_job_id`
             # was reset when the worker finished the previous task.
             assert self.current_job_id.is_nil()
@@ -887,8 +887,7 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        if (not task.actor_id().is_nil()
-                or not task.actor_creation_id().is_nil()):
+        if task.is_actor_task() or task.is_actor_creation_task():
             dummy_return_id = return_object_ids.pop()
         function_executor = function_execution_info.function
         function_name = function_execution_info.function_name
@@ -911,11 +910,10 @@ class Worker(object):
         try:
             self._current_task = task
             with profiling.profile("task:execute"):
-                if (task.actor_id().is_nil()
-                        and task.actor_creation_id().is_nil()):
+                if task.is_normal_task():
                     outputs = function_executor(*arguments)
                 else:
-                    if not task.actor_id().is_nil():
+                    if task.is_actor_task():
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
@@ -924,7 +922,7 @@ class Worker(object):
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
-            task_exception = task.actor_id().is_nil()
+            task_exception = not task.is_actor_task()
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             self._handle_process_task_failure(
@@ -980,8 +978,7 @@ class Worker(object):
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
-        if not task.actor_creation_id().is_nil():
-            assert self.actor_id.is_nil()
+        if task.is_actor_creation_task():
             self.actor_id = task.actor_creation_id()
             self.actor_creation_task_id = task.task_id()
             actor_class = self.function_actor_manager.load_actor_class(
@@ -999,8 +996,8 @@ class Worker(object):
         # Execute the task.
         function_name = execution_info.function_name
         extra_data = {"name": function_name, "task_id": task.task_id().hex()}
-        if task.actor_id().is_nil():
-            if task.actor_creation_id().is_nil():
+        if not task.is_actor_task():
+            if not task.is_actor_creation_task():
                 title = "ray_worker:{}()".format(function_name)
                 next_title = "ray_worker"
             else:
