@@ -26,27 +26,28 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &spec) {
-  worker_context_.SetCurrentTask(spec);
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(
+		const TaskSpecification &task_spec) {
+  worker_context_.SetCurrentTask(task_spec);
 
-  RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
+  RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
-  RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args));
 
   TaskType task_type;
-  if (spec.IsActorCreationTask()) {
+  if (task_spec.IsActorCreationTask()) {
     task_type = TaskType::ACTOR_CREATION_TASK;
-  } else if (spec.IsActorTask()) {
+  } else if (task_spec.IsActorTask()) {
     task_type = TaskType::ACTOR_TASK;
   } else {
     task_type = TaskType::NORMAL_TASK;
   }
 
-  TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
+  TaskInfo task_info{task_spec.TaskId(), task_spec.JobId(), task_type};
 
-  auto num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  auto num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
     // Decrease to account for the dummy object id.
     num_returns--;

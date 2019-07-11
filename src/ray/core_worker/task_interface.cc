@@ -175,7 +175,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
   builder.SetActorTaskSpec(actor_handle.ActorID(), actor_handle.ActorHandleID(),
                            actor_creation_dummy_object_id,
-			   actor_handle.ActorCursor(), // previous_actor_task_dummy_object_id
+			   /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
                            actor_handle.IncreaseTaskCounter(),
                            actor_handle.NewActorHandles());
 

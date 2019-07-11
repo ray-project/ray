@@ -2280,7 +2280,7 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
 	RAY_CHECK(!prev_actor_task_id.IsNil());
         // Add the new handle and give it a reference to the finished task's
         // execution dependency.
-        actor_entry->second.AddHandle(new_handle_id,kexecution_dependency);
+        actor_entry->second.AddHandle(new_handle_id, prev_actor_task_id);
       }
 
       // TODO(swang): For actors with multiple actor handles, to
