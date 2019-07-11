@@ -5,10 +5,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.id.JobId;
-import org.ray.api.id.ObjectId;
-import org.ray.api.id.TaskId;
-import org.ray.api.id.UniqueId;
+
+import org.ray.api.id.*;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
@@ -32,13 +30,13 @@ public class TaskSpec {
   public final int parentCounter;
 
   // Id for createActor a target actor
-  public final UniqueId actorCreationId;
+  public final ActorId actorCreationId;
 
   public final int maxActorReconstructions;
 
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
-  public final UniqueId actorId;
+  public final ActorId actorId;
 
   // ID per actor client for session consistency
   public final UniqueId actorHandleId;
@@ -87,9 +85,9 @@ public class TaskSpec {
       TaskId taskId,
       TaskId parentTaskId,
       int parentCounter,
-      UniqueId actorCreationId,
+      ActorId actorCreationId,
       int maxActorReconstructions,
-      UniqueId actorId,
+      ActorId actorId,
       UniqueId actorHandleId,
       int actorCounter,
       ObjectId previousActorTaskDummyObjectId,
@@ -117,7 +115,7 @@ public class TaskSpec {
 
     returnIds = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; ++i) {
-      returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
+      returnIds[i] = ObjectId.forReturn(taskId, i + 1);
     }
     this.resources = resources;
     this.language = language;

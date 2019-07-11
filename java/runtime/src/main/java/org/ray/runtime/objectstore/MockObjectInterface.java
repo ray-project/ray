@@ -37,7 +37,7 @@ public class MockObjectInterface implements ObjectInterface {
 
   @Override
   public ObjectId put(NativeRayObject obj) {
-    ObjectId objectId = IdUtil.computePutId(workerContext.getCurrentTaskId(),
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(),
         workerContext.nextPutIndex());
     put(obj, objectId);
     return objectId;

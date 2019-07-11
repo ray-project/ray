@@ -114,7 +114,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
-        ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
+        ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
         HandleObjectLocal(object_id);
       }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(

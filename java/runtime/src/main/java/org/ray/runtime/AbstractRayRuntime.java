@@ -23,6 +23,7 @@ import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -36,6 +37,7 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
+import org.ray.runtime.generated.Common;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
@@ -145,9 +147,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = IdUtil.computePutId(
-        workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
-
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
     put(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
@@ -166,8 +166,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @return A RayObject instance that represents the in-store object.
    */
   public RayObject<Object> putSerialized(byte[] obj) {
-    ObjectId objectId = IdUtil.computePutId(
-        workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
     TaskId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
     objectStoreProxy.putSerialized(objectId, obj);
@@ -327,7 +326,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       Object[] args, ActorCreationOptions options) {
     TaskSpec spec = createTaskSpec(actorFactoryFunc, null, RayActorImpl.NIL,
         args, true, false, options);
-    RayActorImpl<?> actor = new RayActorImpl(new UniqueId(spec.returnIds[0].getBytes()));
+    RayActorImpl<?> actor = new RayActorImpl(spec.taskId.getActorId());
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
     rayletClient.submitTask(spec);
@@ -399,15 +398,18 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       boolean isActorCreationTask, boolean isActorTask, BaseTaskOptions taskOptions) {
     Preconditions.checkArgument((func == null) != (pyFunctionDescriptor == null));
 
-    TaskId taskId = rayletClient.generateTaskId(workerContext.getCurrentJobId(),
-        workerContext.getCurrentTaskId(), workerContext.nextTaskIndex());
-    int numReturns = actor.getId().isNil() ? 1 : 2;
-    ObjectId[] returnIds = IdUtil.genReturnIds(taskId, numReturns);
-
-    UniqueId actorCreationId = UniqueId.NIL;
+    ActorId actorCreationId = ActorId.NIL;
+    TaskId taskId = null;
     if (isActorCreationTask) {
-      actorCreationId = new UniqueId(returnIds[0].getBytes());
+      actorCreationId = ActorId.fromRandom(workerContext.getCurrentJobId());
+      taskId = TaskId.fromRandom(actorCreationId);
+    } else if (isActorTask) {
+      taskId = TaskId.fromRandom(actor.getId());
+    } else {
+      taskId = TaskId.fromRandom(ActorId.NIL);
     }
+
+    int numReturns = actor.getId().isNil() ? 1 : 2;
 
     Map<String, Double> resources;
     if (null == taskOptions) {

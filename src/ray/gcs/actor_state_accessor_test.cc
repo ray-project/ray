@@ -45,13 +45,13 @@ class ActorStateAccessorTest : public ::testing::Test {
   void GenActorData() {
     for (size_t i = 0; i < 2; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
-      ActorID actor_id = ActorID::FromRandom();
-      actor->set_actor_id(actor_id.Binary());
       actor->set_max_reconstructions(1);
       actor->set_remaining_reconstructions(1);
       JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
+      ActorID actor_id = ActorID::FromRandom(job_id);
+      actor->set_actor_id(actor_id.Binary());
       actor_datas_[actor_id] = actor;
     }
   }

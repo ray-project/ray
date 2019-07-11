@@ -186,7 +186,7 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   // Assign an actor ID to the worker.
   const auto task_spec = ExampleTaskSpec();
   auto actor = worker_pool_.PopWorker(task_spec);
-  auto actor_id = ActorID::FromRandom();
+  auto actor_id = ActorID::FromRandom(JobID::FromInt(1));
   actor->AssignActorId(actor_id);
   worker_pool_.PushWorker(actor);
 
@@ -224,7 +224,8 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                      {Language::JAVA, java_worker_command}});
 
   TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA, ActorID::FromRandom(), {"test_op_0", "test_op_1"});
+      ActorID::Nil(), Language::JAVA, ActorID::FromRandom(JobID::FromInt(1)),
+      {"test_op_0", "test_op_1"});
   worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());

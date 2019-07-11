@@ -27,6 +27,86 @@ class JobID;
 /// A helper function that get the `DriverID` of the given job.
 WorkerID ComputeDriverIdFromJob(const JobID &job_id);
 
+enum class ObjectType : uint8_t {
+  PUT_OBJECT,
+  RETURN_OBJECT,
+};
+
+enum class TransportType : uint8_t {
+  STANDARD,
+  DIRECT_ACTOR_CALL,
+};
+
+namespace object_id_helper {
+
+constexpr uint8_t is_task_offset_bits = 15;
+constexpr uint8_t object_type_offset_bits = 14;
+constexpr uint8_t transport_type_offset_bits = 11;
+
+/// A helper function to set object ids flags.
+inline void SetIsTaskFlag(uint16_t *flags, bool is_task) {
+  uint16_t is_task_bits;
+  if (is_task) {
+    is_task_bits = (0x1 << is_task_offset_bits);
+  } else {
+    is_task_bits = (0x0 << is_task_offset_bits);
+  }
+  *flags = (*flags bitor is_task_bits);
+}
+
+inline bool IsTask(uint16_t flags) {
+  return (flags & (0x1 << is_task_offset_bits)) != 0;
+}
+
+inline ObjectType GetObjectType(uint16_t flags) {
+  uint16_t object_type = ((flags >> object_type_offset_bits) & 0x1);
+  if (object_type == 0x0) {
+    return ObjectType::PUT_OBJECT;
+  } else if (object_type == 0x1) {
+    return ObjectType::RETURN_OBJECT;
+  } else {
+    RAY_LOG(FATAL) << "Shouldn't reach here.";
+  }
+}
+
+inline TransportType GetTransportType(uint16_t flags) {
+  uint16_t type = ((flags >> transport_type_offset_bits) & 0x7);
+
+  if (type == 0x0) {
+    return TransportType::STANDARD;
+  } else if (type == 0x1) {
+    return TransportType::DIRECT_ACTOR_CALL;
+  } else {
+    RAY_LOG(FATAL) << "Shouldn't reach here.";
+  }
+}
+
+inline void SetObjectTypeFlag(uint16_t *flags, ObjectType object_type) {
+  uint16_t object_type_bits;
+  if (object_type == ObjectType::PUT_OBJECT) {
+    object_type_bits = (0x0 << object_type_offset_bits);
+  } else if (object_type == ObjectType::RETURN_OBJECT) {
+    object_type_bits = (0x1 << object_type_offset_bits);
+  } else {
+    RAY_LOG(FATAL) << "Shouldn't be reachable here.";
+  }
+  *flags = (*flags bitor object_type_bits);
+}
+
+inline void SetTransportTypeFlag(uint16_t *flags, TransportType transport_type) {
+  uint16_t transport_type_bits;
+  if (transport_type == TransportType::STANDARD) {
+    transport_type_bits = (0x0 << transport_type_offset_bits);
+  } else if (transport_type == TransportType::DIRECT_ACTOR_CALL) {
+    transport_type_bits = (0x1 << transport_type_offset_bits);
+  } else {
+    RAY_LOG(FATAL) << "Shouldn't be reachable here.";
+  }
+  *flags = (*flags bitor transport_type_bits);
+}
+
+} // namespace object_id_helper
+
 // Declaration.
 std::mt19937 RandomlySeededMersenneTwister();
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
@@ -80,7 +160,6 @@ class JobID : public BaseID<JobID> {
  public:
   static constexpr int64_t length = 4;
 
-  // TODO(qwang): Use `uint32_t` to store the data.
   static JobID FromInt(uint32_t value);
 
   static size_t Size() { return length; }
@@ -93,21 +172,64 @@ class JobID : public BaseID<JobID> {
   uint8_t id_[length];
 };
 
-class TaskID : public BaseID<TaskID> {
+class ActorID : public BaseID<ActorID> {
+ private:
+  static constexpr size_t unique_bytes_length = 4;
+
  public:
-  TaskID() : BaseID() {}
-  static size_t Size() { return kTaskIDSize; }
-  static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
+  static constexpr size_t length = unique_bytes_length + JobID::length;
+
+  static size_t Size() { return length; }
+
+  static ActorID FromRandom(const JobID &job_id);
+
+  ActorID() : BaseID() {}
+
+  JobID JobId() const;
+
+  static ActorID FromRandom() = delete;
 
  private:
-  uint8_t id_[kTaskIDSize];
+  uint8_t id_[length];
 };
 
-class ObjectID : public BaseID<ObjectID> {
+class TaskID : public BaseID<TaskID> {
+ private:
+  static constexpr size_t unique_bytes_length = 6;
+
  public:
+  static constexpr size_t length = unique_bytes_length + ActorID::length;
+
+  TaskID() : BaseID() {}
+
+  static size_t Size() { return length; }
+
+  static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
+
+  static TaskID FromRandom(const ActorID &actor_id);
+
+ private:
+  uint8_t id_[length];
+};
+
+// TODO(qwang): Add complete designing to describe structure of ID.
+class ObjectID : public BaseID<ObjectID> {
+private:
+  static constexpr size_t unique_bytes_length = 4;
+
+  static constexpr size_t flags_bytes_length = 2;
+
+ public:
+  static constexpr size_t length = unique_bytes_length + flags_bytes_length + TaskID::length;
+
   ObjectID() : BaseID() {}
-  static size_t Size() { return kUniqueIDSize; }
+
+  static size_t Size() { return length; }
+
+  static ObjectID FromPlasmaIdBinary(const std::string &from);
+
   plasma::ObjectID ToPlasmaId() const;
+
   ObjectID(const plasma::UniqueID &from);
 
   /// Get the index of this object in the task that created it.
@@ -115,41 +237,80 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The index of object creation according to the task that created
   /// this object. This is positive if the task returned the object and negative
   /// if created by a put.
-  int32_t ObjectIndex() const { return index_; }
+  uint32_t ObjectIndex() const;
 
   /// Compute the task ID of the task that created the object.
   ///
   /// \return The task ID of the task that created this object.
   TaskID TaskId() const;
 
+  bool IsTask() const {
+    uint16_t flags;
+    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
+    return object_id_helper::IsTask(flags);
+  }
+
+  bool IsPutObject() const {
+    uint16_t flags;
+    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
+    return object_id_helper::GetObjectType(flags) == ObjectType::PUT_OBJECT;
+  }
+
+  bool IsReturnObject() const {
+    uint16_t flags;
+    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
+    return object_id_helper::GetObjectType(flags) == ObjectType::RETURN_OBJECT;
+  }
+
+  TransportType GetTransportType() const {
+    uint16_t flags;
+    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
+    return object_id_helper::GetTransportType(flags);
+  }
+
   /// Compute the object ID of an object put by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param index What index of the object put in the task.
+  ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, int64_t put_index);
+  static ObjectID ForPut(const TaskID &task_id, uint32_t put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param return_index What index of the object returned by in the task.
+  /// \param
+  ///
   /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, int64_t return_index);
+  static ObjectID ForTaskReturn(const TaskID &task_id, uint32_t return_index,
+                                TransportType transport = TransportType::STANDARD);
+
+  // TODO(qwang): Add get Flags methods.
+
+  /// \param transport
+  ///
+  /// \return
+  static ObjectID FromRandom(TransportType transport = TransportType::STANDARD);
 
  private:
-  uint8_t id_[kTaskIDSize];
-  int32_t index_;
+  uint8_t id_[length];
 };
 
 static_assert(sizeof(JobID) == JobID::length + sizeof(size_t),
               "JobID size is not as expected");
-static_assert(sizeof(TaskID) == kTaskIDSize + sizeof(size_t),
+static_assert(sizeof(ActorID) == ActorID::length + sizeof(size_t),
+              "ActorID size is not as expected");
+static_assert(sizeof(TaskID) == TaskID::length + sizeof(size_t),
               "TaskID size is not as expected");
-static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
+//static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
+//              "ObjectID size is not as expected");
+static_assert(sizeof(ObjectID) == ObjectID::length + sizeof(size_t),
               "ObjectID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
+std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
@@ -220,7 +381,8 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size());
+  RAY_CHECK(binary.size() == T::Size()) << "expected size is "
+                                        << T::Size() << ", but got " << binary.size();
   T t = T::Nil();
   std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
@@ -302,6 +464,7 @@ namespace std {
 
 DEFINE_UNIQUE_ID(UniqueID);
 DEFINE_UNIQUE_ID(JobID);
+DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 #include "id_def.h"

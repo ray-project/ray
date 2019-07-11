@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <random>
+#include <algorithm>
 
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
@@ -34,14 +35,25 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
+ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
+  constexpr size_t plasma_id_length = kUniqueIDSize;
+  RAY_CHECK(from.size() == plasma_id_length);
+  return ObjectID::FromBinary(from.substr(0, ObjectID::length));
+}
+
 plasma::UniqueID ObjectID::ToPlasmaId() const {
+  constexpr size_t plasma_id_length = kUniqueIDSize;
+  static_assert(ObjectID::length <= plasma_id_length,
+      "Currently length of ObjectID must be shorter than plasma's.");
+
   plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), Data(), kUniqueIDSize);
+  std::memcpy(result.mutable_data(), Data(), ObjectID::Size());
+  std::fill_n(result.mutable_data() + ObjectID::Size(), plasma_id_length - ObjectID::length, 0xFF);
   return result;
 }
 
 ObjectID::ObjectID(const plasma::UniqueID &from) {
-  std::memcpy(this->MutableData(), from.data(), kUniqueIDSize);
+  std::memcpy(this->MutableData(), from.data(), ObjectID::Size());
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -93,6 +105,41 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
+ActorID ActorID::FromRandom(const JobID &job_id) {
+  std::string data(unique_bytes_length, 0);
+  // TODO(qwang): extra this to a helper.
+  static std::mutex random_engine_mutex;
+  static std::mt19937 generator = RandomlySeededMersenneTwister();
+  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
+  for (int i = 0; i < unique_bytes_length; i++) {
+    data[i] = static_cast<uint8_t>(dist(generator));
+  }
+
+  std::copy_n(job_id.Data(), JobID::length, std::back_inserter(data));
+  RAY_CHECK(data.size() == length);
+  return ActorID::FromBinary(data);
+}
+
+JobID ActorID::JobId() const {
+  RAY_CHECK(!IsNil());
+  return JobID::FromBinary(
+      std::string(reinterpret_cast<const char *>(this->Data() + unique_bytes_length), JobID::length));
+}
+
+TaskID TaskID::FromRandom(const ActorID &actor_id) {
+  std::string data(unique_bytes_length, 0);
+  // TODO(qwang): extra this to a helper.
+  static std::mutex random_engine_mutex;
+  static std::mt19937 generator = RandomlySeededMersenneTwister();
+  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
+  for (int i = 0; i < unique_bytes_length; i++) {
+    data[i] = static_cast<uint8_t>(dist(generator));
+  }
+
+  std::copy_n(actor_id.Data(), ActorID::length, std::back_inserter(data));
+  return TaskID::FromBinary(data);
+}
+
 TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
@@ -104,21 +151,65 @@ TaskID ObjectID::TaskId() const {
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, int64_t put_index) {
+ObjectID ObjectID::ForPut(const TaskID &task_id, uint32_t put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts) << "index=" << put_index;
+
+  uint16_t flags = 0x0000;
+  object_id_helper::SetIsTaskFlag(&flags, true);
+  object_id_helper::SetObjectTypeFlag(&flags, ObjectType::PUT_OBJECT);
+  object_id_helper::SetTransportTypeFlag(&flags, TransportType::STANDARD);
+
   ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
-  object_id.index_ = -put_index;
+  std::memcpy(object_id.id_, task_id.Binary().c_str(), TaskID::length);
+  std::memcpy(object_id.id_ + TaskID::length, &flags, sizeof(flags));
+  std::memcpy(object_id.id_ + TaskID::length + flags_bytes_length, &put_index, sizeof(put_index));
   return object_id;
 }
 
-ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, int64_t return_index) {
+uint32_t ObjectID::ObjectIndex() const {
+  uint32_t index;
+  std::memcpy(&index, id_ + TaskID::length + flags_bytes_length, sizeof(index));
+  return index;
+}
+
+ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, uint32_t return_index, TransportType transport_type) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns)
       << "index=" << return_index;
+
+  uint16_t flags = 0x0000;
+  object_id_helper::SetIsTaskFlag(&flags, true);
+  object_id_helper::SetObjectTypeFlag(&flags, ObjectType::RETURN_OBJECT);
+  object_id_helper::SetTransportTypeFlag(&flags, transport_type);
+
   ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.Binary().c_str(), task_id.Size());
-  object_id.index_ = return_index;
+  std::memcpy(object_id.id_, task_id.Binary().c_str(), TaskID::length);
+  std::memcpy(object_id.id_ + TaskID::length, &flags, sizeof(flags));
+  std::memcpy(object_id.id_ + TaskID::length + flags_bytes_length, &return_index, sizeof(return_index));
   return object_id;
+}
+
+ObjectID ObjectID::FromRandom(TransportType transport) {
+  // TODO(qwang): Make this flag to a inner class of ObjectID.
+  uint16_t flags = 0x0000;
+  object_id_helper::SetIsTaskFlag(&flags, false);
+  object_id_helper::SetTransportTypeFlag(&flags, transport);
+
+  // No need to assign put_index/return_index bytes.
+  // Assign flag bytes to binary.
+
+  std::vector<uint8_t> task_id_bytes(TaskID::length, 0x0);
+  // TODO(qwang): extra this to a helper.
+  static std::mutex random_engine_mutex;
+  static std::mt19937 generator = RandomlySeededMersenneTwister();
+  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
+  for (int i = 0; i < task_id_bytes.size(); i++) {
+    task_id_bytes[i] = static_cast<char>(dist(generator));
+  }
+
+  ObjectID ret = ObjectID::Nil();
+  std::memcpy(ret.id_, task_id_bytes.data(), TaskID::length);
+  std::memcpy(ret.id_ + TaskID::length, &flags, sizeof(flags));
+  return ret;
 }
 
 const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
@@ -172,6 +263,7 @@ JobID JobID::FromInt(uint32_t value) {
 
 ID_OSTREAM_OPERATOR(UniqueID);
 ID_OSTREAM_OPERATOR(JobID);
+ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 

@@ -53,10 +53,20 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CActorClassID FromBinary(const c_string &binary)
 
-    cdef cppclass CActorID "ray::ActorID"(CUniqueID):
+    cdef cppclass CActorID "ray::ActorID"(CBaseID[CActorID]):
 
         @staticmethod
         CActorID FromBinary(const c_string &binary)
+
+        @staticmethod
+        const CActorID Nil()
+
+        @staticmethod
+        size_t Size()
+
+        @staticmethod
+        CActorID FromRandom(CJobID job_id)
+
 
     cdef cppclass CActorHandleID "ray::ActorHandleID"(CUniqueID):
 

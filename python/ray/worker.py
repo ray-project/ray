@@ -314,12 +314,14 @@ class Worker(object):
                     # that this object can also be read by Java.
                     self.plasma_client.put_raw_buffer(
                         value,
+                        # TODO(qwang): Convert ObjectID to Plasma.ObjectID here.
                         object_id=pyarrow.plasma.ObjectID(object_id.binary()),
                         metadata=ray_constants.RAW_BUFFER_METADATA,
                         memcopy_threads=self.memcopy_threads)
                 else:
                     self.plasma_client.put(
                         value,
+                        # TODO(qwang): Convert ObjectID to Plasma.ObjectID here.
                         object_id=pyarrow.plasma.ObjectID(object_id.binary()),
                         memcopy_threads=self.memcopy_threads,
                         serialization_context=self.get_serialization_context(

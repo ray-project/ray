@@ -257,14 +257,43 @@ cdef class WorkerID(UniqueID):
     cdef CWorkerID native(self):
         return <CWorkerID>self.data
 
-cdef class ActorID(UniqueID):
+cdef class ActorID(BaseID):
+    cdef CActorID data
 
     def __init__(self, id):
-        check_id(id)
+        check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
 
     cdef CActorID native(self):
         return <CActorID>self.data
+
+    @classmethod
+    def from_random(cls, job_id):
+        assert isinstance(job_id, JobID)
+        return cls(CActorID.FromRandom(CJobID.FromBinary(job_id.binary())).Binary())
+
+    @classmethod
+    def nil(cls):
+        return cls(CActorID.Nil().Binary())
+
+    @classmethod
+    def size(cls):
+        return CActorID.Size()
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def size(self):
+        return CActorID.Size()
+
+    def is_nil(self):
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        return self.data.Hash()
 
 
 cdef class ActorHandleID(UniqueID):

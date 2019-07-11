@@ -5,11 +5,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.List;
-import org.ray.api.id.BaseId;
-import org.ray.api.id.JobId;
-import org.ray.api.id.ObjectId;
-import org.ray.api.id.TaskId;
-import org.ray.api.id.UniqueId;
+
+import org.ray.api.id.*;
 
 /**
  * Helper method for different Ids.
@@ -17,7 +14,7 @@ import org.ray.api.id.UniqueId;
  * in src/ray/common/id.h
  */
 public class IdUtil {
-  public static final int OBJECT_INDEX_POS = 16;
+  public static final int OBJECT_INDEX_POS = 14;
 
   /**
    * Compute the object ID of an object returned by the task.
@@ -45,32 +42,6 @@ public class IdUtil {
     return new ObjectId(bytes);
   }
 
-  /**
-   * Compute the object ID of an object put by the task.
-   *
-   * @param taskId The task ID of the task that created the object.
-   * @param putIndex What number put this object was created by in the task.
-   * @return The computed object ID.
-   */
-  public static ObjectId computePutId(TaskId taskId, int putIndex) {
-    // We multiply putIndex by -1 to distinguish from returnIndex.
-    return computeObjectId(taskId, -1 * putIndex);
-  }
-
-  /**
-   * Generate the return ids of a task.
-   *
-   * @param taskId The ID of the task that generates returnsIds.
-   * @param numReturns The number of returnIds.
-   * @return The Return Ids of this task.
-   */
-  public static ObjectId[] genReturnIds(TaskId taskId, int numReturns) {
-    ObjectId[] ret = new ObjectId[numReturns];
-    for (int i = 0; i < numReturns; i++) {
-      ret[i] = IdUtil.computeReturnId(taskId, i + 1);
-    }
-    return ret;
-  }
 
   public static <T extends BaseId> byte[][] getIdBytes(List<T> objectIds) {
     int size = objectIds.size();
@@ -115,44 +86,6 @@ public class IdUtil {
 
     return uniqueIds;
   }
-
-  /**
-   * Get object IDs from concatenated ByteBuffer.
-   *
-   * @param byteBufferOfIds The ByteBuffer concatenated from IDs.
-   * @return The array of object IDs.
-   */
-  public static ObjectId[] getObjectIdsFromByteBuffer(ByteBuffer byteBufferOfIds) {
-    byte[][]idBytes = getByteListFromByteBuffer(byteBufferOfIds, UniqueId.LENGTH);
-    ObjectId[] objectIds = new ObjectId[idBytes.length];
-
-    for (int i = 0; i < idBytes.length; ++i) {
-      objectIds[i] = ObjectId.fromByteBuffer(ByteBuffer.wrap(idBytes[i]));
-    }
-
-    return objectIds;
-  }
-
-  /**
-   * Concatenate IDs to a ByteBuffer.
-   *
-   * @param ids The array of IDs that will be concatenated.
-   * @return A ByteBuffer that contains bytes of concatenated IDs.
-   */
-  public static <T extends BaseId> ByteBuffer concatIds(T[] ids) {
-    int length = 0;
-    if (ids != null && ids.length != 0) {
-      length = ids[0].size() * ids.length;
-    }
-    byte[] bytesOfIds = new byte[length];
-    for (int i = 0; i < ids.length; ++i) {
-      System.arraycopy(ids[i].getBytes(), 0, bytesOfIds,
-          i * ids[i].size(), ids[i].size());
-    }
-
-    return ByteBuffer.wrap(bytesOfIds);
-  }
-
 
   /**
    * Compute the murmur hash code of this ID.
@@ -221,4 +154,13 @@ public class IdUtil {
 
     return h;
   }
+
+  /// A temp helper to generate a ObjectId according to the given actorId.
+  public static ObjectId computeObjectIdFromActorId(ActorId actorId) {
+    byte[] bytes = new byte[ObjectId.LENGTH];
+    System.arraycopy(actorId.getBytes(), 0, bytes, 0, ActorId.LENGTH);
+    Arrays.fill(bytes, ActorId.LENGTH, bytes.length, (byte) 0xFF);
+    return ObjectId.fromByteBuffer(ByteBuffer.wrap(bytes));
+  }
+
 }
