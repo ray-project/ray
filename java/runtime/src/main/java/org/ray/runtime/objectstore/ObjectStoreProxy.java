@@ -37,9 +37,9 @@ public class ObjectStoreProxy {
 
   private final WorkerContext workerContext;
 
-  private final BaseObjectInterface objectInterface;
+  private final ObjectInterface objectInterface;
 
-  public ObjectStoreProxy(WorkerContext workerContext, BaseObjectInterface objectInterface) {
+  public ObjectStoreProxy(WorkerContext workerContext, ObjectInterface objectInterface) {
     this.workerContext = workerContext;
     this.objectInterface = objectInterface;
   }
@@ -66,11 +66,11 @@ public class ObjectStoreProxy {
    * @return A list of GetResult objects.
    */
   public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
-    List<RayObjectProxy> dataAndMetaList = objectInterface.get(ids, timeoutMs);
+    List<NativeRayObject> dataAndMetaList = objectInterface.get(ids, timeoutMs);
 
     List<GetResult<T>> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
-      RayObjectProxy dataAndMeta = dataAndMetaList.get(i);
+      NativeRayObject dataAndMeta = dataAndMetaList.get(i);
       GetResult<T> result;
       if (dataAndMeta != null) {
         byte[] meta = dataAndMeta.metadata;
@@ -128,11 +128,11 @@ public class ObjectStoreProxy {
     if (object instanceof byte[]) {
       // If the object is a byte array, skip serializing it and use a special metadata to
       // indicate it's raw binary. So that this object can also be read by Python.
-      objectInterface.put(new RayObjectProxy((byte[]) object, RAW_TYPE_META), id);
+      objectInterface.put(new NativeRayObject((byte[]) object, RAW_TYPE_META), id);
     } else if (object instanceof RayTaskException) {
-      objectInterface.put(new RayObjectProxy(Serializer.encode(object), TASK_EXCEPTION_META), id);
+      objectInterface.put(new NativeRayObject(Serializer.encode(object), TASK_EXCEPTION_META), id);
     } else {
-      objectInterface.put(new RayObjectProxy(Serializer.encode(object), null), id);
+      objectInterface.put(new NativeRayObject(Serializer.encode(object), null), id);
     }
   }
 
@@ -143,7 +143,7 @@ public class ObjectStoreProxy {
    * @param serializedObject The serialized object to put.
    */
   public void putSerialized(ObjectId id, byte[] serializedObject) {
-    objectInterface.put(new RayObjectProxy(serializedObject, null), id);
+    objectInterface.put(new NativeRayObject(serializedObject, null), id);
   }
 
   /**

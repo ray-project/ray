@@ -30,13 +30,13 @@ class WorkerContext {
 
  private:
   /// Type of the worker.
-  const WorkerType worker_type;
+  const WorkerType worker_type_;
 
   /// ID for this worker.
-  const WorkerID worker_id;
+  const WorkerID worker_id_;
 
   /// Job ID for this worker.
-  JobID current_job_id;
+  JobID current_job_id_;
 
  private:
   static WorkerThreadContext &GetThreadContext();

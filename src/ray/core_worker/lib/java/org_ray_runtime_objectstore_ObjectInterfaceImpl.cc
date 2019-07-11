@@ -1,4 +1,4 @@
-#include "ray/core_worker/lib/java/org_ray_runtime_objectstore_ObjectInterface.h"
+#include "ray/core_worker/lib/java/org_ray_runtime_objectstore_ObjectInterfaceImpl.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -14,12 +14,12 @@ extern "C" {
 #endif
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativeCreateObjectInterface
  * Signature: (JJLjava/lang/String;)J
  */
 JNIEXPORT jlong JNICALL
-Java_org_ray_runtime_objectstore_ObjectInterface_nativeCreateObjectInterface(
+Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeCreateObjectInterface(
     JNIEnv *env, jclass, jlong nativeWorkerContext, jlong nativeRayletClient,
     jstring storeSocketName) {
   return reinterpret_cast<jlong>(new ray::CoreWorkerObjectInterface(
@@ -29,15 +29,15 @@ Java_org_ray_runtime_objectstore_ObjectInterface_nativeCreateObjectInterface(
 }
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativePut
- * Signature: (JLorg/ray/runtime/objectstore/RayObjectProxy;)[B
+ * Signature: (JLorg/ray/runtime/objectstore/NativeRayObject;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__JLorg_ray_runtime_objectstore_RayObjectProxy_2(
+Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__JLorg_ray_runtime_objectstore_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeObjectInterface, jobject obj) {
   ray::Status status;
-  ray::ObjectID object_id = ReadJavaRayObjectProxy<ray::ObjectID>(
+  ray::ObjectID object_id = ReadJavaNativeRayObject<ray::ObjectID>(
       env, obj,
       [nativeObjectInterface, &status](const std::shared_ptr<ray::RayObject> &rayObject) {
         RAY_CHECK(rayObject != nullptr);
@@ -52,15 +52,15 @@ Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__JLorg_ray_runtime_ob
 }
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativePut
- * Signature: (J[BLorg/ray/runtime/objectstore/RayObjectProxy;)V
+ * Signature: (J[BLorg/ray/runtime/objectstore/NativeRayObject;)V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__J_3BLorg_ray_runtime_objectstore_RayObjectProxy_2(
+Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__J_3BLorg_ray_runtime_objectstore_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeObjectInterface, jbyteArray objectId, jobject obj) {
   auto object_id = JavaByteArrayToUniqueId<ray::ObjectID>(env, objectId);
-  auto status = ReadJavaRayObjectProxy<ray::Status>(
+  auto status = ReadJavaNativeRayObject<ray::Status>(
       env, obj,
       [nativeObjectInterface,
        &object_id](const std::shared_ptr<ray::RayObject> &rayObject) {
@@ -71,11 +71,11 @@ Java_org_ray_runtime_objectstore_ObjectInterface_nativePut__J_3BLorg_ray_runtime
 }
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativeGet
  * Signature: (JLjava/util/List;J)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeGet(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeGet(
     JNIEnv *env, jclass, jlong nativeObjectInterface, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
@@ -89,15 +89,15 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
     return nullptr;
   }
   return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(env, results,
-                                                                 ToJavaRayObjectProxy);
+                                                                 ToJavaNativeRayObject);
 }
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativeWait
  * Signature: (JLjava/util/List;IJ)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeWait(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeWait(
     JNIEnv *env, jclass, jlong nativeObjectInterface, jobject objectIds, jint numObjects,
     jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
@@ -117,11 +117,11 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativ
 }
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativeDelete
  * Signature: (JLjava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDelete(
+JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeDelete(
     JNIEnv *env, jclass, jlong nativeObjectInterface, jobject objectIds,
     jboolean localOnly, jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;
@@ -135,11 +135,11 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDe
 }
 
 /*
- * Class:     org_ray_runtime_objectstore_ObjectInterface
+ * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
  * Method:    nativeDestroy
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterface_nativeDestroy(
+JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeDestroy(
     JNIEnv *env, jclass, jlong nativeObjectInterface) {
   delete GetObjectInterface(nativeObjectInterface);
 }

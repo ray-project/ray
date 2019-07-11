@@ -33,7 +33,7 @@ public class FailureTest extends BaseTest {
     try {
       Thread.sleep(10000);
     } catch (InterruptedException e) {
-      e.printStackTrace();
+      throw new RuntimeException(e);
     }
     return 0;
   }

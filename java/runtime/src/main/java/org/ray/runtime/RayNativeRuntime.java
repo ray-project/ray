@@ -7,7 +7,7 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.generated.Common.WorkerType;
-import org.ray.runtime.objectstore.ObjectInterface;
+import org.ray.runtime.objectstore.ObjectInterfaceImpl;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.runner.RunManager;
@@ -23,7 +23,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private RunManager manager = null;
 
-  private ObjectInterface objectInterface = null;
+  private ObjectInterfaceImpl objectInterfaceImpl = null;
 
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
@@ -55,9 +55,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     );
 
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    objectInterface = new ObjectInterface(workerContext, rayletClient,
+    objectInterfaceImpl = new ObjectInterfaceImpl(workerContext, rayletClient,
         rayConfig.objectStoreSocketName);
-    objectStoreProxy = new ObjectStoreProxy(workerContext, objectInterface);
+    objectStoreProxy = new ObjectStoreProxy(workerContext, objectInterfaceImpl);
 
     // register
     registerWorker();
@@ -71,7 +71,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (null != manager) {
       manager.cleanup();
     }
-    objectInterface.destroy();
+    objectInterfaceImpl.destroy();
     workerContext.destroy();
   }
 

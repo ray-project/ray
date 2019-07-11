@@ -9,7 +9,14 @@ import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.TaskSpec;
 
+/**
+ * This is a wrapper class for core worker worker context.
+ */
 public class WorkerContext {
+
+  /**
+   * The native pointer of core worker worker context.
+   */
   private final long nativeWorkerContext;
 
   private ClassLoader currentClassLoader;

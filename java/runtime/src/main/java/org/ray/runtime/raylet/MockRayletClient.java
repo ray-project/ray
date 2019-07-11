@@ -25,7 +25,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.Worker;
 import org.ray.runtime.objectstore.MockObjectInterface;
-import org.ray.runtime.objectstore.RayObjectProxy;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
@@ -115,7 +115,7 @@ public class MockRayletClient implements RayletClient {
           // can be executed.
           if (task.isActorCreationTask() || task.isActorTask()) {
             ObjectId[] returnIds = task.returnIds;
-            objectInterface.put(new RayObjectProxy(new byte[] {}, new byte[] {}),
+            objectInterface.put(new NativeRayObject(new byte[] {}, new byte[] {}),
                 returnIds[returnIds.length - 1]);
           }
         } finally {

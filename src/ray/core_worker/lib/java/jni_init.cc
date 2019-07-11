@@ -14,10 +14,10 @@ jmethodID java_array_list_init_with_capacity;
 
 jclass java_ray_exception_class;
 
-jclass java_ray_object_proxy_class;
-jmethodID java_ray_object_proxy_init;
-jfieldID java_ray_object_proxy_data;
-jfieldID java_ray_object_proxy_metadata;
+jclass java_native_ray_object_class;
+jmethodID java_native_ray_object_init;
+jfieldID java_native_ray_object_data;
+jfieldID java_native_ray_object_metadata;
 
 jint JNI_VERSION = JNI_VERSION_1_8;
 
@@ -29,6 +29,7 @@ jint JNI_VERSION = JNI_VERSION_1_8;
     env->DeleteLocalRef(tempLocalClassRef);                       \
   }
 
+/// Load and cache frequently-used Java classes and methods
 jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   JNIEnv *env;
   if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION) != JNI_OK) {
@@ -50,16 +51,17 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   LOAD_CLASS(java_ray_exception_class, "org/ray/api/exception/RayException");
 
-  LOAD_CLASS(java_ray_object_proxy_class, "org/ray/runtime/objectstore/RayObjectProxy");
-  java_ray_object_proxy_init =
-      env->GetMethodID(java_ray_object_proxy_class, "<init>", "([B[B)V");
-  java_ray_object_proxy_data = env->GetFieldID(java_ray_object_proxy_class, "data", "[B");
-  java_ray_object_proxy_metadata =
-      env->GetFieldID(java_ray_object_proxy_class, "metadata", "[B");
+  LOAD_CLASS(java_native_ray_object_class, "org/ray/runtime/objectstore/NativeRayObject");
+  java_native_ray_object_init =
+      env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
+  java_native_ray_object_data = env->GetFieldID(java_native_ray_object_class, "data", "[B");
+  java_native_ray_object_metadata =
+      env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
   return JNI_VERSION;
 }
 
+/// Unload java classes
 void JNI_OnUnload(JavaVM *vm, void *reserved) {
   JNIEnv *env;
   vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION);
@@ -68,5 +70,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_ray_exception_class);
-  env->DeleteGlobalRef(java_ray_object_proxy_class);
+  env->DeleteGlobalRef(java_native_ray_object_class);
 }

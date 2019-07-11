@@ -13,12 +13,12 @@ import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MockObjectInterface implements BaseObjectInterface {
+public class MockObjectInterface implements ObjectInterface {
   private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectInterface.class);
 
   private static final int GET_CHECK_INTERVAL_MS = 100;
 
-  private final Map<ObjectId, RayObjectProxy> pool = new ConcurrentHashMap<>();
+  private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
   private final WorkerContext workerContext;
 
@@ -35,7 +35,7 @@ public class MockObjectInterface implements BaseObjectInterface {
   }
 
   @Override
-  public ObjectId put(RayObjectProxy obj) {
+  public ObjectId put(NativeRayObject obj) {
     ObjectId objectId = IdUtil.computePutId(workerContext.getCurrentTaskId(),
         workerContext.nextPutIndex());
     put(obj, objectId);
@@ -43,7 +43,7 @@ public class MockObjectInterface implements BaseObjectInterface {
   }
 
   @Override
-  public void put(RayObjectProxy obj, ObjectId objectId) {
+  public void put(NativeRayObject obj, ObjectId objectId) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
     pool.putIfAbsent(objectId, obj);
@@ -53,7 +53,7 @@ public class MockObjectInterface implements BaseObjectInterface {
   }
 
   @Override
-  public List<RayObjectProxy> get(List<ObjectId> objectIds, long timeoutMs) {
+  public List<NativeRayObject> get(List<ObjectId> objectIds, long timeoutMs) {
     waitInternal(objectIds, objectIds.size(), timeoutMs);
     return objectIds.stream().map(pool::get).collect(Collectors.toList());
   }
