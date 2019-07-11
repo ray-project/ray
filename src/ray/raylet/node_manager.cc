@@ -461,19 +461,8 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from client id "
-<<<<<<< HEAD
-                 << client_id << ". Updating resource map.";
-  ResourceSet new_res_set(VectorFromProtobuf(client_data.resources_total_label()),
-                          VectorFromProtobuf(client_data.resources_total_capacity()));
-
-  const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
-  ResourceSet difference_set = old_res_set.FindUpdatedResources(new_res_set);
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] The difference in the resource map is "
-                 << difference_set.ToString();
-=======
                  << client_id << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
->>>>>>> master
 
   SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
 
@@ -501,18 +490,6 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
                                   const std::vector<std::string> &resource_names) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
 
-<<<<<<< HEAD
-  ResourceSet new_res_set(VectorFromProtobuf(client_data.resources_total_label()),
-                          VectorFromProtobuf(client_data.resources_total_capacity()));
-  RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from client id " << client_id
-                 << " with new resources: " << new_res_set.ToString()
-                 << ". Updating resource map.";
-
-  const ResourceSet &old_res_set = cluster_resource_map_[client_id].GetTotalResources();
-  ResourceSet deleted_set = old_res_set.FindDeletedResources(new_res_set);
-  RAY_LOG(DEBUG) << "[ResourceDeleted] The difference in the resource map is "
-                 << deleted_set.ToString();
-=======
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::ostringstream oss;
     for (auto &resource_name : resource_names) {
@@ -522,7 +499,6 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
                    << " with deleted resources: " << oss.str()
                    << ". Updating resource map.";
   }
->>>>>>> master
 
   SchedulingResources &cluster_schedres = cluster_resource_map_[client_id];
 
