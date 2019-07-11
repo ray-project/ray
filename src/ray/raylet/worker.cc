@@ -15,7 +15,12 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &l
       port_(port),
       language_(language),
       blocked_(false),
-      heartbeat_timeout_times_(0) {}
+      heartbeat_timeout_times_(0),
+      is_killing_(false) {}
+
+void Worker::MarkAsKilling() { is_killing_ = true; }
+
+bool Worker::IsKilling() const { return is_killing_; }
 
 void Worker::MarkBlocked() { blocked_ = true; }
 

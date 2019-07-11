@@ -23,8 +23,8 @@ class Worker {
   Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
-  void MarkDead();
-  bool IsDead() const;
+  void MarkAsKilling();
+  bool IsKilling() const;
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -83,6 +83,9 @@ class Worker {
   std::unordered_set<TaskID> blocked_task_ids_;
   /// Record worker heartbeat timeout times.
   int heartbeat_timeout_times_;
+  /// Indicate we have sent kill signal to the worker if it's true. We cannot treat the
+  /// worker process as reaylly dead until we lost the heartbeats from the worker.
+  bool is_killing_;
 };
 
 }  // namespace raylet

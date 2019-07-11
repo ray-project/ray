@@ -310,7 +310,8 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
 
   if (!task_ids.empty()) {
     for (const auto &e : task_ids) {
-      RAY_LOG(INFO) << "unmoved task: " << e;
+      RAY_LOG(INFO) << "unmoved task: " << e << " from " << static_cast<int>(src_state)
+                    << " to " << static_cast<int>(dst_state);
     }
   }
 
