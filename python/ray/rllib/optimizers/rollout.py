@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 
 import ray
-from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)

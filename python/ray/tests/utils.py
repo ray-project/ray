@@ -84,7 +84,7 @@ def run_string_as_driver_nonblocking(driver_script):
 
 
 def relevant_errors(error_type):
-    return [info for info in ray.error_info() if info["type"] == error_type]
+    return [info for info in ray.errors() if info["type"] == error_type]
 
 
 def wait_for_errors(error_type, num_errors, timeout=10):

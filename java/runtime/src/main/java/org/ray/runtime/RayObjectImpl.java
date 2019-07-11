@@ -3,13 +3,13 @@ package org.ray.runtime;
 import java.io.Serializable;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 
 public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
-  private final UniqueId id;
+  private final ObjectId id;
 
-  public RayObjectImpl(UniqueId id) {
+  public RayObjectImpl(ObjectId id) {
     this.id = id;
   }
 
@@ -19,7 +19,7 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   }
 
   @Override
-  public UniqueId getId() {
+  public ObjectId getId() {
     return id;
   }
 

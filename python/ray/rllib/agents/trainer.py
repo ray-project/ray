@@ -10,18 +10,14 @@ import pickle
 import six
 import time
 import tempfile
-from types import FunctionType
 
 import ray
 from ray.exceptions import RayError
-from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator, \
-    _validate_multiagent_config
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.memory import ray_get_and_free
@@ -46,7 +42,7 @@ COMMON_CONFIG = {
     # === Debugging ===
     # Whether to write episode stats and videos to the agent log dir
     "monitor": False,
-    # Set the ray.rllib.* log level for the agent process and its evaluators.
+    # Set the ray.rllib.* log level for the agent process and its workers.
     # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
     # periodically print out summaries of relevant internal dataflow (this is
     # also printed out once at startup at the INFO level).
@@ -54,17 +50,27 @@ COMMON_CONFIG = {
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
     # metrics can be attached to the episode by updating the episode object's
-    # custom metrics dict (see examples/custom_metrics_and_callbacks.py).
+    # custom metrics dict (see examples/custom_metrics_and_callbacks.py). You
+    # may also mutate the passed in batch data in your callback.
     "callbacks": {
         "on_episode_start": None,     # arg: {"env": .., "episode": ...}
         "on_episode_step": None,      # arg: {"env": .., "episode": ...}
         "on_episode_end": None,       # arg: {"env": .., "episode": ...}
-        "on_sample_end": None,        # arg: {"samples": .., "evaluator": ...}
+        "on_sample_end": None,        # arg: {"samples": .., "worker": ...}
         "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
-        "on_postprocess_traj": None,  # arg: {"batch": ..., "episode": ...}
+        "on_postprocess_traj": None,  # arg: {
+                                      #   "agent_id": ..., "episode": ...,
+                                      #   "pre_batch": (before processing),
+                                      #   "post_batch": (after processing),
+                                      #   "all_pre_batches": (other agent ids),
+                                      # }
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
+    # Execute TF loss functions in eager mode. This is currently experimental
+    # and only really works with the basic PG algorithm.
+    "use_eager": False,
+    "log_sys_usage": True,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -94,6 +100,8 @@ COMMON_CONFIG = {
     "clip_actions": True,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
+    # The default learning rate
+    "lr": 0.0001,
 
     # === Evaluation ===
     # Evaluate with every `evaluation_interval` training iterations.
@@ -145,7 +153,7 @@ COMMON_CONFIG = {
     "synchronize_filters": True,
     # Configure TF for single-process operation by default
     "tf_session_args": {
-        # note: overriden by `local_evaluator_tf_session_args`
+        # note: overriden by `local_tf_session_args`
         "intra_op_parallelism_threads": 2,
         "inter_op_parallelism_threads": 2,
         "gpu_options": {
@@ -157,8 +165,8 @@ COMMON_CONFIG = {
         },
         "allow_soft_placement": True,  # required by PPO multi-gpu
     },
-    # Override the following tf session args on the local evaluator
-    "local_evaluator_tf_session_args": {
+    # Override the following tf session args on the local worker
+    "local_tf_session_args": {
         # Allow a higher level of parallelism by default, but not unlimited
         # since that can cause crashes with many concurrent drivers.
         "intra_op_parallelism_threads": 8,
@@ -180,6 +188,11 @@ COMMON_CONFIG = {
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
+    # Minimum time per iteration
+    "min_iter_time_s": 0,
+    # Minimum env steps to optimize for per train call. This value does
+    # not affect learning, only the length of iterations.
+    "timesteps_per_iteration": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -220,9 +233,9 @@ COMMON_CONFIG = {
 
     # === Multiagent ===
     "multiagent": {
-        # Map from policy ids to tuples of (policy_graph_cls, obs_space,
-        # act_space, config). See policy_evaluator.py for more info.
-        "policy_graphs": {},
+        # Map from policy ids to tuples of (policy_cls, obs_space,
+        # act_space, config). See rollout_worker.py for more info.
+        "policies": {},
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
         # Optional whitelist of policies to train, or None for all policies.
@@ -284,7 +297,7 @@ class Trainer(Trainable):
 
         config = config or {}
 
-        # Vars to synchronize to evaluators on each train call
+        # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
 
         # Trainers allow env ids to be passed directly to the constructor.
@@ -329,9 +342,10 @@ class Trainer(Trainable):
 
         if self._has_policy_optimizer():
             self.global_vars["timestep"] = self.optimizer.num_steps_sampled
-            self.optimizer.local_evaluator.set_global_vars(self.global_vars)
-            for ev in self.optimizer.remote_evaluators:
-                ev.set_global_vars.remote(self.global_vars)
+            self.optimizer.workers.local_worker().set_global_vars(
+                self.global_vars)
+            for w in self.optimizer.workers.remote_workers():
+                w.set_global_vars.remote(self.global_vars)
             logger.debug("updated global vars: {}".format(self.global_vars))
 
         result = None
@@ -358,17 +372,18 @@ class Trainer(Trainable):
             raise RuntimeError("Failed to recover from worker crash")
 
         if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "local_evaluator")):
+                and hasattr(self, "workers")
+                and isinstance(self.workers, WorkerSet)):
             FilterManager.synchronize(
-                self.local_evaluator.filters,
-                self.remote_evaluators,
+                self.workers.local_worker().filters,
+                self.workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"])
             logger.debug("synchronized filters: {}".format(
-                self.local_evaluator.filters))
+                self.workers.local_worker().filters))
 
         if self._has_policy_optimizer():
             result["num_healthy_workers"] = len(
-                self.optimizer.remote_evaluators)
+                self.optimizer.workers.remote_workers())
 
         if self.config["evaluation_interval"]:
             if self._iteration % self.config["evaluation_interval"] == 0:
@@ -433,27 +448,17 @@ class Trainer(Trainable):
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
-                # Make local evaluation evaluators
-                self.evaluation_ev = self.make_local_evaluator(
+                self.evaluation_workers = self._make_workers(
                     self.env_creator,
-                    self._policy_graph,
-                    extra_config=extra_config)
+                    self._policy,
+                    merge_dicts(self.config, extra_config),
+                    num_workers=0)
                 self.evaluation_metrics = self._evaluate()
 
     @override(Trainable)
     def _stop(self):
-        # Call stop on all evaluators to release resources
-        if hasattr(self, "local_evaluator"):
-            self.local_evaluator.stop()
-        if hasattr(self, "remote_evaluators"):
-            for ev in self.remote_evaluators:
-                ev.stop.remote()
-
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        if hasattr(self, "remote_evaluators"):
-            for ev in self.remote_evaluators:
-                ev.__ray_terminate__.remote()
-
+        if hasattr(self, "workers"):
+            self.workers.stop()
         if hasattr(self, "optimizer"):
             self.optimizer.stop()
 
@@ -468,6 +473,15 @@ class Trainer(Trainable):
     def _restore(self, checkpoint_path):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
+
+    @DeveloperAPI
+    def _make_workers(self, env_creator, policy, config, num_workers):
+        return WorkerSet(
+            env_creator,
+            policy,
+            config,
+            num_workers=num_workers,
+            logdir=self.logdir)
 
     @DeveloperAPI
     def _init(self, config, env_creator):
@@ -492,12 +506,19 @@ class Trainer(Trainable):
 
         logger.info("Evaluating current policy for {} episodes".format(
             self.config["evaluation_num_episodes"]))
-        self.evaluation_ev.restore(self.local_evaluator.save())
+        self._before_evaluate()
+        self.evaluation_workers.local_worker().restore(
+            self.workers.local_worker().save())
         for _ in range(self.config["evaluation_num_episodes"]):
-            self.evaluation_ev.sample()
+            self.evaluation_workers.local_worker().sample()
 
-        metrics = collect_metrics(self.evaluation_ev)
+        metrics = collect_metrics(self.evaluation_workers.local_worker())
         return {"evaluation": metrics}
+
+    @DeveloperAPI
+    def _before_evaluate(self):
+        """Pre-evaluation callback."""
+        pass
 
     @PublicAPI
     def compute_action(self,
@@ -534,9 +555,9 @@ class Trainer(Trainable):
 
         if state is None:
             state = []
-        preprocessed = self.local_evaluator.preprocessors[policy_id].transform(
-            observation)
-        filtered_obs = self.local_evaluator.filters[policy_id](
+        preprocessed = self.workers.local_worker().preprocessors[
+            policy_id].transform(observation)
+        filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
         if state:
             return self.get_policy(policy_id).compute_single_action(
@@ -559,12 +580,6 @@ class Trainer(Trainable):
             return res[0]  # backwards compatibility
 
     @property
-    def iteration(self):
-        """Current training iter, auto-incremented with each train() call."""
-
-        return self._iteration
-
-    @property
     def _name(self):
         """Subclasses should override this to declare their name."""
 
@@ -578,13 +593,13 @@ class Trainer(Trainable):
 
     @PublicAPI
     def get_policy(self, policy_id=DEFAULT_POLICY_ID):
-        """Return policy graph for the specified id, or None.
+        """Return policy for the specified id, or None.
 
         Arguments:
-            policy_id (str): id of policy graph to return.
+            policy_id (str): id of policy to return.
         """
 
-        return self.local_evaluator.get_policy(policy_id)
+        return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
     def get_weights(self, policies=None):
@@ -594,7 +609,7 @@ class Trainer(Trainable):
             policies (list): Optional list of policies to return weights for,
                 or None for all policies.
         """
-        return self.local_evaluator.get_weights(policies)
+        return self.workers.local_worker().get_weights(policies)
 
     @PublicAPI
     def set_weights(self, weights):
@@ -603,45 +618,7 @@ class Trainer(Trainable):
         Arguments:
             weights (dict): Map of policy ids to weights to set.
         """
-        self.local_evaluator.set_weights(weights)
-
-    @DeveloperAPI
-    def make_local_evaluator(self,
-                             env_creator,
-                             policy_graph,
-                             extra_config=None):
-        """Convenience method to return configured local evaluator."""
-
-        return self._make_evaluator(
-            PolicyEvaluator,
-            env_creator,
-            policy_graph,
-            0,
-            merge_dicts(
-                # important: allow local tf to use more CPUs for optimization
-                merge_dicts(
-                    self.config, {
-                        "tf_session_args": self.
-                        config["local_evaluator_tf_session_args"]
-                    }),
-                extra_config or {}))
-
-    @DeveloperAPI
-    def make_remote_evaluators(self, env_creator, policy_graph, count):
-        """Convenience method to return a number of remote evaluators."""
-
-        remote_args = {
-            "num_cpus": self.config["num_cpus_per_worker"],
-            "num_gpus": self.config["num_gpus_per_worker"],
-            "resources": self.config["custom_resources_per_worker"],
-        }
-
-        cls = PolicyEvaluator.as_remote(**remote_args).remote
-
-        return [
-            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
-                                 self.config) for i in range(count)
-        ]
+        self.workers.local_worker().set_weights(weights)
 
     @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
@@ -657,7 +634,7 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_model("/tmp/export_dir")
         """
-        self.local_evaluator.export_policy_model(export_dir, policy_id)
+        self.workers.local_worker().export_policy_model(export_dir, policy_id)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
@@ -677,19 +654,19 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_checkpoint("/tmp/export_dir")
         """
-        self.local_evaluator.export_policy_checkpoint(
+        self.workers.local_worker().export_policy_checkpoint(
             export_dir, filename_prefix, policy_id)
 
     @DeveloperAPI
-    def collect_metrics(self, selected_evaluators=None):
-        """Collects metrics from the remote evaluators of this agent.
+    def collect_metrics(self, selected_workers=None):
+        """Collects metrics from the remote workers of this agent.
 
         This is the same data as returned by a call to train().
         """
         return self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"],
             min_history=self.config["metrics_smoothing_episodes"],
-            selected_evaluators=selected_evaluators)
+            selected_workers=selected_workers)
 
     @classmethod
     def resource_help(cls, config):
@@ -700,6 +677,13 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config):
+        if "policy_graphs" in config["multiagent"]:
+            logger.warning(
+                "The `policy_graphs` config has been renamed to `policies`.")
+            # Backwards compatibility
+            config["multiagent"]["policies"] = config["multiagent"][
+                "policy_graphs"]
+            del config["multiagent"]["policy_graphs"]
         if "gpu" in config:
             raise ValueError(
                 "The `gpu` config is deprecated, please use `num_gpus=0|1` "
@@ -732,118 +716,33 @@ class Trainer(Trainable):
 
         logger.info("Health checking all workers...")
         checks = []
-        for ev in self.optimizer.remote_evaluators:
+        for ev in self.optimizer.workers.remote_workers():
             _, obj_id = ev.sample_with_count.remote()
             checks.append(obj_id)
 
-        healthy_evaluators = []
+        healthy_workers = []
         for i, obj_id in enumerate(checks):
-            ev = self.optimizer.remote_evaluators[i]
+            w = self.optimizer.workers.remote_workers()[i]
             try:
                 ray_get_and_free(obj_id)
-                healthy_evaluators.append(ev)
+                healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
                 logger.exception("Blacklisting worker {}".format(i + 1))
                 try:
-                    ev.__ray_terminate__.remote()
+                    w.__ray_terminate__.remote()
                 except Exception:
                     logger.exception("Error terminating unhealthy worker")
 
-        if len(healthy_evaluators) < 1:
+        if len(healthy_workers) < 1:
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        self.optimizer.reset(healthy_evaluators)
+        self.optimizer.reset(healthy_workers)
 
     def _has_policy_optimizer(self):
         return hasattr(self, "optimizer") and isinstance(
             self.optimizer, PolicyOptimizer)
-
-    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
-                        config):
-        def session_creator():
-            logger.debug("Creating TF session {}".format(
-                config["tf_session_args"]))
-            return tf.Session(
-                config=tf.ConfigProto(**config["tf_session_args"]))
-
-        if isinstance(config["input"], FunctionType):
-            input_creator = config["input"]
-        elif config["input"] == "sampler":
-            input_creator = (lambda ioctx: ioctx.default_sampler_input())
-        elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
-        else:
-            input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
-
-        if isinstance(config["output"], FunctionType):
-            output_creator = config["output"]
-        elif config["output"] is None:
-            output_creator = (lambda ioctx: NoopOutput())
-        elif config["output"] == "logdir":
-            output_creator = (lambda ioctx: JsonWriter(
-                ioctx.log_dir,
-                ioctx,
-                max_file_size=config["output_max_file_size"],
-                compress_columns=config["output_compress_columns"]))
-        else:
-            output_creator = (lambda ioctx: JsonWriter(
-                config["output"],
-                ioctx,
-                max_file_size=config["output_max_file_size"],
-                compress_columns=config["output_compress_columns"]))
-
-        if config["input"] == "sampler":
-            input_evaluation = []
-        else:
-            input_evaluation = config["input_evaluation"]
-
-        # Fill in the default policy graph if 'None' is specified in multiagent
-        if self.config["multiagent"]["policy_graphs"]:
-            tmp = self.config["multiagent"]["policy_graphs"]
-            _validate_multiagent_config(tmp, allow_none_graph=True)
-            for k, v in tmp.items():
-                if v[0] is None:
-                    tmp[k] = (policy_graph, v[1], v[2], v[3])
-            policy_graph = tmp
-
-        return cls(
-            env_creator,
-            policy_graph,
-            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
-            policies_to_train=self.config["multiagent"]["policies_to_train"],
-            tf_session_creator=(session_creator
-                                if config["tf_session_args"] else None),
-            batch_steps=config["sample_batch_size"],
-            batch_mode=config["batch_mode"],
-            episode_horizon=config["horizon"],
-            preprocessor_pref=config["preprocessor_pref"],
-            sample_async=config["sample_async"],
-            compress_observations=config["compress_observations"],
-            num_envs=config["num_envs_per_worker"],
-            observation_filter=config["observation_filter"],
-            clip_rewards=config["clip_rewards"],
-            clip_actions=config["clip_actions"],
-            env_config=config["env_config"],
-            model_config=config["model"],
-            policy_config=config,
-            worker_index=worker_index,
-            monitor_path=self.logdir if config["monitor"] else None,
-            log_dir=self.logdir,
-            log_level=config["log_level"],
-            callbacks=config["callbacks"],
-            input_creator=input_creator,
-            input_evaluation=input_evaluation,
-            output_creator=output_creator,
-            remote_worker_envs=config["remote_worker_envs"],
-            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
-            soft_horizon=config["soft_horizon"],
-            _fake_sampler=config.get("_fake_sampler", False))
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):
@@ -861,17 +760,17 @@ class Trainer(Trainable):
 
     def __getstate__(self):
         state = {}
-        if hasattr(self, "local_evaluator"):
-            state["evaluator"] = self.local_evaluator.save()
+        if hasattr(self, "workers"):
+            state["worker"] = self.workers.local_worker().save()
         if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
             state["optimizer"] = self.optimizer.save()
         return state
 
     def __setstate__(self, state):
-        if "evaluator" in state:
-            self.local_evaluator.restore(state["evaluator"])
-            remote_state = ray.put(state["evaluator"])
-            for r in self.remote_evaluators:
+        if "worker" in state:
+            self.workers.local_worker().restore(state["worker"])
+            remote_state = ray.put(state["worker"])
+            for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])

@@ -1,6 +1,7 @@
 package org.ray.api.runtimecontext;
 
 import java.util.List;
+import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 
 /**
@@ -9,12 +10,9 @@ import org.ray.api.id.UniqueId;
 public interface RuntimeContext {
 
   /**
-   * Get the current Driver ID.
-   *
-   * If called in a driver, this returns the driver ID. If called in a worker, this returns the ID
-   * of the associated driver.
+   * Get the current Job ID.
    */
-  UniqueId getCurrentDriverId();
+  JobId getCurrentJobId();
 
   /**
    * Get the current actor ID.

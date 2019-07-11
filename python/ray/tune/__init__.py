@@ -14,5 +14,5 @@ from ray.tune.sample import (function, sample_from, uniform, choice, randint,
 __all__ = [
     "Trainable", "TuneError", "grid_search", "register_env",
     "register_trainable", "run", "run_experiments", "Experiment", "function",
-    "sample_from", "uniform", "choice", "randint", "randn"
+    "sample_from", "track", "uniform", "choice", "randint", "randn"
 ]

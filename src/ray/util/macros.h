@@ -8,7 +8,7 @@
   void operator=(const TypeName &) = delete
 #endif
 
-#define RAY_UNUSED(x) (void) x
+#define RAY_UNUSED(x) (void)x
 
 //
 // GCC can be told that a certain branch is not likely to be taken (for

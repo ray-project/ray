@@ -8,6 +8,7 @@ import copy
 from datetime import datetime
 import logging
 import json
+import uuid
 import time
 import tempfile
 import os
@@ -18,7 +19,6 @@ from six import string_types
 
 import ray
 from ray.tune import TuneError
-from ray.tune.log_sync import validate_sync_function
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -27,7 +27,7 @@ import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
                              EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
-from ray.utils import _random_string, binary_to_hex, hex_to_binary
+from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
@@ -138,6 +138,9 @@ class Resources(
         return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
                          extra_custom_res)
 
+    def to_json(self):
+        return resources_to_json(self)
+
 
 def json_to_resources(data):
     if data is None or data == "null":
@@ -175,6 +178,21 @@ def resources_to_json(resources):
 def has_trainable(trainable_name):
     return ray.tune.registry._global_registry.contains(
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
+
+
+def recursive_criteria_check(result, criteria):
+    for criteria, stop_value in criteria.items():
+        if criteria not in result:
+            raise TuneError(
+                "Stopping criteria {} not provided in result {}.".format(
+                    criteria, result))
+        elif isinstance(result[criteria], dict) and isinstance(
+                stop_value, dict):
+            if recursive_criteria_check(result[criteria], stop_value):
+                return True
+        elif result[criteria] >= stop_value:
+            return True
+    return False
 
 
 class Checkpoint(object):
@@ -257,10 +275,9 @@ class Trial(object):
                  checkpoint_score_attr="",
                  export_formats=None,
                  restore_path=None,
-                 upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
-                 sync_function=None,
+                 sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -272,16 +289,25 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
-        self.local_dir = os.path.expanduser(local_dir)
+        self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
-        self.resources = (
-            resources
-            or self._get_trainable_cls().default_resource_request(self.config))
+        trainable_cls = self._get_trainable_cls()
+        if trainable_cls and hasattr(trainable_cls,
+                                     "default_resource_request"):
+            default_resources = trainable_cls.default_resource_request(
+                self.config)
+            if default_resources:
+                if resources:
+                    raise ValueError(
+                        "Resources for {} have been automatically set to {} "
+                        "by its `default_resource_request()` method. Please "
+                        "clear the `resources_per_trial` option.".format(
+                            trainable_cls, default_resources))
+                resources = default_resources
+        self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
-        self.upload_dir = upload_dir
         self.loggers = loggers
-        self.sync_function = sync_function
-        validate_sync_function(sync_function)
+        self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures
 
@@ -322,7 +348,7 @@ class Trial(object):
         self._nonjson_fields = [
             "_checkpoint",
             "loggers",
-            "sync_function",
+            "sync_to_driver_fn",
             "results",
             "best_result",
             "param_config",
@@ -341,28 +367,31 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(_random_string())[:8]
+        return str(uuid.uuid1().hex)[:8]
+
+    @classmethod
+    def create_logdir(cls, identifier, local_dir):
+        local_dir = os.path.expanduser(local_dir)
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
+        return tempfile.mkdtemp(
+            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            dir=local_dir)
 
     def init_logger(self):
         """Init logger."""
 
         if not self.result_logger:
-            if not os.path.exists(self.local_dir):
-                os.makedirs(self.local_dir)
             if not self.logdir:
-                self.logdir = tempfile.mkdtemp(
-                    prefix="{}_{}".format(
-                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                    dir=self.local_dir)
+                self.logdir = Trial.create_logdir(str(self), self.local_dir)
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
-                upload_uri=self.upload_dir,
                 loggers=self.loggers,
-                sync_function=self.sync_function)
+                sync_function=self.sync_to_driver_fn)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -406,15 +435,7 @@ class Trial(object):
         if result.get(DONE):
             return True
 
-        for criteria, stop_value in self.stopping_criterion.items():
-            if criteria not in result:
-                raise TuneError(
-                    "Stopping criteria {} not provided in result {}.".format(
-                        criteria, result))
-            if result[criteria] >= stop_value:
-                return True
-
-        return False
+        return recursive_criteria_check(result, self.stopping_criterion)
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""

@@ -11,9 +11,8 @@ import random
 
 import numpy as np
 
-import ray
 from ray import tune
-from ray.tune import Trainable, run, Experiment
+from ray.tune import Trainable, run
 
 
 class TestLogger(tune.logger.Logger):
@@ -37,8 +36,8 @@ class MyTrainableClass(Trainable):
 
     def _train(self):
         self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
+        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
+        v *= self.config.get("height", 1)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
@@ -60,11 +59,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
-    exp = Experiment(
+
+    trials = run(
+        MyTrainableClass,
         name="hyperband_test",
-        run=MyTrainableClass,
-        num_samples=1,
+        num_samples=5,
         trial_name_creator=tune.function(trial_str_creator),
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
@@ -73,5 +72,3 @@ if __name__ == "__main__":
                 lambda spec: 10 + int(90 * random.random())),
             "height": tune.sample_from(lambda spec: int(100 * random.random()))
         })
-
-    trials = run(exp)

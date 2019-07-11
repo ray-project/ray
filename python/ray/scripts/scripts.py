@@ -12,8 +12,8 @@ import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
-    attach_cluster, exec_cluster, create_or_update_cluster, rsync,
-    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
+    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -380,9 +380,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @cli.command()
 def stop():
+    # Note that raylet needs to exit before object store, otherwise
+    # it cannot exit gracefully.
     processes_to_kill = [
-        "plasma_store_server",
         "raylet",
+        "plasma_store_server",
         "raylet_monitor",
         "monitor.py",
         "redis-server",
@@ -493,15 +495,40 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     default=False,
     help="Don't ask for confirmation.")
 @click.option(
+    "--hard",
+    is_flag=True,
+    default=False,
+    help="Terminates the node via node provider (defaults to a 'soft kill'"
+    " which terminates Ray but does not actually delete the instances).")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def kill_random_node(cluster_config_file, yes, cluster_name):
+def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     """Kills a random Ray node. For testing purposes only."""
     click.echo("Killed node with IP " +
-               kill_node(cluster_config_file, yes, cluster_name))
+               kill_node(cluster_config_file, yes, hard, cluster_name))
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--lines",
+    required=False,
+    default=100,
+    type=int,
+    help="Number of lines to tail.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def monitor(cluster_config_file, lines, cluster_name):
+    """Runs `tail -n [lines] -f /tmp/ray/session_*/logs/monitor*` on head."""
+    monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
 @cli.command()
@@ -527,8 +554,8 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -541,8 +568,8 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -553,7 +580,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     rsync(cluster_config_file, source, target, cluster_name, down=False)
 
 
-@cli.command()
+@cli.command(context_settings={"ignore_unknown_options": True})
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--docker",
@@ -586,14 +613,17 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
-@click.argument("script_args", required=False, type=str, nargs=-1)
+@click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
-           cluster_name, port_forward, script, script_args):
+           cluster_name, port_forward, script, args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
 
         os.path.join("~", os.path.basename(script))
+
+    Example:
+        >>> ray submit [CLUSTER.YAML] experiment.py --args="--smoke-test"
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
@@ -604,7 +634,10 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     target = os.path.join("~", os.path.basename(script))
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
-    cmd = " ".join(["python", target] + list(script_args))
+    command_parts = ["python", target]
+    if args is not None:
+        command_parts += [args]
+    cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
@@ -738,7 +771,7 @@ def timeline(redis_address):
     ray.init(redis_address=redis_address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
-    ray.global_state.chrome_tracing_dump(filename=filename)
+    ray.timeline(filename=filename)
     size = os.path.getsize(filename)
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
     logger.info(

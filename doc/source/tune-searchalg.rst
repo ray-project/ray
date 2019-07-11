@@ -171,7 +171,9 @@ This algorithm requires specifying a search space and objective. You can use `Ax
 
 .. code-block:: python
 
-    tune.run(... , search_alg=AxSearch(parameter_dicts, ... ))
+    client = AxClient(enforce_sequential_optimization=False)
+    client.create_experiment( ... )
+    tune.run(... , search_alg=AxSearch(client))
 
 An example of this can be found in `ax_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/ax_example.py>`__.
 

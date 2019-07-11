@@ -506,7 +506,11 @@ def test_resource_assignment(shutdown_only):
     """Test to make sure that we assign resource to actors at instantiation."""
     # This test will create 16 actors. Declaring this many CPUs initially will
     # speed up the test because the workers will be started ahead of time.
-    ray.init(num_cpus=16, num_gpus=1, resources={"Custom": 1})
+    ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        object_store_memory=int(10**8))
 
     class Actor(object):
         def __init__(self):
@@ -842,7 +846,7 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
     assert actor_id not in resulting_ids
 
 
-def test_actors_on_nodes_with_no_cpus(ray_start_regular):
+def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     @ray.remote
     class Foo(object):
         def method(self):
@@ -1262,7 +1266,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
-    ray.init(num_cpus=10, num_gpus=10)
+    ray.init(num_cpus=10, num_gpus=10, object_store_memory=int(10**8))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -2439,7 +2443,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.
@@ -2483,7 +2487,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.

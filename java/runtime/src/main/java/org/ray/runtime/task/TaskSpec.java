@@ -5,24 +5,28 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.id.JobId;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
+import org.ray.runtime.util.IdUtil;
 
 /**
  * Represents necessary information of a task for scheduling and executing.
  */
 public class TaskSpec {
 
-  // ID of the driver that created this task.
-  public final UniqueId driverId;
+  // ID of the job that created this task.
+  public final JobId jobId;
 
   // Task ID of the task.
-  public final UniqueId taskId;
+  public final TaskId taskId;
 
   // Task ID of the parent task.
-  public final UniqueId parentTaskId;
+  public final TaskId parentTaskId;
 
   // A count of the number of tasks submitted by the parent task before this one.
   public final int parentCounter;
@@ -48,8 +52,11 @@ public class TaskSpec {
   // Task arguments.
   public final FunctionArg[] args;
 
-  // return ids
-  public final UniqueId[] returnIds;
+  // number of return objects.
+  public final int numReturns;
+
+  // returns ids.
+  public final ObjectId[] returnIds;
 
   // The task's resource demands.
   public final Map<String, Double> resources;
@@ -57,12 +64,14 @@ public class TaskSpec {
   // Language of this task.
   public final TaskLanguage language;
 
+  public final List<String> dynamicWorkerOptions;
+
   // Descriptor of the remote function.
   // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
   // is Python, the type is PyFunctionDescriptor.
   private final FunctionDescriptor functionDescriptor;
 
-  private List<UniqueId> executionDependencies;
+  private List<ObjectId> executionDependencies;
 
   public boolean isActorTask() {
     return !actorId.isNil();
@@ -73,9 +82,9 @@ public class TaskSpec {
   }
 
   public TaskSpec(
-      UniqueId driverId,
-      UniqueId taskId,
-      UniqueId parentTaskId,
+      JobId jobId,
+      TaskId taskId,
+      TaskId parentTaskId,
       int parentCounter,
       UniqueId actorCreationId,
       int maxActorReconstructions,
@@ -84,11 +93,12 @@ public class TaskSpec {
       int actorCounter,
       UniqueId[] newActorHandles,
       FunctionArg[] args,
-      UniqueId[] returnIds,
+      int numReturns,
       Map<String, Double> resources,
       TaskLanguage language,
-      FunctionDescriptor functionDescriptor) {
-    this.driverId = driverId;
+      FunctionDescriptor functionDescriptor,
+      List<String> dynamicWorkerOptions) {
+    this.jobId = jobId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
     this.parentCounter = parentCounter;
@@ -99,7 +109,13 @@ public class TaskSpec {
     this.actorCounter = actorCounter;
     this.newActorHandles = newActorHandles;
     this.args = args;
-    this.returnIds = returnIds;
+    this.numReturns = numReturns;
+    this.dynamicWorkerOptions = dynamicWorkerOptions;
+
+    returnIds = new ObjectId[numReturns];
+    for (int i = 0; i < numReturns; ++i) {
+      returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
+    }
     this.resources = resources;
     this.language = language;
     if (language == TaskLanguage.JAVA) {
@@ -125,14 +141,14 @@ public class TaskSpec {
     return (PyFunctionDescriptor) functionDescriptor;
   }
 
-  public List<UniqueId> getExecutionDependencies() {
+  public List<ObjectId> getExecutionDependencies() {
     return executionDependencies;
   }
 
   @Override
   public String toString() {
     return "TaskSpec{" +
-        "driverId=" + driverId +
+        "jobId=" + jobId +
         ", taskId=" + taskId +
         ", parentTaskId=" + parentTaskId +
         ", parentCounter=" + parentCounter +
@@ -143,10 +159,11 @@ public class TaskSpec {
         ", actorCounter=" + actorCounter +
         ", newActorHandles=" + Arrays.toString(newActorHandles) +
         ", args=" + Arrays.toString(args) +
-        ", returnIds=" + Arrays.toString(returnIds) +
+        ", numReturns=" + numReturns +
         ", resources=" + resources +
         ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
+        ", dynamicWorkerOptions=" + dynamicWorkerOptions +
         ", executionDependencies=" + executionDependencies +
         '}';
   }

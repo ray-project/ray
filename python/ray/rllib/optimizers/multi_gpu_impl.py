@@ -48,7 +48,7 @@ class LocalSyncParallelOptimizer(object):
             processed. If this is larger than the total data size, it will be
             clipped.
         build_graph: Function that takes the specified inputs and returns a
-            TF Policy Graph instance.
+            TF Policy instance.
     """
 
     def __init__(self,
@@ -255,7 +255,7 @@ class LocalSyncParallelOptimizer(object):
 
         fetches = {"train": self._train_op}
         for tower in self._towers:
-            fetches.update(tower.loss_graph.extra_compute_grad_fetches())
+            fetches.update(tower.loss_graph._get_grad_and_stats_fetches())
 
         return sess.run(fetches, feed_dict=feed_dict)
 

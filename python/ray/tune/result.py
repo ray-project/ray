@@ -9,6 +9,9 @@ import os
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
 
+# (Optional) Enum for user controlled checkpoint
+SHOULD_CHECKPOINT = "should_checkpoint"
+
 # (Auto-filled) The hostname of the machine hosting the training process.
 HOSTNAME = "hostname"
 
@@ -68,7 +71,7 @@ JOB_META_FILE = "job_status.json"
 EXPR_META_FILE = "trial_status.json"
 
 # File that stores parameters of the trial.
-EXPR_PARARM_FILE = "params.json"
+EXPR_PARAM_FILE = "params.json"
 
 # File that stores the progress of the trial.
 EXPR_PROGRESS_FILE = "progress.csv"

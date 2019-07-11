@@ -23,14 +23,15 @@ import random
 import numpy as np
 import gym
 from gym.spaces import Box, Discrete, Dict
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
 
 import ray
 from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
@@ -134,18 +135,18 @@ class ParametricActionsModel(Model):
         hiddens = [256, 256]
         for i, size in enumerate(hiddens):
             label = "fc{}".format(i)
-            last_layer = slim.fully_connected(
+            last_layer = tf.layers.dense(
                 last_layer,
                 size,
-                weights_initializer=normc_initializer(1.0),
-                activation_fn=tf.nn.tanh,
-                scope=label)
-        output = slim.fully_connected(
+                kernel_initializer=normc_initializer(1.0),
+                activation=tf.nn.tanh,
+                name=label)
+        output = tf.layers.dense(
             last_layer,
             action_embed_size,
-            weights_initializer=normc_initializer(0.01),
-            activation_fn=None,
-            scope="fc_out")
+            kernel_initializer=normc_initializer(0.01),
+            activation=None,
+            name="fc_out")
 
         # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
         # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
@@ -172,9 +173,14 @@ if __name__ == "__main__":
             "observation_filter": "NoFilter",  # don't filter the action list
             "vf_share_layers": True,  # don't create duplicate value model
         }
-    elif args.run == "DQN":
+    elif args.run in ["SimpleQ", "DQN"]:
         cfg = {
             "hiddens": [],  # important: don't postprocess the action scores
+            # TODO(ekl) we could support dueling if the model in this example
+            # was ModelV2 and only emitted -inf values on get_q_values().
+            # The problem with ModelV1 is that the model outputs
+            # are used as state scores and hence cause blowup to inf.
+            "dueling": False,
         }
     else:
         cfg = {}  # PG, IMPALA, A2C, etc.

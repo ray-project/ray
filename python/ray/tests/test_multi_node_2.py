@@ -52,10 +52,10 @@ def test_internal_config(ray_start_cluster_head):
 
     cluster.remove_node(worker)
     time.sleep(1)
-    assert ray.global_state.cluster_resources()["CPU"] == 2
+    assert ray.cluster_resources()["CPU"] == 2
 
     time.sleep(2)
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
@@ -70,12 +70,12 @@ def test_wait_for_nodes(ray_start_cluster_head):
     [cluster.remove_node(w) for w in workers]
     cluster.wait_for_nodes()
 
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
     worker2 = cluster.add_node()
     cluster.wait_for_nodes()
     cluster.remove_node(worker2)
     cluster.wait_for_nodes()
-    assert ray.global_state.cluster_resources()["CPU"] == 1
+    assert ray.cluster_resources()["CPU"] == 1
 
 
 def test_worker_plasma_store_failure(ray_start_cluster_head):

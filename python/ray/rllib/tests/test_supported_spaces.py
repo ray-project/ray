@@ -2,7 +2,7 @@ import unittest
 import traceback
 
 import gym
-from gym.spaces import Box, Discrete, Tuple, Dict
+from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
 import sys
@@ -17,6 +17,11 @@ from ray.tune.registry import register_env
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (
+        5,
+        5,
+    ), dtype=np.float32),
+    "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
          Discrete(3),
@@ -61,7 +66,9 @@ def make_stub_env(action_space, obs_space, check_action_bounds):
     return StubEnv
 
 
-def check_support(alg, config, stats, check_bounds=False):
+def check_support(alg, config, stats, check_bounds=False, name=None):
+    covered_a = set()
+    covered_o = set()
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing", alg, action_space, obs_space, "===")
@@ -70,8 +77,13 @@ def check_support(alg, config, stats, check_bounds=False):
             stat = "ok"
             a = None
             try:
-                a = get_agent_class(alg)(config=config, env="stub_env")
-                a.train()
+                if a_name in covered_a and o_name in covered_o:
+                    stat = "skip"  # speed up tests by avoiding full grid
+                else:
+                    a = get_agent_class(alg)(config=config, env="stub_env")
+                    a.train()
+                    covered_a.add(a_name)
+                    covered_o.add(o_name)
             except UnsupportedSpaceException:
                 stat = "unsupported"
             except Exception as e:
@@ -87,7 +99,7 @@ def check_support(alg, config, stats, check_bounds=False):
                         pass
             print(stat)
             print()
-            stats[alg, a_name, o_name] = stat
+            stats[name or alg, a_name, o_name] = stat
 
 
 def check_support_multiagent(alg, config):
@@ -114,6 +126,11 @@ class ModelSupportedSpaces(unittest.TestCase):
         stats = {}
         check_support("IMPALA", {"num_gpus": 0}, stats)
         check_support("APPO", {"num_gpus": 0, "vtrace": False}, stats)
+        check_support(
+            "APPO", {
+                "num_gpus": 0,
+                "vtrace": True
+            }, stats, name="APPO-vt")
         check_support(
             "DDPG", {
                 "exploration_ou_noise_scale": 100.0,
@@ -165,7 +182,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             check_bounds=True)
         num_unexpected_errors = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
-            if stat not in ["ok", "unsupported"]:
+            if stat not in ["ok", "unsupported", "skip"]:
                 num_unexpected_errors += 1
             print(alg, "action_space", a_name, "obs_space", o_name, "result",
                   stat)
