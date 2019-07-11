@@ -375,11 +375,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
-  /// Process client message of GetTask
+  /// Handle the case that a worker is available.
   ///
-  /// \param client The client that sent the message.
+  /// \param client The connection for the worker.
   /// \return Void.
-  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
@@ -459,6 +459,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// Finish assigning a task to a worker.
+  ///
+  /// \param task_id Id of the task.
+  /// \param worker Worker which the task is assigned to.
+  /// \param success Whether the task is successfully assigned to the worker.
+  /// \return void.
+  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
+
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
@@ -523,7 +531,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
 
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// as well as all `WorkerTaskClient`s.
   rpc::ClientCallManager client_call_manager_;
 
   /// Map from node ids to clients of the remote node managers.
