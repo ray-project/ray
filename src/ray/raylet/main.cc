@@ -2,6 +2,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
@@ -71,7 +72,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.7.1"},
+      {ray::stats::VersionKey, "0.7.2"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -104,10 +105,10 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
-  node_manager_config.resource_config =
-      ray::raylet::ResourceSet(std::move(static_resource_conf));
+  node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
+  node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
@@ -116,11 +117,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(Language::PYTHON, parse_worker_command(python_worker_command)));
+        make_pair(ray::Language::PYTHON, parse_worker_command(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(Language::JAVA, parse_worker_command(java_worker_command)));
+        make_pair(ray::Language::JAVA, parse_worker_command(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
@@ -146,14 +147,13 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-  object_manager_config.max_sends = std::max(1, num_cpus / 4);
-  object_manager_config.max_receives = std::max(1, num_cpus / 4);
+  object_manager_config.rpc_service_threads_number = std::max(2, num_cpus / 2);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                 << "max_sends = " << object_manager_config.max_sends << "\n"
-                 << "max_receives = " << object_manager_config.max_receives << "\n"
+                 << "rpc_service_threads_number = "
+                 << object_manager_config.rpc_service_threads_number
                  << "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.

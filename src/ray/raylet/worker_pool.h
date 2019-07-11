@@ -7,14 +7,17 @@
 #include <vector>
 
 #include "ray/common/client_connection.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_common.h"
 #include "ray/gcs/client.h"
-#include "ray/gcs/format/util.h"
-#include "ray/raylet/task.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
 
 namespace raylet {
+
+using WorkerCommandMap =
+    std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
 class Worker;
 
@@ -36,10 +39,10 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(
-      int num_worker_processes, int num_workers_per_process,
-      int maximum_startup_concurrency, std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
-      const std::unordered_map<Language, std::vector<std::string>> &worker_commands);
+  WorkerPool(int num_worker_processes, int num_workers_per_process,
+             int maximum_startup_concurrency,
+             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+             const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -179,7 +182,7 @@ class WorkerPool {
   /// The number of workers per process.
   int num_workers_per_process_;
   /// Pool states per language.
-  std::unordered_map<Language, State> states_by_lang_;
+  std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
   /// A helper function that returns the reference of the pool state

@@ -8,6 +8,7 @@ from ray import tune
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
+from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
@@ -294,3 +295,5 @@ GenericOffPolicyTrainer = build_trainer(
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
+
+SimpleQTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)

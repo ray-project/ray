@@ -9,7 +9,7 @@
 // clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
 // clang-format on
 
 namespace ray {
@@ -18,7 +18,6 @@ namespace raylet {
 
 using rpc::ClientTableData;
 
-class Task;
 class NodeManager;
 
 class Raylet {
@@ -61,10 +60,6 @@ class Raylet {
   void DoAccept();
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
-  /// Accept a tcp client connection.
-  void DoAcceptObjectManager();
-  /// Handle an accepted tcp client connection.
-  void HandleAcceptObjectManager(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
 
@@ -84,10 +79,6 @@ class Raylet {
   boost::asio::local::stream_protocol::acceptor acceptor_;
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
-  /// An acceptor for new object manager tcp clients.
-  boost::asio::ip::tcp::acceptor object_manager_acceptor_;
-  /// The socket to listen on for new object manager tcp clients.
-  boost::asio::ip::tcp::socket object_manager_socket_;
 };
 
 }  // namespace raylet

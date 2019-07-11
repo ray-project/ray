@@ -15,7 +15,8 @@ import traceback
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
+from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.sample import function
@@ -111,6 +112,7 @@ class TrialRunner(object):
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
+                 checkpoint_period=10,
                  trial_executor=None):
         """Initializes a new TrialRunner.
 
@@ -152,7 +154,6 @@ class TrialRunner(object):
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
 
-        # TODO(rliaw): This may fail
         if self._local_checkpoint_dir and not os.path.exists(
                 self._local_checkpoint_dir):
             os.makedirs(self._local_checkpoint_dir)
@@ -175,13 +176,16 @@ class TrialRunner(object):
             logger.info("Starting a new experiment.")
 
         self._start_time = time.time()
+        self._last_checkpoint_time = -float("inf")
+        self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
 
     def _validate_resume(self, resume_type):
-        """
+        """Checks whether to resume experiment.
+
         Args:
-            resume_type: One of "REMOTE", "LOCAL", "PROMPT".
+            resume_type: One of True, "REMOTE", "LOCAL", "PROMPT".
         """
         if not resume_type:
             return False
@@ -235,18 +239,20 @@ class TrialRunner(object):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
-        is instantiated.
+        is instantiated. Throttle depends on self._checkpoint_period.
         """
         if not self._local_checkpoint_dir:
             return
-
+        if time.time() - self._last_checkpoint_time < self._checkpoint_period:
+            return
+        self._last_checkpoint_time = time.time()
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
             "runner_data": self.__getstate__(),
             "stats": {
                 "start_time": self._start_time,
-                "timestamp": time.time()
+                "timestamp": self._last_checkpoint_time
             }
         }
         tmp_file_name = os.path.join(self._local_checkpoint_dir,
@@ -524,7 +530,8 @@ class TrialRunner(object):
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(trial)
+            self._checkpoint_trial_if_needed(
+                trial, force=result.get(SHOULD_CHECKPOINT, False))
 
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
@@ -549,9 +556,9 @@ class TrialRunner(object):
                     self.trial_executor.stop_trial(
                         trial, error=True, error_msg=error_msg)
 
-    def _checkpoint_trial_if_needed(self, trial):
+    def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
-        if trial.should_checkpoint():
+        if trial.should_checkpoint() or force:
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)

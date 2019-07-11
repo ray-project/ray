@@ -30,16 +30,27 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(const std::string &name, const uint32_t port) : name_(name), port_(port) {}
+  /// \param[in] main_service The main event loop, to which service handler functions
+  /// will be posted.
+  GrpcServer(const std::string &name, const uint32_t port)
+      : name_(name), port_(port), is_closed_(true) {}
 
   /// Destruct this gRPC server.
-  ~GrpcServer() {
-    server_->Shutdown();
-    cq_->Shutdown();
-  }
+  ~GrpcServer() { Shutdown(); }
 
   /// Initialize and run this server.
   void Run();
+
+  // Shutdown this server
+  void Shutdown() {
+    if (!is_closed_) {
+      server_->Shutdown();
+      cq_->Shutdown();
+      polling_thread_.join();
+      is_closed_ = true;
+      RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
+    }
+  }
 
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
@@ -71,6 +82,10 @@ class GrpcServer {
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
+  /// The polling thread used to check the completion queue
+  std::thread polling_thread_;
+  /// Flag indicates whether this server has closed
+  bool is_closed_;
 };
 
 /// Base class that represents an abstract gRPC service.

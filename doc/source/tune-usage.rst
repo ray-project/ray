@@ -216,19 +216,15 @@ For TensorFlow model training, this would look something like this `(full tensor
         def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
-            self.iteration = 0
 
         def _train(self):
             self.sess.run(...)
-            self.iteration += 1
 
         def _save(self, checkpoint_dir):
-            return self.saver.save(
-                self.sess, checkpoint_dir + "/save",
-                global_step=self.iteration)
+            return self.saver.save(self.sess, os.path.join(checkpoint_dir, save))
 
-        def _restore(self, path):
-            return self.saver.restore(self.sess, path)
+        def _restore(self, checkpoint_prefix):
+            self.saver.restore(self.sess, checkpoint_prefix)
 
 
 Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
@@ -259,7 +255,7 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
 Recovering From Failures (Experimental)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. The default setting of ``resume=False`` creates a new experiment. ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``. ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restore the experiment from ``local_dir/experiment_name``. ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. The default setting of ``resume=False`` creates a new experiment. ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``. ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``. ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 
 Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
 

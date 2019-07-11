@@ -26,6 +26,14 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
+WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
+  std::vector<uint8_t> data(WorkerID::Size(), 0);
+  std::memcpy(data.data(), job_id.Data(), JobID::Size());
+  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xFF);
+  return WorkerID::FromBinary(
+      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+}
+
 plasma::UniqueID ObjectID::ToPlasmaId() const {
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), Data(), kUniqueIDSize);
@@ -85,7 +93,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-TaskID TaskID::GetDriverTaskID(const WorkerID &driver_id) {
+TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return TaskID::FromBinary(driver_id_str);
@@ -129,14 +137,27 @@ const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
   return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
 }
 
-const WorkerID ComputeDriverId(const JobID &job_id) {
-  // Currently, a job id equals its driver id.
-  return WorkerID(job_id);
+const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
+                                             int64_t num_forks) {
+  // Compute hashes.
+  SHA256_CTX ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(actor_handle_id.Data()),
+                actor_handle_id.Size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(&num_forks), sizeof(num_forks));
+
+  // Compute the final actor handle ID from the hash.
+  BYTE buff[DIGEST_SIZE];
+  sha256_final(&ctx, buff);
+  RAY_CHECK(DIGEST_SIZE >= ActorHandleID::Size());
+  return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
-const JobID ComputeJobId(const WorkerID &driver_id) {
-  // Currently, a job id equals its driver id.
-  return JobID(driver_id);
+JobID JobID::FromInt(uint32_t value) {
+  std::vector<uint8_t> data(JobID::Size(), 0);
+  std::memcpy(data.data(), &value, JobID::Size());
+  return JobID::FromBinary(
+      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
@@ -150,6 +171,7 @@ const JobID ComputeJobId(const WorkerID &driver_id) {
   }
 
 ID_OSTREAM_OPERATOR(UniqueID);
+ID_OSTREAM_OPERATOR(JobID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 
