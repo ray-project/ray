@@ -9,40 +9,50 @@ Ray
 
 *Ray is a fast and simple framework for building and running distributed applications.*
 
+..TODO:: Add top 3 features of Ray here, and high level goal
 
-Ray is easy to install: ``pip install ray``
 
-Example Use
------------
-
-+------------------------------------------------+----------------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                           |
-+------------------------------------------------+----------------------------------------------------+
-|.. code-block:: python                          |.. code-block:: python                              |
-|                                                |                                                    |
-|  # Execute f serially.                         |  # Execute f in parallel.                          |
-|                                                |                                                    |
-|                                                |  @ray.remote                                       |
-|  def f():                                      |  def f():                                          |
-|      time.sleep(1)                             |      time.sleep(1)                                 |
-|      return 1                                  |      return 1                                      |
-|                                                |                                                    |
-|                                                |                                                    |
-|                                                |  ray.init()                                        |
-|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
-+------------------------------------------------+----------------------------------------------------+
-
-To launch a Ray cluster, either privately, on AWS, or on GCP, `follow these instructions <autoscaling.html>`_.
 
 View the `codebase on GitHub`_.
 
 .. _`codebase on GitHub`: https://github.com/ray-project/ray
+
+
+Quick Start
+-----------
+
+Ray is easy to install: ``pip install ray``
+
+.. code-block:: python
+   :emphasize-lines: 4-8
+
+    ray.init()
+
+    asdfasdfasdf
+
+
+Cluster Quick Start
+-------------------
+
+Ray comes with an autoscaler. To launch a Ray cluster, either privately, on AWS, or on GCP, `follow these instructions <autoscaling.html>`_.
+TODO: Add text that showcases ease of launching a ray script..
+
+``ray submit example.py --start``
+
+
+Ray Ecosystem
+-------------
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Tune`_: Scalable Hyperparameter Search
 - `RLlib`_: Scalable Reinforcement Learning
 - `Distributed Training <distributed_training.html>`__
+
+Other projects in development:
+
+- Streaming
+- Serving
 
 .. _`Tune`: tune.html
 .. _`RLlib`: rllib.html
