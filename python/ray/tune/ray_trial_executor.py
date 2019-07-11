@@ -297,7 +297,7 @@ class RayTrialExecutor(TrialExecutor):
         return ip_addresses
 
     def get_current_trial_ips(self):
-        return set(t.node_ip for t in self.get_running_trials())
+        return {t.node_ip for t in self.get_running_trials()}
 
     def get_next_available_trial(self):
         if ray.worker._mode() != ray.worker.LOCAL_MODE:
