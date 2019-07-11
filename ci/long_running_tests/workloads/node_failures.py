@@ -49,7 +49,7 @@ while True:
     for _ in range(100):
         previous_ids = [f.remote(previous_id) for previous_id in previous_ids]
 
-    ray.wait(previous_ids, num_returns=len(previous_ids))
+    ray.get(previous_ids)
 
     for _ in range(100):
         previous_ids = [f.remote(previous_id) for previous_id in previous_ids]
