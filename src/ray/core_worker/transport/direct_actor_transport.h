@@ -60,6 +60,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Map from actor ids to direct actor call rpc clients.
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
+  /// Map from actor ids to actor's state.
+  std::unordered_map<ActorID, gcs::ActorTableData::ActorState> actor_state_;
+
   /// Pending requests to send out on a per-actor basis.
   //std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>> pending_requests_;
   std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>> pending_requests_;

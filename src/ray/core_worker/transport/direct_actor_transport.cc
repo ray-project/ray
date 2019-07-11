@@ -48,10 +48,10 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpec &task) {
   auto entry = rpc_clients_.find(actor_id);
   if (entry == rpc_clients_.end()) {
     // TODO: what if actor is not created yet?
-    if (pending_requests_[actor_id].empty()) {
-      gcs_client_.Actors().RequestNotifications(JobID::Nil(), actor_id,
-          gcs_client_.GetLocalClientID());
-    }
+    // if (pending_requests_[actor_id].empty()) {
+    //   gcs_client_.Actors().RequestNotifications(JobID::Nil(), actor_id,
+    //      gcs_client_.GetLocalClientID());
+    // }
 
     auto pending_request =
         std::unique_ptr<PendingTaskRequest>(new PendingTaskRequest);
@@ -65,7 +65,15 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpec &task) {
     return Status::OK();
   }
 
+  auto iter = actor_state_.find(actor_id);
+  RAY_CHECK(iter != actor_state_.end());
+  if (iter->second != ActorTableData::ALIVE) {
+    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
+    return Status::IOError("actor is dead or being reconstructed");
+  }
+
   auto &client = entry->second;
+  RAY_LOG(INFO) << "push task " << "   " << task_id << "    " << client.get();  
   auto status = PushTask(*client, *request, task_id, num_returns);
 
   return status;
@@ -79,13 +87,19 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
       const auto &actor_data = data.back();
       
       if (actor_data.state() == ActorTableData::ALIVE) {
+        RAY_LOG(INFO) << "received notification on actor alive, actor_id: " << actor_id
+                      << ", ip address: " << actor_data.ip_address()
+                      << ", port: " << actor_data.port();
+
         std::unique_ptr<rpc::DirectActorClient> grpc_client(
             new rpc::DirectActorClient(actor_data.ip_address(),
             actor_data.port(), client_call_manager_));
-        
-        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
 
-        rpc_clients_.emplace(actor_id, std::move(grpc_client));
+        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+        actor_state_[actor_id] = actor_data.state();
+        // replace old rpc client if it exists.
+        rpc_clients_[actor_id] = std::move(grpc_client);
+
         auto entry = rpc_clients_.find(actor_id);
         RAY_CHECK(entry != rpc_clients_.end());
 
@@ -93,11 +107,16 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
         auto &requests = pending_requests_[actor_id];
         while (!requests.empty()) {
           const auto &request = *requests.front();
+          RAY_LOG(INFO) << "push pending task " << "   " << request.task_id << "    " << client.get();
           auto status = PushTask(*client, *request.request, request.task_id, request.num_returns);
           requests.pop_front();
         }
         
       } else if (actor_data.state() == ActorTableData::DEAD) {
+        RAY_LOG(INFO) << "received notification on actor dead, actor_id: " << actor_id;
+
+        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+        actor_state_[actor_id] = actor_data.state();
 
         // There are a couple of cases for actor/objects:
         // - dead
@@ -110,6 +129,10 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
       } else {
         //
         RAY_CHECK(actor_data.state() == ActorTableData::RECONSTRUCTING);
+        RAY_LOG(INFO) << "received notification on actor reconstruction, actor_id: " << actor_id;
+
+        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+        actor_state_[actor_id] = actor_data.state();
       }
 
       // TODO: handle other states.
@@ -124,7 +147,7 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
     const rpc::PushTaskRequest &request, const TaskID &task_id, int num_returns) {
   auto status = client.PushTask(request, [this, task_id, num_returns](
                             Status status, const rpc::PushTaskReply &reply) {
-    // RAY_LOG(INFO) << ++counter_ << status;
+RAY_LOG(INFO) << counter_++ << status;
 
     if (!status.ok()) {
       TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);

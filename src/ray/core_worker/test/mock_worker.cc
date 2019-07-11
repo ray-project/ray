@@ -3,6 +3,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
+#include "ray/core_worker/test/constants.h"
 
 using namespace std::placeholders;
 
@@ -36,6 +37,33 @@ class MockWorker {
                      std::vector<std::shared_ptr<Buffer>>* results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
+
+    if (ray_function.function_descriptor.size() == 1 &&
+        ray_function.function_descriptor[0] == c_actor_creation_function_str) {
+      // This is an actor creation task.
+      RAY_CHECK(args.size() > 0);
+
+RAY_LOG(INFO) << c_actor_creation_function_str;
+      for (const auto &arg : args) {
+        std::string object_id_str(reinterpret_cast<char*>(arg->GetData()->Data()),
+            arg->GetData()->Size());
+        auto object_id = ObjectID::FromBinary(object_id_str);
+
+        std::vector<std::shared_ptr<ray::RayObject>> results;    
+        RAY_CHECK_OK(worker_.Objects().Get({ object_id }, 0, &results));
+             /* << "  " << results[0]->GetData()->Data()
+              << "  " << results[0]->GetData()->Size(); */
+
+        if (results.empty() || results[0] == nullptr) {
+
+RAY_LOG(INFO) << "aaaaa";
+          uint8_t array[] = {1};
+          auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
+          RAY_CHECK_OK(worker_.Objects().Put(RayObject(buffer, nullptr), object_id));
+          break;
+        }
+      }
+    }
 
     // Merge all the content from input args.
     auto memory_buffer = std::make_shared<AccumulativeBuffer>();

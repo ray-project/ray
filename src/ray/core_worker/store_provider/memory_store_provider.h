@@ -1,5 +1,5 @@
-#ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
-#define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
+#ifndef RAY_CORE_WORKER_MEMORY_STORE_PROVIDER_H
+#define RAY_CORE_WORKER_MEMORY_STORE_PROVIDER_H
 
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
@@ -8,18 +8,17 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 
 namespace ray {
 
 class CoreWorker;
 
-/// The class provides implementations for accessing plasma store, which includes both
-/// local and remote store, remote access is done via raylet.
-class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
+/// The class provides implementations for accessing local process memory store.
+/// An example usage for this is to retrieve the returned objects from direct
+/// actor call (see direct_actor_transport.cc).
+class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
  public:
-  CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
-                                std::unique_ptr<RayletClient> &raylet_client);
+  CoreWorkerMemoryStoreProvider();
 
   /// Put an object with specified ID into object store.
   ///
@@ -36,7 +35,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-             std::vector<std::shared_ptr<RayObject>> *results) override;
+             std::vector<std::shared_ptr<Buffer>> *results) override;
 
   /// Wait for a list of objects to appear in the object store.
   ///
@@ -61,13 +60,12 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
                 bool delete_creating_tasks = false) override;
 
  private:
-  /// local plasma store provider.
-  CoreWorkerLocalPlasmaStoreProvider local_store_provider_;
-
-  /// Raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
+  friend class LocalMemoryReferencedBuffer;
+  class Impl;
+  /// Implementation.
+  std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
+#endif  // RAY_CORE_WORKER_MEMORY_STORE_PROVIDER_H
