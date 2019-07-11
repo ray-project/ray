@@ -232,6 +232,8 @@ def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
 
 
+# TODO(qwang): Remove these hepler functions
+# once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
     return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
