@@ -5,9 +5,9 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
+#include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/worker_client.h"
 
 namespace ray {

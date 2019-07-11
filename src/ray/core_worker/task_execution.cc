@@ -26,8 +26,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::ExecuteTask(
-    const TaskSpecification &spec) {
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &spec) {
   worker_context_.SetCurrentTask(spec);
 
   RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
