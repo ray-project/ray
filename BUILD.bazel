@@ -68,8 +68,10 @@ cc_proto_library(
 proto_library(
     name = "raylet_proto",
     srcs = ["src/ray/protobuf/raylet.proto"],
-    deps = [":gcs_proto",
-            ":common_proto",],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
 )
 
 cc_proto_library(
@@ -194,7 +196,7 @@ cc_library(
         ":raylet_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
-    ]
+    ],
 )
 
 # worker gRPC lib.

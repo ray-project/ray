@@ -5,7 +5,6 @@
 
 #include <boost/asio.hpp>
 
-//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/reconstruction_policy.h"
 
 #include "ray/object_manager/object_directory.h"
@@ -399,12 +398,12 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   task_reconstruction_data->set_node_manager_id(ClientID::FromRandom().Binary());
   task_reconstruction_data->set_num_reconstructions(0);
 
-  RAY_CHECK_OK(mock_gcs_.AppendAt(
-      JobID::Nil(), task_id, task_reconstruction_data, nullptr,
-      /*failure_callback=*/
-      [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-         const TaskReconstructionData &data) { ASSERT_TRUE(false); },
-      /*log_index=*/0));
+  RAY_CHECK_OK(
+      mock_gcs_.AppendAt(JobID::Nil(), task_id, task_reconstruction_data, nullptr,
+                         /*failure_callback=*/
+                         [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                            const TaskReconstructionData &data) { ASSERT_TRUE(false); },
+                         /*log_index=*/0));
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);

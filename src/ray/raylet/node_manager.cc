@@ -6,7 +6,6 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 
 namespace {
@@ -264,9 +263,6 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       // Kill all the workers. The actual cleanup for these workers is done
       // later when we receive the DisconnectClient message from them.
       for (const auto &worker : workers) {
-        // Mark the worker as dead so further messages from it are ignored
-        // (except DisconnectClient).
-        // worker->MarkDead();
         // Worker dies because driver exits, treat it as intentional disconnect.
         ProcessDisconnectClientMessage(worker->GetWorkerId(), true);
         // Then kill the worker process.
@@ -326,7 +322,7 @@ void NodeManager::Heartbeat() {
     last_debug_dump_at_ms_ = now_ms;
   }
 
-  // Add worker heartbeat timeout times.
+  // Check worker heartbeat timeout times.
   std::vector<std::shared_ptr<Worker>> dead_workers;
   worker_pool_.GetDeadWorkers(RayConfig::instance().worker_heartbeat_timeout_times(),
                               dead_workers);
@@ -648,12 +644,12 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       return;
     }
   }
-  RAY_LOG(INFO) << "Actor notification received: actor_id = " << actor_id
-                << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                << ", state = "
-                << ActorTableData::ActorState_Name(actor_registration.GetState())
-                << ", remaining_reconstructions = "
-                << actor_registration.GetRemainingReconstructions();
+  RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
+                 << ", node_manager_id = " << actor_registration.GetNodeManagerId()
+                 << ", state = "
+                 << ActorTableData::ActorState_Name(actor_registration.GetState())
+                 << ", remaining_reconstructions = "
+                 << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
     // The actor's location is now known. Dequeue any methods that were
@@ -727,7 +723,6 @@ std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(
 void NodeManager::DispatchTasks(
     const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources) {
   std::unordered_set<TaskID> assigned_task_ids;
-  RAY_LOG(INFO) << "DispatchTasks size: " << tasks_with_resources.size();
   for (const auto &it : tasks_with_resources) {
     const auto &task_resources = it.first;
     for (const auto &task_id : it.second) {
@@ -749,30 +744,17 @@ void NodeManager::DispatchTasks(
   local_queues_.MoveTasks(assigned_task_ids, TaskState::READY, TaskState::SWAP);
 }
 
-bool NodeManager::WorkerIsDead(const WorkerID &worker_id) {
-  auto registered_worker = worker_pool_.GetRegisteredWorker(worker_id);
-  if (registered_worker) {
-    return true;
-  } else {
-    registered_worker = worker_pool_.GetRegisteredWorker(worker_id);
-    if (registered_worker) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void NodeManager::HandleRegisterClientRequest(
     const rpc::RegisterClientRequest &request, rpc::RegisterClientReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   // Client id in register client is treated as worker id.
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   auto worker = std::make_shared<Worker>(worker_id, request.worker_pid(), request.port(),
-                                         static_cast<Language>(request.language()));
+                                         request.language());
 
-  RAY_LOG(INFO) << "Register client request, worker id: " << worker_id
-                << ", is worker: " << request.is_worker()
-                << ", pid: " << request.worker_pid();
+  RAY_LOG(DEBUG) << "Register client request, worker id: " << worker_id
+                 << ", is worker: " << request.is_worker()
+                 << ", pid: " << request.worker_pid();
 
   if (request.is_worker()) {
     // Register the new worker.
@@ -841,7 +823,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::GetTaskReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle get task request.";
+  RAY_LOG(DEBUG) << "Handle get task request.";
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker);
@@ -857,7 +839,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
 
-  // Reply would be sent in assign task function.
+  // Reply would be sent in when already assigned task to a worker.
   get_task_requests_.emplace(worker_id, std::make_pair(reply, send_reply_callback));
 
   // Call task dispatch to assign work to the new worker.
@@ -868,19 +850,132 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
 void NodeManager::HandleDisconnectClientRequest(
     const rpc::DisconnectClientRequest &request, rpc::DisconnectClientReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle disconnect client request.";
+  RAY_LOG(DEBUG) << "Handle disconnect client request.";
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   bool intentional_disconnect = request.intentional();
 
-  ProcessDisconnectClientMessage(worker_id, true);
+  ProcessDisconnectClientMessage(worker_id, intentional_disconnect);
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
+                                                 bool intentional_disconnect) {
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
+  bool is_worker = false, is_driver = false;
+  if (worker) {
+    // The client is a worker.
+    is_worker = true;
+  } else {
+    worker = worker_pool_.GetRegisteredDriver(worker_id);
+    if (worker) {
+      // The client is a driver.
+      is_driver = true;
+    } else {
+      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
+                    << "been disconnected.";
+      return;
+    }
+  }
+  RAY_CHECK(!(is_worker && is_driver));
+
+  // If the client has any blocked tasks, mark them as unblocked. In
+  // particular, we are no longer waiting for their dependencies.
+  if (worker) {
+    if (is_worker) {
+      // Don't need to unblock the client if it's a worker and is already dead.
+      // Because in this case, its task is already cleaned up.
+      RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
+    } else {
+      while (!worker->GetBlockedTaskIds().empty()) {
+        // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
+        // not safe to pass in the iterator directly.
+        const TaskID task_id = *worker->GetBlockedTaskIds().begin();
+        HandleTaskUnblocked(worker_id, task_id);
+      }
+    }
+  }
+
+  if (is_worker) {
+    const ActorID &actor_id = worker->GetActorId();
+    if (!actor_id.IsNil()) {
+      // If the worker was an actor, update actor state, reconstruct the actor if
+      // needed, and clean up actor's tasks if the actor is permanently dead.
+      HandleDisconnectedActor(actor_id, true, intentional_disconnect);
+    }
+
+    const TaskID &task_id = worker->GetAssignedTaskId();
+    // If the worker was running a task, clean up the task and push an error to
+    // the driver, unless the worker is already dead.
+    if (!task_id.IsNil()) {
+      // If the worker was an actor, the task was already cleaned up in
+      // `HandleDisconnectedActor`.
+      if (actor_id.IsNil()) {
+        const Task &task = local_queues_.RemoveTask(task_id);
+        TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
+      }
+
+      if (!intentional_disconnect) {
+        // Push the error to driver.
+        const JobID &job_id = worker->GetAssignedJobId();
+        // TODO(rkn): Define this constant somewhere else.
+        std::string type = "worker_died";
+        std::ostringstream error_message;
+        error_message << "A worker died or was killed while executing task " << task_id
+                      << ".";
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            job_id, type, error_message.str(), current_time_ms()));
+      }
+    }
+
+    // Remove the dead client from the pool and stop listening for messages.
+    worker_pool_.DisconnectWorker(worker);
+
+    const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
+
+    // Return the resources that were being used by this worker.
+    auto const &task_resources = worker->GetTaskResourceIds();
+    local_available_resources_.ReleaseConstrained(
+        task_resources, cluster_resource_map_[client_id].GetTotalResources());
+    cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
+    worker->ResetTaskResourceIds();
+
+    auto const &lifetime_resources = worker->GetLifetimeResourceIds();
+    local_available_resources_.ReleaseConstrained(
+        lifetime_resources, cluster_resource_map_[client_id].GetTotalResources());
+    cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
+    worker->ResetLifetimeResourceIds();
+
+    RAY_LOG(DEBUG) << "Worker (pid=" << worker->Pid() << ") is disconnected. "
+                   << "job_id: " << worker->GetAssignedJobId();
+
+    // Since some resources may have been released, we can try to dispatch more
+    // tasks.
+    DispatchTasks(local_queues_.GetReadyTasksWithResources());
+  } else if (is_driver) {
+    // The client is a driver.
+    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
+        JobID(worker_id),
+        /*is_dead=*/true, std::time(nullptr), initial_config_.node_manager_address,
+        worker->Pid()));
+    auto job_id = worker->GetAssignedTaskId();
+    RAY_CHECK(!job_id.IsNil());
+    local_queues_.RemoveDriverTaskId(job_id);
+    worker_pool_.DisconnectDriver(worker);
+
+    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
+                   << "job_id: " << worker->GetAssignedJobId();
+  }
+
+  // TODO(rkn): Tell the object manager that this client has disconnected so
+  // that it can clean up the wait requests for this client. Currently I think
+  // these can be leaked.
 }
 
 /// Handle a `SubmitTask` request.
 void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle submit task request.";
+  RAY_LOG(DEBUG) << "Handle submit task request.";
 
   rpc::Task task;
   task.mutable_task_spec()->ParseFromString(request.task_spec());
@@ -895,14 +990,13 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
   // locally, there is no uncommitted lineage.
   SubmitTask(Task(task), Lineage());
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  RAY_LOG(INFO) << "Finsih send reply task request.";
 }
 
 /// Handle a `HandleFetchOrReconstruct` request.
 void NodeManager::HandleFetchOrReconstructRequest(
     const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle fetch or reconstruct request.";
+  RAY_LOG(DEBUG) << "Handle fetch or reconstruct request.";
   const auto &object_ids = request.object_ids();
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -935,7 +1029,7 @@ void NodeManager::HandleFetchOrReconstructRequest(
 void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
                                     rpc::WaitReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle wait request.";
+  RAY_LOG(DEBUG) << "Handle wait request.";
   // Read the data.
   std::vector<ObjectID> object_ids =
       rpc::IdVectorFromProtobuf<ObjectID>(request.object_ids());
@@ -969,12 +1063,17 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
         rpc::IdVectorToProtobuf<ObjectID, rpc::WaitReply>(remaining, *reply,
                                                           &rpc::WaitReply::add_remaining);
 
-        // Send reply to finish this wait request. Dead worker message would be handled in
-        // heartbeat.
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-        if (client_blocked) {
-          HandleTaskUnblocked(worker_id, current_task_id);
-        }
+        // Send reply to finish this wait request.
+        send_reply_callback(
+            Status::OK(),
+            /* success callback */
+            [this, client_blocked, worker_id, current_task_id]() {
+              if (client_blocked) {
+                HandleTaskUnblocked(worker_id, current_task_id);
+              }
+            },
+            /* failure callback */
+            [this, worker_id]() { ProcessDisconnectClientMessage(worker_id); });
       });
   RAY_CHECK_OK(status);
 }
@@ -983,7 +1082,7 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
 void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
                                          rpc::PushErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Handle push error request.";
+  RAY_LOG(DEBUG) << "Handle push error request.";
   JobID job_id = JobID::FromBinary(request.job_id());
   const auto &type = request.type();
   const auto &error_message = request.error_message();
@@ -1228,119 +1327,6 @@ void NodeManager::HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
     worker->ClearHeartbeat();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
-                                                 bool intentional_disconnect) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
-  bool is_worker = false, is_driver = false;
-  if (worker) {
-    // The client is a worker.
-    is_worker = true;
-  } else {
-    worker = worker_pool_.GetRegisteredDriver(worker_id);
-    if (worker) {
-      // The client is a driver.
-      is_driver = true;
-    } else {
-      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                    << "been disconnected.";
-      return;
-    }
-  }
-  RAY_CHECK(!(is_worker && is_driver));
-
-  // If the client has any blocked tasks, mark them as unblocked. In
-  // particular, we are no longer waiting for their dependencies.
-  if (worker) {
-    if (is_worker) {
-      // Don't need to unblock the client if it's a worker and is already dead.
-      // Because in this case, its task is already cleaned up.
-      RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
-    } else {
-      while (!worker->GetBlockedTaskIds().empty()) {
-        // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
-        // not safe to pass in the iterator directly.
-        const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        HandleTaskUnblocked(worker_id, task_id);
-      }
-    }
-  }
-
-  if (is_worker) {
-    const ActorID &actor_id = worker->GetActorId();
-    if (!actor_id.IsNil()) {
-      // If the worker was an actor, update actor state, reconstruct the actor if
-      // needed, and clean up actor's tasks if the actor is permanently dead.
-      HandleDisconnectedActor(actor_id, true, intentional_disconnect);
-    }
-
-    const TaskID &task_id = worker->GetAssignedTaskId();
-    // If the worker was running a task, clean up the task and push an error to
-    // the driver, unless the worker is already dead.
-    if (!task_id.IsNil()) {
-      // If the worker was an actor, the task was already cleaned up in
-      // `HandleDisconnectedActor`.
-      if (actor_id.IsNil()) {
-        const Task &task = local_queues_.RemoveTask(task_id);
-        TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
-      }
-
-      if (!intentional_disconnect) {
-        // Push the error to driver.
-        const JobID &job_id = worker->GetAssignedJobId();
-        // TODO(rkn): Define this constant somewhere else.
-        std::string type = "worker_died";
-        std::ostringstream error_message;
-        error_message << "A worker died or was killed while executing task " << task_id
-                      << ".";
-        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            job_id, type, error_message.str(), current_time_ms()));
-      }
-    }
-
-    // Remove the dead client from the pool and stop listening for messages.
-    worker_pool_.DisconnectWorker(worker);
-
-    const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
-
-    // Return the resources that were being used by this worker.
-    auto const &task_resources = worker->GetTaskResourceIds();
-    local_available_resources_.ReleaseConstrained(
-        task_resources, cluster_resource_map_[client_id].GetTotalResources());
-    cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
-    worker->ResetTaskResourceIds();
-
-    auto const &lifetime_resources = worker->GetLifetimeResourceIds();
-    local_available_resources_.ReleaseConstrained(
-        lifetime_resources, cluster_resource_map_[client_id].GetTotalResources());
-    cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
-    worker->ResetLifetimeResourceIds();
-
-    RAY_LOG(DEBUG) << "Worker (pid=" << worker->Pid() << ") is disconnected. "
-                   << "job_id: " << worker->GetAssignedJobId();
-
-    // Since some resources may have been released, we can try to dispatch more
-    // tasks.
-    DispatchTasks(local_queues_.GetReadyTasksWithResources());
-  } else if (is_driver) {
-    // The client is a driver.
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        JobID(worker_id),
-        /*is_dead=*/true, std::time(nullptr), initial_config_.node_manager_address,
-        worker->Pid()));
-    auto job_id = worker->GetAssignedTaskId();
-    RAY_CHECK(!job_id.IsNil());
-    local_queues_.RemoveDriverTaskId(job_id);
-    worker_pool_.DisconnectDriver(worker);
-
-    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
-                   << "job_id: " << worker->GetAssignedJobId();
-  }
-
-  // TODO(rkn): Tell the object manager that this client has disconnected so
-  // that it can clean up the wait requests for this client. Currently I think
-  // these can be leaked.
 }
 
 void NodeManager::ScheduleTasks(
@@ -1927,7 +1913,7 @@ bool NodeManager::AssignTask(const Task &task) {
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
-  RAY_LOG(INFO) << "Finished task " << task_id << " on pid " << worker.Pid();
+  RAY_LOG(DEBUG) << "Finished task " << task_id << " on pid " << worker.Pid();
 
   // (See design_docs/task_states.rst for the state transition diagram.)
   const auto task = local_queues_.RemoveTask(task_id);
@@ -1940,8 +1926,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
-  RAY_LOG(INFO) << "Task finished, is creation task: "
-                << task.GetTaskSpecification().IsActorCreationTask();
+
   // If this was an actor or actor creation task, handle the actor's new state.
   if (task.GetTaskSpecification().IsActorCreationTask() ||
       task.GetTaskSpecification().IsActorTask()) {
@@ -2193,7 +2178,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueTasks(ready_tasks, TaskState::READY);
-    RAY_LOG(INFO) << "Before dispatch.";
     DispatchTasks(MakeTasksWithResources(ready_tasks));
   }
 }

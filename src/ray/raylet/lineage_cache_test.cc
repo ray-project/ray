@@ -3,7 +3,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/task_execution_spec.h"

@@ -4,7 +4,6 @@
 #include <inttypes.h>
 
 #include "ray/protobuf/common.pb.h"
-//#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/task_execution_spec.h"
 #include "ray/raylet/task_spec.h"
 #include "ray/rpc/message_wrapper.h"

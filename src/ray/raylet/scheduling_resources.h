@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "ray/protobuf/raylet.pb.h"
-//#include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
 

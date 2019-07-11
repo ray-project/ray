@@ -163,7 +163,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                               rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  bool WorkerIsDead(const WorkerID &worker_id);
   /// Methods for handling clients.
 
   /// Handler for the addition of a new GCS client.

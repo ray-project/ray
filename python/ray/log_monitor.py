@@ -273,7 +273,6 @@ if __name__ == "__main__":
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The log monitor on node {} failed with the following "
                    "error:\n{}".format(os.uname()[1], traceback_str))
-        print(message)
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
         raise e

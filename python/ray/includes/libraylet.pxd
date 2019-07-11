@@ -18,7 +18,6 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
     CObjectID,
     CTaskID,
-    CUniqueID,
 )
 from ray.includes.task cimport CTaskSpec
 
