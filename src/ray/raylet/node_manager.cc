@@ -2300,8 +2300,6 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
       // guarantee that tasks are replayed in the same order after a
       // failure, we must update the task's execution dependency to be
       // the actor's current execution dependency.
-    } else {
-      RAY_CHECK(spec.NewActorHandles().empty());
     }
 
     // Mark the task as running.
