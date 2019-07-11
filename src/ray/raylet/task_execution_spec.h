@@ -17,6 +17,10 @@ using rpc::MessageWrapper;
 /// Wrapper class of protobuf `TaskExecutionSpec`, see `common.proto` for details.
 class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec> {
  public:
+  /// Construct an emtpy task execution specification. This should not be used
+  /// directly.
+  TaskExecutionSpecification() {}
+
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///

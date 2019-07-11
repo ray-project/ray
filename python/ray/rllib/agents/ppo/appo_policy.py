@@ -219,7 +219,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             dist_class=Categorical if is_multidiscrete else policy.dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
+            entropy_coeff=policy.entropy_coeff,
             clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
             clip_pg_rho_threshold=policy.config[
                 "vtrace_clip_pg_rho_threshold"],
@@ -238,7 +238,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             value_targets=make_time_major(
                 batch_tensors[Postprocessing.VALUE_TARGETS]),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
+            entropy_coeff=policy.entropy_coeff,
             clip_param=policy.config["clip_param"])
 
     return policy.loss.total_loss
