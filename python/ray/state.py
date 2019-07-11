@@ -400,8 +400,8 @@ class GlobalState(object):
         client_table = _parse_client_table(self.redis_client)
 
         for client in client_table:
-            client["alive"] = (client["EntryType"] !=
-                               gcs_utils.ClientTableData.DELETION)
+            # These are equivalent and is better for application developers.
+            client["alive"] = client["IsInsertion"]
         return client_table
 
     def _job_table(self, job_id):

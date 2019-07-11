@@ -200,7 +200,7 @@ class LoadMetrics(object):
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
-            assert not unwanted.intersection(set(mapping))
+            assert not (unwanted & set(mapping))
 
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
