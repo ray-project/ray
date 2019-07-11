@@ -142,12 +142,15 @@ class ServerCallImpl : public ServerCall {
         request_, &reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
-          // When the handler is done with the
-          // request, tell gRPC to finish this
-          // request.
-          SendReply(status);
+          // These two callbacks must be set before `SendReply`, because `SendReply`
+          // is aysnc and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
+
+          // When the handler is done with the request, tell gRPC to finish this request.
+          // Must send reply at the bottom of this callback, once we invoke this funciton,
+          // this server call might be deleted
+          SendReply(status);
         });
   }
 

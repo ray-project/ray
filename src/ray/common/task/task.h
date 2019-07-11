@@ -17,6 +17,10 @@ namespace ray {
 /// time.
 class Task {
  public:
+  /// Construct an empty task. This should only be used to pass a task
+  /// as an out parameter to a function or method.
+  Task() {}
+
   /// Construct a `Task` object from a protobuf message.
   ///
   /// \param message The protobuf message.

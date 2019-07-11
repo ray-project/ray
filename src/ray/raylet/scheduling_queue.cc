@@ -247,7 +247,8 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   return removed_tasks;
 }
 
-Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_state) {
+bool SchedulingQueue::RemoveTask(const TaskID &task_id, Task *removed_task,
+                                 TaskState *removed_task_state) {
   std::vector<Task> removed_tasks;
   std::unordered_set<TaskID> task_id_set = {task_id};
   // Try to find the task to remove in the queues.
@@ -273,10 +274,15 @@ Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_
   }
 
   // Make sure we got the removed task.
-  RAY_CHECK(removed_tasks.size() == 1) << task_id;
-  const auto &task = removed_tasks.front();
-  RAY_CHECK(task.GetTaskSpecification().TaskId() == task_id);
-  return task;
+  if (removed_tasks.size() == 1) {
+    *removed_task = removed_tasks.front();
+    RAY_CHECK(removed_task->GetTaskSpecification().TaskId() == task_id);
+    return true;
+  }
+  RAY_LOG(DEBUG) << "Task " << task_id
+                 << " that is to be removed could not be found any more."
+                 << " Probably its driver was removed.";
+  return false;
 }
 
 void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState src_state,

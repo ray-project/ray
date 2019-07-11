@@ -216,19 +216,15 @@ For TensorFlow model training, this would look something like this `(full tensor
         def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
-            self.iteration = 0
 
         def _train(self):
             self.sess.run(...)
-            self.iteration += 1
 
         def _save(self, checkpoint_dir):
-            return self.saver.save(
-                self.sess, checkpoint_dir + "/save",
-                global_step=self.iteration)
+            return self.saver.save(self.sess, os.path.join(checkpoint_dir, save))
 
-        def _restore(self, path):
-            return self.saver.restore(self.sess, path)
+        def _restore(self, checkpoint_prefix):
+            self.saver.restore(self.sess, checkpoint_prefix)
 
 
 Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
