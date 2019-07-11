@@ -54,14 +54,12 @@ class NodeUpdater(object):
                  setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 verbose=True,
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
             getuser(), cluster_name)[:CONTROL_PATH_MAX_LENGTH]
 
         self.daemon = True
-        self.verbose = verbose
         self.process_runner = process_runner
         self.node_id = node_id
         self.use_internal_ip = (use_internal_ip or provider_config.get(
