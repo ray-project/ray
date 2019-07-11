@@ -40,7 +40,7 @@ public class RayletClientImpl implements RayletClient {
 
   // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
   public RayletClientImpl(String schedulerSockName, UniqueId workerId,
-      boolean isWorker, UniqueId jobId) {
+      boolean isWorker, JobId jobId) {
     client = nativeInit(schedulerSockName, workerId.getBytes(),
         isWorker, jobId.getBytes());
   }
