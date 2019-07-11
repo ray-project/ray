@@ -43,8 +43,8 @@ class RemoteFunction(object):
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_job_id_exported_for: The ID of the job ID of the last Ray
-            session during which this remote function definition was exported.
+        _last_export_session_and_job: A pair of the last exported session
+            and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
             the actor class definition could be exported multiple times by
@@ -71,9 +71,7 @@ class RemoteFunction(object):
         ray.signature.check_signature_supported(self._function)
         self._function_signature = ray.signature.extract_signature(
             self._function)
-
-        self._last_job_id_exported_for = None
-
+        self._last_export_session_and_job = None
         # Override task.remote's signature and docstring
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
@@ -114,11 +112,11 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if (self._last_job_id_exported_for is None
-                or self._last_job_id_exported_for != worker.current_job_id):
-            # If this function was exported in a previous session, we need to
-            # export this function again, because current GCS doesn't have it.
-            self._last_job_id_exported_for = worker.current_job_id
+        if self._last_export_session_and_job != worker.current_session_and_job:
+            # If this function was not exported in this session and job,
+            # we need to export this function again, because current GCS
+            # doesn't have it.
+            self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs

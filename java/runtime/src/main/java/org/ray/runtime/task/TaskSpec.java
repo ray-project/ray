@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -19,7 +20,7 @@ import org.ray.runtime.util.IdUtil;
 public class TaskSpec {
 
   // ID of the job that created this task.
-  public final UniqueId jobId;
+  public final JobId jobId;
 
   // Task ID of the task.
   public final TaskId taskId;
@@ -81,7 +82,7 @@ public class TaskSpec {
   }
 
   public TaskSpec(
-      UniqueId jobId,
+      JobId jobId,
       TaskId taskId,
       TaskId parentTaskId,
       int parentCounter,
