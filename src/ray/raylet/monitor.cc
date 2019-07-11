@@ -52,8 +52,7 @@ void Monitor::Tick() {
                                    const std::vector<ClientTableData> &all_data) {
           bool marked = false;
           for (const auto &data : all_data) {
-            if (client_id.Binary() == data.client_id() &&
-                data.entry_type() == ClientTableData::DELETION) {
+            if (client_id.Binary() == data.client_id() && !data.is_insertion()) {
               // The node has been marked dead by itself.
               marked = true;
             }

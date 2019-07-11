@@ -158,18 +158,6 @@ class ResourceSet {
   /// \return Void.
   void SubtractResourcesStrict(const ResourceSet &other);
 
-  /// \brief Finds new resources created or updated in a new set.
-  ///
-  /// \param new_resource_set: The new resource set to compare with.
-  /// \return The ResourceSet of updated values
-  ResourceSet FindUpdatedResources(const ResourceSet &new_resource_set) const;
-
-  /// \brief Finds resources deleted in a set.
-  ///
-  /// \param new_resource_set: The new resource set to compare with.
-  /// \return The ResourceSet of deleted resources with old capacities
-  ResourceSet FindDeletedResources(const ResourceSet &new_resource_set) const;
-
   /// Return the capacity value associated with the specified resource.
   ///
   /// \param resource_name: Resource name for which capacity is requested.
