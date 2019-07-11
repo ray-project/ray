@@ -1,7 +1,6 @@
 package org.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,12 +76,12 @@ public class GcsClient {
       if (data.getIsInsertion()) {
         //Code path of node insertion.
         NodeInfo nodeInfo = new NodeInfo(
-            clientId, data.getNodeManagerAddress(), true, ImmutableMap.of());
+            clientId, data.getNodeManagerAddress(), true, new HashMap<>());
         clients.put(clientId, nodeInfo);
       } else {
         // Code path of node deletion.
         NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
-            false, ImmutableMap.of());
+            false, new HashMap<>());
         clients.put(clientId, nodeInfo);
       }
     }
