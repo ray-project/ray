@@ -7,10 +7,10 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/worker_client.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
@@ -32,10 +32,13 @@ using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
+using rpc::Language;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
   ResourceSet resource_config;
+  /// The IP address this node manager is running on.
+  std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
@@ -47,7 +50,7 @@ struct NodeManagerConfig {
   /// worker pool.
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
-  std::unordered_map<Language, std::vector<std::string>> worker_commands;
+  WorkerCommandMap worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -372,11 +375,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
-  /// Process client message of GetTask
+  /// Handle the case that a worker is available.
   ///
-  /// \param client The client that sent the message.
+  /// \param client The connection for the worker.
   /// \return Void.
-  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
@@ -456,19 +459,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// Handle the case where a worker is available. This should be called when a new
-  /// worker is registered with a port greater than zero (which indicates it will
-  /// act as a rpc server), and when a worker finishes it assigned task, which is
-  /// indicated by a `GetTask` message (or a rpc reply if the worker is a rpc server).
+  /// Finish assigning a task to a worker.
   ///
-  /// \param worker Worker that is available.
+  /// \param task_id Id of the task.
+  /// \param worker Worker which the task is assigned to.
+  /// \param success Whether the task is successfully assigned to the worker.
   /// \return void.
-  void HandleWorkerAvailable(std::shared_ptr<Worker> worker);
+  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -536,9 +538,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
-
-  /// Map from node ids to clients of the local workers.
-  std::unordered_map<ClientID, std::unique_ptr<rpc::WorkerTaskClient>> worker_clients_;
 };
 
 }  // namespace raylet

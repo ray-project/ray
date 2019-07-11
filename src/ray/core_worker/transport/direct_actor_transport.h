@@ -16,12 +16,19 @@ namespace ray {
 /// gets forwarded to another raylet on which node the task should be executed, and
 /// then a worker on that node gets this task and starts executing it.
 
+struct PendingTaskRequest {
+  TaskID task_id;
+  int num_returns;
+  std::unique_ptr<rpc::PushTaskRequest> request;
+};
+
+
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       boost::asio::io_service &io_service,
-      std::unique_ptr<gcs::GcsClient> &gcs_client,
-      const std::string &store_socket);
+      gcs::GcsClient &gcs_client,
+      CoreWorkerObjectInterface &object_interface);
 
   /// Submit a task for execution to raylet.
   ///
@@ -33,13 +40,16 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Subscribe to actor table.
   Status SubscribeActorTable();
 
-  Status PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request);
+  Status PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request,
+                  const TaskID &task_id, int num_returns);
+
+  void TreatTaskAsFailed(const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type);
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
 
   /// Gcs client.
-  std::unique_ptr<gcs::GcsClient> &gcs_client_;
+  gcs::GcsClient &gcs_client_;
 
   /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
   rpc::ClientCallManager client_call_manager_;
@@ -51,13 +61,14 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
   /// Pending requests to send out on a per-actor basis.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>> pending_requests_;
+  //std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>> pending_requests_;
+  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>> pending_requests_;
+
+
+  /// The store provider.
+  std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
 
   int counter_;
-
-  plasma::PlasmaClient store_client_;
-
-  Status Put(const Buffer &buffer, const ObjectID &object_id);
 };
 
 class CoreWorkerDirectActorTaskReceiver
@@ -65,8 +76,9 @@ class CoreWorkerDirectActorTaskReceiver
       public rpc::DirectActorHandler {
  public:
   CoreWorkerDirectActorTaskReceiver(
+    CoreWorkerObjectInterface &object_interface,
     boost::asio::io_service &io_service,
-    rpc::GrpcServer &server);
+    rpc::GrpcServer &server, const TaskHandler &task_handler);
 
   /// Handle a `PushTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -77,15 +89,16 @@ class CoreWorkerDirectActorTaskReceiver
   /// \param[in] done_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request,
                       rpc::PushTaskReply *reply,
-                      rpc::RequestDoneCallback done_callback) override;
+                      rpc::SendReplyCallback send_reply_callback) override;
 
-  Status SetTaskHandler(const TaskHandler &callback) override;                                 
 
  private:
-
-  TaskHandler task_handler_;
-
+  // Object interface.
+  CoreWorkerObjectInterface &object_interface_;
+  /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
+  /// The callback function to process a task.
+  TaskHandler task_handler_;  
 };
 
 }  // namespace ray

@@ -167,7 +167,7 @@ class TrainMNIST(Trainable):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.model.load_state_dict(checkpoint_path)
+        self.model.load_state_dict(torch.load(checkpoint_path))
 
 
 if __name__ == "__main__":

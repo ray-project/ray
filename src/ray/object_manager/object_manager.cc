@@ -17,9 +17,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
-      connection_pool_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_("object_manager", config_.object_manager_port),
+      object_manager_server_("ObjectManager", config_.object_manager_port),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -665,7 +664,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 /// Implementation of ObjectManagerServiceHandler
 void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
                                       rpc::PushReply *reply,
-                                      rpc::RequestDoneCallback done_callback) {
+                                      rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -681,7 +680,7 @@ void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
   double end_time = current_sys_time_seconds();
 
   HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time, status);
-  done_callback(status);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
@@ -712,7 +711,7 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
 
 void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
                                       rpc::PullReply *reply,
-                                      rpc::RequestDoneCallback done_callback) {
+                                      rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
@@ -730,18 +729,18 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
   }
 
   main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
-  done_callback(Status::OK());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
                                              rpc::FreeObjectsReply *reply,
-                                             rpc::RequestDoneCallback done_callback) {
+                                             rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));
   }
   FreeObjects(object_ids, /* local_only */ true);
-  done_callback(Status::OK());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
@@ -831,7 +830,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_.DebugString();
   result << "\n" << buffer_pool_.DebugString();
-  result << "\n" << connection_pool_.DebugString();
   return result.str();
 }
 
@@ -847,7 +845,6 @@ void ObjectManager::RecordMetrics() const {
                                      {{stats::ValueTypeKey, "num_pull_requests"}});
   stats::ObjectManagerStats().Record(profile_events_.size(),
                                      {{stats::ValueTypeKey, "num_profile_events"}});
-  connection_pool_.RecordMetrics();
 }
 
 }  // namespace ray

@@ -4,6 +4,8 @@
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/worker/worker_client.h"
@@ -21,20 +23,25 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker);
   /// The callback provided app-language workers that executes tasks.
   ///
   /// \param ray_function[in] Information about the function to execute.
   /// \param args[in] Arguments of the task.
   /// \return Status.
-  using TaskExecutor = std::function<Status(
-      const RayFunction &ray_function, const std::vector<std::shared_ptr<Buffer>> &args,
-      const TaskInfo &task_info, int num_returns,
-      std::vector<std::shared_ptr<Buffer>>* results)>;
+  using TaskExecutor =
+      std::function<Status(const RayFunction &ray_function,
+                           const std::vector<std::shared_ptr<RayObject>> &args,
+                           const TaskInfo &task_info, int num_returns,
+                           std::vector<std::shared_ptr<Buffer>>* results)>;
+
+  CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
+                                   std::unique_ptr<RayletClient> &raylet_client,
+                                   CoreWorkerObjectInterface &object_interface,
+                                   const TaskExecutor &executor);
 
   /// Start receving and executes tasks in a infinite loop.
-  /// \return Status.
-  Status Run(const TaskExecutor &executor);
+  /// \return void.
+  void Run();
 
  private:
   /// Build arguments for task executor. This would loop through all the arguments
@@ -46,10 +53,19 @@ class CoreWorkerTaskExecutionInterface {
   /// \param args[out] The arguments for passing to task executor.
   ///
   Status BuildArgsForExecutor(const raylet::TaskSpecification &spec,
-                              std::vector<std::shared_ptr<Buffer>> *args);
+                              std::vector<std::shared_ptr<RayObject>> *args);
 
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
+  /// Execute a task.
+  Status ExecuteTask(const raylet::TaskSpecification &spec,
+                     std::vector<std::shared_ptr<Buffer>>* results);
+
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
+  /// Reference to the parent CoreWorker's objects interface.
+  CoreWorkerObjectInterface &object_interface_;
+
+  // Task execution callback.
+  TaskExecutor execution_callback_;
 
   /// All the task task receivers supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers_;

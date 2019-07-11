@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import torch.nn as nn
 
-from ray.rllib.models.pytorch.model import TorchModel
-from ray.rllib.models.pytorch.misc import normc_initializer, valid_padding, \
+from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.torch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.visionnet import _get_filter_config
 from ray.rllib.utils.annotations import override

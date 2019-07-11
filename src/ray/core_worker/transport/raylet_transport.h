@@ -32,30 +32,31 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server,
-                               CoreWorkerObjectInterface &object_interface);
+  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+                               CoreWorkerObjectInterface &object_interface,
+                               boost::asio::io_service &io_service,
+                               rpc::GrpcServer &server, const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
+  /// `send_reply_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
-                        rpc::RequestDoneCallback done_callback) override;
-
-  Status SetTaskHandler(const TaskHandler &callback) override;
+                        rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  /// The callback function to process a task.
-  TaskHandler task_handler_;
+  /// Raylet client.
+  std::unique_ptr<RayletClient> &raylet_client_;
+  // Object interface.
+  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
-
-  CoreWorkerObjectInterface &object_interface_;
+  /// The callback function to process a task.
+  TaskHandler task_handler_;
 };
 
 }  // namespace ray

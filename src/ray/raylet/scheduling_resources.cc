@@ -740,6 +740,13 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
   return return_message;
 }
 
+const std::string ResourceIdSet::Serialize() const {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto resource_id_set_flatbuf = ToFlatbuf(fbb);
+  fbb.Finish(fbb.CreateVector(resource_id_set_flatbuf));
+  return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+}
+
 /// SchedulingResources class implementation
 
 SchedulingResources::SchedulingResources()

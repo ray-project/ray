@@ -1,6 +1,10 @@
+#define BOOST_BIND_NO_PLACEHOLDERS
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
+
+using namespace std::placeholders;
 
 namespace ray {
 
@@ -16,37 +20,37 @@ namespace ray {
 class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
-      : worker_(WorkerType::WORKER, WorkerLanguage::PYTHON, store_socket, raylet_socket,
-                JobID::FromRandom()) {}
+      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+                JobID::FromRandom(),
+                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5)) {}
 
   void Run() {
-    auto executor_func = [this](const RayFunction &ray_function,
-                                const std::vector<std::shared_ptr<Buffer>> &args,
-                                const TaskInfo &task_info, int num_returns,
-                                std::vector<std::shared_ptr<Buffer>> *results) {
-      // Note that this doesn't include dummy object id.
-      RAY_CHECK(num_returns >= 0);
-
-      // Merge all the content from input args.
-      auto memory_buffer = std::make_shared<AccumulativeBuffer>();
-      for (const auto &arg : args) {
-        memory_buffer->Append(arg->Data(), arg->Size());
-      }
-
-      // Write the merged content to each of return ids.
-      for (int i = 0; i < num_returns; i++) {
-        // ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
-        // RAY_CHECK_OK(worker_.Objects().Put(memory_buffer, id));
-        (*results).push_back(memory_buffer);
-      }
-      return Status::OK();
-    };
-
     // Start executing tasks.
-    worker_.Execution().Run(executor_func);
+    worker_.Execution().Run();
   }
 
  private:
+  Status ExecuteTask(const RayFunction &ray_function,
+                     const std::vector<std::shared_ptr<RayObject>> &args,
+                     const TaskInfo &task_info, int num_returns,
+                     std::vector<std::shared_ptr<Buffer>>* results) {
+    // Note that this doesn't include dummy object id.
+    RAY_CHECK(num_returns >= 0);
+
+    // Merge all the content from input args.
+    auto memory_buffer = std::make_shared<AccumulativeBuffer>();
+    for (const auto &arg : args) {
+      auto &data = arg->GetData();
+      memory_buffer->Append(data->Data(), data->Size());
+    }
+
+    // Write the merged content to each of return ids.
+    for (int i = 0; i < num_returns; i++) {
+      results->push_back(memory_buffer);
+    }
+    return Status::OK();
+  }
+
   CoreWorker worker_;
 };
 

@@ -22,7 +22,7 @@ class DirectActorHandler {
   /// \param[in] done_callback The callback to be called when the request is done.
   virtual void HandlePushTask(const PushTaskRequest &request,
                                  PushTaskReply *reply,
-                                 RequestDoneCallback done_callback) = 0;
+                                 SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.
