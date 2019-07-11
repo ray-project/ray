@@ -437,16 +437,17 @@ def copy_to_docker(config_file, target_script, override_cluster_name):
         target: target file on host
         override_cluster_name: set the name of the cluster
     """
-    config = yaml.load(open(config_file).read())
+    with open(config_file) as f:
+        config = yaml.load(f.read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
     base_path = os.path.basename(target_script)
-    cname = config["docker"]["container_name"]
-    cmd = "docker cp {} {}:{}".format(target_script, cname, base_path)
+    container_name = config["docker"]["container_name"]
+    cmd = "docker cp {} {}:{}".format(target_script, container_name, base_path)
     cmd = cmd + " && " + with_docker_exec(
         ["cp {} {}".format("/" + base_path, os.path.join("~", base_path))],
-        container_name=cname)[0]
+        container_name=container_name)[0]
     exec_cluster(config_file, cmd, False, False, False, False, False,
                  override_cluster_name, None)
 

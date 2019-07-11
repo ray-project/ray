@@ -107,7 +107,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "worker_run_options": (list, OPTIONAL),
             # This field is controlled by ray's Docker configuration
             #  and cannot be set by the user.
-            "cp_files": (None, OPTIONAL),
+            "cp_files": (dict, OPTIONAL),
         },
         OPTIONAL),
 
