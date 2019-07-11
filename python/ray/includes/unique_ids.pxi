@@ -109,7 +109,6 @@ cdef class UniqueID(BaseID):
     def nil(cls):
         return cls(CUniqueID.Nil().Binary())
 
-
     @classmethod
     def from_random(cls):
         return cls(os.urandom(CUniqueID.Size()))
@@ -194,7 +193,7 @@ cdef class TaskID(BaseID):
         return cls(CTaskID.Nil().Binary())
 
     @classmethod
-    def size(cla):
+    def size(cls):
         return CTaskID.Size()
 
     @classmethod
@@ -212,14 +211,42 @@ cdef class ClientID(UniqueID):
         return <CClientID>self.data
 
 
-cdef class JobID(UniqueID):
+cdef class JobID(BaseID):
+    cdef CJobID data
 
     def __init__(self, id):
-        check_id(id)
+        check_id(id, CJobID.Size())
         self.data = CJobID.FromBinary(<c_string>id)
 
     cdef CJobID native(self):
         return <CJobID>self.data
+
+    @classmethod
+    def from_int(cls, value):
+        return cls(CJobID.FromInt(value).Binary())
+
+    @classmethod
+    def nil(cls):
+        return cls(CJobID.Nil().Binary())
+
+    @classmethod
+    def size(cls):
+        return CJobID.Size()
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def size(self):
+        return CJobID.Size()
+
+    def is_nil(self):
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        return self.data.Hash()
 
 cdef class WorkerID(UniqueID):
 

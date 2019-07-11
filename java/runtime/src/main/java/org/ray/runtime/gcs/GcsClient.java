@@ -10,12 +10,13 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.id.BaseId;
+import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import org.ray.runtime.generated.Gcs.ClientTableData;
-import org.ray.runtime.generated.Gcs.ClientTableData.EntryType;
 import org.ray.runtime.generated.Gcs.TablePrefix;
 import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
@@ -72,40 +73,45 @@ public class GcsClient {
       final UniqueId clientId = UniqueId
           .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
 
-      if (data.getEntryType() == EntryType.INSERTION) {
+      if (data.getIsInsertion()) {
         //Code path of node insertion.
-        Map<String, Double> resources = new HashMap<>();
-        // Compute resources.
-        Preconditions.checkState(
-            data.getResourcesTotalLabelCount() == data.getResourcesTotalCapacityCount());
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          resources.put(data.getResourcesTotalLabel(i), data.getResourcesTotalCapacity(i));
-        }
         NodeInfo nodeInfo = new NodeInfo(
-            clientId, data.getNodeManagerAddress(), true, resources);
+            clientId, data.getNodeManagerAddress(), true, new HashMap<>());
         clients.put(clientId, nodeInfo);
-      } else if (data.getEntryType() == EntryType.RES_CREATEUPDATE) {
-        Preconditions.checkState(clients.containsKey(clientId));
-        NodeInfo nodeInfo = clients.get(clientId);
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          nodeInfo.resources.put(data.getResourcesTotalLabel(i), data.getResourcesTotalCapacity(i));
-        }
-      } else if (data.getEntryType() == EntryType.RES_DELETE) {
-        Preconditions.checkState(clients.containsKey(clientId));
-        NodeInfo nodeInfo = clients.get(clientId);
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          nodeInfo.resources.remove(data.getResourcesTotalLabel(i));
-        }
       } else {
         // Code path of node deletion.
-        Preconditions.checkState(data.getEntryType() == EntryType.DELETION);
         NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
-            false, clients.get(clientId).resources);
+            false, new HashMap<>());
         clients.put(clientId, nodeInfo);
       }
     }
 
+    // Fill resources.
+    for (Map.Entry<UniqueId, NodeInfo> client : clients.entrySet()) {
+      if (client.getValue().isAlive) {
+        client.getValue().resources.putAll(getResourcesForClient(client.getKey()));
+      }
+    }
+
     return new ArrayList<>(clients.values());
+  }
+
+  private Map<String, Double> getResourcesForClient(UniqueId clientId) {
+    final String prefix = TablePrefix.NODE_RESOURCE.toString();
+    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
+    Map<byte[], byte[]> results = primary.hgetAll(key);
+    Map<String, Double> resources = new HashMap<>();
+    for (Map.Entry<byte[], byte[]> entry : results.entrySet()) {
+      String resourceName = new String(entry.getKey());
+      Gcs.ResourceTableData resourceTableData;
+      try {
+        resourceTableData = Gcs.ResourceTableData.parseFrom(entry.getValue());
+      } catch (InvalidProtocolBufferException e) {
+        throw new RuntimeException("Received invalid protobuf data from GCS.");
+      }
+      resources.put(resourceName, resourceTableData.getResourceCapacity());
+    }
+    return resources;
   }
 
   /**
@@ -156,6 +162,11 @@ public class GcsClient {
     }
     checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
     return checkpoints;
+  }
+
+  public JobId nextJobId() {
+    int jobCounter = (int) primary.incr("JobCounter".getBytes());
+    return JobId.fromInt(jobCounter);
   }
 
   private RedisClient getShardClient(BaseId key) {

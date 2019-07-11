@@ -20,9 +20,7 @@ struct WorkerThreadContext {
     put_index = 0;
   }
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec) {
-    SetCurrentTask(spec.TaskId());
-  }
+  void SetCurrentTask(const TaskSpecification &spec) { SetCurrentTask(spec.TaskId()); }
 
  private:
   /// The task ID for current task.
@@ -40,7 +38,7 @@ thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_
 
 WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type(worker_type),
-      worker_id(worker_type == WorkerType::DRIVER ? WorkerID::FromBinary(job_id.Binary())
+      worker_id(worker_type == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                   : WorkerID::FromRandom()),
       current_job_id(worker_type == WorkerType::DRIVER ? job_id : JobID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
@@ -64,7 +62,7 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentTask(const raylet::TaskSpecification &spec) {
+void WorkerContext::SetCurrentTask(const TaskSpecification &spec) {
   current_job_id = spec.JobId();
   GetThreadContext().SetCurrentTask(spec);
 }
