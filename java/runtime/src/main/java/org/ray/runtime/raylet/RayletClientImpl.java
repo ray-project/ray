@@ -4,8 +4,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,7 +38,7 @@ public class RayletClientImpl implements RayletClient {
 
   // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
   public RayletClientImpl(String schedulerSockName, UniqueId clientId,
-                          boolean isWorker, JobId jobId) {
+      boolean isWorker, JobId jobId) {
     client = nativeInit(schedulerSockName, clientId.getBytes(),
         isWorker, jobId.getBytes());
   }

@@ -103,7 +103,7 @@ public class ObjectStoreProxy {
 
   @SuppressWarnings("unchecked")
   private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data,
-                                               ClassLoader classLoader, ObjectId objectId) {
+      ClassLoader classLoader, ObjectId objectId) {
     if (Arrays.equals(meta, RAW_TYPE_META)) {
       return (GetResult<T>) new GetResult<>(true, data, null);
     } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
@@ -121,7 +121,7 @@ public class ObjectStoreProxy {
   /**
    * Serialize and put an object to the object store.
    *
-   * @param id     Id of the object.
+   * @param id Id of the object.
    * @param object The object to put.
    */
   public void put(ObjectId id, Object object) {
@@ -139,7 +139,7 @@ public class ObjectStoreProxy {
   /**
    * Put an already serialized object to the object store.
    *
-   * @param id               Id of the object.
+   * @param id Id of the object.
    * @param serializedObject The serialized object to put.
    */
   public void putSerialized(ObjectId id, byte[] serializedObject) {

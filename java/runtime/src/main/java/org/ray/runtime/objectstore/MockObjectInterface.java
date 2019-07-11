@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class MockObjectInterface implements ObjectInterface {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectInterface.class);
 
   private static final int GET_CHECK_INTERVAL_MS = 100;

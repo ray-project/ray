@@ -84,7 +84,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     try {
       LOGGER.debug("Loading native libraries.");
       // Load native libraries.
-      String[] libraries = new String[] {"core_worker_library_java"};
+      String[] libraries = new String[]{"core_worker_library_java"};
       for (String library : libraries) {
         String fileName = System.mapLibraryName(library);
         // Copy the file from resources to a temp dir, and load the native library.
@@ -388,8 +388,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * Create the task specification.
    *
    * @param func The target remote function.
-   * @param pyFunctionDescriptor Descriptor of the target Python function, if the task is a
-   *     Python task.
+   * @param pyFunctionDescriptor Descriptor of the target Python function, if the task is a Python
+   * task.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
    * @param args The arguments for the remote function.
    * @param isActorCreationTask Whether this task is an actor creation task.

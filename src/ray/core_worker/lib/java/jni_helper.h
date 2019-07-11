@@ -160,14 +160,14 @@ inline ReturnT ReadJavaNativeRayObject(
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.
 inline jobject ToJavaNativeRayObject(JNIEnv *env,
-                                    const std::shared_ptr<ray::RayObject> &rayObject) {
+                                     const std::shared_ptr<ray::RayObject> &rayObject) {
   if (!rayObject) {
     return nullptr;
   }
   auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
-  auto java_obj = env->NewObject(java_native_ray_object_class, java_native_ray_object_init,
-                                 java_data, java_metadata);
+  auto java_obj = env->NewObject(java_native_ray_object_class,
+                                 java_native_ray_object_init, java_data, java_metadata);
   return java_obj;
 }
 

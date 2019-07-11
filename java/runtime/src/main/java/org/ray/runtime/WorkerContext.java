@@ -44,7 +44,7 @@ public class WorkerContext {
 
   /**
    * @return For the main thread, this method returns the ID of this worker's current running task;
-   *     for other threads, this method returns a random ID.
+   * for other threads, this method returns a random ID.
    */
   public TaskId getCurrentTaskId() {
     return new TaskId(nativeGetCurrentTaskId(nativeWorkerContext));

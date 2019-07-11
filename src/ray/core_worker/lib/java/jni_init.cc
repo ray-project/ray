@@ -54,7 +54,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   LOAD_CLASS(java_native_ray_object_class, "org/ray/runtime/objectstore/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
-  java_native_ray_object_data = env->GetFieldID(java_native_ray_object_class, "data", "[B");
+  java_native_ray_object_data =
+      env->GetFieldID(java_native_ray_object_class, "data", "[B");
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 

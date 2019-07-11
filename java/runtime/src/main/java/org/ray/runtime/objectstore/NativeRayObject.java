@@ -1,6 +1,7 @@
 package org.ray.runtime.objectstore;
 
 public class NativeRayObject {
+
   public byte[] data;
   public byte[] metadata;
 
