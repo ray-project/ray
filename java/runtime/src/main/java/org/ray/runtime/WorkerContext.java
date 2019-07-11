@@ -1,12 +1,14 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.util.IdUtil;
 
 public class WorkerContext {
   private final long nativeWorkerContext;
@@ -23,7 +25,7 @@ public class WorkerContext {
    */
   private RunMode runMode;
 
-  public WorkerContext(WorkerType workerType, UniqueId jobId, RunMode runMode) {
+  public WorkerContext(WorkerType workerType, JobId jobId, RunMode runMode) {
     this.nativeWorkerContext = nativeCreateWorkerContext(workerType.getNumber(), jobId.getBytes());
     mainThreadId = Thread.currentThread().getId();
     this.runMode = runMode;
@@ -84,8 +86,8 @@ public class WorkerContext {
   /**
    * The ID of the current job.
    */
-  public UniqueId getCurrentJobId() {
-    return new UniqueId(nativeGetCurrentJobId(nativeWorkerContext));
+  public JobId getCurrentJobId() {
+    return new JobId(nativeGetCurrentJobId(nativeWorkerContext));
   }
 
   /**

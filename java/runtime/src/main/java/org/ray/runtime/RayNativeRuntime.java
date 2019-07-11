@@ -2,6 +2,7 @@ package org.ray.runtime;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.RedisClient;
@@ -38,6 +39,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
+    if (rayConfig.getJobId() == JobId.NIL) {
+      rayConfig.setJobId(gcsClient.nextJobId());
+    }
+
+    workerContext = new WorkerContext(rayConfig.workerMode,
+        rayConfig.getJobId(), rayConfig.runMode);
     rayletClient = new RayletClientImpl(
         rayConfig.rayletSocketName,
         workerContext.getCurrentWorkerId(),

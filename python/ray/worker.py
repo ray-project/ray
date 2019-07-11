@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import traceback
+import random
 
 # Ray modules
 import pyarrow
@@ -216,6 +217,13 @@ class Worker(object):
     @property
     def current_task_id(self):
         return self.task_context.current_task_id
+
+    @property
+    def current_session_and_job(self):
+        """Get the current session index and job id as pair."""
+        assert isinstance(self._session_index, int)
+        assert isinstance(self.current_job_id, ray.JobID)
+        return self._session_index, self.current_job_id
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
@@ -1718,27 +1726,44 @@ def connect(node,
 
     worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
 
+    if mode is not LOCAL_MODE:
+        # Create a Redis client to primary.
+        # The Redis client can safely be shared between threads. However,
+        # that is not true of Redis pubsub clients. See the documentation at
+        # https://github.com/andymccurdy/redis-py#thread-safety.
+        worker.redis_client = node.create_redis_client()
+
     # Initialize some fields.
     if mode is WORKER_MODE:
+        # We should not specify the job_id if it's `WORKER_MODE`.
+        assert job_id is None
+        job_id = JobID.nil()
+        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
+    elif mode is LOCAL_MODE:
+        # Code path of local mode
+        if job_id is None:
+            job_id = JobID.from_int(random.randint(1, 100000))
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = JobID.from_random()
+            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
+            job_id = JobID.from_int(
+                int(worker.redis_client.incr("JobCounter")))
+        # When tasks are executed on remote workers in the context of multiple
+        # drivers, the current job ID is used to keep track of which job is
+        # responsible for the task so that error messages will be propagated to
+        # the correct driver.
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
 
-        if not isinstance(job_id, JobID):
-            raise TypeError("The type of given job id must be JobID.")
-
-        worker.worker_id = job_id.binary()
-
-    # When tasks are executed on remote workers in the context of multiple
-    # drivers, the current job ID is used to keep track of which driver is
-    # responsible for the task so that error messages will be propagated to
-    # the correct driver.
-    if mode != WORKER_MODE:
-        worker.current_job_id = JobID(worker.worker_id)
+    if not isinstance(job_id, JobID):
+        raise TypeError("The type of given job id must be JobID.")
+    worker.current_job_id = job_id
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1751,12 +1776,6 @@ def connect(node,
     if mode == LOCAL_MODE:
         worker.local_mode_manager = LocalModeManager()
         return
-
-    # Create a Redis client.
-    # The Redis client can safely be shared between threads. However, that is
-    # not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1836,7 +1855,6 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
-    job_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1868,7 +1886,7 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(job_id_str[:TaskID.size()]),  # parent_task_id.
+            TaskID(worker.worker_id[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -1901,7 +1919,7 @@ def connect(node,
         node.raylet_socket_name,
         ClientID(worker.worker_id),
         (mode == WORKER_MODE),
-        JobID(job_id_str),
+        worker.current_job_id,
     )
 
     # Start the import thread

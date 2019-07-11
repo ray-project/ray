@@ -50,7 +50,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type(worker_type),
       // TODO(qwang): Assign the driver id to worker id
       // once we treat driver id as a special worker id.
-      worker_id(worker_type == WorkerType::DRIVER ? WorkerID::FromBinary(job_id.Binary())
+      worker_id(worker_type == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                   : WorkerID::FromRandom()),
       current_job_id(worker_type == WorkerType::DRIVER ? job_id : JobID::Nil()) {
   // For worker main thread which initializes the WorkerContext,

@@ -284,44 +284,6 @@ const std::unordered_map<std::string, FractionalResourceQuantity>
   return resource_capacity_;
 };
 
-ResourceSet ResourceSet::FindUpdatedResources(
-    const ray::raylet::ResourceSet &new_resource_set) const {
-  // Find any new resources and return a ResourceSet with the resource and new capacities
-  ResourceSet updated_resource_set;
-  for (const auto &resource_pair : new_resource_set.GetResourceAmountMap()) {
-    const std::string &resource_label = resource_pair.first;
-    const FractionalResourceQuantity &new_resource_capacity = resource_pair.second;
-    if (resource_capacity_.count(resource_label) == 1) {
-      // Resource exists, check if updated
-      const FractionalResourceQuantity &old_resource_capacity =
-          resource_capacity_.at(resource_label);
-      if (old_resource_capacity != new_resource_capacity) {
-        updated_resource_set.AddOrUpdateResource(resource_label, new_resource_capacity);
-      }
-    } else {
-      // Resource does not exist in the old set, add to return set
-      updated_resource_set.AddOrUpdateResource(resource_label, new_resource_capacity);
-    }
-  }
-  return updated_resource_set;
-}
-
-ResourceSet ResourceSet::FindDeletedResources(
-    const ray::raylet::ResourceSet &new_resource_set) const {
-  // Find any new resources and return a ResourceSet with the resource and new capacities
-  ResourceSet deleted_resource_set;
-  auto &new_resource_map = new_resource_set.GetResourceAmountMap();
-  for (const auto &resource_pair : resource_capacity_) {
-    const std::string &resource_label = resource_pair.first;
-    const FractionalResourceQuantity &old_resource_capacity = resource_pair.second;
-    if (new_resource_map.count(resource_label) != 1) {
-      // Resource does not exist, add to return set
-      deleted_resource_set.AddOrUpdateResource(resource_label, old_resource_capacity);
-    }
-  }
-  return deleted_resource_set;
-}
-
 /// ResourceIds class implementation
 
 ResourceIds::ResourceIds() {}
