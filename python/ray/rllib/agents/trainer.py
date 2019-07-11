@@ -580,12 +580,6 @@ class Trainer(Trainable):
             return res[0]  # backwards compatibility
 
     @property
-    def iteration(self):
-        """Current training iter, auto-incremented with each train() call."""
-
-        return self._iteration
-
-    @property
     def _name(self):
         """Subclasses should override this to declare their name."""
 
