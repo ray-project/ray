@@ -538,7 +538,6 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 
   // Add the notification to our cache. Notifications are idempotent.
-  // Add as is
   RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
                     "notification for client id "
                  << client_id << ". IsInsertion: " << data.is_insertion()
