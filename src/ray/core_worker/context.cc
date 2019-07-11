@@ -40,7 +40,7 @@ thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_
 
 WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type(worker_type),
-      worker_id(worker_type == WorkerType::DRIVER ? WorkerID::FromBinary(job_id.Binary())
+      worker_id(worker_type == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                   : WorkerID::FromRandom()),
       current_job_id(worker_type == WorkerType::DRIVER ? job_id : JobID::Nil()) {
   // For worker main thread which initializes the WorkerContext,

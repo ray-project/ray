@@ -268,8 +268,8 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 void NodeManager::HandleJobTableUpdate(const JobID &id,
                                        const std::vector<JobTableData> &job_data) {
   for (const auto &entry : job_data) {
-    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << UniqueID::FromBinary(entry.job_id())
-                   << " " << entry.is_dead();
+    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << JobID::FromBinary(entry.job_id()) << " "
+                   << entry.is_dead();
     if (entry.is_dead()) {
       auto job_id = JobID::FromBinary(entry.job_id());
       auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
@@ -869,9 +869,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker_pool_.RegisterDriver(std::move(worker));
     local_queues_.AddDriverTaskId(driver_task_id);
     RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        JobID(driver_id),
-        /*is_dead=*/false, std::time(nullptr), initial_config_.node_manager_address,
-        message->worker_pid()));
+        job_id, /*is_dead=*/false, std::time(nullptr),
+        initial_config_.node_manager_address, message->worker_pid()));
   }
 }
 
@@ -1039,17 +1038,17 @@ void NodeManager::ProcessDisconnectClientMessage(
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
   } else if (is_driver) {
     // The client is a driver.
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        JobID(client->GetClientId()),
-        /*is_dead=*/true, std::time(nullptr), initial_config_.node_manager_address,
-        worker->Pid()));
-    auto job_id = worker->GetAssignedTaskId();
+    const auto job_id = worker->GetAssignedJobId();
+    const auto driver_id = ComputeDriverIdFromJob(job_id);
     RAY_CHECK(!job_id.IsNil());
-    local_queues_.RemoveDriverTaskId(job_id);
+    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
+        job_id, /*is_dead=*/true, std::time(nullptr),
+        initial_config_.node_manager_address, worker->Pid()));
+    local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
     RAY_LOG(DEBUG) << "Driver (pid=" << worker->Pid() << ") is disconnected. "
-                   << "job_id: " << worker->GetAssignedJobId();
+                   << "job_id: " << job_id;
   }
 
   client->Close();
