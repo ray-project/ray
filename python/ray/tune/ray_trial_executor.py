@@ -300,7 +300,7 @@ class RayTrialExecutor(TrialExecutor):
         return set(t.node_ip for t in self.get_running_trials())
 
     def get_next_available_trial(self):
-        if not ray.worker._mode() == ray.worker.LOCAL_MODE:
+        if ray.worker._mode() != ray.worker.LOCAL_MODE:
             live_cluster_ips = self.get_node_ips()
             if live_cluster_ips - self.get_current_trial_ips():
                 for trial in self.get_running_trials():
