@@ -2181,7 +2181,6 @@ def test_actor_reconstruction_without_task(ray_start_regular):
                 # Every time the actor gets constructed,
                 # put a new object in plasma store.
                 if not object_exists(obj_id):
-                    print("put", obj_id)
                     ray.worker.global_worker.put_object(obj_id, 1)
                     break
 
