@@ -54,7 +54,7 @@ class AccumulativeBuffer : public Buffer {
     buffer_.insert(buffer_.end(), data, data + size);
   }
 
-  uint8_t *Data() const override { return const_cast<uint8_t*>(buffer_.data()); }
+  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_.data()); }
 
   size_t Size() const override { return buffer_.size(); }
 

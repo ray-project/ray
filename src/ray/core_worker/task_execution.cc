@@ -19,18 +19,15 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
                         std::placeholders::_1, std::placeholders::_2);
   task_receivers_.emplace(
       static_cast<int>(TaskTransportType::RAYLET),
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_,
-          main_service_, worker_server_, func)));
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+          raylet_client, object_interface_, main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
-    const TaskSpecification &spec,
-    std::vector<std::shared_ptr<Buffer>>* results) {
+    const TaskSpecification &spec, std::vector<std::shared_ptr<Buffer>> *results) {
   worker_context_.SetCurrentTask(spec);
 
   RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
@@ -55,7 +52,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     // Decrease to account for the dummy object id, this logic only
     // applies to task submitted via raylet.
     num_returns--;
-  }  
+  }
 
   auto status = execution_callback_(func, args, task_info, num_returns, results);
   // TODO(zhijunfu):

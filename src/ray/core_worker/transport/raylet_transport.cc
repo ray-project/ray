@@ -15,9 +15,8 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface,
-    boost::asio::io_service &io_service, rpc::GrpcServer &server,
-    const TaskHandler &task_handler)
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
+    rpc::GrpcServer &server, const TaskHandler &task_handler)
     : raylet_client_(raylet_client),
       object_interface_(object_interface),
       task_service_(io_service, *this),
@@ -48,7 +47,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous
-  // raylet client calls are completed. For example, if the worker sends a 
+  // raylet client calls are completed. For example, if the worker sends a
   // NotifyUnblocked message that it is no longer blocked in a `ray.get`
   // on the normal raylet socket, then completes an assigned task, we
   // need to guarantee that raylet gets the former message first before

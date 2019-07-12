@@ -8,8 +8,7 @@ namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket, std::unique_ptr<RayletClient> &raylet_client)
-    : local_store_provider_(store_socket),
-      raylet_client_(raylet_client) {}
+    : local_store_provider_(store_socket), raylet_client_(raylet_client) {}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {

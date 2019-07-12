@@ -8,14 +8,13 @@ namespace ray {
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     const std::string &store_socket)
-    : worker_context_(worker_context), raylet_client_(raylet_client),
+    : worker_context_(worker_context),
+      raylet_client_(raylet_client),
       store_socket_(store_socket) {
-  store_providers_.emplace(
-      static_cast<int>(StoreProviderType::LOCAL_PLASMA),
-      CreateStoreProvider(StoreProviderType::LOCAL_PLASMA));     
-  store_providers_.emplace(
-      static_cast<int>(StoreProviderType::PLASMA),
-      CreateStoreProvider(StoreProviderType::PLASMA));
+  store_providers_.emplace(static_cast<int>(StoreProviderType::LOCAL_PLASMA),
+                           CreateStoreProvider(StoreProviderType::LOCAL_PLASMA));
+  store_providers_.emplace(static_cast<int>(StoreProviderType::PLASMA),
+                           CreateStoreProvider(StoreProviderType::PLASMA));
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
@@ -53,14 +52,14 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
   return store_providers_[type]->Delete(object_ids, local_only, delete_creating_tasks);
 }
 
-std::unique_ptr<CoreWorkerStoreProvider>
-CoreWorkerObjectInterface::CreateStoreProvider(StoreProviderType type) const {
+std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreProvider(
+    StoreProviderType type) const {
   switch (type) {
-  case StoreProviderType::LOCAL_PLASMA :
+  case StoreProviderType::LOCAL_PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerLocalPlasmaStoreProvider(store_socket_));
-    break;    
-  case StoreProviderType::PLASMA :
+    break;
+  case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
     break;

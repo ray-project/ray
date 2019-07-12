@@ -28,11 +28,10 @@ class CoreWorkerTaskExecutionInterface {
   /// \param ray_function[in] Information about the function to execute.
   /// \param args[in] Arguments of the task.
   /// \return Status.
-  using TaskExecutor =
-      std::function<Status(const RayFunction &ray_function,
-                           const std::vector<std::shared_ptr<RayObject>> &args,
-                           const TaskInfo &task_info, int num_returns,
-                           std::vector<std::shared_ptr<Buffer>>* results)>;
+  using TaskExecutor = std::function<Status(
+      const RayFunction &ray_function,
+      const std::vector<std::shared_ptr<RayObject>> &args, const TaskInfo &task_info,
+      int num_returns, std::vector<std::shared_ptr<Buffer>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
@@ -57,7 +56,7 @@ class CoreWorkerTaskExecutionInterface {
 
   /// Execute a task.
   Status ExecuteTask(const TaskSpecification &spec,
-                     std::vector<std::shared_ptr<Buffer>>* results);
+                     std::vector<std::shared_ptr<Buffer>> *results);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

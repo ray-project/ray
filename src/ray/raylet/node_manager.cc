@@ -658,7 +658,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // The actor is now alive (created for the first time or reconstructed). We can
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
-    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());    
+    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -699,7 +699,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // The actor is dead and needs reconstruction. Attempting to reconstruct its
     // creation task.
     reconstruction_policy_.ListenAndMaybeReconstruct(
-        actor_registration.GetActorCreationDependency());    
+        actor_registration.GetActorCreationDependency());
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
     // creation.
@@ -1882,8 +1882,8 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(
   }
 
   // Set the ip address & port, which could change after reconstruction.
-  new_actor_data.set_ip_address(gcs_client_->client_table().GetLocalClient().
-      node_manager_address());
+  new_actor_data.set_ip_address(
+      gcs_client_->client_table().GetLocalClient().node_manager_address());
   new_actor_data.set_port(port);
 
   // Set the new fields for the actor's state to indicate that the actor is
@@ -1937,7 +1937,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
         },
         /*failure_callback=*/
         [this, task_spec, resumed_from_checkpoint, port](ray::gcs::AsyncGcsClient *client,
-                                                   const TaskID &parent_task_id) {
+                                                         const TaskID &parent_task_id) {
           // The parent task was not in the GCS task table. It should most likely be in
           // the
           // lineage cache.
@@ -1995,7 +1995,8 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                                   const TaskSpecification &task_spec,
-                                                  bool resumed_from_checkpoint, int port) {
+                                                  bool resumed_from_checkpoint,
+                                                  int port) {
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec, port);

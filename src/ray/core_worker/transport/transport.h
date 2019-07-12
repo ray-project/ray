@@ -32,8 +32,8 @@ class CoreWorkerTaskSubmitter {
 /// This class receives tasks for execution.
 class CoreWorkerTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(const TaskSpecification &task_spec,
-      std::vector<std::shared_ptr<Buffer>> *results)>;
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, std::vector<std::shared_ptr<Buffer>> *results)>;
 };
 
 }  // namespace ray
