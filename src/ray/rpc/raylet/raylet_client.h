@@ -34,12 +34,8 @@ namespace rpc {
 
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-/// TODO(jzh): At persent, we use promise and future to wrap around the async callback
-///            to implement synchronized call to raylet server. It's just a workaround and
-///             we would change it to actually
-///            async mode once we finish the refactor of the worker to a server
-///            programming mode.
-/// Client used for communicating with a local node manager server.
+
+/// Client used for communicating with raylet.
 class RayletClient {
  public:
   /// Constructor for raylet client.
