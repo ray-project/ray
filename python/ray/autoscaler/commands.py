@@ -226,9 +226,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             for host_path in config["file_mounts"]:
                 if host_path not in host_mounts:
                     raise ValueError(
-                       "{} does not have corresponding docker mount.".format(host_path))
-            for container_path, host_path in (
-                    docker_mounts.items()):
+                        "{} does not have corresponding docker mount.".format(
+                            host_path))
+            for container_path, host_path in (docker_mounts.items()):
                 # This maps the LOCAL container path to REMOTE host path.
                 new_mounts[host_path] = container_path
         else:

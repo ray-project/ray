@@ -250,40 +250,47 @@ class NodeUpdater(object):
             for cmd in self.setup_commands:
                 self.ssh_cmd(cmd)
 
-    def rsync_up(self, source, target, options=None, redirect=None, check_error=True):
+    def rsync_up(self,
+                 source,
+                 target,
+                 options=None,
+                 redirect=None,
+                 check_error=True):
         logger.info("NodeUpdater: "
                     "{}: Syncing {} to {}...".format(self.node_id, source,
                                                      target))
         options = options or []
         self.set_ssh_ip_if_required()
         cmd = [
-                "rsync", " ".join(options), "-e",
-                " ".join(["ssh"] + get_default_ssh_options(
-                    self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
-                source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
-            ]
+            "rsync", " ".join(options),
+            "-e", " ".join(["ssh"] + get_default_ssh_options(
+                self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
+            source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
+        ]
         logger.info("Running {}".format(" ".join(cmd)))
-        self.get_caller(check_error)(cmd,
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+        self.get_caller(check_error)(
+            cmd, stdout=redirect or sys.stdout, stderr=redirect or sys.stderr)
 
-    def rsync_down(self, source, target, options=None, redirect=None, check_error=True):
+    def rsync_down(self,
+                   source,
+                   target,
+                   options=None,
+                   redirect=None,
+                   check_error=True):
         logger.info("NodeUpdater: "
                     "{}: Syncing {} from {}...".format(self.node_id, source,
                                                        target))
         options = options or []
         self.set_ssh_ip_if_required()
         cmd = [
-                "rsync", " ".join(options), "-e",
-                " ".join(["ssh"] + get_default_ssh_options(
-                    self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
-                "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
-            ],
+            "rsync", " ".join(options),
+            "-e", " ".join(["ssh"] + get_default_ssh_options(
+                self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
+            "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
+        ],
         logger.info("Running {}".format(" ".join(cmd)))
         self.get_caller(check_error)(
-            cmd,
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+            cmd, stdout=redirect or sys.stdout, stderr=redirect or sys.stderr)
 
     def ssh_cmd(self,
                 cmd,

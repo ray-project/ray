@@ -46,16 +46,14 @@ def dockerize_if_needed(config):
                                             config["docker"]["mounts"], cname,
                                             run_options + worker_run_options)
 
-    config["head_setup_commands"] = (
-        head_docker_start +
-        with_docker_exec(config["head_setup_commands"], container_name=cname))
+    config["head_setup_commands"] = (head_docker_start + with_docker_exec(
+        config["head_setup_commands"], container_name=cname))
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
-    config["worker_setup_commands"] = (
-        worker_docker_start + with_docker_exec(
-                config["worker_setup_commands"], container_name=cname))
+    config["worker_setup_commands"] = (worker_docker_start + with_docker_exec(
+        config["worker_setup_commands"], container_name=cname))
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
@@ -91,9 +89,10 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         "-p {port}:{port}".format(port=port)
         for port in ["6379", "8076", "4321"]
     ])
-    mount_flags = " ".join(
-        ["--mount type=bind,source={src},target={dest}".format(
-            src=src, dest=dest) for dest, src in mount.items()])
+    mount_flags = " ".join([
+        "--mount type=bind,source={src},target={dest}".format(
+            src=src, dest=dest) for dest, src in mount.items()
+    ])
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}

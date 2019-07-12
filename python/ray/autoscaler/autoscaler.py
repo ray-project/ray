@@ -116,7 +116,6 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
-
     "file_sync_options": (list, OPTIONAL),
 
     # List of commands that will be run before `setup_commands`. If docker is
