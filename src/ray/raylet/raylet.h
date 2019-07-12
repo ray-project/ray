@@ -9,7 +9,7 @@
 // clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
 // clang-format on
 
 namespace ray {
@@ -18,7 +18,6 @@ namespace raylet {
 
 using rpc::ClientTableData;
 
-class Task;
 class NodeManager;
 
 class Raylet {

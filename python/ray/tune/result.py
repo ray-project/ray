@@ -9,6 +9,9 @@ import os
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
 
+# (Optional) Enum for user controlled checkpoint
+SHOULD_CHECKPOINT = "should_checkpoint"
+
 # (Auto-filled) The hostname of the machine hosting the training process.
 HOSTNAME = "hostname"
 

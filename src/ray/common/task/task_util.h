@@ -1,12 +1,10 @@
-#ifndef RAY_RAYLET_TASK_UTIL_H
-#define RAY_RAYLET_TASK_UTIL_H
+#ifndef RAY_COMMON_TASK_TASK_UTIL_H
+#define RAY_COMMON_TASK_TASK_UTIL_H
 
+#include "ray/common/task/task_spec.h"
 #include "ray/protobuf/common.pb.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// Helper class for building a `TaskSpecification` object.
 class TaskSpecBuilder {
@@ -27,7 +25,7 @@ class TaskSpecBuilder {
       uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
-    message_.set_type(rpc::TaskType::NORMAL_TASK);
+    message_.set_type(TaskType::NORMAL_TASK);
     message_.set_language(language);
     for (const auto &fd : function_descriptor) {
       message_.add_function_descriptor(fd);
@@ -114,7 +112,6 @@ class TaskSpecBuilder {
   rpc::TaskSpec message_;
 };
 
-}  // namespace raylet
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_UTIL_H
+#endif  // RAY_COMMON_TASK_TASK_UTIL_H

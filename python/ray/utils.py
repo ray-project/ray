@@ -232,6 +232,20 @@ def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
 
 
+# TODO(qwang): Remove these hepler functions
+# once we separate `WorkerID` from `UniqueID`.
+def compute_job_id_from_driver(driver_id):
+    assert isinstance(driver_id, ray.WorkerID)
+    return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
+
+
+def compute_driver_id_from_job(job_id):
+    assert isinstance(job_id, ray.JobID)
+    rest_length = ray_constants.ID_SIZE - job_id.size()
+    driver_id_str = job_id.binary() + (rest_length * b"\xff")
+    return ray.WorkerID(driver_id_str)
+
+
 def get_cuda_visible_devices():
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 
