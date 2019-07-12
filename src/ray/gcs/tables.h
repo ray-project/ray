@@ -32,7 +32,7 @@ using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ProfileTableData;
-using rpc::RayResource;
+using rpc::ResourceTableData;
 using rpc::TablePrefix;
 using rpc::TablePubsub;
 using rpc::TaskLeaseData;
@@ -67,10 +67,10 @@ class LogInterface {
  public:
   using WriteCallback =
       std::function<void(AsyncGcsClient *client, const ID &id, const Data &data)>;
-  virtual Status Append(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
-                        const WriteCallback &done) = 0;
+  virtual Status Append(const JobID &job_id, const ID &id,
+                        const std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual Status AppendAt(const JobID &job_id, const ID &task_id,
-                          std::shared_ptr<Data> &data, const WriteCallback &done,
+                          const std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
   virtual ~LogInterface(){};
 };
@@ -126,7 +126,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Append(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+  Status Append(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
   /// Append a log entry to a key if and only if the log has the given number
@@ -141,7 +141,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param log_length The number of entries that the log must have for the
   /// append to succeed.
   /// \return Status
-  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+  Status AppendAt(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
@@ -272,8 +272,8 @@ template <typename ID, typename Data>
 class TableInterface {
  public:
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<Data> &data,
-                     const WriteCallback &done) = 0;
+  virtual Status Add(const JobID &job_id, const ID &task_id,
+                     const std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
 
@@ -315,7 +315,7 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+  Status Add(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
              const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
@@ -378,10 +378,10 @@ template <typename ID, typename Data>
 class SetInterface {
  public:
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+  virtual Status Add(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                      const WriteCallback &done) = 0;
-  virtual Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
-                        const WriteCallback &done) = 0;
+  virtual Status Remove(const JobID &job_id, const ID &id,
+                        const std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
   virtual ~SetInterface(){};
 };
 
@@ -420,7 +420,7 @@ class Set : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+  Status Add(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
              const WriteCallback &done);
 
   /// Remove an entry from the set.
@@ -431,7 +431,7 @@ class Set : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   /// GCS.
   /// \return Status
-  Status Remove(const JobID &job_id, const ID &id, std::shared_ptr<Data> &data,
+  Status Remove(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
@@ -593,7 +593,7 @@ class Hash : private Log<ID, Data>,
   using Log<ID, Data>::num_lookups_;
 };
 
-class DynamicResourceTable : public Hash<ClientID, RayResource> {
+class DynamicResourceTable : public Hash<ClientID, ResourceTableData> {
  public:
   DynamicResourceTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                        AsyncGcsClient *client)
@@ -654,8 +654,12 @@ class JobTable : public Log<JobID, JobTableData> {
   ///
   /// \param job_id The job id.
   /// \param is_dead Whether the job is dead.
+  /// \param timestamp The UNIX timestamp when the driver was started/stopped.
+  /// \param node_manager_address IP address of the node the driver is running on.
+  /// \param driver_pid Process ID of the driver process.
   /// \return The return status.
-  Status AppendJobData(const JobID &job_id, bool is_dead);
+  Status AppendJobData(const JobID &job_id, bool is_dead, int64_t timestamp,
+                       const std::string &node_manager_address, int64_t driver_pid);
 };
 
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
@@ -691,7 +695,8 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
     prefix_ = TablePrefix::TASK_LEASE;
   }
 
-  Status Add(const JobID &job_id, const TaskID &id, std::shared_ptr<TaskLeaseData> &data,
+  Status Add(const JobID &job_id, const TaskID &id,
+             const std::shared_ptr<TaskLeaseData> &data,
              const WriteCallback &done) override {
     RAY_RETURN_NOT_OK((Table<TaskID, TaskLeaseData>::Add(job_id, id, data, done)));
     // Mark the entry for expiration in Redis. It's okay if this command fails
@@ -867,16 +872,6 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// \param callback The callback to register.
   void RegisterClientRemovedCallback(const ClientTableCallback &callback);
 
-  /// Register a callback to call when a resource is created or updated.
-  ///
-  /// \param callback The callback to register.
-  void RegisterResourceCreateUpdatedCallback(const ClientTableCallback &callback);
-
-  /// Register a callback to call when a resource is deleted.
-  ///
-  /// \param callback The callback to register.
-  void RegisterResourceDeletedCallback(const ClientTableCallback &callback);
-
   /// Get a client's information from the cache. The cache only contains
   /// information for clients that we've heard a notification for.
   ///
@@ -940,10 +935,6 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   ClientTableCallback client_added_callback_;
   /// The callback to call when a client is removed.
   ClientTableCallback client_removed_callback_;
-  /// The callback to call when a resource is created or updated.
-  ClientTableCallback resource_createupdated_callback_;
-  /// The callback to call when a resource is deleted.
-  ClientTableCallback resource_deleted_callback_;
   /// A cache for information about all clients.
   std::unordered_map<ClientID, ClientTableData> client_cache_;
   /// The set of removed clients.

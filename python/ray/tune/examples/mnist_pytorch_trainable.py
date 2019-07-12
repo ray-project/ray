@@ -12,6 +12,10 @@ from torchvision import datasets, transforms
 
 from ray.tune import Trainable
 
+# Change these values if you want the training to run quicker or slower.
+EPOCH_SIZE = 512
+TEST_SIZE = 256
+
 # Training settings
 parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
 parser.add_argument(
@@ -85,7 +89,7 @@ class Net(nn.Module):
 
 class TrainMNIST(Trainable):
     def _setup(self, config):
-        args = config.pop("args")
+        args = config.pop("args", parser.parse_args([]))
         vars(args).update(config)
         args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -98,7 +102,7 @@ class TrainMNIST(Trainable):
             datasets.MNIST(
                 "~/data",
                 train=True,
-                download=False,
+                download=True,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307, ), (0.3081, ))
@@ -129,6 +133,8 @@ class TrainMNIST(Trainable):
     def _train_iteration(self):
         self.model.train()
         for batch_idx, (data, target) in enumerate(self.train_loader):
+            if batch_idx * len(data) > EPOCH_SIZE:
+                return
             if self.args.cuda:
                 data, target = data.cuda(), target.cuda()
             self.optimizer.zero_grad()
@@ -142,7 +148,9 @@ class TrainMNIST(Trainable):
         test_loss = 0
         correct = 0
         with torch.no_grad():
-            for data, target in self.test_loader:
+            for batch_idx, (data, target) in enumerate(self.test_loader):
+                if batch_idx * len(data) > TEST_SIZE:
+                    break
                 if self.args.cuda:
                     data, target = data.cuda(), target.cuda()
                 output = self.model(data)
@@ -167,7 +175,7 @@ class TrainMNIST(Trainable):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.model.load_state_dict(checkpoint_path)
+        self.model.load_state_dict(torch.load(checkpoint_path))
 
 
 if __name__ == "__main__":

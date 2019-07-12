@@ -6,6 +6,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
@@ -16,7 +17,9 @@ class CoreWorkerStoreProvider;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
  public:
-  CoreWorkerObjectInterface(CoreWorker &core_worker);
+  CoreWorkerObjectInterface(WorkerContext &worker_context,
+                            std::unique_ptr<RayletClient> &raylet_client,
+                            const std::string &store_socket);
 
   /// Put an object into object store.
   ///
@@ -57,13 +60,16 @@ class CoreWorkerObjectInterface {
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects. \return Status.
+  /// created these objects.
+  /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
 
  private:
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
+  /// Reference to the parent CoreWorker's raylet client.
+  std::unique_ptr<RayletClient> &raylet_client_;
 
   /// All the store providers supported.
   std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;

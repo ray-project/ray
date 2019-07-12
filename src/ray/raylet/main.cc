@@ -2,6 +2,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
@@ -104,10 +105,10 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
-  node_manager_config.resource_config =
-      ray::raylet::ResourceSet(std::move(static_resource_conf));
+  node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
+  node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.num_workers_per_process =
@@ -116,11 +117,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(Language::PYTHON, parse_worker_command(python_worker_command)));
+        make_pair(ray::Language::PYTHON, parse_worker_command(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(Language::JAVA, parse_worker_command(java_worker_command)));
+        make_pair(ray::Language::JAVA, parse_worker_command(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
