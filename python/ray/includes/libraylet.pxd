@@ -64,7 +64,7 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
         CRayStatus PushProfileEvents(
-            GCSProfileTableData &profile_events)
+            const GCSProfileTableData &profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
                                c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,

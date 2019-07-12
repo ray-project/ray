@@ -230,9 +230,9 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   return call->GetStatus();
 }
 
-ray::Status RayletClient::PushProfileEvents(ProfileTableData *profile_events) {
+ray::Status RayletClient::PushProfileEvents(ProfileTableData &profile_events) {
   PushProfileEventsRequest push_profile_events_request;
-  push_profile_events_request.set_allocated_profile_table_data(profile_events);
+  push_profile_events_request.mutable_profile_table_data()->CopyFrom(profile_events);
 
   auto callback = [](const Status &status, const PushProfileEventsReply &reply) {
     if (!status.ok()) {
