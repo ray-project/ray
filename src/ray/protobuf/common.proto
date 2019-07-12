@@ -97,8 +97,6 @@ message ActorTaskSpec {
   uint64 actor_counter = 5;
   // This will be populated with all of the new actor handles that were forked
   // from this handle since the last task on this handle was submitted.
-  // Note that this is a long string that concatenates all of the
-  // new_actor_handle IDs.
   repeated bytes new_actor_handles = 6;
   // The dummy object ID of the previous actor task.
   bytes previous_actor_task_dummy_object_id = 7;
