@@ -216,14 +216,21 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         remote_config["auth"]["ssh_private_key"] = remote_key_path
         use_docker = bool(remote_config["docker"]["container_name"])
 
-        # Adjust for new file locations
+        # Adjust for new file locations, mapping remote_path -> local_path.
         new_mounts = {}
+        docker_mounts = {}
 
         if use_docker:
-            assert "cp_files" in remote_config["docker"]
-            for docker_internal_path, host_path in (
-                    remote_config["docker"]["cp_files"].items()):
-                new_mounts[host_path] = docker_internal_path
+            docker_mounts = remote_config["docker"]["mounts"]
+            host_mounts = list(docker_mounts.values())
+            for host_path in config["file_mounts"]:
+                if host_path not in host_mounts:
+                    raise ValueError(
+                       "{} does not have corresponding docker mount.".format(host_path))
+            for container_path, host_path in (
+                    docker_mounts.items()):
+                # This maps the LOCAL container path to REMOTE host path.
+                new_mounts[host_path] = container_path
         else:
             for remote_path in config["file_mounts"]:
                 new_mounts[remote_path] = remote_path
@@ -255,6 +262,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
+            file_sync_options=config["file_sync_options"],
+            extra_file_dirs=list(docker_mounts.values()),
             initialization_commands=config["initialization_commands"],
             setup_commands=init_commands,
             runtime_hash=runtime_hash,

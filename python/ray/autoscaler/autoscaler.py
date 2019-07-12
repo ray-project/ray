@@ -95,8 +95,8 @@ CLUSTER_CONFIG_SCHEMA = {
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
             # shared options for starting head/worker docker
             "run_options": (list, OPTIONAL),
-            # Volume mounts for docker exec -v
-            "volumes": (dict, OPTIONAL),
+            # Mounts for docker exec -v
+            "mounts": (dict, OPTIONAL),
             # image for head node, takes precedence over "image" if specified
             "head_image": (str, OPTIONAL),
             # head specific run options, appended to run_options
@@ -105,9 +105,6 @@ CLUSTER_CONFIG_SCHEMA = {
             "worker_image": (str, OPTIONAL),
             # analogous to head_run_options
             "worker_run_options": (list, OPTIONAL),
-            # This field is controlled by ray's Docker configuration
-            #  and cannot be set by the user.
-            "cp_files": (dict, OPTIONAL),
         },
         OPTIONAL),
 
@@ -119,6 +116,8 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
+
+    "file_sync_options": (list, OPTIONAL),
 
     # List of commands that will be run before `setup_commands`. If docker is
     # enabled, these commands will run outside the container and before docker

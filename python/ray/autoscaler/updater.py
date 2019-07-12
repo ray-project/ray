@@ -53,6 +53,8 @@ class NodeUpdater(object):
                  initialization_commands,
                  setup_commands,
                  runtime_hash,
+                 file_sync_options=None,
+                 extra_file_dirs=None,
                  process_runner=subprocess,
                  use_internal_ip=False):
 
@@ -73,9 +75,11 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
+        self.extra_file_dirs = extra_file_dirs or []
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
         self.runtime_hash = runtime_hash
+        self.file_sync_options = file_sync_options or []
 
     def get_caller(self, check_error):
         if check_error:
@@ -202,7 +206,19 @@ class NodeUpdater(object):
                     "mkdir -p {}".format(os.path.dirname(remote_path)),
                     redirect=None,
                 )
-                sync_cmd(local_path, remote_path, redirect=None)
+                sync_options = self.file_sync_options
+                sync_cmd(local_path, remote_path, sync_options, redirect=None)
+
+    def create_remote_dirs(self, remote_paths):
+        for remote_path in remote_paths:
+            if remote_path.endswith("/"):
+                with LogTimer("NodeUpdater: Creating {}".format(remote_path)):
+                    self.ssh_cmd(
+                        "mkdir -p {}".format(os.path.dirname(remote_path)),
+                        redirect=None,
+                    )
+            else:
+                logger.error("SKIPPING {}".format(remote_path))
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
@@ -219,6 +235,7 @@ class NodeUpdater(object):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
         self.sync_file_mounts(self.rsync_up)
+        self.create_remote_dirs(self.extra_file_dirs)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
@@ -233,31 +250,38 @@ class NodeUpdater(object):
             for cmd in self.setup_commands:
                 self.ssh_cmd(cmd)
 
-    def rsync_up(self, source, target, redirect=None, check_error=True):
+    def rsync_up(self, source, target, options=None, redirect=None, check_error=True):
         logger.info("NodeUpdater: "
                     "{}: Syncing {} to {}...".format(self.node_id, source,
                                                      target))
+        options = options or []
         self.set_ssh_ip_if_required()
-        self.get_caller(check_error)(
-            [
-                "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
+        cmd = [
+                "rsync", " ".join(options), "-e",
+                " ".join(["ssh"] + get_default_ssh_options(
                     self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
                 source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
-            ],
+            ]
+        logger.info("Running {}".format(" ".join(cmd)))
+        self.get_caller(check_error)(cmd,
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
 
-    def rsync_down(self, source, target, redirect=None, check_error=True):
+    def rsync_down(self, source, target, options=None, redirect=None, check_error=True):
         logger.info("NodeUpdater: "
                     "{}: Syncing {} from {}...".format(self.node_id, source,
                                                        target))
+        options = options or []
         self.set_ssh_ip_if_required()
-        self.get_caller(check_error)(
-            [
-                "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
+        cmd = [
+                "rsync", " ".join(options), "-e",
+                " ".join(["ssh"] + get_default_ssh_options(
                     self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
             ],
+        logger.info("Running {}".format(" ".join(cmd)))
+        self.get_caller(check_error)(
+            cmd,
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
 

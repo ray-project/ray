@@ -38,35 +38,23 @@ def dockerize_if_needed(config):
     else:
         assert cname, "Must provide container name!"
 
-    docker_cp_files = {}
-    new_file_mounts = {}
-
-    for dst, src in config["file_mounts"].items():
-        staged_dst = os.path.join(STAGING_PATH, dst)
-        new_file_mounts[staged_dst] = src
-        docker_cp_files[dst] = staged_dst
-
-    config["file_mounts"] = new_file_mounts
-    config["docker"]["cp_files"] = docker_cp_files
-
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          config["docker"]["volumes"], cname,
+                                          config["docker"]["mounts"], cname,
                                           run_options + head_run_options)
 
     worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            config["docker"]["volumes"], cname,
+                                            config["docker"]["mounts"], cname,
                                             run_options + worker_run_options)
 
     config["head_setup_commands"] = (
-        head_docker_start + docker_cp_file_cmds(docker_cp_files, cname) +
+        head_docker_start +
         with_docker_exec(config["head_setup_commands"], container_name=cname))
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
     config["worker_setup_commands"] = (
-        worker_docker_start + docker_cp_file_cmds(
-            docker_cp_files, cname) + with_docker_exec(
+        worker_docker_start + with_docker_exec(
                 config["worker_setup_commands"], container_name=cname))
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
@@ -104,7 +92,8 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         for port in ["6379", "8076", "4321"]
     ])
     mount_flags = " ".join(
-        ["-v {src}:{dest}".format(src=k, dest=v) for k, v in mount.items()])
+        ["--mount type=bind,source={src},target={dest}".format(
+            src=src, dest=dest) for dest, src in mount.items()])
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
