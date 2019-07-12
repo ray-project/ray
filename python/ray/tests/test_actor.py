@@ -2172,7 +2172,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
         plasma_client = ray.worker.global_worker.plasma_client
         plasma_id = plasma.ObjectID(obj_id.binary())
         return plasma_client.get(
-            plasma_id, timeout_ms=10) != plasma.ObjectNotAvailable
+            plasma_id, timeout_ms=0) != plasma.ObjectNotAvailable
 
     @ray.remote(max_reconstructions=1)
     class ReconstructableActor(object):
