@@ -12,7 +12,7 @@ ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
 
 Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id,
                                     const MultiItemCallback<ActorTableData> &callback) {
-  RAY_DCHECK(callback != nullptr);
+  RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
                             const std::vector<ActorTableData> &data) {
     callback(Status::OK(), data);
@@ -23,7 +23,7 @@ Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id
 }
 
 Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id,
-                                    std::shared_ptr<ActorTableData> data_ptr,
+                                    const std::shared_ptr<ActorTableData> &data_ptr,
                                     const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
@@ -35,7 +35,7 @@ Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id
   auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
     if (callback != nullptr) {
-      callback(Status::Invalid("Add actor failed."));
+      callback(Status::Invalid("Adding actor failed."));
     }
   };
 
@@ -45,7 +45,7 @@ Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id
 }
 
 Status ActorStateAccessor::AsyncUpdate(const JobID &job_id, const ActorID &actor_id,
-                                       std::shared_ptr<ActorTableData> data_ptr,
+                                       const std::shared_ptr<ActorTableData> &data_ptr,
                                        const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
@@ -57,7 +57,7 @@ Status ActorStateAccessor::AsyncUpdate(const JobID &job_id, const ActorID &actor
     log_length += 1;
   }
 
-  // If we successful appended a record to the GCS table of the actor that
+  // If we successfully appended a record to the GCS table of the actor that
   // has died, signal this to anyone receiving signals from this actor.
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
@@ -77,7 +77,7 @@ Status ActorStateAccessor::AsyncUpdate(const JobID &job_id, const ActorID &actor
   auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
     if (callback != nullptr) {
-      callback(Status::Invalid("Update actor failed."));
+      callback(Status::Invalid("Updating actor failed."));
     }
   };
 

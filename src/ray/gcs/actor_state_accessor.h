@@ -38,7 +38,7 @@ class ActorStateAccessor {
   /// \param callback Callback that is called after the data has been written to the GCS.
   /// \return Status
   Status AsyncAdd(const JobID &job_id, const ActorID &actor_id,
-                  std::shared_ptr<ActorTableData> data_ptr,
+                  const std::shared_ptr<ActorTableData> &data_ptr,
                   const StatusCallback &callback);
 
   /// Update actor runtime state to gcs asynchronously.
@@ -50,7 +50,7 @@ class ActorStateAccessor {
   /// \return Status
   /// TODO(micafan) Modify parameter 3 from ActorTableData to 'ActorRuntimeState'
   Status AsyncUpdate(const JobID &job_id, const ActorID &actor_id,
-                     std::shared_ptr<ActorTableData> data_ptr,
+                     const std::shared_ptr<ActorTableData> &data_ptr,
                      const StatusCallback &callback);
 
   /// Subscribe to any add operations of actor. The caller may choose

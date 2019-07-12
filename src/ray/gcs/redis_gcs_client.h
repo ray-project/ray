@@ -36,7 +36,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   Status Connect(boost::asio::io_service &io_service);
 
   /// Disconnect with GCS Service. Non-thread safe.
-  /// TODO(micafan) rename if nothing related to Disconnect
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver

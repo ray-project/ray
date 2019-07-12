@@ -860,7 +860,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
   }
 
-  gcs::StatusCallback done = [was_local, actor_id](Status status) {
+  auto done = [was_local, actor_id](Status status) {
     if (was_local && !status.ok()) {
       // If the disconnected actor was local, only this node will try to update actor
       // state. So the update shouldn't fail.
@@ -1905,7 +1905,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     const auto new_actor_data = CreateActorTableDataFromCreationTask(task);
     auto on_gcs_callback = [actor_id](Status status) {
       if (!status.ok()) {
-        // Only one node at a time should succeed at creating the actor.
+        // Only one node at a time should succeed at creating or updating the actor.
         RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << actor_id;
       }
     };

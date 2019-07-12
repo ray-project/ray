@@ -97,7 +97,7 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
           spec1.num_returns() == spec2.num_returns());
 }
 
-void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   const auto task_id = TaskID::FromRandom();
   const auto data = CreateTaskTableData(task_id);
 

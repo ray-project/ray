@@ -113,7 +113,10 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
 
-  // TODO(micafan) Modify ClientTable' Constructor in future
+  // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
+  // We will use NodeID instead of ClientID.
+  // For worker/driver, it might not have this field(NodeID).
+  // For raylet, NodeID should be initialized in raylet layer(not here).
   client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
 
   error_table_.reset(new ErrorTable({primary_context_}, this));
@@ -134,10 +137,10 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_accessor_.reset(new ActorStateAccessor(*this));
 
   Status status = Attach(io_service);
-  // TODO(swang or micafan): Call the client table's Connect() method here.
-  // Will do it in next PR(ClientTable). And synchronous connect is better.
-
   is_connected_ = status.ok();
+
+  // TODO(micafan): Synchronously register node and look up existing nodes here
+  // for if this client is Raylet.
   RAY_LOG(INFO) << "RedisGcsClient Connect status=" << status;
   return status;
 }
@@ -145,9 +148,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 void RedisGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  // TODO(micafan) Call the client table's Disconnect here. Synchronous disconnect
-  // is better.
   RAY_LOG(INFO) << "RedisGcsClient Disconnect.";
+  // TODO(micafan): Synchronously unregister node if this client is Raylet.
 }
 
 Status RedisGcsClient::Attach(boost::asio::io_service &io_service) {

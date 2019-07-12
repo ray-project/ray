@@ -180,6 +180,7 @@ int main(int argc, char *argv[]) {
                      const boost::system::error_code &error, int signal_number) {
     auto shutdown_callback = [&server, &main_service]() {
       server.reset();
+      gcs_client->Disconnect();
       main_service.stop();
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));

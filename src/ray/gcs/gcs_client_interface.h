@@ -62,9 +62,10 @@ class ClientOption {
 };
 
 /// \class GcsClientInterface
-/// Interface layer of GCS client. To read and write from the GCS,
-/// Connect() must be called and return Status::OK.
-/// Before exit, Disconnect() must be called.
+/// Abstract interface of the GCS client.
+///
+/// To read and write from the GCS, `Connect()` must be called and return Status::OK.
+/// Before exit, `Disconnect()` must be called.
 class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterface> {
  public:
   virtual ~GcsClientInterface() { RAY_CHECK(!is_connected_); }
@@ -79,7 +80,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   virtual void Disconnect() = 0;
 
   /// This function is thread safe.
-  virtual ActorStateAccessor &Actors() {
+  ActorStateAccessor &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
@@ -92,7 +93,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
 
   ClientOption option_;
 
-  // Whether this client connects to the server successfully.
+  // Whether this client is connected to GCS.
   bool is_connected_{false};
 
   std::unique_ptr<ActorStateAccessor> actor_accessor_;
