@@ -20,11 +20,11 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
-/// The duration between heartbeats. This value is used for worker and raylet itself.
+/// The duration between heartbeats. This value is used for both worker and raylet.
 RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100)
-/// Limit of worker timeout times, a worker would be marked as dead once its
-/// timeout times is greater than this value. e.g: 100ms * 30 times = 3s
 /// Worker heartbeat also use `heartbeat_timeout_milliseconds` as period.
+/// If a worker has not sent a heartbeat in the last `num_worker_heartbeats_timeout`
+/// heartbeat intervals, raylet will mark this worker as dead.
 RAY_CONFIG(int64_t, num_worker_heartbeats_timeout, 30)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report

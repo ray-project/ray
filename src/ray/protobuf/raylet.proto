@@ -170,16 +170,13 @@ service RayletService {
   rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
   // Submit a task to raylet.
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
-  // Notify the raylet that this client is disconnecting gracefully if intentional is
-  // true.
+  // Disconnect this client with raylet gracefully.
   rpc DisconnectClient(DisconnectClientRequest) returns (DisconnectClientReply);
-  // Get a new task from the raylet. This is sent from a worker to a
-  // raylet.
+  // Get a new task from the raylet.
   rpc GetTask(GetTaskRequest) returns (GetTaskReply);
-  // Tell raylet the tash which is finished.
+  // Notify raylet that a task is finished.
   rpc TaskDone(TaskDoneRequest) returns (TaskDoneReply);
-  // Reconstruct or fetch possibly lost objects. This is sent from a worker to
-  // a raylet.
+  // Reconstruct or fetch possibly lost objects.
   rpc FetchOrReconstruct(FetchOrReconstructRequest) returns (FetchOrReconstructReply);
   // For a worker that was blocked on some object(s), tell the raylet
   // that the worker is now unblocked.
@@ -188,8 +185,7 @@ service RayletService {
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.
   rpc Wait(WaitRequest) returns (WaitReply);
-  // Push an error to the relevant driver. This is sent from a worker to the
-  // node manager.
+  // Push an error to the relevant driver.
   rpc PushError(PushErrorRequest) returns (PushErrorReply);
   // Push some profiling events to the GCS. When sending this message to the
   // node manager, the message itself is serialized as a ProfileTableData object.
@@ -198,7 +194,6 @@ service RayletService {
   rpc FreeObjectsInStore(FreeObjectsInStoreRequest)
       returns (FreeObjectsInStoreReply);
   // Request raylet backend to prepare a checkpoint for an actor.
-  // Reply of `PrepareActorCheckpointRequest`.
   rpc PrepareActorCheckpoint(PrepareActorCheckpointRequest)
       returns (PrepareActorCheckpointReply);
   // Notify raylet backend that an actor was resumed from a checkpoint.
@@ -206,6 +201,6 @@ service RayletService {
       returns (NotifyActorResumedFromCheckpointReply);
   // Set dynamic custom resource
   rpc SetResource(SetResourceRequest) returns (SetResourceReply);
-  // Worker heartbeat message.
+  // Send a heartbeat message to raylet.
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
 }
