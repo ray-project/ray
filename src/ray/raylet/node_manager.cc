@@ -1912,10 +1912,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
           // The task was in the GCS task table. Use the stored task spec to
           // get the parent actor id.
           Task parent_task(parent_task_data.task());
-          ActorID parent_actor_id;
+          ActorID parent_actor_id = ActorID::Nil();
           if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
             parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-          } else {
+          } else if (parent_task.GetTaskSpecification().IsActorTask()) {
             parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
           FinishAssignedActorCreationTask(parent_actor_id, task_spec,
@@ -1933,7 +1933,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
             if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
               parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-            } else {
+            } else if (parent_task.GetTaskSpecification().IsActorTask()) {
               parent_actor_id = parent_task.GetTaskSpecification().ActorId();
             }
           } else {
