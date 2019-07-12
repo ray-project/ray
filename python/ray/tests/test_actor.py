@@ -20,7 +20,7 @@ import ray.tests.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (
     relevant_errors,
-    wait_for_contition,
+    wait_for_condition,
     wait_for_errors,
 )
 
@@ -2193,7 +2193,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
     # Wait until the actor is reconstructed.
-    assert wait_for_contition(
+    assert wait_for_condition(
         lambda: object_exists(obj_ids[1]), timeout_ms=2000)
 
 
