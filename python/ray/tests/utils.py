@@ -96,10 +96,10 @@ def wait_for_errors(error_type, num_errors, timeout=10):
     raise Exception("Timing out of wait.")
 
 
-def wait_for_contition(condition_predictor,
+def wait_for_condition(condition_predictor,
                        timeout_ms=1000,
                        retry_interval_ms=100):
-    """A helper function that wait until a conition is met.
+    """A helper function that waits until a condition is met.
 
     Args:
         condition_predictor: A function that predicts the condition.
