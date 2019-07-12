@@ -6,8 +6,8 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task.h"
 #include "ray/gcs/tables.h"
-#include "ray/raylet/task.h"
 
 namespace ray {
 

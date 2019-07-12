@@ -3,12 +3,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/raylet/task_util.h"
 
 namespace ray {
 

@@ -20,12 +20,18 @@ static inline void flushall_redis(void) {
   redisFree(context);
 }
 
+/// A helper function to generate an unique JobID.
+inline JobID NextJobID() {
+  static int32_t counter = 0;
+  return JobID::FromInt(++counter);
+}
+
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     ClientOption option("127.0.0.1", 6379, command_type_);
     client_ = std::make_shared<gcs::RedisGcsClient>(option);
-    job_id_ = JobID::FromRandom();
+    job_id_ = NextJobID();
   }
 
   virtual ~TestGcs() {
@@ -572,7 +578,7 @@ void TestLogSubscribeAll(const JobID &job_id,
                          std::shared_ptr<gcs::RedisGcsClient> client) {
   std::vector<JobID> job_ids;
   for (int i = 0; i < 3; i++) {
-    job_ids.emplace_back(JobID::FromRandom());
+    job_ids.emplace_back(NextJobID());
   }
   // Callback for a notification.
   auto notification_callback = [job_ids](gcs::RedisGcsClient *client, const JobID &id,
@@ -771,14 +777,14 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 void TestLogSubscribeId(const JobID &job_id,
                         std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a log entry.
-  JobID job_id1 = JobID::FromRandom();
+  JobID job_id1 = NextJobID();
   std::vector<std::string> job_ids1 = {"abc", "def", "ghi"};
   auto data1 = std::make_shared<JobTableData>();
   data1->set_job_id(job_ids1[0]);
   RAY_CHECK_OK(client->job_table().Append(job_id, job_id1, data1, nullptr));
 
   // Add a log entry at a second key.
-  JobID job_id2 = JobID::FromRandom();
+  JobID job_id2 = NextJobID();
   std::vector<std::string> job_ids2 = {"jkl", "mno", "pqr"};
   auto data2 = std::make_shared<JobTableData>();
   data2->set_job_id(job_ids2[0]);
@@ -787,7 +793,7 @@ void TestLogSubscribeId(const JobID &job_id,
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [job_id2, job_ids2](
-                                   gcs::RedisGcsClient *client, const UniqueID &id,
+                                   gcs::RedisGcsClient *client, const JobID &id,
                                    const std::vector<JobTableData> &data) {
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, job_id2);
@@ -993,7 +999,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 void TestLogSubscribeCancel(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a log entry.
-  JobID random_job_id = JobID::FromRandom();
+  JobID random_job_id = NextJobID();
   std::vector<std::string> job_ids = {"jkl", "mno", "pqr"};
   auto data = std::make_shared<JobTableData>();
   data->set_job_id(job_ids[0]);
@@ -1002,7 +1008,7 @@ void TestLogSubscribeCancel(const JobID &job_id,
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [random_job_id, job_ids](
-                                   gcs::RedisGcsClient *client, const UniqueID &id,
+                                   gcs::RedisGcsClient *client, const JobID &id,
                                    const std::vector<JobTableData> &data) {
     ASSERT_EQ(id, random_job_id);
     // Check that we get a duplicate notification for the first write. We get a
@@ -1150,12 +1156,12 @@ void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client
   ASSERT_EQ(client_id, added_id);
   ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
   ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
-  ASSERT_EQ(data.entry_type() == ClientTableData::INSERTION, is_insertion);
+  ASSERT_EQ(data.is_insertion(), is_insertion);
 
   ClientTableData cached_client;
   client->client_table().GetClient(added_id, cached_client);
   ASSERT_EQ(ClientID::FromBinary(cached_client.client_id()), added_id);
-  ASSERT_EQ(cached_client.entry_type() == ClientTableData::INSERTION, is_insertion);
+  ASSERT_EQ(cached_client.is_insertion(), is_insertion);
 }
 
 void TestClientTableConnect(const JobID &job_id,
@@ -1274,29 +1280,24 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cli
   const int expected_count = 14;
   ClientID client_id = ClientID::FromRandom();
   // Prepare the first resource map: data_map1.
-  auto cpu_data = std::make_shared<RayResource>();
-  cpu_data->set_resource_name("CPU");
-  cpu_data->set_resource_capacity(100);
-  auto gpu_data = std::make_shared<RayResource>();
-  gpu_data->set_resource_name("GPU");
-  gpu_data->set_resource_capacity(2);
   DynamicResourceTable::DataMap data_map1;
+  auto cpu_data = std::make_shared<ResourceTableData>();
+  cpu_data->set_resource_capacity(100);
   data_map1.emplace("CPU", cpu_data);
+  auto gpu_data = std::make_shared<ResourceTableData>();
+  gpu_data->set_resource_capacity(2);
   data_map1.emplace("GPU", gpu_data);
   // Prepare the second resource map: data_map2 which decreases CPU,
   // increases GPU and add a new CUSTOM compared to data_map1.
-  auto data_cpu = std::make_shared<RayResource>();
-  data_cpu->set_resource_name("CPU");
-  data_cpu->set_resource_capacity(50);
-  auto data_gpu = std::make_shared<RayResource>();
-  data_gpu->set_resource_name("GPU");
-  data_gpu->set_resource_capacity(10);
-  auto data_custom = std::make_shared<RayResource>();
-  data_custom->set_resource_name("CUSTOM");
-  data_custom->set_resource_capacity(2);
   DynamicResourceTable::DataMap data_map2;
+  auto data_cpu = std::make_shared<ResourceTableData>();
+  data_cpu->set_resource_capacity(50);
   data_map2.emplace("CPU", data_cpu);
+  auto data_gpu = std::make_shared<ResourceTableData>();
+  data_gpu->set_resource_capacity(10);
   data_map2.emplace("GPU", data_gpu);
+  auto data_custom = std::make_shared<ResourceTableData>();
+  data_custom->set_resource_capacity(2);
   data_map2.emplace("CUSTOM", data_custom);
   data_map2["CPU"]->set_resource_capacity(50);
   // This is a common comparison function for the test.
@@ -1306,7 +1307,6 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cli
     for (const auto &data : data1) {
       auto iter = data2.find(data.first);
       ASSERT_TRUE(iter != data2.end());
-      ASSERT_EQ(iter->second->resource_name(), data.second->resource_name());
       ASSERT_EQ(iter->second->resource_capacity(), data.second->resource_capacity());
     }
   };

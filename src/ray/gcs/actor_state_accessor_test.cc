@@ -49,7 +49,7 @@ class ActorStateAccessorTest : public ::testing::Test {
       actor->set_actor_id(actor_id.Binary());
       actor->set_max_reconstructions(1);
       actor->set_remaining_reconstructions(1);
-      JobID job_id = JobID::FromRandom();
+      JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
       actor_datas_[actor_id] = actor;

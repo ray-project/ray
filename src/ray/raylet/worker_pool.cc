@@ -244,7 +244,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
 
 std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
-  const auto &actor_id = task_spec.ActorId();
 
   std::shared_ptr<Worker> worker = nullptr;
   int pid = -1;
@@ -281,6 +280,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     }
   } else {
     // Code path of actor task.
+    const auto &actor_id = task_spec.ActorId();
     auto actor_entry = state.idle_actor.find(actor_id);
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);

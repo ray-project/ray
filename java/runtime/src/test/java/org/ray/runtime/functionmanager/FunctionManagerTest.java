@@ -4,6 +4,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
+import java.util.Random;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
@@ -12,6 +13,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc0;
 import org.ray.api.function.RayFunc1;
+import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionManager.JobFunctionTable;
 import org.testng.Assert;
@@ -64,19 +66,19 @@ public class FunctionManagerTest {
   public void testGetFunctionFromRayFunc() {
     final FunctionManager functionManager = new FunctionManager(null);
     // Test normal function.
-    RayFunction func = functionManager.getFunction(UniqueId.NIL, fooFunc);
+    RayFunction func = functionManager.getFunction(JobId.NIL, fooFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
     Assert.assertNotNull(func.getRayRemoteAnnotation());
 
     // Test actor method
-    func = functionManager.getFunction(UniqueId.NIL, barFunc);
+    func = functionManager.getFunction(JobId.NIL, barFunc);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
     Assert.assertNull(func.getRayRemoteAnnotation());
 
     // Test actor constructor
-    func = functionManager.getFunction(UniqueId.NIL, barConstructor);
+    func = functionManager.getFunction(JobId.NIL, barConstructor);
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
     Assert.assertNotNull(func.getRayRemoteAnnotation());
@@ -86,19 +88,19 @@ public class FunctionManagerTest {
   public void testGetFunctionFromFunctionDescriptor() {
     final FunctionManager functionManager = new FunctionManager(null);
     // Test normal function.
-    RayFunction func = functionManager.getFunction(UniqueId.NIL, fooDescriptor);
+    RayFunction func = functionManager.getFunction(JobId.NIL, fooDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
     Assert.assertNotNull(func.getRayRemoteAnnotation());
 
     // Test actor method
-    func = functionManager.getFunction(UniqueId.NIL, barDescriptor);
+    func = functionManager.getFunction(JobId.NIL, barDescriptor);
     Assert.assertFalse(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
     Assert.assertNull(func.getRayRemoteAnnotation());
 
     // Test actor constructor
-    func = functionManager.getFunction(UniqueId.NIL, barConstructorDescriptor);
+    func = functionManager.getFunction(JobId.NIL, barConstructorDescriptor);
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
     Assert.assertNotNull(func.getRayRemoteAnnotation());
@@ -119,7 +121,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
-    UniqueId jobId = UniqueId.randomId();
+    JobId jobId = JobId.fromInt(1);
     final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
     final String jobResourcePath = resourcePath + "/" + jobId.toString();
     File jobResourceDir = new File(jobResourcePath);
