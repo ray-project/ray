@@ -56,10 +56,10 @@ class RayletServiceHandler {
   virtual void HandlePushProfileEventsRequest(const PushProfileEventsRequest &request,
                                               PushProfileEventsReply *reply,
                                               SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `FreeObjectsInObjectStore` request.
-  virtual void HandleFreeObjectsInObjectStoreRequest(
-      const FreeObjectsInObjectStoreRequest &request,
-      FreeObjectsInObjectStoreReply *reply, SendReplyCallback send_reply_callback) = 0;
+  /// Handle a `FreeObjectsInStoreInObjectStore` request.
+  virtual void HandleFreeObjectsInStoreRequest(const FreeObjectsInStoreRequest &request,
+                                               FreeObjectsInStoreReply *reply,
+                                               SendReplyCallback send_reply_callback) = 0;
   /// Handle a `PrepareActorCheckpoint` request.
   virtual void HandlePrepareActorCheckpointRequest(
       const PrepareActorCheckpointRequest &request, PrepareActorCheckpointReply *reply,
@@ -192,14 +192,12 @@ class RayletGrpcService : public GrpcService {
     server_call_factories_and_concurrencies->emplace_back(
         std::move(push_profile_events_call_factory), 10);
 
-    // Initialize the factory for `FreeObjectsInObjectStore` requests.
+    // Initialize the factory for `FreeObjectsInStore` requests.
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
-                                  FreeObjectsInObjectStoreRequest,
-                                  FreeObjectsInObjectStoreReply>(
-            service_, &RayletService::AsyncService::RequestFreeObjectsInObjectStore,
-            service_handler_,
-            &RayletServiceHandler::HandleFreeObjectsInObjectStoreRequest, cq,
+                                  FreeObjectsInStoreRequest, FreeObjectsInStoreReply>(
+            service_, &RayletService::AsyncService::RequestFreeObjectsInStore,
+            service_handler_, &RayletServiceHandler::HandleFreeObjectsInStoreRequest, cq,
             main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(free_objects_call_factory), 10);

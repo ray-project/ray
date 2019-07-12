@@ -870,10 +870,9 @@ void NodeManager::HandleDisconnectClientRequest(
     const rpc::DisconnectClientRequest &request, rpc::DisconnectClientReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  bool intentional_disconnect = request.intentional();
   RAY_LOG(DEBUG) << "Handle disconnect client request for worker " << worker_id;
 
-  ProcessDisconnectClientMessage(worker_id, intentional_disconnect);
+  ProcessDisconnectClientMessage(worker_id, true);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1102,11 +1101,13 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
 void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
                                          rpc::PushErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Handle push error request.";
   JobID job_id = JobID::FromBinary(request.job_id());
   const auto &type = request.type();
   const auto &error_message = request.error_message();
   double timestamp = request.timestamp();
+  RAY_LOG(DEBUG) << "Handle push error request for job " << job_id << ", type " << type
+                 << " error message " << error_message;
+
   RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
                                                             timestamp));
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1262,10 +1263,9 @@ void NodeManager::HandlePushProfileEventsRequest(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `FreeObjectsInObjectStore` request.
-void NodeManager::HandleFreeObjectsInObjectStoreRequest(
-    const rpc::FreeObjectsInObjectStoreRequest &request,
-    rpc::FreeObjectsInObjectStoreReply *reply,
+/// Handle a `FreeObjectsInStoreInObjectStore` request.
+void NodeManager::HandleFreeObjectsInStoreRequest(
+    const rpc::FreeObjectsInStoreRequest &request, rpc::FreeObjectsInStoreReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Handle free objects request.";
   std::vector<ObjectID> object_ids = IdVectorFromProtobuf<ObjectID>(request.object_ids());

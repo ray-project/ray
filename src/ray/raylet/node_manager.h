@@ -142,10 +142,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandlePushProfileEventsRequest(
       const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `FreeObjectsInObjectStore` request.
-  void HandleFreeObjectsInObjectStoreRequest(
-      const rpc::FreeObjectsInObjectStoreRequest &request,
-      rpc::FreeObjectsInObjectStoreReply *reply,
+  /// Handle a `FreeObjectsInStoreInObjectStore` request.
+  void HandleFreeObjectsInStoreRequest(
+      const rpc::FreeObjectsInStoreRequest &request, rpc::FreeObjectsInStoreReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `PrepareActorCheckpoint` request.
   void HandlePrepareActorCheckpointRequest(

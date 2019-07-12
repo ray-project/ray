@@ -14,7 +14,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
       port_(port),
       main_service_(),
       work_(main_service_),
-      client_call_manager_(main_service_),
+      auto call = client_call_manager_(main_service_),
       heartbeat_timer_(main_service_) {
   std::shared_ptr<grpc::Channel> channel =
       grpc::CreateChannel("unix://" + raylet_socket, grpc::InsecureChannelCredentials());
@@ -52,23 +52,15 @@ RayletClient::~RayletClient() {
 ray::Status RayletClient::Disconnect() {
   DisconnectClientRequest disconnect_client_request;
   disconnect_client_request.set_worker_id(worker_id_.Binary());
-  disconnect_client_request.set_intentional(true);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const DisconnectClientReply &reply) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "[RayletClient] Failed to disconnect from raylet, msg: "
-                     << status.message();
-    }
-    p.set_value(status);
-  };
-  client_call_manager_
-      .CreateCall<RayletService, DisconnectClientRequest, DisconnectClientReply>(
-          *stub_, &RayletService::Stub::PrepareAsyncDisconnectClient,
-          disconnect_client_request, callback);
-  return f.get();
+  SubmitTaskReply reply;
+  grpc::ClientContext context;
+  auto status = stub_->SubmitTask(&context, disconnect_client_request, &reply);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "[RayletClient] Failed to disconnect from raylet, msg: "
+                    << status.error_message();
+  }
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
@@ -79,81 +71,66 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
       execution_dependencies, submit_task_request,
       &SubmitTaskRequest::add_execution_dependencies);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const SubmitTaskReply &reply) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "[RayletClient] Failed to submit task, msg: " << status.message();
-    }
-    p.set_value(status);
-  };
-
-  client_call_manager_.CreateCall<RayletService, SubmitTaskRequest, SubmitTaskReply>(
-      *stub_, &RayletService::Stub::PrepareAsyncSubmitTask, submit_task_request,
-      callback);
-  return f.get();
+  SubmitTaskReply reply;
+  grpc::ClientContext context;
+  auto status = stub_->SubmitTask(&context, submit_task_request, &reply);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "[RayletClient] Failed to submit task, msg: " << status.error_message();
+  }
+  return GrpcStatusToRayStatus(status);
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
   GetTaskRequest get_task_request;
   get_task_request.set_worker_id(worker_id_.Binary());
 
-  // Callback to deal with reply.
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [this, task_spec, &p](const Status &status, const GetTaskReply &reply) {
-    resource_ids_.clear();
-    if (status.ok()) {
-      for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
-        auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];
-        auto &acquired_resources = resource_ids_[fractional_resource_ids.resource_name()];
+  grpc::ClientContext context;
+  GetTaskReply reply;
+  // The actual RPC.
+  auto status = stub_->GetTask(&context, get_task_request, &reply);
 
-        size_t num_resource_ids = fractional_resource_ids.resource_ids().size();
-        size_t num_resource_fractions =
-            fractional_resource_ids.resource_fractions().size();
-        RAY_CHECK(num_resource_ids == num_resource_fractions);
-        RAY_CHECK(num_resource_ids > 0);
-        for (size_t j = 0; j < num_resource_ids; ++j) {
-          int64_t resource_id = fractional_resource_ids.resource_ids()[j];
-          double resource_fraction = fractional_resource_ids.resource_fractions()[j];
-          if (num_resource_ids > 1) {
-            int64_t whole_fraction = resource_fraction;
-            RAY_CHECK(whole_fraction == resource_fraction);
-          }
-          acquired_resources.emplace_back(resource_id, resource_fraction);
+  resource_ids_.clear();
+  if (status.ok()) {
+    for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
+      auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];
+      auto &acquired_resources = resource_ids_[fractional_resource_ids.resource_name()];
+
+      size_t num_resource_ids = fractional_resource_ids.resource_ids().size();
+      size_t num_resource_fractions =
+          fractional_resource_ids.resource_fractions().size();
+      RAY_CHECK(num_resource_ids == num_resource_fractions);
+      RAY_CHECK(num_resource_ids > 0);
+      for (size_t j = 0; j < num_resource_ids; ++j) {
+        int64_t resource_id = fractional_resource_ids.resource_ids()[j];
+        double resource_fraction = fractional_resource_ids.resource_fractions()[j];
+        if (num_resource_ids > 1) {
+          int64_t whole_fraction = resource_fraction;
+          RAY_CHECK(whole_fraction == resource_fraction);
         }
+        acquired_resources.emplace_back(resource_id, resource_fraction);
       }
-      task_spec->reset(new ray::TaskSpecification(reply.task_spec()));
-    } else {
-      *task_spec = nullptr;
-      RAY_LOG(INFO) << "[RayletClient] Get task failed, msg: " << status.message();
     }
-    p.set_value(status);
-  };
-
-  client_call_manager_.CreateCall<RayletService, GetTaskRequest, GetTaskReply>(
-      *stub_, &RayletService::Stub::PrepareAsyncGetTask, get_task_request, callback);
-  return f.get();
+    task_spec->reset(new ray::TaskSpecification(reply.task_spec()));
+  } else {
+    *task_spec = nullptr;
+    RAY_LOG(INFO) << "[RayletClient] Get task failed, msg: " << status.error_message();
+  }
+  return GrpcStatusToRayStatus(status);
 }
 
 ray::Status RayletClient::TaskDone() {
   TaskDoneRequest task_done_request;
   task_done_request.set_worker_id(worker_id_.Binary());
 
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const TaskDoneReply &reply) {
+  auto callback = [](const Status &status, const TaskDoneReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] Task done failed, msg: " << status.message();
     }
-    p.set_value(status);
   };
 
-  client_call_manager_.CreateCall<RayletService, TaskDoneRequest, TaskDoneReply>(
+  auto call = client_call_manager_.CreateCall<RayletService, TaskDoneRequest, TaskDoneReply>(
       *stub_, &RayletService::Stub::PrepareAsyncTaskDone, task_done_request, callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
@@ -168,22 +145,18 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
       &FetchOrReconstructRequest::add_object_ids);
 
   // Callback to deal with reply.
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const FetchOrReconstructReply &reply) {
+  auto callback = [](const Status &status, const FetchOrReconstructReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] Fetch or reconstruct failed, msg: "
                     << status.message();
     }
-    p.set_value(status);
   };
 
-  client_call_manager_
+  auto call = client_call_manager_
       .CreateCall<RayletService, FetchOrReconstructRequest, FetchOrReconstructReply>(
           *stub_, &RayletService::Stub::PrepareAsyncFetchOrReconstruct,
           fetch_or_reconstruct_request, callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
@@ -191,22 +164,18 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   notify_unblocked_request.set_worker_id(worker_id_.Binary());
   notify_unblocked_request.set_task_id(current_task_id.Binary());
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const NotifyUnblockedReply &reply) {
+  auto callback = [](const Status &status, const NotifyUnblockedReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] Notify unblocked failed, msg: "
                     << status.message();
     }
-    p.set_value(status);
   };
 
-  client_call_manager_
+  auto call = client_call_manager_
       .CreateCall<RayletService, NotifyUnblockedRequest, NotifyUnblockedReply>(
           *stub_, &RayletService::Stub::PrepareAsyncNotifyUnblocked,
           notify_unblocked_request, callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
@@ -221,22 +190,18 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   IdVectorToProtobuf<ObjectID, WaitRequest>(object_ids, wait_request,
                                             &WaitRequest::add_object_ids);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [result, &p](const Status &status, const WaitReply &reply) {
-    if (status.ok()) {
-      result->first = IdVectorFromProtobuf<ObjectID>(reply.found());
-      result->second = IdVectorFromProtobuf<ObjectID>(reply.remaining());
-    } else {
-      RAY_LOG(INFO) << "[RayletClient] Wait failed, msg: " << status.message();
-    }
-    p.set_value(status);
-  };
+  grpc::ClientContext context;
+  WaitReply reply;
+  auto status = stub_->Wait(&context, wait_request, &reply);
 
-  client_call_manager_.CreateCall<RayletService, WaitRequest, WaitReply>(
-      *stub_, &RayletService::Stub::PrepareAsyncWait, wait_request, callback);
-  return f.get();
+  if (status.ok()) {
+    result->first = IdVectorFromProtobuf<ObjectID>(reply.found());
+    result->second = IdVectorFromProtobuf<ObjectID>(reply.remaining());
+  } else {
+    RAY_LOG(INFO) << "[RayletClient] Wait failed, msg: " << status.error_message();
+  }
+
+  return GrpcStatusToRayStatus(status);
 }
 
 ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
@@ -247,66 +212,59 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   push_error_request.set_error_message(error_message);
   push_error_request.set_timestamp(timestamp);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const PushErrorReply &reply) {
+  auto callback = [](const Status &status, const PushErrorReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] Push error failed, msg: " << status.message();
     }
-    p.set_value(status);
+
   };
 
-  client_call_manager_.CreateCall<RayletService, PushErrorRequest, PushErrorReply>(
+  auto call = client_call_manager_.CreateCall<RayletService, PushErrorRequest, PushErrorReply>(
       *stub_, &RayletService::Stub::PrepareAsyncPushError, push_error_request, callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::PushProfileEvents(ProfileTableData *profile_events) {
   PushProfileEventsRequest push_profile_events_request;
   push_profile_events_request.set_allocated_profile_table_data(profile_events);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const PushProfileEventsReply &reply) {
+
+  auto callback = [](const Status &status, const PushProfileEventsReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] Push profile event failed, msg: "
                     << status.message();
     }
-    p.set_value(status);
+
   };
 
-  client_call_manager_
+  auto call = client_call_manager_
       .CreateCall<RayletService, PushProfileEventsRequest, PushProfileEventsReply>(
           *stub_, &RayletService::Stub::PrepareAsyncPushProfileEvents,
           push_profile_events_request, callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
                                       bool local_only, bool delete_creating_tasks) {
-  FreeObjectsInObjectStoreRequest free_objects_request;
+  FreeObjectsInStoreRequest free_objects_request;
   free_objects_request.set_local_only(local_only);
   free_objects_request.set_delete_creating_tasks(delete_creating_tasks);
-  IdVectorToProtobuf<ray::ObjectID, FreeObjectsInObjectStoreRequest>(
-      object_ids, free_objects_request, &FreeObjectsInObjectStoreRequest::add_object_ids);
+  IdVectorToProtobuf<ray::ObjectID, FreeObjectsInStoreRequest>(
+      object_ids, free_objects_request, &FreeObjectsInStoreRequest::add_object_ids);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const FreeObjectsInObjectStoreReply &reply) {
+
+  auto callback = [](const Status &status, const FreeObjectsInStoreReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] Free objects failed, msg: " << status.message();
     }
-    p.set_value(status);
+
   };
 
-  client_call_manager_.CreateCall<RayletService, FreeObjectsInObjectStoreRequest,
-                                  FreeObjectsInObjectStoreReply>(
-      *stub_, &RayletService::Stub::PrepareAsyncFreeObjectsInObjectStore,
-      free_objects_request, callback);
-  return f.get();
+  auto call = client_call_manager_
+      .CreateCall<RayletService, FreeObjectsInStoreRequest, FreeObjectsInStoreReply>(
+          *stub_, &RayletService::Stub::PrepareAsyncFreeObjectsInStore,
+          free_objects_request, callback);
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
@@ -315,25 +273,18 @@ ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   prepare_actor_checkpoint_request.set_actor_id(actor_id.Binary());
   prepare_actor_checkpoint_request.set_worker_id(worker_id_.Binary());
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&checkpoint_id, &p](const Status &status,
-                                       const PrepareActorCheckpointReply &reply) {
-    if (status.ok()) {
-      checkpoint_id = ActorCheckpointID::FromBinary(reply.checkpoint_id());
-    } else {
-      RAY_LOG(INFO) << "[RayletClient] Prepare actor checkpoint failed, msg: "
-                    << status.message();
-    }
-    p.set_value(status);
-  };
+  grpc::ClientContext context;
+  PrepareActorCheckpointReply reply;
+  auto status = stub_->PrepareActorCheckpoint(&context, prepare_actor_checkpoint_request, &reply);
 
-  client_call_manager_.CreateCall<RayletService, PrepareActorCheckpointRequest,
-                                  PrepareActorCheckpointReply>(
-      *stub_, &RayletService::Stub::PrepareAsyncPrepareActorCheckpoint,
-      prepare_actor_checkpoint_request, callback);
-  return f.get();
+  if (status.ok()) {
+    checkpoint_id = ActorCheckpointID::FromBinary(reply.checkpoint_id());
+  } else {
+    RAY_LOG(INFO) << "[RayletClient] Prepare actor checkpoint failed, msg: "
+                  << status.error_message();
+  }
+
+  return GrpcStatusToRayStatus(status);
 }
 
 ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
@@ -342,23 +293,19 @@ ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
   notify_actor_resumed_from_checkpoint_request.set_actor_id(actor_id.Binary());
   notify_actor_resumed_from_checkpoint_request.set_checkpoint_id(checkpoint_id.Binary());
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status,
+  auto callback = [](const Status &status,
                        const NotifyActorResumedFromCheckpointReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] NotifyActorResumedFromCheckpoint failed, msg: "
                     << status.message();
     }
-    p.set_value(status);
   };
 
-  client_call_manager_.CreateCall<RayletService, NotifyActorResumedFromCheckpointRequest,
+  auto call = client_call_manager_.CreateCall<RayletService, NotifyActorResumedFromCheckpointRequest,
                                   NotifyActorResumedFromCheckpointReply>(
       *stub_, &RayletService::Stub::PrepareAsyncNotifyActorResumedFromCheckpoint,
       notify_actor_resumed_from_checkpoint_request, callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::SetResource(const std::string &resource_name,
@@ -369,20 +316,16 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
   set_resource_request.set_capacity(capacity);
   set_resource_request.set_client_id(client_id.Binary());
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const SetResourceReply &reply) {
+  auto callback = [](const Status &status, const SetResourceReply &reply) {
     if (!status.ok()) {
       RAY_LOG(INFO) << "[RayletClient] SetResource failed, msg: " << status.message();
     }
-    p.set_value(status);
   };
 
-  client_call_manager_.CreateCall<RayletService, SetResourceRequest, SetResourceReply>(
+  auto call = client_call_manager_.CreateCall<RayletService, SetResourceRequest, SetResourceReply>(
       *stub_, &RayletService::Stub::PrepareAsyncSetResource, set_resource_request,
       callback);
-  return f.get();
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::RegisterClient() {
@@ -395,21 +338,16 @@ ray::Status RayletClient::RegisterClient() {
   register_client_request.set_language(language_);
   register_client_request.set_port(port_);
 
-  // This promise and future are only used to make this call synchronized.
-  std::promise<Status> p;
-  std::future<Status> f(p.get_future());
-  auto callback = [&p](const Status &status, const RegisterClientReply &reply) {
-    if (!status.ok()) {
-      RAY_LOG(DEBUG) << "[RayletClient] Register client failed, msg: "
-                     << status.message();
-    }
-    p.set_value(status);
-  };
-  client_call_manager_
-      .CreateCall<RayletService, RegisterClientRequest, RegisterClientReply>(
-          *stub_, &RayletService::Stub::PrepareAsyncRegisterClient,
-          register_client_request, callback);
-  return f.get();
+  grpc::ClientContext context;
+  RegisterClientReply reply;
+  auto status = stub_->RegisterClient(&context, register_client_request, &reply);
+
+  if (!status.ok()) {
+    RAY_LOG(DEBUG) << "[RayletClient] Register client failed, msg: "
+                    << status.error_message();
+  }
+
+  return GrpcStatusToRayStatus(status);
 }
 
 void RayletClient::Heartbeat() {
@@ -423,7 +361,7 @@ void RayletClient::Heartbeat() {
       RAY_LOG(INFO) << "[RayletClient] Heartbeat failed, msg: " << status.message();
     }
   };
-  client_call_manager_.CreateCall<RayletService, HeartbeatRequest, HeartbeatReply>(
+  auto call = client_call_manager_.CreateCall<RayletService, HeartbeatRequest, HeartbeatReply>(
       *stub_, &RayletService::Stub::PrepareAsyncHeartbeat, heartbeat_request, callback);
 
   heartbeat_timer_.expires_from_now(boost::posix_time::milliseconds(300));
