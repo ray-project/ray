@@ -191,8 +191,7 @@ service RayletService {
   // node manager, the message itself is serialized as a ProfileTableData object.
   rpc PushProfileEvents(PushProfileEventsRequest) returns (PushProfileEventsReply);
   // Free the objects in plasma objects store.
-  rpc FreeObjectsInStore(FreeObjectsInStoreRequest)
-      returns (FreeObjectsInStoreReply);
+  rpc FreeObjectsInStore(FreeObjectsInStoreRequest) returns (FreeObjectsInStoreReply);
   // Request raylet backend to prepare a checkpoint for an actor.
   rpc PrepareActorCheckpoint(PrepareActorCheckpointRequest)
       returns (PrepareActorCheckpointReply);
