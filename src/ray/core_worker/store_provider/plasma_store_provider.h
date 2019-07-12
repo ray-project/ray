@@ -7,9 +7,11 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/store_provider/store_provider.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 
 namespace ray {
+
+using rpc::RayletClient;
 
 class CoreWorker;
 

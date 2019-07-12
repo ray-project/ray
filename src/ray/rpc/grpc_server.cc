@@ -19,7 +19,7 @@ void GrpcServer::Run() {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
   if (services_.size() == 0) {
-    RAY_LOG(WARNING) << "No service is found when start " << name_ << " grpc server.";
+    RAY_LOG(FATAL) << "No service is found when starting " << name_ << " grpc server.";
   }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
@@ -29,9 +29,9 @@ void GrpcServer::Run() {
   cq_ = builder.AddCompletionQueue();
   // Build and start server.
   server_ = builder.BuildAndStart();
-  RAY_LOG(INFO) << name_
-                << " server started, input listening server address: " << server_address
-                << ", actually listening port: " << port_;
+  RAY_LOG(INFO) << name_ << " server started, listening server address: "
+                << (unix_socket_path_.empty() ? "0.0.0.0" : unix_socket_path_)
+                << ", listening port: " << port_;
 
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_and_concurrencies_) {
@@ -84,7 +84,6 @@ void GrpcServer::PollEventsFromCompletionQueue() {
       // Second, server has sent reply to client and failed, the server call's status is
       // SENDING_REPLY
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
-        RAY_LOG(INFO) << "Received reply failed call.";
         server_call->OnReplyFailed();
       }
       delete_call = true;

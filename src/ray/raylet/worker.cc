@@ -16,8 +16,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &l
       port_(port),
       language_(language),
       blocked_(false),
-      heartbeat_timeout_times_(0),
-      is_killing_(false),
+      num_missed_heartbeats_(0),
+      is_being_killed_(false),
       client_call_manager_(client_call_manager) {
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
@@ -25,9 +25,9 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &l
   }
 }
 
-void Worker::MarkAsKilling() { is_killing_ = true; }
+void Worker::MarkAsBeingKilled() { is_being_killed_ = true; }
 
-bool Worker::IsKilling() const { return is_killing_; }
+bool Worker::IsBeingKilled() const { return is_being_killed_; }
 
 void Worker::MarkBlocked() { blocked_ = true; }
 
@@ -107,8 +107,8 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   task_resource_ids_.Release(cpu_resources);
 }
 
-void Worker::SetGettingTaskRequest(rpc::GetTaskReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
+void Worker::SetGetTaskReplyAndCallback(rpc::GetTaskReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
   reply_ = reply;
   send_reply_callback_ = std::move(send_reply_callback);
 }

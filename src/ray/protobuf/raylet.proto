@@ -166,7 +166,7 @@ message HeartbeatReply {
 
 // Worker-to-raylet RPC service interface.
 service RayletService {
-  // This struct is used to register a new worker with the raylet.
+  // Register a new worker to the raylet.
   rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
   // Submit a task to raylet.
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);

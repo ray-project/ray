@@ -27,8 +27,8 @@ class Worker {
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
-  void MarkAsKilling();
-  bool IsKilling() const;
+  void MarkAsBeingKilled();
+  bool IsBeingKilled() const;
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -57,14 +57,14 @@ class Worker {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
-  int HeartbeatTimeout() { return ++heartbeat_timeout_times_; }
-  void ClearHeartbeat() { heartbeat_timeout_times_ = 0; }
+  int TickHeartbeatTimer() { return ++num_missed_heartbeats_; }
+  void ClearHeartbeat() { num_missed_heartbeats_ = 0; }
 
   /// Reply of get task request is not sent in function HandleGetTaskRequest. Should block
   /// the worker and handle reply in AssignTask function.
   /// Set the reply and callback when the worker sends get task request to raylet.
-  void SetGettingTaskRequest(rpc::GetTaskReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
+  void SetGetTaskReplyAndCallback(rpc::GetTaskReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback);
 
   bool UsePush() const;
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
@@ -94,11 +94,11 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
-  /// Record worker heartbeat timeout times.
-  int heartbeat_timeout_times_;
+  /// How many heartbeats have been missed for this worker.
+  int num_missed_heartbeats_;
   /// Indicate we have sent kill signal to the worker if it's true. We cannot treat the
   /// worker process as reaylly dead until we lost the heartbeats from the worker.
-  bool is_killing_;
+  bool is_being_killed_;
   /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;

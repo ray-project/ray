@@ -25,16 +25,18 @@ class GrpcService;
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:
-  /// Constructor.
+  /// Construct a gRPC server that listens on a TCP port.
   ///
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] main_service The main event loop, to which service handler functions
-  /// will be posted.
   GrpcServer(const std::string &name, const uint32_t port)
       : name_(name), port_(port), is_closed_(true) {}
 
+  /// Construct a gRPC server that listens on unix domain socket.
+  ///
+  /// \param[in] name Name of this server, used for logging and debugging purpose.
+  /// \param[in] unix_socket_path Unix domain socket full path.
   GrpcServer(const std::string &name, const std::string &unix_socket_path)
       : GrpcServer(name, 0) {
     unix_socket_path_ = unix_socket_path;

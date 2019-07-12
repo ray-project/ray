@@ -252,7 +252,7 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   // up its state before force killing. The client socket will be closed
   // and the worker struct will be freed after the timeout.
   kill(worker->Pid(), SIGTERM);
-  worker->MarkAsKilling();
+  worker->MarkAsBeingKilled();
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
   auto retry_duration = boost::posix_time::milliseconds(
@@ -337,13 +337,13 @@ void NodeManager::Heartbeat() {
 
   // Check worker heartbeat timeout times.
   std::vector<std::shared_ptr<Worker>> dead_workers;
-  worker_pool_.GetDeadWorkers(RayConfig::instance().num_worker_heartbeats_timeout(),
-                              dead_workers);
+  worker_pool_.TickHeartbeatTimer(RayConfig::instance().num_worker_heartbeats_timeout(),
+                                  &dead_workers);
   if (!dead_workers.empty()) {
     for (const auto &worker : dead_workers) {
       RAY_LOG(INFO) << "Worker " << worker->GetWorkerId()
                     << " dead because of timeout, pid: " << worker->Pid();
-      ProcessDisconnectClientMessage(worker->GetWorkerId(), worker->IsKilling());
+      ProcessDisconnectClientMessage(worker->GetWorkerId(), worker->IsBeingKilled());
     }
   }
 
@@ -844,11 +844,14 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_LOG(DEBUG) << "Handle get task request, worker id " << worker_id << " pid "
                  << worker->Pid();
-  if (worker->IsKilling()) return;
+  if (worker->IsBeingKilled()) {
+    send_reply_callback(Status::Invalid("WorkerBeingKilled"), nullptr, nullptr);
+    return;
+  }
   RAY_CHECK(worker && !worker->UsePush());
 
   // Reply would be sent when assigned a task to the worker successfully.
-  worker->SetGettingTaskRequest(reply, send_reply_callback);
+  worker->SetGetTaskReplyAndCallback(reply, send_reply_callback);
   HandleWorkerAvailable(worker_id);
 }
 
@@ -899,7 +902,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
   if (worker) {
-    if (is_worker && worker->IsKilling()) {
+    if (is_worker && worker->IsBeingKilled()) {
       // Don't need to unblock the client if it's a worker and have sent kill signal to
       // it. Because in this case, its task is already cleaned up.
       RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
@@ -924,7 +927,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
     const TaskID &task_id = worker->GetAssignedTaskId();
     // If the worker was running a task, clean up the task and push an error to
     // the driver, unless the worker is already being killed.
-    if (!task_id.IsNil() && !worker->IsKilling()) {
+    if (!task_id.IsNil() && !worker->IsBeingKilled()) {
       // If the worker was an actor, the task was already cleaned up in
       // `HandleDisconnectedActor`.
       if (actor_id.IsNil()) {

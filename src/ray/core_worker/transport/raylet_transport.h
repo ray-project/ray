@@ -4,10 +4,12 @@
 #include <list>
 
 #include "ray/core_worker/transport/transport.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
+
+using rpc::RayletClient;
 
 /// In raylet task submitter and receiver, a task is submitted to raylet, and possibly
 /// gets forwarded to another raylet on which node the task should be executed, and
