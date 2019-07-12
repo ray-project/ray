@@ -288,7 +288,29 @@ class RayTrialExecutor(TrialExecutor):
 
         return list(self._running.values())
 
+    def get_alive_node_ips(self):
+        nodes = ray.state.nodes()
+        ip_addresses = set()
+        for node in nodes:
+            if node["alive"]:
+                ip_addresses.add(node["NodeManagerAddress"])
+        return ip_addresses
+
+    def get_current_trial_ips(self):
+        return {t.node_ip for t in self.get_running_trials()}
+
     def get_next_available_trial(self):
+        if ray.worker._mode() != ray.worker.LOCAL_MODE:
+            live_cluster_ips = self.get_alive_node_ips()
+            if live_cluster_ips - self.get_current_trial_ips():
+                for trial in self.get_running_trials():
+                    if trial.node_ip and trial.node_ip not in live_cluster_ips:
+                        logger.warning(
+                            "{} (ip: {}) detected as stale. This is likely "
+                            "because the node was lost. Processing this "
+                            "trial first.".format(trial, trial.node_ip))
+                        return trial
+
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
         # Note: We shuffle the results because `ray.wait` by default returns
@@ -541,8 +563,15 @@ class RayTrialExecutor(TrialExecutor):
                 assert type(value) != Checkpoint, type(value)
                 trial.runner.restore_from_object.remote(value)
             else:
-                worker_ip = ray.get(trial.runner.current_ip.remote())
-                trial.sync_logger_to_new_location(worker_ip)
+                # TODO: Somehow, the call to get the current IP on the
+                # remote actor can be very slow - a better fix would
+                # be to use an actor table to detect the IP of the Trainable
+                # and rsync the files there.
+                # See https://github.com/ray-project/ray/issues/5168
+                with warn_if_slow("get_current_ip"):
+                    worker_ip = ray.get(trial.runner.current_ip.remote())
+                with warn_if_slow("sync_to_new_location"):
+                    trial.sync_logger_to_new_location(worker_ip)
                 with warn_if_slow("restore_from_disk"):
                     ray.get(trial.runner.restore.remote(value))
             trial.last_result = checkpoint.last_result
