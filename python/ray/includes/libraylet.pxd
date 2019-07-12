@@ -52,6 +52,7 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
             const c_vector[CObjectID] &execution_dependencies,
             const CTaskSpec &task_spec)
         CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
+        CRayStatus TaskDone()
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
                                       c_bool fetch_only,
                                       const CTaskID &current_task_id)

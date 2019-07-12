@@ -138,6 +138,24 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   return f.get();
 }
 
+ray::Status RayletClient::TaskDone() {
+  TaskDoneRequest task_done_request;
+  task_done_request.set_worker_id(worker_id_.Binary());
+
+  std::promise<Status> p;
+  std::future<Status> f(p.get_future());
+  auto callback = [&p](const Status &status, const TaskDoneReply &reply) {
+    if (!status.ok()) {
+      RAY_LOG(INFO) << "[RayletClient] Task done failed, msg: " << status.message();
+    }
+    p.set_value(status);
+  };
+
+  client_call_manager_.CreateCall<RayletService, TaskDoneRequest, TaskDoneReply>(
+      *stub_, &RayletService::Stub::PrepareAsyncTaskDone, task_done_request, callback);
+  return f.get();
+}
+
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                              bool fetch_only,
                                              const TaskID &current_task_id) {

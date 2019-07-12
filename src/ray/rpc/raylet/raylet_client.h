@@ -72,6 +72,11 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec);
 
+  /// Tell the raylet that the client has finished executing a task.
+  ///
+  /// \return ray::Status.
+  ray::Status TaskDone();
+
   /// Tell the raylet to reconstruct or fetch objects.
   ///
   /// \param object_ids The IDs of the objects to reconstruct.

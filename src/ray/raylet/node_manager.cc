@@ -337,7 +337,7 @@ void NodeManager::Heartbeat() {
 
   // Check worker heartbeat timeout times.
   std::vector<std::shared_ptr<Worker>> dead_workers;
-  worker_pool_.GetDeadWorkers(RayConfig::instance().worker_heartbeat_timeout_times(),
+  worker_pool_.GetDeadWorkers(RayConfig::instance().num_worker_heartbeats_timeout(),
                               dead_workers);
   if (!dead_workers.empty()) {
     for (const auto &worker : dead_workers) {

@@ -249,6 +249,9 @@ cdef class RayletClient:
             check_status(self.client.get().GetTask(&task_spec))
         return TaskSpec.make(task_spec)
 
+    def task_done(self):
+        check_status(self.client.get().TaskDone())
+
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
                              TaskID current_task_id=TaskID.nil()):
