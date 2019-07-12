@@ -307,14 +307,13 @@ cdef class RayletClient:
     def push_profile_events(self, component_type, UniqueID component_id,
                             node_ip_address, profile_data):
         cdef:
-            GCSProfileTableData *profile_info
+            GCSProfileTableData profile_info
             GCSProfileEvent *profile_event
             c_string event_type
 
         if len(profile_data) == 0:
             return  # Short circuit if there are no profile events.
 
-        profile_info = new GCSProfileTableData()
         profile_info.set_component_type(component_type.encode("ascii"))
         profile_info.set_component_id(component_id.binary())
         profile_info.set_node_ip_address(node_ip_address.encode("ascii"))

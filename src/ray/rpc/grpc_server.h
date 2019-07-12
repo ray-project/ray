@@ -38,7 +38,10 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] unix_socket_path Unix domain socket full path.
   GrpcServer(const std::string &name, const std::string &unix_socket_path)
-      : GrpcServer(name, 0), unix_socket_path_(unix_socket_path), is_closed_(true) {}
+      : GrpcServer(name, 0) {
+    unix_socket_path_(unix_socket_path)
+    is_closed_ = true;
+  }
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }

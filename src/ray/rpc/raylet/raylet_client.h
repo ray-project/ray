@@ -116,7 +116,7 @@ class RayletClient {
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
-  ray::Status PushProfileEvents(ProfileTableData *profile_events);
+  ray::Status PushProfileEvents(ProfileTableData &profile_events);
 
   /// Free a list of objects from object stores.
   ///
