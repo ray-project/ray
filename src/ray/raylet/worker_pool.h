@@ -128,12 +128,11 @@ class WorkerPool {
   /// Record metrics.
   void RecordMetrics() const;
 
-  /// Get the workers that have timed out.
+  /// Tick the heartbeat timer and get the workers that have timed out.
   ///
-  /// \param max_missed_heartbeats Set the timeout times,
-  ///        a worker will be marked as dead if its timeout times is larger than this
-  ///        value.
-  /// \param dead_workers Workers that have been dead.
+  /// \param[in] max_missed_heartbeats The maximum number of heartbeats that can be
+  /// missed before a worker times out.
+  /// \param[out] dead_workers Workers that have been dead.
   void TickHeartbeatTimer(int max_missed_heartbeats,
                           std::vector<std::shared_ptr<Worker>> *dead_workers);
 

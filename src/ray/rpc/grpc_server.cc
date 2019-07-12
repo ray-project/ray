@@ -29,9 +29,11 @@ void GrpcServer::Run() {
   cq_ = builder.AddCompletionQueue();
   // Build and start server.
   server_ = builder.BuildAndStart();
-  RAY_LOG(INFO) << name_ << " server started, listening server address: "
-                << (unix_socket_path_.empty() ? "0.0.0.0" : unix_socket_path_)
-                << ", listening port: " << port_;
+  if (unix_socket_path_.empty()) {
+    // For a TCP-based server, the actual port is decided after `AddListeningPort`.
+    server_address = "0.0.0.0:" + std::to_string(port_);
+  }
+  RAY_LOG(INFO) << name_ << " server started, listening on " << server_address;
 
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_and_concurrencies_) {

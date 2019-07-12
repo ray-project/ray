@@ -60,9 +60,10 @@ class Worker {
   int TickHeartbeatTimer() { return ++num_missed_heartbeats_; }
   void ClearHeartbeat() { num_missed_heartbeats_ = 0; }
 
-  /// Reply of get task request is not sent in function HandleGetTaskRequest. Should block
-  /// the worker and handle reply in AssignTask function.
-  /// Set the reply and callback when the worker sends get task request to raylet.
+  /// When receiving a `GetTask` request from worker, this function should be called to
+  /// pass the reply and callback of the request to the worker. Later, when we actually
+  /// assign a task to the worker, the reply will be filled and the callback will be
+  /// called.
   void SetGetTaskReplyAndCallback(rpc::GetTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback);
 
@@ -97,16 +98,16 @@ class Worker {
   /// How many heartbeats have been missed for this worker.
   int num_missed_heartbeats_;
   /// Indicate we have sent kill signal to the worker if it's true. We cannot treat the
-  /// worker process as reaylly dead until we lost the heartbeats from the worker.
+  /// worker process as really dead until we lost the heartbeats from the worker.
   bool is_being_killed_;
   /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
-  /// Get task reply.
+  /// Reply of the `GetTask` request.
   rpc::GetTaskReply *reply_ = nullptr;
-  /// Send reply callback.
+  /// Callback of the `GetTask` request.
   rpc::SendReplyCallback send_reply_callback_ = nullptr;
 };
 

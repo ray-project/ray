@@ -136,9 +136,9 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) 
           // `TaskDone` message.
         });
   } else {
-    RAY_CHECK(reply_ != nullptr && send_reply_callback_ != nullptr);
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
+    RAY_CHECK(reply_ != nullptr && send_reply_callback_ != nullptr);
     reply_->set_task_spec(task.GetTaskSpecification().Serialize());
     for (const auto &e : resource_id_set.ToProtobuf()) {
       auto resource = reply_->add_fractional_resource_ids();

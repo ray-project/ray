@@ -38,9 +38,7 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] unix_socket_path Unix domain socket full path.
   GrpcServer(const std::string &name, const std::string &unix_socket_path)
-      : GrpcServer(name, 0) {
-    unix_socket_path_ = unix_socket_path;
-  }
+      : GrpcServer(name, 0), unix_socket_path_(unix_socket_path), is_closed_(true) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -79,7 +77,7 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
-  /// Flag indicates whether this server has closed
+  /// Flag indicates whether this server has closed.
   bool is_closed_;
   /// Unix domain socket path.
   std::string unix_socket_path_;
