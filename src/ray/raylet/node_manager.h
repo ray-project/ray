@@ -259,7 +259,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                   bool forwarded = false);
   /// Handle the case that a worker is available.
   ///
-  /// \param client The connection for the worker.
+  /// \param id Id of the worker.
   /// \return Void.
   void HandleWorkerAvailable(const WorkerID &worker_id);
   /// Assign a task. The task is assumed to not be queued in local_queues_.

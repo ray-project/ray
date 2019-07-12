@@ -2179,8 +2179,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // runnable once the deleted object becomes available again.
     local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
     RAY_CHECK(waiting_task_id_set.empty());
-    // Moving ready tasks to waiting may have changed the load, making space for
-    // placing new tasks locally.
+    // Moving ready tasks to waiting may have changed the load, making space for placing
+    // new tasks locally.
     ScheduleTasks(cluster_resource_map_);
   }
 }
@@ -2237,8 +2237,7 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           local_queues_.QueueTasks({task}, TaskState::SWAP);
         } else {
           // The task is not for an actor and may therefore be placed on another
-          // node immediately. Send it to the scheduling policy to be placed
-          // again.
+          // node immediately. Send it to the scheduling policy to be placed again.
           local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
           ScheduleTasks(cluster_resource_map_);
         }
@@ -2318,14 +2317,13 @@ void NodeManager::ForwardTask(
       // Notify the task dependency manager that we are no longer responsible
       // for executing this task.
       task_dependency_manager_.TaskCanceled(task_id);
-      // Preemptively push any local arguments to the receiving node. For now,
-      // we only do this with actor tasks, since actor tasks must be executed
-      // by a specific process and therefore have affinity to the receiving
-      // node.
+      // Preemptively push any local arguments to the receiving node. For now, we
+      // only do this with actor tasks, since actor tasks must be executed by a
+      // specific process and therefore have affinity to the receiving node.
       if (spec.IsActorTask()) {
-        // Iterate through the object's arguments. NOTE(swang): We do not
-        // include the execution dependencies here since those cannot be
-        // transferred between nodes.
+        // Iterate through the object's arguments. NOTE(swang): We do not include
+        // the execution dependencies here since those cannot be transferred
+        // between nodes.
         for (int i = 0; i < spec.NumArgs(); ++i) {
           int count = spec.ArgIdCount(i);
           for (int j = 0; j < count; j++) {
