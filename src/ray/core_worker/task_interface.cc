@@ -179,8 +179,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
       actor_creation_dummy_object_id,
       /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
-      actor_handle.IncreaseTaskCounter(),
-      actor_handle.NewActorHandles());
+      actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();

@@ -134,7 +134,6 @@ ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
       message_.actor_task_spec().previous_actor_task_dummy_object_id());
 }
 
-
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
   return ReturnId(NumReturns() - 1);
