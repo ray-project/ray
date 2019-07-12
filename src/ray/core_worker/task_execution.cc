@@ -35,7 +35,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
-    const raylet::TaskSpecification &spec,
+    const TaskSpecification &spec,
     std::vector<std::shared_ptr<Buffer>>* results) {
   worker_context_.SetCurrentTask(spec);
 
@@ -82,8 +82,7 @@ void CoreWorkerTaskExecutionInterface::Run() {
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const raylet::TaskSpecification &spec,
-    std::vector<std::shared_ptr<RayObject>> *args) {
+    const TaskSpecification &spec, std::vector<std::shared_ptr<RayObject>> *args) {
   auto num_args = spec.NumArgs();
   (*args).resize(num_args);
 

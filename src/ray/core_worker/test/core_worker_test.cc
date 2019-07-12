@@ -152,7 +152,7 @@ class CoreWorkerTest : public ::testing::Test {
 void CoreWorkerTest::TestNormalTask(const std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromRandom(), nullptr);
+                    JobID::FromInt(1), nullptr);
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -200,7 +200,7 @@ void CoreWorkerTest::TestActorTask(const std::unordered_map<std::string, double>
                     bool direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromRandom(), nullptr);
+                    JobID::FromInt(1), nullptr);
 
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -226,12 +226,9 @@ void CoreWorkerTest::TestActorTask(const std::unordered_map<std::string, double>
     std::uniform_int_distribution<> dis(1, 10);
     std::uniform_int_distribution<> value_dis(1, 255);   
     const int num_tasks = 100;
-    RAY_LOG(INFO) << "actor tasks begin: " << direct_call;
     for (int i = 0; i < num_tasks; i++) {
       std::vector<uint8_t> arg1(dis(gen), value_dis(gen));
       std::vector<uint8_t> arg2(dis(gen), value_dis(gen));
-
-      RAY_LOG(DEBUG) << "iteration " << i << ", " << arg1.size() << ", " << arg2.size();
       
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size());
       auto buffer2 = std::make_shared<LocalMemoryBuffer>(arg2.data(), arg2.size());
@@ -260,7 +257,6 @@ void CoreWorkerTest::TestActorTask(const std::unordered_map<std::string, double>
           0);
 
     }
-    RAY_LOG(INFO) << "actor tasks end";
   }
 
   // Test submitting a task with both by-value and by-ref args for that actor.
@@ -310,7 +306,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
                     bool direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromRandom(), nullptr);
+                    JobID::FromInt(1), nullptr);
 
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -346,6 +342,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
   RAY_CHECK_OK(driver.Objects().Get({ object_ids[0] }, -1, &results));
   // Acotr is created, wait for the gcs notification to propogate to core worker.
   sleep(2);
+  RAY_LOG(INFO) << "actor has been created";
 
   // Test submitting some tasks with by-value args for that actor.
   {
@@ -354,12 +351,11 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
     std::uniform_int_distribution<> dis(1, 10);
     std::uniform_int_distribution<> value_dis(1, 255);   
     const int num_tasks = 100;
-
+    const int num_tasks_to_kill_worker = (num_tasks + 1) / 2;
     std::vector<std::pair<ObjectID, std::vector<uint8_t>>> all_results; 
-    RAY_LOG(INFO) << "actor tasks begin: " << direct_call;
     for (int i = 0; i < num_tasks; i++) {
 
-      if (i == num_tasks/2) {
+      if (i == num_tasks_to_kill_worker) {
         RAY_LOG(INFO) << "killing worker";
         system("pkill mock_worker");
 
@@ -368,7 +364,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
         // Acotr is created, wait for the gcs notification to propogate to core worker.
         sleep(2);
 
-        RAY_LOG(INFO) << "actor reconstructed";
+        RAY_LOG(INFO) << "actor has been reconstructed";
       }
 
       // wait for actor being reconstructed.
@@ -390,12 +386,11 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
       RAY_CHECK(return_ids.size() == 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
-RAY_LOG(INFO) << i;      
+    
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));      
       RAY_CHECK(results[0]->GetData()->Size() ==  buffer1->Size()) << i;
       RAY_CHECK(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()) == 0) << i; 
     }
-    RAY_LOG(INFO) << "actor tasks end";
   }
 }
 
@@ -404,7 +399,7 @@ void CoreWorkerTest::TestActorFailure(const std::unordered_map<std::string, doub
                     bool direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromRandom(), nullptr);
+                    JobID::FromInt(1), nullptr);
 
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -441,12 +436,11 @@ void CoreWorkerTest::TestActorFailure(const std::unordered_map<std::string, doub
     std::uniform_int_distribution<> dis(1, 10);
     std::uniform_int_distribution<> value_dis(1, 255);   
     const int num_tasks = 3000;
-
+    const int num_tasks_to_kill_worker = (num_tasks + 1) / 2;
     std::vector<std::pair<ObjectID, std::vector<uint8_t>>> all_results; 
-    RAY_LOG(INFO) << "actor tasks begin: " << direct_call;
     for (int i = 0; i < num_tasks; i++) {
 
-      if (i == num_tasks/2) {
+      if (i == num_tasks_to_kill_worker) {
         RAY_LOG(INFO) << "killing worker";
         system("pkill mock_worker");
       }
@@ -466,7 +460,7 @@ void CoreWorkerTest::TestActorFailure(const std::unordered_map<std::string, doub
       
       auto status = driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids);
-      if (i < num_tasks/2) {
+      if (i < num_tasks_to_kill_worker) {
         RAY_CHECK_OK(status); 
       }
 
@@ -488,15 +482,12 @@ void CoreWorkerTest::TestActorFailure(const std::unordered_map<std::string, doub
         std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::ACTOR_DIED));
         RAY_CHECK(memcmp(results[0]->GetMetadata()->Data(), meta.data(), meta.size()) == 0) << i
             << "  " << results[0]->GetMetadata()->Size() << "  " << meta.size();
-RAY_LOG(INFO) << "exception object " << i;
-
        } else {
         // Verify if it's expected data.
         RAY_CHECK(results[0]->GetData()->Size() ==  entry.second.size()) << i;
         RAY_CHECK(memcmp(results[0]->GetData()->Data(), entry.second.data(), entry.second.size()) == 0) << i;        
       }
     }
-    RAY_LOG(INFO) << "actor tasks end";
   }
 }
 
@@ -532,7 +523,7 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {
-  auto job_id = JobID::FromRandom();
+  auto job_id = JobID::JobID::FromInt(1);
 
   WorkerContext context(WorkerType::WORKER, job_id);
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
@@ -591,7 +582,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         JobID::FromRandom(), nullptr);
+                         JobID::FromInt(1), nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -654,10 +645,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                     raylet_socket_names_[0], JobID::FromRandom(), nullptr);
+                     raylet_socket_names_[0], JobID::FromInt(1), nullptr);
 
   CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
-                     raylet_socket_names_[1], JobID::FromRandom(), nullptr);
+                     raylet_socket_names_[1], JobID::FromInt(1), nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -777,7 +768,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
     CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "",
-                           raylet_socket_names_[0], JobID::FromRandom(), nullptr);
+                           raylet_socket_names_[0], JobID::FromInt(1), nullptr);
   } catch (const std::exception &e) {
     std::cout << "Caught exception when constructing core worker: " << e.what();
   }

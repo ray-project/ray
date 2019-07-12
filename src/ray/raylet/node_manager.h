@@ -7,15 +7,15 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/raylet/task.h"
-#include "ray/object_manager/object_manager.h"
+#include "ray/common/task/task.h"
 #include "ray/common/client_connection.h"
-#include "ray/protobuf/common.pb.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
-#include "ray/raylet/scheduling_resources.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
@@ -32,7 +32,6 @@ using rpc::ErrorType;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
-using rpc::Language;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -130,14 +129,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ClientRemoved(const ClientTableData &client_data);
 
   /// Handler for the addition or updation of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that created or updated resources.
+  /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const ClientTableData &client_data);
+  void ResourceCreateUpdated(const ClientID &client_id,
+                             const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that deleted resources.
+  /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const ClientTableData &client_data);
+  void ResourceDeleted(const ClientID &client_id,
+                       const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local client.
@@ -215,16 +218,36 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignedTask(Worker &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task The actor creation task that created the actor.
-  /// \param worker The worker that finishes the actor creation task and becomes
-  /// and actor.
-  ActorTableData CreateActorTableDataFromCreationTask(const Task &task,
-                                                      const Worker &worker);
+  /// \param task_spec Task specification of the actor creation task that created the
+  /// actor.
+  /// \param worker The port that the actor is listening on.
+  ActorTableData CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec, int port);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
-  /// \param task The actor task or actor creationt ask.
+  /// \param task The actor task or actor creation task.
   /// \return Void.
   void FinishAssignedActorTask(Worker &worker, const Task &task);
+  /// Helper function for handling worker to finish its assigned actor task
+  /// or actor creation task. Gets invoked when tasks's parent actor is known.
+  ///
+  /// \param actor_id The actor id corresponding to the actor (creation) task.
+  /// \param actor_handle_id The actor id corresponding to the actor (creation) task.
+  /// \param new_actor_data The struct which will be used to register the task.
+  /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param dummy_object Dummy object corresponding to the actor creation task.
+  /// \param port Rpc server port that the actor is listening on.
+  /// \return Void.
+  void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
+                                       const TaskSpecification &task_spec,
+                                       bool resumed_from_checkpoint,
+                                       int port);
+  /// Extend actor frontier after an actor task or actor creation task executes.
+  ///
+  /// \param dummy_object Dummy object corresponding to the task.
+  /// \param actor_id The relevant actor ID.
+  /// \param actor_handle_id The relevant actor handle ID.
+  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
+                           const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///

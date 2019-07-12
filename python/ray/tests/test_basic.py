@@ -2510,7 +2510,8 @@ def test_global_state_api(shutdown_only):
 
     assert ray.objects() == {}
 
-    job_id = ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)
+    job_id = ray.utils.compute_job_id_from_driver(
+        ray.WorkerID(ray.worker.global_worker.worker_id))
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
@@ -2524,7 +2525,7 @@ def test_global_state_api(shutdown_only):
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == []
-    assert task_spec["JobID"] == job_id
+    assert task_spec["JobID"] == job_id.hex()
     assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
@@ -2552,7 +2553,7 @@ def test_global_state_api(shutdown_only):
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
-    assert task_spec["JobID"] == job_id
+    assert task_spec["JobID"] == job_id.hex()
     assert task_spec["ReturnObjectIDs"] == [result_id]
 
     assert task_table[task_id] == ray.tasks(task_id)
@@ -2583,7 +2584,7 @@ def test_global_state_api(shutdown_only):
     job_table = ray.jobs()
 
     assert len(job_table) == 1
-    assert job_table[0]["JobID"] == job_id
+    assert job_table[0]["JobID"] == job_id.hex()
     assert job_table[0]["NodeManagerAddress"] == node_ip_address
 
 
@@ -2691,7 +2692,7 @@ def test_workers(shutdown_only):
 
 
 def test_specific_job_id():
-    dummy_driver_id = ray.JobID(b"00112233445566778899")
+    dummy_driver_id = ray.JobID.from_int(1)
     ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver

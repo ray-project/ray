@@ -3,10 +3,11 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(const enum WorkerType worker_type, const enum Language language,
-                       const std::string &store_socket, const std::string &raylet_socket,
-                       const JobID &job_id,
-                       const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback)
+CoreWorker::CoreWorker(
+    const WorkerType worker_type, const Language language,
+    const std::string &store_socket, const std::string &raylet_socket,
+    const JobID &job_id,
+    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),

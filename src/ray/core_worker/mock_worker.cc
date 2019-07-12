@@ -1,9 +1,7 @@
-#define BOOST_BIND_NO_PLACEHOLDERS
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
-#include "ray/core_worker/test/constants.h"
 
 using namespace std::placeholders;
 
@@ -22,8 +20,8 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1),
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5)) {}
+                JobID::JobID::FromInt(1),
+                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {
     // Start executing tasks.
@@ -33,45 +31,24 @@ class MockWorker {
  private:
   Status ExecuteTask(const RayFunction &ray_function,
                      const std::vector<std::shared_ptr<RayObject>> &args,
-                     const TaskInfo &task_info, int num_returns,
-                     std::vector<std::shared_ptr<Buffer>>* results) {
+                     const TaskInfo &task_info, int num_returns) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
 
-    if (ray_function.function_descriptor.size() == 1 &&
-        ray_function.function_descriptor[0] == c_actor_creation_function_str) {
-      // This is an actor creation task.
-      RAY_CHECK(args.size() > 0);
-
-      for (const auto &arg : args) {
-        std::string object_id_str(reinterpret_cast<char*>(arg->GetData()->Data()),
-            arg->GetData()->Size());
-        auto object_id = ObjectID::FromBinary(object_id_str);
-
-        std::vector<std::shared_ptr<ray::RayObject>> results;    
-        RAY_CHECK_OK(worker_.Objects().Get({ object_id }, 0, &results));
-             /* << "  " << results[0]->GetData()->Data()
-              << "  " << results[0]->GetData()->Size(); */
-
-        if (results.empty() || results[0] == nullptr) {
-          uint8_t array[] = {1};
-          auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-          RAY_CHECK_OK(worker_.Objects().Put(RayObject(buffer, nullptr), object_id));
-          break;
-        }
-      }
-    }
-
     // Merge all the content from input args.
-    auto memory_buffer = std::make_shared<AccumulativeBuffer>();
+    std::vector<uint8_t> buffer;
     for (const auto &arg : args) {
       auto &data = arg->GetData();
-      memory_buffer->Append(data->Data(), data->Size());
+      buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
+
+    auto return_value = RayObject(
+        std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
 
     // Write the merged content to each of return ids.
     for (int i = 0; i < num_returns; i++) {
-      results->push_back(memory_buffer);
+      ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
+      RAY_CHECK_OK(worker_.Objects().Put(return_value, id));
     }
     return Status::OK();
   }

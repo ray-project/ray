@@ -2,22 +2,20 @@
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
 #include "ray/common/buffer.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/core_worker/object_interface.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/raylet/task_util.h"
-#include "ray/rpc/util.h"
 #include "ray/gcs/gcs_client.h"
 
 namespace ray {
-
-using rpc::Language;
 
 class CoreWorker;
 
@@ -177,7 +175,7 @@ class CoreWorkerTaskInterface {
   /// node.
   /// \param[out] return_ids Return IDs.
   /// \return A `TaskSpecBuilder`.
-  raylet::TaskSpecBuilder BuildCommonTaskSpec(
+  TaskSpecBuilder BuildCommonTaskSpec(
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "ray/common/status.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task/task_spec.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -18,7 +18,7 @@ using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
 
-using ray::rpc::Language;
+using ray::Language;
 using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
@@ -84,7 +84,7 @@ class RayletClient {
   /// \param The task specification.
   /// \return ray::Status.
   ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                         const ray::raylet::TaskSpecification &task_spec);
+                         const ray::TaskSpecification &task_spec);
 
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
@@ -92,7 +92,7 @@ class RayletClient {
   ///
   /// \param task_spec The assigned task.
   /// \return ray::Status.
-  ray::Status GetTask(std::unique_ptr<ray::raylet::TaskSpecification> *task_spec);
+  ray::Status GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec);
 
   /// Tell the raylet that the client has finished executing a task.
   ///

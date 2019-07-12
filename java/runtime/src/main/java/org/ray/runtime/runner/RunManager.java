@@ -189,6 +189,8 @@ public class RunManager {
         client.auth(rayConfig.headRedisPassword);
       }
       client.set("UseRaylet", "1");
+      // Set job counter to compute job id.
+      client.set("JobCounter", "0");
       // Register the number of Redis shards in the primary shard, so that clients
       // know how many redis shards to expect under RedisShards.
       client.set("NumRedisShards", Integer.toString(rayConfig.numberRedisShards));

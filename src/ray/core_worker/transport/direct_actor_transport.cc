@@ -1,12 +1,12 @@
 
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 
 using ray::rpc::ActorTableData;
 
 namespace ray {
 
-bool HasByReferenceArgs(const raylet::TaskSpecification &spec) {
+bool HasByReferenceArgs(const TaskSpecification &spec) {
   for (int i = 0; i < spec.NumArgs(); ++i) {
     if (spec.ArgIdCount(i) > 0) {
       return true;
@@ -73,7 +73,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpec &task) {
   }
 
   auto &client = entry->second;
-  RAY_LOG(INFO) << "push task " << "   " << task_id << "    " << client.get();  
+  RAY_LOG(DEBUG) << "push task " << "   " << task_id << "    " << client.get();  
   auto status = PushTask(*client, *request, task_id, num_returns);
 
   return status;
@@ -107,7 +107,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
         auto &requests = pending_requests_[actor_id];
         while (!requests.empty()) {
           const auto &request = *requests.front();
-          RAY_LOG(INFO) << "push pending task " << "   " << request.task_id << "    " << client.get();
+          RAY_LOG(DEBUG) << "push pending task " << "   " << request.task_id << "    " << client.get();
           auto status = PushTask(*client, *request.request, request.task_id, request.num_returns);
           requests.pop_front();
         }
@@ -147,8 +147,6 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
     const rpc::PushTaskRequest &request, const TaskID &task_id, int num_returns) {
   auto status = client.PushTask(request, [this, task_id, num_returns](
                             Status status, const rpc::PushTaskReply &reply) {
-RAY_LOG(INFO) << counter_++ << status;
-
     if (!status.ok()) {
       TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
       return;  
@@ -198,7 +196,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
 
   const std::string &task_message = request.task_spec();
-  const raylet::TaskSpecification spec(task_message);
+  const TaskSpecification spec(task_message);
 
 
   if (HasByReferenceArgs(spec)) {

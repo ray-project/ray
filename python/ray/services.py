@@ -615,6 +615,9 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to enable cross-languages.
     primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
+    # Init job counter to GCS.
+    primary_redis_client.set("JobCounter", 0)
+
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 

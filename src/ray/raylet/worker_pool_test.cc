@@ -74,7 +74,7 @@ class WorkerPoolTest : public ::testing::Test {
       : worker_pool_(),
         io_service_(),
         error_message_type_(1),
-        client_call_manager_(io_service) {}
+        client_call_manager_(io_service_) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
@@ -116,16 +116,16 @@ static inline TaskSpecification ExampleTaskSpec(
   rpc::TaskSpec message;
   message.set_language(language);
   if (!actor_id.IsNil()) {
-    message.set_type(rpc::TaskType::ACTOR_TASK);
+    message.set_type(TaskType::ACTOR_TASK);
     message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
   } else if (!actor_creation_id.IsNil()) {
-    message.set_type(rpc::TaskType::ACTOR_CREATION_TASK);
+    message.set_type(TaskType::ACTOR_CREATION_TASK);
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_creation_id.Binary());
     for (const auto &option : dynamic_worker_options) {
       message.mutable_actor_creation_task_spec()->add_dynamic_worker_options(option);
     }
   } else {
-    message.set_type(rpc::TaskType::NORMAL_TASK);
+    message.set_type(TaskType::NORMAL_TASK);
   }
   return TaskSpecification(std::move(message));
 }
