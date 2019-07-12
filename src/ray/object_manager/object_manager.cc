@@ -165,7 +165,10 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   auto &client_vector = it->second.client_locations;
 
   // The timer should never fire if there are no expected client locations.
-  RAY_CHECK(!client_vector.empty());
+  if (client_vector.empty()) {
+    return;
+  }
+
   RAY_CHECK(local_objects_.count(object_id) == 0);
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.

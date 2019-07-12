@@ -726,6 +726,7 @@ def test_use_actor_within_actor(ray_start_10_cpus):
     actor2 = Actor2.remote(3, 4)
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
 
+
 def test_define_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can define and actors within remote funtions.
 
@@ -745,6 +746,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
     assert ray.get(f.remote(3, 1)) == [3]
     assert ray.get(
         [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
+
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can create and use actors within remote funtions.

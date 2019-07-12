@@ -2,6 +2,7 @@
 #define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -156,14 +157,14 @@ class ServerCallImpl : public ServerCall {
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
-  void OnReplySent() {
+  void OnReplySent() override {
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
       io_service_.post([callback]() { callback(); });
     }
   }
 
-  void OnReplyFailed() {
+  void OnReplyFailed() override {
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); });

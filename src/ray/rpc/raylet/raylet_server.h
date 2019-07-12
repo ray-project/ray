@@ -31,47 +31,49 @@ class RayletServiceHandler {
   virtual void HandleDisconnectClientRequest(const DisconnectClientRequest &request,
                                              DisconnectClientReply *reply,
                                              SendReplyCallback send_reply_callback) = 0;
-
   /// Handle a `GetTask` request.
   virtual void HandleGetTaskRequest(const GetTaskRequest &request, GetTaskReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-
-  /// Handle a `HandleFetchOrReconstructRequest` request.
+  /// Handle a `TaskDone` request.
+  virtual void HandleTaskDoneRequest(const TaskDoneRequest &request, TaskDoneReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+  /// Handle a `HandleFetchOrReconstruct` request.
   virtual void HandleFetchOrReconstructRequest(const FetchOrReconstructRequest &request,
                                                FetchOrReconstructReply *reply,
                                                SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `HandleNotifyUnblockedReply` request.
+  /// Handle a `HandleNotifyUnblocked` request.
   virtual void HandleNotifyUnblockedRequest(const NotifyUnblockedRequest &request,
                                             NotifyUnblockedReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `WaitReply` request.
+  /// Handle a `Wait` request.
   virtual void HandleWaitRequest(const WaitRequest &request, WaitReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `PushErrorReply` request.
+  /// Handle a `PushError` request.
   virtual void HandlePushErrorRequest(const PushErrorRequest &request,
                                       PushErrorReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `PushProfileEventsReply` request.
+  /// Handle a `PushProfileEvents` request.
   virtual void HandlePushProfileEventsRequest(const PushProfileEventsRequest &request,
                                               PushProfileEventsReply *reply,
                                               SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `FreeObjectsInObjectStoreReply` request.
+  /// Handle a `FreeObjectsInObjectStore` request.
   virtual void HandleFreeObjectsInObjectStoreRequest(
       const FreeObjectsInObjectStoreRequest &request,
       FreeObjectsInObjectStoreReply *reply, SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `PrepareActorCheckpointReply` request.
+  /// Handle a `PrepareActorCheckpoint` request.
   virtual void HandlePrepareActorCheckpointRequest(
       const PrepareActorCheckpointRequest &request, PrepareActorCheckpointReply *reply,
       SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `NotifyActorResumedFromCheckpointReply` request.
+  /// Handle a `NotifyActorResumedFromCheckpoint` request.
   virtual void HandleNotifyActorResumedFromCheckpointRequest(
       const NotifyActorResumedFromCheckpointRequest &request,
       NotifyActorResumedFromCheckpointReply *reply,
       SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `SetResourceReply` request.
+  /// Handle a `SetResource` request.
   virtual void HandleSetResourceRequest(const SetResourceRequest &request,
                                         SetResourceReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
+  /// Handle a `SetResourceReply` request.
   virtual void HandleHeartbeatRequest(const HeartbeatRequest &request,
                                       HeartbeatReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
@@ -132,6 +134,15 @@ class RayletGrpcService : public GrpcService {
             &RayletServiceHandler::HandleGetTaskRequest, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(get_task_call_factory), 20);
+
+    // Initialize the factory for `TaskDone` requests.
+    std::unique_ptr<ServerCallFactory> task_done_call_factory(
+        new ServerCallFactoryImpl<RayletService, RayletServiceHandler, TaskDoneRequest,
+                                  TaskDoneReply>(
+            service_, &RayletService::AsyncService::RequestTaskDone, service_handler_,
+            &RayletServiceHandler::HandleTaskDoneRequest, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(task_done_call_factory), 20);
 
     // Initialize the factory for `FetchOrReconstruct` requests.
     std::unique_ptr<ServerCallFactory> fetch_or_reconstruct_call_factory(

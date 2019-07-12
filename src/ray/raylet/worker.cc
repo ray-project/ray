@@ -9,14 +9,21 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language)
+Worker::Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language,
+               rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       pid_(pid),
       port_(port),
       language_(language),
       blocked_(false),
       heartbeat_timeout_times_(0),
-      is_killing_(false) {}
+      is_killing_(false),
+      client_call_manager_(client_call_manager) {
+  if (port_ > 0) {
+    rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
+        new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
+  }
+}
 
 void Worker::MarkAsKilling() { is_killing_ = true; }
 
@@ -98,6 +105,52 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   // The "release" terminology is a bit confusing here. The resources are being
   // given back to the worker and so "released" by the caller.
   task_resource_ids_.Release(cpu_resources);
+}
+
+void Worker::SetGettingTaskRequest(rpc::GetTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
+  reply_ = reply;
+  send_reply_callback_ = std::move(send_reply_callback);
+}
+
+bool Worker::UsePush() const { return rpc_client_ != nullptr; }
+
+void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  if (rpc_client_ != nullptr) {
+    // Use push mode.
+    RAY_CHECK(port_ > 0);
+    rpc::AssignTaskRequest request;
+    request.mutable_task()->mutable_task_spec()->CopyFrom(
+        task.GetTaskSpecification().GetMessage());
+    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
+        task.GetTaskExecutionSpec().GetMessage());
+    for (const auto &e : resource_id_set.ToProtobuf()) {
+      auto resource = request.add_resource_ids();
+      *resource = e;
+    }
+    auto status = rpc_client_->AssignTask(
+        request, [](Status status, const rpc::AssignTaskReply &reply) {
+          // Worker has finished this task. There's nothing to do here
+          // and assigning new task will be done when raylet receives
+          // `TaskDone` message.
+        });
+  } else {
+    RAY_CHECK(reply_ != nullptr && send_reply_callback_ != nullptr);
+    // Use pull mode. This corresponds to existing python/java workers that haven't been
+    // migrated to core worker architecture.
+    reply_->set_task_spec(task.GetTaskSpecification().Serialize());
+    for (const auto &e : resource_id_set.ToProtobuf()) {
+      auto resource = reply_->add_fractional_resource_ids();
+      *resource = e;
+    }
+    send_reply_callback_(Status::OK(), nullptr, nullptr);
+    reply_ = nullptr;
+    send_reply_callback_ = nullptr;
+  }
+  // The status would be cleared when worker dies.
+  AssignTaskId(spec.TaskId());
+  AssignJobId(spec.JobId());
 }
 
 }  // namespace raylet

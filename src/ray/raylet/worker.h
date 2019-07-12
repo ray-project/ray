@@ -5,9 +5,13 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/protobuf/common.pb.h"
+#include "ray/rpc/worker/worker_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/raylet.pb.h"
+#include "src/ray/rpc/server_call.h"
 
 namespace ray {
 
@@ -19,7 +23,8 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language);
+  Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language,
+         rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkAsKilling();
@@ -55,6 +60,15 @@ class Worker {
   int HeartbeatTimeout() { return ++heartbeat_timeout_times_; }
   void ClearHeartbeat() { heartbeat_timeout_times_ = 0; }
 
+  /// Reply of get task request is not sent in function HandleGetTaskRequest. Should block
+  /// the worker and handle reply in AssignTask function.
+  /// Set the reply and callback when the worker sends get task request to raylet.
+  void SetGettingTaskRequest(rpc::GetTaskReply *reply,
+                             rpc::SendReplyCallback send_reply_callback);
+
+  bool UsePush() const;
+  void AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
@@ -85,6 +99,15 @@ class Worker {
   /// Indicate we have sent kill signal to the worker if it's true. We cannot treat the
   /// worker process as reaylly dead until we lost the heartbeats from the worker.
   bool is_killing_;
+  /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
+  /// workers.
+  rpc::ClientCallManager &client_call_manager_;
+  /// The rpc client to send tasks to this worker.
+  std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
+  /// Get task reply.
+  rpc::GetTaskReply *reply_ = nullptr;
+  /// Send reply callback.
+  rpc::SendReplyCallback send_reply_callback_ = nullptr;
 };
 
 }  // namespace raylet

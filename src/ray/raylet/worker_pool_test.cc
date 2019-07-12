@@ -70,12 +70,17 @@ class WorkerPoolMock : public WorkerPool {
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(), io_service_(), error_message_type_(1) {}
+  WorkerPoolTest()
+      : worker_pool_(),
+        io_service_(),
+        error_message_type_(1),
+        client_call_manager_(io_service_) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
     WorkerID worker_id = WorkerID::FromRandom();
-    return std::shared_ptr<Worker>(new Worker(worker_id, pid, -1, language));
+    return std::shared_ptr<Worker>(
+        new Worker(worker_id, pid, -1, language, client_call_manager_));
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
@@ -87,6 +92,7 @@ class WorkerPoolTest : public ::testing::Test {
   WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
   int64_t error_message_type_;
+  rpc::ClientCallManager client_call_manager_;
 };
 
 static inline TaskSpecification ExampleTaskSpec(

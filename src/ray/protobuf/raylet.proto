@@ -30,13 +30,15 @@ message SubmitTaskRequest {
   bytes task_spec = 1;
   repeated bytes execution_dependencies = 2;
 }
-message SubmitTaskReply {}
+message SubmitTaskReply {
+}
 
 message DisconnectClientRequest {
   bytes worker_id = 1;
   bool intentional = 2;
 }
-message DisconnectClientReply {}
+message DisconnectClientReply {
+}
 
 message GetTaskRequest {
   bytes worker_id = 1;
@@ -46,6 +48,12 @@ message GetTaskReply {
   bytes task_spec = 1;
   // A list of the resources reserved for this worker.
   repeated ResourceIdSetInfo fractional_resource_ids = 2;
+}
+
+message TaskDoneRequest {
+  bytes worker_id = 1;
+}
+message TaskDoneReply {
 }
 
 message FetchOrReconstructRequest {
@@ -58,14 +66,16 @@ message FetchOrReconstructRequest {
   // The worker ID.
   bytes worker_id = 4;
 }
-message FetchOrReconstructReply {}
+message FetchOrReconstructReply {
+}
 
 message NotifyUnblockedRequest {
   bytes worker_id = 1;
   // The current task ID. This task is no longer blocked.
   bytes task_id = 2;
 }
-message NotifyUnblockedReply {}
+message NotifyUnblockedReply {
+}
 
 message WaitRequest {
   // List of object ids we'll be waiting on.
@@ -99,12 +109,14 @@ message PushErrorRequest {
   // The timestamp of the error message.
   double timestamp = 4;
 }
-message PushErrorReply {}
+message PushErrorReply {
+}
 
 message PushProfileEventsRequest {
   ProfileTableData profile_table_data = 1;
 }
-message PushProfileEventsReply {}
+message PushProfileEventsReply {
+}
 
 message FreeObjectsInObjectStoreRequest {
   // Whether keep this request with local object store
@@ -115,7 +127,8 @@ message FreeObjectsInObjectStoreRequest {
   // List of object ids we'll delete from object store.
   repeated bytes object_ids = 3;
 }
-message FreeObjectsInObjectStoreReply {}
+message FreeObjectsInObjectStoreReply {
+}
 
 message PrepareActorCheckpointRequest {
   bytes actor_id = 1;
@@ -131,7 +144,8 @@ message NotifyActorResumedFromCheckpointRequest {
   // ID of the checkpoint from which the actor was resumed.
   bytes checkpoint_id = 2;
 }
-message NotifyActorResumedFromCheckpointReply {}
+message NotifyActorResumedFromCheckpointReply {
+}
 
 message SetResourceRequest {
   // Name of the resource to be set
@@ -141,13 +155,15 @@ message SetResourceRequest {
   // Client ID where this resource will be set
   bytes client_id = 3;
 }
-message SetResourceReply {}
+message SetResourceReply {
+}
 
 message HeartbeatRequest {
   bytes worker_id = 1;
   bool is_worker = 2;
 }
-message HeartbeatReply {}
+message HeartbeatReply {
+}
 
 // Service interface.
 service RayletService {
@@ -163,6 +179,8 @@ service RayletService {
   // Get a new task from the raylet. This is sent from a worker to a
   // raylet.
   rpc GetTask(GetTaskRequest) returns (GetTaskReply);
+  // Tell raylet the tash which is finished.
+  rpc TaskDone(TaskDoneRequest) returns (TaskDoneReply);
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a raylet.
   rpc FetchOrReconstruct(FetchOrReconstructRequest) returns (FetchOrReconstructReply);
