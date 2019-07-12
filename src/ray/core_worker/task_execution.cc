@@ -2,7 +2,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/raylet_transport.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
 
@@ -24,11 +23,6 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
           new CoreWorkerRayletTaskReceiver(
           raylet_client, object_interface_,
           main_service_, worker_server_, func)));
-  task_receivers_.emplace(
-      static_cast<int>(TaskTransportType::DIRECT_ACTOR),
-      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(
-          object_interface_, main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -56,10 +50,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
 
   auto num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || (spec.IsActorTask() &&
-      !spec.ActorCreationDummyObjectId().IsNil())) {
-    // Note for direct actor call doesn't use dummy object id,
-    // and in that case it's set to nil in task spec.
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
     // Decrease to account for the dummy object id, this logic only
     // applies to task submitted via raylet.

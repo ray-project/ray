@@ -6,7 +6,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/core_worker/test/constants.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -98,7 +97,7 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
-        .append(" --num_initial_workers=2")
+        .append(" --num_initial_workers=1")
         .append(" --maximum_startup_concurrency=10")
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +
@@ -124,58 +123,20 @@ class CoreWorkerTest : public ::testing::Test {
 
   void TearDown() {}
 
-  // Test normal tasks.
-  void TestNormalTask(const std::unordered_map<std::string, double> &resources);
+  void TestNormalTask(const std::unordered_map<std::string, double> &resources) {
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                      raylet_socket_names_[0], JobID::FromInt(1), nullptr);
 
-  // Test actor tasks.
-  void TestActorTask(const std::unordered_map<std::string, double> &resources,
-                     bool direct_call);
+    // Test pass by value.
+    {
+      uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
 
-  // Test actor failure case, verify that the tasks would either succeed or
-  // fail with exceptions, in that case the return objects fetched from `Get`
-  // contain errors.
-  void TestActorFailure(const std::unordered_map<std::string, double> &resources,
-                        bool direct_call);
+      auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
 
-  // Test actor failover case. Verify that actor can be reconstructed successfully,
-  // and as long as we wait for actor reconstructionbefore submitting new tasks,
-  // it is guaranteed that all tasks are successfully completed.
-  void TestActorFO(const std::unordered_map<std::string, double> &resources,
-                   bool direct_call);
-
- protected:
-  std::vector<std::string> raylet_socket_names_;
-  std::vector<std::string> raylet_store_socket_names_;
-};
-
-
-void CoreWorkerTest::TestNormalTask(const std::unordered_map<std::string, double> &resources) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
-                    raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
-
-  // Test for tasks with by-value and by-ref args.
-  {
-    std::random_device rd;  //Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-    std::uniform_int_distribution<> dis(1, 10);
-    std::uniform_int_distribution<> value_dis(1, 255);   
-    const int num_tasks = 100;
-    for (int i = 0; i < num_tasks; i++) {
-      std::vector<uint8_t> arg1(dis(gen), value_dis(gen));
-      std::vector<uint8_t> arg2(dis(gen), value_dis(gen));
-
-      auto buffer1 = std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size());
-      auto buffer2 = std::make_shared<LocalMemoryBuffer>(arg2.data(), arg2.size());
-
-      ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer2, nullptr), &object_id));
-
+      RayFunction func{Language::PYTHON, {}};
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer1));
-      args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func{ray::Language::PYTHON, {}};
       TaskOptions options;
 
       std::vector<ObjectID> return_ids;
@@ -187,61 +148,80 @@ void CoreWorkerTest::TestNormalTask(const std::unordered_map<std::string, double
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()), 0);
-      ASSERT_EQ(
-          memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(), buffer2->Size()),
-          0);
-    } 
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
+    }
+
+    // Test pass by reference.
+    {
+      uint8_t array1[] = {10, 11, 12, 13, 14, 15};
+      auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
+
+      ObjectID object_id;
+      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
+
+      std::vector<TaskArg> args;
+      args.emplace_back(TaskArg::PassByReference(object_id));
+
+      RayFunction func{Language::PYTHON, {}};
+      TaskOptions options;
+
+      std::vector<ObjectID> return_ids;
+      RAY_CHECK_OK(driver.Tasks().SubmitTask(func, args, options, &return_ids));
+
+      ASSERT_EQ(return_ids.size(), 1);
+
+      std::vector<std::shared_ptr<ray::RayObject>> results;
+      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+
+      ASSERT_EQ(results.size(), 1);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
+    }
   }
-}
 
-void CoreWorkerTest::TestActorTask(const std::unordered_map<std::string, double> &resources,
-                    bool direct_call) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
-                    raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
+  void TestActorTask(const std::unordered_map<std::string, double> &resources) {
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                      raylet_socket_names_[0], JobID::FromInt(1), nullptr);
 
-  std::unique_ptr<ActorHandle> actor_handle;
+    std::unique_ptr<ActorHandle> actor_handle;
 
-  // Test creating actor.
-  {
-    uint8_t array[] = {1, 2, 3};
-    auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
+    // Test creating actor.
+    {
+      uint8_t array[] = {1, 2, 3};
+      auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-    RayFunction func{ray::Language::PYTHON, {}};
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(buffer));
+      RayFunction func{Language::PYTHON, {}};
+      std::vector<TaskArg> args;
+      args.emplace_back(TaskArg::PassByValue(buffer));
 
-    ActorCreationOptions actor_options{0, direct_call, resources};
+      ActorCreationOptions actor_options{0, resources};
 
-    // Create an actor.
-    RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
-  }
+      // Create an actor.
+      RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
+    }
 
-  // Test submitting some tasks with by-value args for that actor.
-  {
-    std::random_device rd;  //Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-    std::uniform_int_distribution<> dis(1, 10);
-    std::uniform_int_distribution<> value_dis(1, 255);   
-    const int num_tasks = 100;
-    for (int i = 0; i < num_tasks; i++) {
-      std::vector<uint8_t> arg1(dis(gen), value_dis(gen));
-      std::vector<uint8_t> arg2(dis(gen), value_dis(gen));
-      
-      auto buffer1 = std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size());
-      auto buffer2 = std::make_shared<LocalMemoryBuffer>(arg2.data(), arg2.size());
+    // Test submitting a task for that actor.
+    {
+      uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
+      uint8_t array2[] = {10, 11, 12, 13, 14, 15};
+
+      auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
+      auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
+
+      ObjectID object_id;
+      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
+      args.emplace_back(TaskArg::PassByReference(object_id));
       args.emplace_back(TaskArg::PassByValue(buffer2));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
-
+      RayFunction func{Language::PYTHON, {}};
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
       RAY_CHECK(return_ids.size() == 1);
@@ -251,245 +231,18 @@ void CoreWorkerTest::TestActorTask(const std::unordered_map<std::string, double>
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()), 0);
-      ASSERT_EQ(
-          memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(), buffer2->Size()),
-          0);
-
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+                       buffer2->Size()),
+                0);
     }
   }
 
-  // Test submitting a task with both by-value and by-ref args for that actor.
-  {
-    uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-    uint8_t array2[] = {10, 11, 12, 13, 14, 15};
-
-    auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
-    auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
-
-    ObjectID object_id;
-    RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
-
-    // Create arguments with PassByRef and PassByValue.
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByReference(object_id));
-    args.emplace_back(TaskArg::PassByValue(buffer2));
-
-    TaskOptions options{1, resources};
-    std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {}};
-    auto status = driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
-                                                  &return_ids);
-    if (direct_call) {
-      // For direct actor call, submitting a task with by-reference arguments
-      // would fail.
-      RAY_CHECK(!status.ok());
-      return;
-    } 
-
-    RAY_CHECK(return_ids.size() == 1);
-
-    std::vector<std::shared_ptr<ray::RayObject>> results;    
-    RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
-
-    ASSERT_EQ(results.size(), 1);
-    ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
-    ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()), 0);
-    ASSERT_EQ(
-        memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(), buffer2->Size()),
-        0);
-  }
-}
-
-
-void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &resources,
-                    bool direct_call) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
-                    raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
-
-  std::unique_ptr<ActorHandle> actor_handle;
-
-  // Test creating actor.
-  std::vector<ObjectID> object_ids;
-  std::vector<std::string> object_id_strs;
-  for (int i = 0; i < 2; i++) {
-    object_ids.push_back(ObjectID::FromRandom());
-    object_id_strs.push_back(object_ids.back().Binary());
-  }
-
-  {
-    // Test creating actor.
-    RayFunction func{ray::Language::PYTHON, { c_actor_creation_function_str }};
-
-    std::vector<TaskArg> args;
-    for (const auto &entry : object_id_strs) {
-      auto object_id_buffer = std::make_shared<LocalMemoryBuffer>(
-        reinterpret_cast<uint8_t*>(const_cast<char*>(entry.data())),
-        entry.size());
-      args.emplace_back(TaskArg::PassByValue(object_id_buffer));
-    }
-
-    // ActorCreationOptions actor_options{100, direct_call, resources};
-    ActorCreationOptions actor_options{ 1000, direct_call, resources};
-
-    // Create an actor.
-    RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));    
-  }
-
-  // wait for actor being created.
-  std::vector<std::shared_ptr<ray::RayObject>> results;    
-  RAY_CHECK_OK(driver.Objects().Get({ object_ids[0] }, -1, &results));
-  // Acotr is created, wait for the gcs notification to propogate to core worker.
-  sleep(2);
-  RAY_LOG(INFO) << "actor has been created";
-
-  // Test submitting some tasks with by-value args for that actor.
-  {
-    std::random_device rd;  //Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-    std::uniform_int_distribution<> dis(1, 10);
-    std::uniform_int_distribution<> value_dis(1, 255);   
-    const int num_tasks = 100;
-    const int num_tasks_to_kill_worker = (num_tasks + 1) / 2;
-    std::vector<std::pair<ObjectID, std::vector<uint8_t>>> all_results; 
-    for (int i = 0; i < num_tasks; i++) {
-
-      if (i == num_tasks_to_kill_worker) {
-        RAY_LOG(INFO) << "killing worker";
-        system("pkill mock_worker");
-
-        std::vector<std::shared_ptr<ray::RayObject>> results;    
-        RAY_CHECK_OK(driver.Objects().Get({ object_ids[1] }, -1, &results));
-        // Acotr is created, wait for the gcs notification to propogate to core worker.
-        sleep(2);
-
-        RAY_LOG(INFO) << "actor has been reconstructed";
-      }
-
-      // wait for actor being reconstructed.
-      std::vector<uint8_t> arg1(dis(gen), value_dis(gen));      
-      auto buffer1 = std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size());
-
-      // Create arguments with PassByRef and PassByValue.
-      std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
-
-      TaskOptions options{1, resources};
-      std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
-
-      
-      auto status = driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
-                                                  &return_ids);
-      RAY_CHECK_OK(status); 
-      RAY_CHECK(return_ids.size() == 1);
-      // Verify if it's expected data.
-      std::vector<std::shared_ptr<RayObject>> results;
-    
-      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));      
-      RAY_CHECK(results[0]->GetData()->Size() ==  buffer1->Size()) << i;
-      RAY_CHECK(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()) == 0) << i; 
-    }
-  }
-}
-
-
-void CoreWorkerTest::TestActorFailure(const std::unordered_map<std::string, double> &resources,
-                    bool direct_call) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
-                    raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
-
-  std::unique_ptr<ActorHandle> actor_handle;
-
-  // Test creating actor.
-  std::vector<ObjectID> object_ids;
-  std::vector<std::string> object_id_strs;
-  for (int i = 0; i < 2; i++) {
-    object_ids.push_back(ObjectID::FromRandom());
-    object_id_strs.push_back(object_ids.back().Binary());
-  }
-
-  {
-    // Test creating actor.
-    RayFunction func{ray::Language::PYTHON, { c_actor_creation_function_str }};
-
-    std::vector<TaskArg> args;
-    for (const auto &entry : object_id_strs) {
-      auto object_id_buffer = std::make_shared<LocalMemoryBuffer>(
-        reinterpret_cast<uint8_t*>(const_cast<char*>(entry.data())),
-        entry.size());
-      args.emplace_back(TaskArg::PassByValue(object_id_buffer));
-    }
-
-    ActorCreationOptions actor_options{ 0 /* disable reconstruction */, direct_call, resources};
-
-    // Create an actor.
-    RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));    
-  }
-
-  // Test submitting some tasks with by-value args for that actor.
-  {
-    std::random_device rd;  //Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-    std::uniform_int_distribution<> dis(1, 10);
-    std::uniform_int_distribution<> value_dis(1, 255);   
-    const int num_tasks = 3000;
-    const int num_tasks_to_kill_worker = (num_tasks + 1) / 2;
-    std::vector<std::pair<ObjectID, std::vector<uint8_t>>> all_results; 
-    for (int i = 0; i < num_tasks; i++) {
-
-      if (i == num_tasks_to_kill_worker) {
-        RAY_LOG(INFO) << "killing worker";
-        system("pkill mock_worker");
-      }
-
-      // wait for actor being reconstructed.
-      std::vector<uint8_t> arg1(dis(gen), value_dis(gen));      
-      auto buffer1 = std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size());
-
-      // Create arguments with PassByRef and PassByValue.
-      std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
-
-      TaskOptions options{1, resources};
-      std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
-
-      
-      auto status = driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
-                                                  &return_ids);
-      if (i < num_tasks_to_kill_worker) {
-        RAY_CHECK_OK(status); 
-      }
-
-      RAY_CHECK(return_ids.size() == 1);
-      all_results.emplace_back(std::make_pair(return_ids[0], arg1));
-    }
-
-    for (int i = 0; i < num_tasks; i++) {
-
-      const auto &entry = all_results[i];
-      std::vector<ObjectID> return_ids;
-      return_ids.push_back(entry.first);
-      std::vector<std::shared_ptr<RayObject>> results;
-      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
-      RAY_CHECK(results.size() == 1);
-
-      if (results[0]->GetMetadata() != nullptr && results[0]->GetMetadata()->Size() > 0) {
-        // Verify if this is the desired error.
-        std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::ACTOR_DIED));
-        RAY_CHECK(memcmp(results[0]->GetMetadata()->Data(), meta.data(), meta.size()) == 0) << i
-            << "  " << results[0]->GetMetadata()->Size() << "  " << meta.size();
-       } else {
-        // Verify if it's expected data.
-        RAY_CHECK(results[0]->GetData()->Size() ==  entry.second.size()) << i;
-        RAY_CHECK(memcmp(results[0]->GetData()->Data(), entry.second.data(), entry.second.size()) == 0) << i;        
-      }
-    }
-  }
-}
+ protected:
+  std::vector<std::string> raylet_socket_names_;
+  std::vector<std::string> raylet_store_socket_names_;
+};
 
 class ZeroNodeTest : public CoreWorkerTest {
  public:
@@ -549,7 +302,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
   ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(), Language::JAVA,
-                      false, {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
+                      {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
   auto forkedHandle1 = handle1.Fork();
   ASSERT_EQ(1, handle1.NumForks());
@@ -722,47 +475,13 @@ TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
-  TestActorTask(resources, false);
+  TestActorTask(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorTask(resources, false);
-}
-
-TEST_F(SingleNodeTest, TestDirectActorTaskLocal) {
-  std::unordered_map<std::string, double> resources;
-  TestActorTask(resources, true);
-}
-
-TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestActorTask(resources, true);
-}
-
-
-TEST_F(SingleNodeTest, TestDirectActorTaskLocalFO) {
-  std::unordered_map<std::string, double> resources;
-  TestActorFO(resources, true);
-}
-
-TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFO) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestActorFO(resources, true);
-}
-
-TEST_F(SingleNodeTest, TestDirectActorTaskLocalFailure) {
-  std::unordered_map<std::string, double> resources;
-  TestActorFailure(resources, true);
-}
-
-TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestActorFailure(resources, true);
+  TestActorTask(resources);
 }
 
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {

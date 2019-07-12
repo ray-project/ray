@@ -82,8 +82,6 @@ class CoreWorkerObjectInterface {
   std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
 
   friend class CoreWorkerTaskInterface;
-  /// TODO(zhijunfu): this should be removed.
-  friend class CoreWorkerDirectActorTaskSubmitter;
 };
 
 }  // namespace ray

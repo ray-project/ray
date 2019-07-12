@@ -12,8 +12,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
-#include "ray/core_worker/object_interface.h"
-#include "ray/gcs/gcs_client.h"
 
 namespace ray {
 
@@ -34,18 +32,13 @@ struct TaskOptions {
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions, bool direct_call,
+  ActorCreationOptions(uint64_t max_reconstructions,
                        const std::unordered_map<std::string, double> &resources)
-      : max_reconstructions(max_reconstructions),
-        direct_call(direct_call),
-        resources(resources) {}
+      : max_reconstructions(max_reconstructions), resources(resources) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
-  /// Whether to use direct actor call. If this is set to true, callers will submit
-  /// tasks directly to the created actor without going through raylet.
-  const bool direct_call = false;  
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
 };
@@ -54,7 +47,7 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const Language actor_language, bool direct_call,
+              const Language actor_language,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   ActorHandle(const ActorHandle &other);
@@ -81,10 +74,6 @@ class ActorHandle {
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
   int64_t NumForks() const;
-
-  /// Whether direct call is used. If this is true, then the tasks
-  /// are submitted directly to the actor without going through raylet.
-  bool IsDirectCall() const;
 
   ActorHandle Fork();
 
@@ -125,10 +114,7 @@ class ActorHandle {
 class CoreWorkerTaskInterface {
  public:
   CoreWorkerTaskInterface(WorkerContext &worker_context,
-                          std::unique_ptr<RayletClient> &raylet_client,
-                          CoreWorkerObjectInterface &object_interface,
-                          boost::asio::io_service &io_service,
-                          gcs::GcsClient &gcs_client);
+                          std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a normal task.
   ///

@@ -8,7 +8,6 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/gcs/gcs_client.h"
 
 namespace ray {
 
@@ -28,8 +27,6 @@ class CoreWorker {
              const JobID &job_id,
              const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback);
 
-  ~CoreWorker();
-
   /// Type of this worker.
   WorkerType GetWorkerType() const { return worker_type_; }
 
@@ -38,11 +35,11 @@ class CoreWorker {
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
-  CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
+  CoreWorkerTaskInterface &Tasks() { return task_interface_; }
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
-  CoreWorkerObjectInterface &Objects() { return *object_interface_; }
+  CoreWorkerObjectInterface &Objects() { return object_interface_; }
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
@@ -52,8 +49,6 @@ class CoreWorker {
   }
 
  private:
-  void RunIOService();
-
   /// Type of this worker.
   const WorkerType worker_type_;
 
@@ -69,23 +64,11 @@ class CoreWorker {
   /// Raylet client.
   std::unique_ptr<RayletClient> raylet_client_;
 
-  /// GCS client.
-  std::unique_ptr<gcs::GcsClient> gcs_client_;
-
-  /// event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
-
-  /// keeps io_service_ alive.
-  boost::asio::io_service::work io_work_;
-
-  /// The thread to handle IO events.
-  std::thread io_thread_;
-
   /// The `CoreWorkerTaskInterface` instance.
-  std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
+  CoreWorkerTaskInterface task_interface_;
 
   /// The `CoreWorkerObjectInterface` instance.
-  std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+  CoreWorkerObjectInterface object_interface_;
 
   /// The `CoreWorkerTaskExecutionInterface` instance.
   /// This is only available if it's not a driver.
