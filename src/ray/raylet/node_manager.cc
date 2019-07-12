@@ -655,10 +655,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
-    // The actor is now alive (created for the first time or reconstructed). We can
-    // stop listening for the actor creation task. This is needed because we use
-    // `ListenAndMaybeReconstruct` to reconstruct the actor.
-    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -696,10 +692,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   } else {
     RAY_CHECK(actor_registration.GetState() == ActorTableData::RECONSTRUCTING);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-    // The actor is dead and needs reconstruction. Attempting to reconstruct its
-    // creation task.
-    reconstruction_policy_.ListenAndMaybeReconstruct(
-        actor_registration.GetActorCreationDependency());
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
     // creation.
@@ -1849,7 +1841,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 ActorTableData NodeManager::CreateActorTableDataFromCreationTask(
-    const TaskSpecification &task_spec, int port) {
+    const TaskSpecification &task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
@@ -1881,11 +1873,6 @@ ActorTableData NodeManager::CreateActorTableDataFromCreationTask(
         new_actor_data.remaining_reconstructions() - 1);
   }
 
-  // Set the ip address & port, which could change after reconstruction.
-  new_actor_data.set_ip_address(
-      gcs_client_->client_table().GetLocalClient().node_manager_address());
-  new_actor_data.set_port(port);
-
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
   new_actor_data.set_node_manager_id(
@@ -1916,11 +1903,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     RAY_CHECK(actor_handle_id.IsNil());
-    int port = worker.Port();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         /*success_callback=*/
-        [this, task_spec, resumed_from_checkpoint, port](
+        [this, task_spec, resumed_from_checkpoint](
             ray::gcs::AsyncGcsClient *client, const TaskID &parent_task_id,
             const TaskTableData &parent_task_data) {
           // The task was in the GCS task table. Use the stored task spec to
@@ -1933,11 +1919,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
           FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                          resumed_from_checkpoint, port);
+                                          resumed_from_checkpoint);
         },
         /*failure_callback=*/
-        [this, task_spec, resumed_from_checkpoint, port](ray::gcs::AsyncGcsClient *client,
-                                                         const TaskID &parent_task_id) {
+        [this, task_spec, resumed_from_checkpoint](ray::gcs::AsyncGcsClient *client,
+                                                   const TaskID &parent_task_id) {
           // The parent task was not in the GCS task table. It should most likely be in
           // the
           // lineage cache.
@@ -1960,7 +1946,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                 << "ray.init(redis_max_memory=<max_memory_bytes>).";
           }
           FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                          resumed_from_checkpoint, port);
+                                          resumed_from_checkpoint);
         }));
   } else {
     // The actor was not resumed from a checkpoint. We extend the actor's
@@ -1995,11 +1981,10 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                                   const TaskSpecification &task_spec,
-                                                  bool resumed_from_checkpoint,
-                                                  int port) {
+                                                  bool resumed_from_checkpoint) {
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
-  auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec, port);
+  auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
   new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
   if (resumed_from_checkpoint) {
     // This actor was resumed from a checkpoint. In this case, we first look
@@ -2070,11 +2055,6 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
-        // TODO: this is a hack (zhijunfu)
-        if (!lineage_cache_.ContainsTask(task_id)) {
-          return;
-        }
-
         RAY_CHECK(lineage_cache_.ContainsTask(task_id))
             << "Task metadata not found in either GCS or lineage cache. It may have been "
                "evicted "
