@@ -390,7 +390,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
+        except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
