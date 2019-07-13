@@ -8,6 +8,7 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
+from ray.monitor import Monitor
 from ray.tests.cluster_utils import Cluster
 from ray.tests.conftest import generate_internal_config_map
 
@@ -76,7 +77,9 @@ def test_heartbeats(ray_start_cluster_head):
     monitor._maybe_flush_gcs()
     # Process a round of messages.
     monitor.process_messages()
-    import ipdb; ipdb.set_trace()
+    import ipdb
+    ipdb.set_trace()
+    print(test_actors)
 
     # worker_nodes = [cluster.add_node() for i in range(4)]
     # for i in range(3):
