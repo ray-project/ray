@@ -58,6 +58,33 @@ def test_internal_config(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 1
 
 
+def test_heartbeats(ray_start_cluster_head):
+    """Unit test for `Cluster.wait_for_nodes`.
+
+    Test proper metrics.
+    """
+    cluster = ray_start_cluster_head
+    monitor = Monitor(cluster.redis_address, None)
+
+    @ray.remote
+    class Actor():
+        pass
+
+    test_actors = [Actor.remote()]
+    # This is only used to update the load metrics for the autoscaler.
+    monitor.update_raylet_map()
+    monitor._maybe_flush_gcs()
+    # Process a round of messages.
+    monitor.process_messages()
+    import ipdb; ipdb.set_trace()
+
+    # worker_nodes = [cluster.add_node() for i in range(4)]
+    # for i in range(3):
+    #     test_actors += [Actor.remote()]
+    # check_resource_usage(monitor.get_heartbeat())
+    # cluster.wait_for_nodes()
+
+
 def test_wait_for_nodes(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 

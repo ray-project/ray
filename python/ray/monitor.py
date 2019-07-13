@@ -38,7 +38,7 @@ class Monitor(object):
     def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
-            args.redis_address, redis_password=redis_password)
+            redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
