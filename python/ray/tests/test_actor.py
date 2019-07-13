@@ -2194,7 +2194,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     os.kill(pid, signal.SIGKILL)
     # Wait until the actor is reconstructed.
     assert wait_for_condition(
-        lambda: object_exists(obj_ids[1]), timeout_ms=2000)
+        lambda: object_exists(obj_ids[1]), timeout_ms=5000)
 
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
