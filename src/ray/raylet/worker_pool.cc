@@ -12,30 +12,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-namespace {
-
-// A helper function to get a worker from a list.
-std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::unordered_map<ray::WorkerID, std::shared_ptr<ray::raylet::Worker>>
-        &worker_pool,
-    const ray::WorkerID &worker_id) {
-  auto it = worker_pool.find(worker_id);
-  if (it != worker_pool.end()) {
-    return it->second;
-  }
-  return nullptr;
-}
-
-// A helper function to remove a worker from a list. Returns true if the worker
-// was found and removed.
-bool RemoveWorker(
-    std::unordered_map<ray::WorkerID, std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-    const ray::WorkerID &worker_id) {
-  return worker_pool.erase(worker_id) > 0;
-}
-
-}  // namespace
-
 namespace ray {
 
 namespace raylet {
@@ -202,9 +178,10 @@ void WorkerPool::RegisterDriver(const WorkerID &driver_id,
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(const WorkerID &worker_id) const {
   for (const auto &entry : states_by_lang_) {
-    auto worker = GetWorker(entry.second.registered_workers, worker_id);
-    if (worker != nullptr) {
-      return worker;
+    auto &registered_workers = entry.second.registered_workers;
+    auto it = registered_workers.find(worker_id);
+    if (it != registered_workers.end()) {
+      return it->second;
     }
   }
   return nullptr;
@@ -212,9 +189,10 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(const WorkerID &worker_i
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(const WorkerID &worker_id) const {
   for (const auto &entry : states_by_lang_) {
-    auto driver = GetWorker(entry.second.registered_drivers, worker_id);
-    if (driver != nullptr) {
-      return driver;
+    auto &registered_drivers = entry.second.registered_drivers;
+    auto it = registered_drivers.find(worker_id);
+    if (it != registered_drivers.end()) {
+      return it->second;
     }
   }
   return nullptr;
@@ -298,18 +276,20 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  RAY_CHECK(RemoveWorker(state.registered_workers, worker->GetWorkerId()));
+  RAY_CHECK(state.registered_workers.erase(worker->GetWorkerId()));
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
 
+  // Indicates that we disconnect a idle worker successfully.
   return (state.idle.erase(worker) > 0);
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  RAY_CHECK(RemoveWorker(state.registered_drivers, driver->GetWorkerId()));
+  RAY_CHECK(state.registered_drivers.erase(driver->GetWorkerId()));
+
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
@@ -400,13 +380,13 @@ void WorkerPool::RecordMetrics() const {
 }
 
 void WorkerPool::TickHeartbeatTimer(int max_missed_heartbeats,
-                                    std::vector<std::shared_ptr<Worker>> *dead_worker) {
+                                    std::vector<std::shared_ptr<Worker>> *dead_workers) {
   for (const auto &entry : states_by_lang_) {
     // Worker heartbeat.
     for (const auto &worker_pair : entry.second.registered_workers) {
       auto &worker = worker_pair.second;
       if (worker->TickHeartbeatTimer() >= max_missed_heartbeats) {
-        dead_worker->emplace_back(worker);
+        dead_workers->emplace_back(worker);
       }
     }
 
@@ -414,7 +394,7 @@ void WorkerPool::TickHeartbeatTimer(int max_missed_heartbeats,
     for (const auto &driver_pair : entry.second.registered_drivers) {
       auto &driver = driver_pair.second;
       if (driver->TickHeartbeatTimer() >= max_missed_heartbeats) {
-        dead_worker->emplace_back(driver);
+        dead_workers->emplace_back(driver);
       }
     }
   }

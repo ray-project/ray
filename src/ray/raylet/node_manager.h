@@ -462,7 +462,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param intentional_disconnect Wether the client was intentionally disconnected.
+  /// \param intentional_disconnect Whether the client was intentionally disconnected.
   /// \return Void.
   void ProcessDisconnectClientMessage(const WorkerID &worker_id,
                                       bool intentional_disconnect = false);

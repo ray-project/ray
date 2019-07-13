@@ -129,10 +129,12 @@ class WorkerPool {
   void RecordMetrics() const;
 
   /// Tick the heartbeat timer and get the workers that have timed out.
+  /// A worker which has missed `max_missed_heartbeats` times would be treated as a
+  /// dead process or the network to it has been down.
   ///
   /// \param[in] max_missed_heartbeats The maximum number of heartbeats that can be
   /// missed before a worker times out.
-  /// \param[out] dead_workers Workers that have been dead.
+  /// \param[out] dead_workers Workers whose processes have been dead.
   void TickHeartbeatTimer(int max_missed_heartbeats,
                           std::vector<std::shared_ptr<Worker>> *dead_workers);
 

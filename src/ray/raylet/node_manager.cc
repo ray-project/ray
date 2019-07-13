@@ -276,7 +276,7 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
 
       // Kill all the workers. The actual cleanup for these workers is done
-      // later when can't receive heartbeat from the worker.
+      // later when the worker heartbeats timeout.
       for (const auto &worker : workers) {
         // Then kill the worker process.
         KillWorker(worker);
@@ -751,8 +751,8 @@ void NodeManager::DispatchTasks(
     }
   }
 
-  // Move the ASSIGNED task to the RUNNING queue so that we remember that we have
-  // it queued locally. Should move task outside assign task function because remove
+  // Move the ASSIGNED task to the RUNNING queue.
+  // We should move task outside `AssignTask` function because removing
   // task might influence the iterator.
   local_queues_.MoveTasks(assigned_task_ids, TaskState::READY, TaskState::RUNNING);
 }
@@ -851,7 +851,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
   RAY_CHECK(worker && !worker->UsePush());
 
   // Reply would be sent when assigned a task to the worker successfully.
-  worker->SetGetTaskReplyAndCallback(reply, send_reply_callback);
+  worker->SetGetTaskReplyAndCallback(reply, std::move(send_reply_callback));
   HandleWorkerAvailable(worker_id);
 }
 

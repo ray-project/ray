@@ -679,12 +679,10 @@ std::vector<rpc::ResourceIdSetInfo> ResourceIdSet::ToProtobuf() const {
   for (auto const &resource_pair : available_resources_) {
     rpc::ResourceIdSetInfo resource_id_set_info;
     resource_id_set_info.set_resource_name(resource_pair.first);
-    // resource whole part
     for (auto whole_id : resource_pair.second.WholeIds()) {
       resource_id_set_info.add_resource_ids(whole_id);
       resource_id_set_info.add_resource_fractions(1);
     }
-    // resource fractional part
     for (auto const &fractional_pair : resource_pair.second.FractionalIds()) {
       resource_id_set_info.add_resource_ids(fractional_pair.first);
       resource_id_set_info.add_resource_fractions(fractional_pair.second.ToDouble());

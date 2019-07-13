@@ -65,7 +65,7 @@ class Worker {
   /// assign a task to the worker, the reply will be filled and the callback will be
   /// called.
   void SetGetTaskReplyAndCallback(rpc::GetTaskReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback);
+                                  const rpc::SendReplyCallback &&send_reply_callback);
 
   bool UsePush() const;
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
@@ -97,7 +97,7 @@ class Worker {
   std::unordered_set<TaskID> blocked_task_ids_;
   /// How many heartbeats have been missed for this worker.
   int num_missed_heartbeats_;
-  /// Indicate we have sent kill signal to the worker if it's true. We cannot treat the
+  /// Indicates we have sent kill signal to the worker if it's true. We cannot treat the
   /// worker process as really dead until we lost the heartbeats from the worker.
   bool is_being_killed_;
   /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all

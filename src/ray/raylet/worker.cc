@@ -107,8 +107,9 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   task_resource_ids_.Release(cpu_resources);
 }
 
-void Worker::SetGetTaskReplyAndCallback(rpc::GetTaskReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+void Worker::SetGetTaskReplyAndCallback(
+    rpc::GetTaskReply *reply, const rpc::SendReplyCallback &&send_reply_callback) {
+  RAY_CHECK(reply_ == nullptr && send_reply_callback_ == nullptr);
   reply_ = reply;
   send_reply_callback_ = std::move(send_reply_callback);
 }
@@ -148,7 +149,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) 
     reply_ = nullptr;
     send_reply_callback_ = nullptr;
   }
-  // The status would be cleared when worker dies.
+  // The status will be cleared when the worker dies.
   AssignTaskId(spec.TaskId());
   AssignJobId(spec.JobId());
 }

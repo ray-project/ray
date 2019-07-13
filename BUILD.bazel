@@ -105,7 +105,7 @@ cc_proto_library(
 
 # === Begin of rpc definitions ===
 
-# grpc common lib
+# GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
     srcs = glob([
@@ -171,7 +171,7 @@ cc_library(
     ],
 )
 
-# Raylet grpc lib.
+# Raylet gRPC lib.
 cc_grpc_library(
     name = "raylet_cc_grpc",
     srcs = [":raylet_proto"],
@@ -199,7 +199,7 @@ cc_library(
     ],
 )
 
-# worker gRPC lib.
+# Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
     srcs = [":worker_proto"],
@@ -207,7 +207,7 @@ cc_grpc_library(
     deps = [":worker_cc_proto"],
 )
 
-# worker server and client.
+# Worker server and client.
 cc_library(
     name = "worker_rpc",
     hdrs = glob([

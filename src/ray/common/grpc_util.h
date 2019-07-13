@@ -74,7 +74,7 @@ inline std::vector<T> VectorFromProtobuf(
 
 template <typename Message>
 using AddFunction = void (Message::*)(const ::std::string &value);
-/// Add a vector of type ID to protobuf message
+/// Add a vector of type ID to protobuf message.
 template <typename ID, typename Message>
 inline void IdVectorToProtobuf(const std::vector<ID> &ids, Message &message,
                                AddFunction<Message> add_func) {

@@ -21,6 +21,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.task cimport CTaskSpec
 
+
 cdef extern from "ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass GCSProfileEvent "ray::rpc::ProfileTableData::ProfileEvent":
         void set_event_type(const c_string &value)

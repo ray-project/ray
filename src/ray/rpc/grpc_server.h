@@ -79,7 +79,7 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
-  /// Flag indicates whether this server has closed.
+  /// Indicates whether this server has been closed.
   bool is_closed_;
   /// Unix domain socket path.
   std::string unix_socket_path_;

@@ -7,7 +7,7 @@ namespace rpc {
 
 void GrpcServer::Run() {
   std::string server_address;
-  // Set unix domain socket or tcp address
+  // Set unix domain socket or tcp address.
   if (!unix_socket_path_.empty()) {
     server_address = "unix://" + unix_socket_path_;
   } else {
@@ -19,7 +19,7 @@ void GrpcServer::Run() {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
   if (services_.size() == 0) {
-    RAY_LOG(FATAL) << "No service is found when starting " << name_ << " grpc server.";
+    RAY_LOG(FATAL) << "No service found when starting " << name_ << " grpc server.";
   }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());

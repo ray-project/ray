@@ -25,13 +25,13 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
                  << "unix://" + raylet_socket
                  << ", is worker: " << (is_worker_ ? "true" : "false")
                  << ", worker id: " << worker_id;
-  // Try to register client for 10 times.
-  TryRegisterClient(10);
+  // Try to register client `num_raylet_client_retry_times` times.
+  TryRegisterClient(RayConfig::instance().num_raylet_client_retry_times());
 }
 
-void RayletClient::TryRegisterClient(int times) {
-  // We should block here until register succeed.
-  for (int i = 0; i < times; i++) {
+void RayletClient::TryRegisterClient(int retry_times) {
+  // We should block here until register succeeds.
+  for (int i = 0; i < retry_times; i++) {
     auto st = RegisterClient();
     if (st.ok()) {
       Heartbeat();
@@ -94,10 +94,12 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
 
   resource_ids_.clear();
   if (status.ok()) {
+    // Parse resources that would be used by this assigned task.
     for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
       auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];
       auto &acquired_resources = resource_ids_[fractional_resource_ids.resource_name()];
 
+      // Each resource includes a serial of ids and corresponding fractional numbers.
       size_t num_resource_ids = fractional_resource_ids.resource_ids().size();
       size_t num_resource_fractions = fractional_resource_ids.resource_fractions().size();
       RAY_CHECK(num_resource_ids == num_resource_fractions);
@@ -230,7 +232,7 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   return call->GetStatus();
 }
 
-ray::Status RayletClient::PushProfileEvents(ProfileTableData &profile_events) {
+ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
   PushProfileEventsRequest push_profile_events_request;
   push_profile_events_request.mutable_profile_table_data()->CopyFrom(profile_events);
 
@@ -338,7 +340,6 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
 }
 
 ray::Status RayletClient::RegisterClient() {
-  // Send register client request to raylet server.
   RegisterClientRequest register_client_request;
   register_client_request.set_is_worker(is_worker_);
   register_client_request.set_worker_id(worker_id_.Binary());
@@ -358,8 +359,8 @@ ray::Status RayletClient::RegisterClient() {
   return GrpcStatusToRayStatus(status);
 }
 
+// Send heartbeat request to raylet server.
 void RayletClient::Heartbeat() {
-  // Send register client request to raylet server.
   HeartbeatRequest heartbeat_request;
   heartbeat_request.set_is_worker(is_worker_);
   heartbeat_request.set_worker_id(worker_id_.Binary());

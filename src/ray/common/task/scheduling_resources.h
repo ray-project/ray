@@ -422,7 +422,7 @@ class ResourceIdSet {
   /// \return A human-readable string version of the object.
   std::string ToString() const;
 
-  /// \brief Convert this object to a vector of protobuf `ResourceIdSetInfo`.
+  /// \brief Convert this object to a vector of protobuf `ResourceIdSetInfo`s.
   ///
   /// \return A vector inclusing resource id set infos.
   std::vector<rpc::ResourceIdSetInfo> ToProtobuf() const;

@@ -75,7 +75,8 @@ class Raylet {
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
-  /// The gRPC server, listen for local raylet client through unix domain socket.
+  /// The gRPC server, listens for local raylet client connections through a unix domain
+  /// socket.
   rpc::GrpcServer raylet_server_;
 
   /// The gRPC service.

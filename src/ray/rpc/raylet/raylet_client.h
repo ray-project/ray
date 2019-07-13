@@ -1,6 +1,7 @@
 #ifndef RAY_RPC_RAYLET_CLIENT_H
 #define RAY_RPC_RAYLET_CLIENT_H
 
+#include <ray/common/ray_config.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
 #include <future>
@@ -35,15 +36,20 @@ namespace rpc {
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
-/// Client used for communicating with raylet.
+/// Client used for communicating with the raylet.
 class RayletClient {
  public:
-  /// Constructor for raylet client.
+  /// Constructor for the raylet client.
   /// TODO(jzh): At present, client call manager and reply handler service are generated
-  /// in raylet client. Should add parameters to the constructor and pass them in.
-  /// Change them as input parameters once we changed the worker into a server.
+  /// in raylet client. Instead, we should add parameters to the constructor and pass them
+  /// in. Change them as input parameters once we changed the worker into a server.
   ///
   /// \param[in] raylet_socket Unix domain socket of the raylet server.
+  /// \param[in] worker_id The worker id.
+  /// \param[in] is_worker Indicates whether a worker or a driver.
+  /// \param[in] job_id The job id that this raylet client belongs to.
+  /// \param[in] language The language type, python or java.
+  /// \param[in] port The listening port of the worker server.
   RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                int port = -1);
@@ -53,10 +59,10 @@ class RayletClient {
   /// Send disconnect request to local raylet.
   ray::Status Disconnect();
 
-  /// Submit task to local raylet
+  /// Submit a task to the local raylet.
   ///
   /// \param request The request message.
-  /// \param callback The callback function that handles reply from server
+  /// \param callback The callback function that handles reply from server.
   ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
                          const ray::TaskSpecification &task_spec);
 
@@ -116,7 +122,7 @@ class RayletClient {
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
-  ray::Status PushProfileEvents(ProfileTableData &profile_events);
+  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
 
   /// Free a list of objects from object stores.
   ///
@@ -167,8 +173,8 @@ class RayletClient {
   /// reconnect if failed. We need this because raylet client may start before raylet
   /// server.
   ///
-  /// \param times Retry times.
-  void TryRegisterClient(int times);
+  /// \param times Number of times to retry.
+  void TryRegisterClient(int retry_times);
 
   ray::Status RegisterClient();
 

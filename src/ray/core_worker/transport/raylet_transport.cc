@@ -40,7 +40,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   // as they use different connections, the `TaskDone` message is sent
   // to raylet via the same connection so the order is guaranteed.
   RAY_UNUSED(raylet_client_->TaskDone());
-  // send rpc reply.
+  // Send rpc reply.
   send_reply_callback(status, nullptr, nullptr);
 }
 

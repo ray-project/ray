@@ -22,7 +22,7 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
 /// The duration between heartbeats. This value is used for both worker and raylet.
 RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100)
-/// Worker heartbeat also use `heartbeat_timeout_milliseconds` as period.
+/// Worker heartbeats also use `heartbeat_timeout_milliseconds` as timer timeout period.
 /// If a worker has not sent a heartbeat in the last `num_worker_heartbeats_timeout`
 /// heartbeat intervals, raylet will mark this worker as dead.
 RAY_CONFIG(int64_t, num_worker_heartbeats_timeout, 30)
@@ -155,3 +155,6 @@ RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
+
+/// Number of times for a raylet client to retry to register.
+RAY_CONFIG(int, num_raylet_client_retry_times, 10)
