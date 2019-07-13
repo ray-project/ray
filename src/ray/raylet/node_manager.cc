@@ -1421,7 +1421,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   for (int64_t i = 0; i < num_returns; i++) {
     const auto object_id = spec.ReturnId(i).ToPlasmaId();
     arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
-    if (!status.ok() && !status.IsPlasmaObjectExists()) {
+    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
