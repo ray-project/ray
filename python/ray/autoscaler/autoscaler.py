@@ -629,6 +629,7 @@ class StandardAutoscaler(object):
             initialization_commands=with_head_node_ip(
                 self.config["initialization_commands"]),
             setup_commands=with_head_node_ip(init_commands),
+            file_sync_options=self.config["file_sync_options"],
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
