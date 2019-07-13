@@ -37,7 +37,7 @@ This document describes the process for creating new releases.
 
    and make sure they pass. If they pass, it will be obvious that they passed.
    This will use the autoscaler to start a bunch of machines and run some tests.
-   Stress test will use significant aws resource. If you don't have enough quota,
+   **Caution!**: By default, the stress tests will require expensive GPU instances.
    please contact Robert for account.
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
