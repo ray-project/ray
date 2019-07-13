@@ -51,7 +51,6 @@ def run(access_token, ray_path, prev_branch, curr_branch):
             logins.add(ray_repo.get_pull(num).user.login)
         except Exception as e:
             print(e)
-            pass
 
     print()
     print("Here's the list of contributors")
