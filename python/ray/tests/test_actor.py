@@ -2075,6 +2075,26 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 @pytest.mark.parametrize(
+    "ray_start_object_store_memory", [10**7], indirect=True)
+@pytest.mark.parametrize(
+    "num_actors", [2, 5, 10])
+def test_parallel_actor_fill_plasma_retry(
+        ray_start_object_store_memory, num_actors):
+    @ray.remote
+    class LargeMemoryActor(object):
+        def some_expensive_task(self):
+            return np.zeros(ray_start_object_store_memory // 2, dtype=np.uint8)
+    i = 0
+    actors = [LargeMemoryActor.remote() for _ in range(num_actors)]
+    start = time.time()
+    for _ in range(30):
+        pending = [a.some_expensive_task.remote() for a in actors]
+        while pending:
+            [done], pending = ray.wait(pending, num_returns=1)
+            i += 1
+
+
+@pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**8], indirect=True)
 def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory

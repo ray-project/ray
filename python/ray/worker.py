@@ -936,7 +936,6 @@ class Worker(object):
         try:
             while retries_left:
                 retries_left -= 1
-                logger.info("retrying: {}.".format(retries_left))
                 # Store the outputs in the local object store.
                 try:
                     with profiling.profile("task:store_outputs"):
@@ -952,13 +951,12 @@ class Worker(object):
                     return
                 except pyarrow.lib.PlasmaStoreFull as plasma_exc:
                     if retries_left:
-                        logger.info(
-                            "Waiting {} for plasma store to drain.".format(
+                        logger.debug(
+                            "Waiting {} seconds for plasma to drain.".format(
                                 delay))
                         time.sleep(delay)
                         delay *= 2
                     else:
-                        logger.info("Failed.")
                         raise plasma_exc
         except Exception as e:
             self._handle_process_task_failure(
