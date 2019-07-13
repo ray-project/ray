@@ -5,7 +5,7 @@ FROM ray-project/base-deps
 # We install ray and boto3 to enable the ray autoscaler as
 # a test runner.
 RUN conda install -y numpy
-RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev1-cp36-cp36m-manylinux1_x86_64.whl boto3
+RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev2-cp36-cp36m-manylinux1_x86_64.whl boto3
 # We install this after the latest wheels -- this should not override the latest wheels.
 RUN apt-get install -y zlib1g-dev
 # The following is needed to support TensorFlow 1.14
