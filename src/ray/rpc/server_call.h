@@ -83,6 +83,8 @@ class ServerCallFactory {
   ///
   /// \return Pointer to the `ServerCall` object.
   virtual ServerCall *CreateCall() const = 0;
+
+  virtual ~ServerCallFactory() = default;
 };
 
 /// Represents the generic signature of a `FooServiceHandler::HandleBar()`
