@@ -3,12 +3,13 @@ package org.ray.runtime.util;
 import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 import java.util.List;
 import org.ray.api.id.BaseId;
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-
 
 /**
  * Helper method for different Ids.
@@ -152,6 +153,18 @@ public class IdUtil {
     return ByteBuffer.wrap(bytesOfIds);
   }
 
+
+  /**
+   * Compute the driver id from the given job.
+   */
+  public static UniqueId computeDriverId(JobId jobId) {
+    byte[] bytes = new byte[UniqueId.LENGTH];
+    System.arraycopy(jobId.getBytes(), 0, bytes, 0, jobId.size());
+    Arrays.fill(bytes, jobId.size(), UniqueId.LENGTH, (byte)0xFF);
+    ByteBuffer wbb = ByteBuffer.wrap(bytes);
+    wbb.order(ByteOrder.LITTLE_ENDIAN);
+    return new UniqueId(bytes);
+  }
 
   /**
    * Compute the murmur hash code of this ID.

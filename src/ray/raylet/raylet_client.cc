@@ -14,8 +14,8 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task_spec.h"
 #include "ray/util/logging.h"
 
 using MessageType = ray::protocol::MessageType;
@@ -224,7 +224,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::raylet::TaskSpecification &task_spec) {
+                                     const ray::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
@@ -233,8 +233,7 @@ ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_depe
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(
-    std::unique_ptr<ray::raylet::TaskSpecification> *task_spec) {
+ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the raylet
   // gives this client a task.
@@ -267,8 +266,8 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(new ray::raylet::TaskSpecification(
-      string_from_flatbuf(*reply_message->task_spec())));
+  task_spec->reset(
+      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 

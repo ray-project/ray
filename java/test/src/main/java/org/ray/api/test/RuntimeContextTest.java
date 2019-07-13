@@ -3,6 +3,7 @@ package org.ray.api.test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -11,8 +12,7 @@ import org.testng.annotations.Test;
 
 public class RuntimeContextTest extends BaseTest {
 
-  private static UniqueId JOB_ID =
-      UniqueId.fromHexString("0011223344556677889900112233445566778899");
+  private static JobId JOB_ID = JobId.fromHexString("00112233");
   private static String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
   private static String OBJECT_STORE_SOCKET_NAME = "/tmp/ray/test/object_store_socket";
 

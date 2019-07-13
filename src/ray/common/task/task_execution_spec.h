@@ -1,18 +1,13 @@
-#ifndef RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
-#define RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
+#ifndef RAY_COMMON_TASK_TASK_EXECUTION_SPEC_H
+#define RAY_COMMON_TASK_TASK_EXECUTION_SPEC_H
 
 #include <vector>
 
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/rpc/message_wrapper.h"
-#include "ray/rpc/util.h"
+#include "ray/common/task/task_common.h"
 
 namespace ray {
-
-namespace raylet {
-
-using rpc::MessageWrapper;
 
 /// Wrapper class of protobuf `TaskExecutionSpec`, see `common.proto` for details.
 class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec> {
@@ -47,10 +42,10 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
 
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
-};
 
-}  // namespace raylet
+  std::string DebugString() const;
+};
 
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
+#endif  // RAY_COMMON_TASK_TASK_EXECUTION_SPEC_H

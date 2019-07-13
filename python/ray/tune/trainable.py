@@ -46,6 +46,11 @@ class Trainable(object):
     just a ``my_train(config, reporter)`` function to the config.
     The function will be automatically converted to this interface
     (sans checkpoint functionality).
+
+    When using Tune, Tune will convert this class into a Ray actor, which
+    runs on a separate process. Tune will also change the current working
+    directory of this process to `self.logdir`.
+
     """
 
     def __init__(self, config=None, logger_creator=None):
@@ -70,14 +75,15 @@ class Trainable(object):
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
-            self.logdir = self._result_logger.logdir
+            self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
-            self.logdir = tempfile.mkdtemp(
+            self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(self.config, self.logdir, None)
+            self._result_logger = UnifiedLogger(self.config, self._logdir,
+                                                None)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -131,7 +137,8 @@ class Trainable(object):
             across checkpoint / restore calls.
 
             `training_iteration` (int): The index of this
-            training iteration, e.g. call to train().
+            training iteration, e.g. call to train(). This is incremented
+            after `_train()` is called.
 
             `pid` (str): The pid of the training process.
 
@@ -219,8 +226,8 @@ class Trainable(object):
 
     def delete_checkpoint(self, checkpoint_dir):
         """Removes subdirectory within checkpoint_folder
-        Parameters
-        ----------
+
+        Args:
             checkpoint_dir : path to checkpoint
         """
         if os.path.isfile(checkpoint_dir):
@@ -275,8 +282,9 @@ class Trainable(object):
         return checkpoint_path
 
     def save_to_object(self):
-        """Saves the current model state to a Python object. It also
-        saves to disk but does not return the checkpoint path.
+        """Saves the current model state to a Python object.
+
+        It also saves to disk but does not return the checkpoint path.
 
         Returns:
             Object holding checkpoint data.
@@ -394,11 +402,45 @@ class Trainable(object):
         self._result_logger.close()
         self._stop()
 
+    @property
+    def logdir(self):
+        """Directory of the results and checkpoints for this Trainable.
+
+        Tune will automatically sync this folder with the driver if execution
+        is distributed.
+
+        Note that the current working directory will also be changed to this.
+
+        """
+        return self._logdir
+
+    @property
+    def iteration(self):
+        """Current training iteration.
+
+        This value is automatically incremented every time `train()` is called
+        and is automatically inserted into the training result dict.
+
+        """
+        return self._iteration
+
+    def get_config(self):
+        """Returns configuration passed in by Tune."""
+        return self.config
+
     def _train(self):
         """Subclasses should override this to implement train().
 
+        The return value will be automatically passed to the loggers. Users
+        can also return `tune.result.DONE` or `tune.result.SHOULD_CHECKPOINT`
+        to manually trigger termination of this trial or checkpointing of this
+        trial. Note that manual checkpointing only works when subclassing
+        Trainables.
+
         Returns:
-            A dict that describes training progress."""
+            A dict that describes training progress.
+
+        """
 
         raise NotImplementedError
 
