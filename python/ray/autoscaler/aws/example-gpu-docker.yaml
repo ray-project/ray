@@ -23,10 +23,17 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "tensorflow/tensorflow:1.12.0-gpu-py3"
+    image: "tensorflow/tensorflow:1.14.0-gpu-py3"
     container_name: "ray-nvidia-docker-test" # e.g. ray_docker
     run_options:
       - --runtime=nvidia
+    mounts:
+        /root/ray_results: /home/ubuntu/ray_results/
+        /root/ray/: /home/ubuntu/ray/
+      # /path/on/container:/path/on/host
+      #/root/.ray_volume/: /home/ubuntu/.ray_volume/
+      #/root/ray_volume/: /home/ubuntu/ray_volume2/
+
 
     # # Example of running a GPU head with CPU workers
     # head_image: "tensorflow/tensorflow:1.13.1-gpu-py3"
@@ -68,7 +75,7 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: p2.xlarge
+    InstanceType: g3.8xlarge
     ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # You can provision additional disk space with a conf as follows
@@ -84,7 +91,7 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m5.large
+    InstanceType: g3.8xlarge
     ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # Run workers on spot by default. Comment this out to use on-demand.
@@ -103,10 +110,18 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+file_sync_options:
+    - --exclude=*.pyc
+    # - --delete-after
+    # - --filter=":e- /Users/rliaw/Research/riselab/ray/.gitignore"
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev1-cp35-cp35m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
+    - cd /root/ray/ && python setup-dev.py --yes
+    - apt-get update; apt-get install -y openjdk-8-jdk-headless wget openssh-server tar vim rsync
+    # - mkdir /root/.ssh; chown -R root:root /root/.ssh;chmod -R 700 /root/.ssh; mkdir /var/run/sshd
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev1-cp36-cp36m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
