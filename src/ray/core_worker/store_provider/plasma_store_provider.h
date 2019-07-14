@@ -71,8 +71,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   ///
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] unready The unready objects.
-  static void WarnIfAttemptedTooManyTimes(int num_attempts,
-                                   const std::unordered_map<ObjectID, int> &unready);
+  static void WarnIfAttemptedTooManyTimes(
+      int num_attempts, const std::unordered_map<ObjectID, int> &unready);
 
   /// Plasma store client.
   plasma::PlasmaClient store_client_;
