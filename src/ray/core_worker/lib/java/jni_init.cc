@@ -21,7 +21,7 @@ jfieldID java_native_ray_object_metadata;
 
 jint JNI_VERSION = JNI_VERSION_1_8;
 
-inline jclass LoadClass(const char *class_name) {
+inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
   jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);
   env->DeleteLocalRef(tempLocalClassRef);
@@ -35,22 +35,23 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     return JNI_ERR;
   }
 
-  java_boolean_class = LoadClass("java/lang/Boolean");
+  java_boolean_class = LoadClass(env, "java/lang/Boolean");
   java_boolean_init = env->GetMethodID(java_boolean_class, "<init>", "(Z)V");
 
-  java_list_class = LoadClass("java/util/List");
+  java_list_class = LoadClass(env, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
   java_list_get = env->GetMethodID(java_list_class, "get", "(I)Ljava/lang/Object;");
   java_list_add = env->GetMethodID(java_list_class, "add", "(Ljava/lang/Object;)Z");
 
-  java_array_list_class = LoadClass("java/util/ArrayList");
+  java_array_list_class = LoadClass(env, "java/util/ArrayList");
   java_array_list_init = env->GetMethodID(java_array_list_class, "<init>", "()V");
   java_array_list_init_with_capacity =
       env->GetMethodID(java_array_list_class, "<init>", "(I)V");
 
-  java_ray_exception_class = LoadClass("org/ray/api/exception/RayException");
+  java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
-  java_native_ray_object_class = LoadClass("org/ray/runtime/objectstore/NativeRayObject");
+  java_native_ray_object_class =
+      LoadClass(env, "org/ray/runtime/objectstore/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
   java_native_ray_object_data =

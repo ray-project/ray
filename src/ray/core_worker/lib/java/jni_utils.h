@@ -53,7 +53,7 @@ inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
 
 /// Convert a Java byte array to a C++ UniqueID.
 template <typename ID>
-inline ID JavaByteArrayToUniqueId(JNIEnv *env, const jbyteArray &bytes) {
+inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {
   std::string id_str(ID::Size(), 0);
   env->GetByteArrayRegion(bytes, 0, ID::Size(),
                           reinterpret_cast<jbyte *>(&id_str.front()));

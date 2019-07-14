@@ -63,7 +63,7 @@ JNIEXPORT void JNICALL
 Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__J_3BLorg_ray_runtime_objectstore_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jbyteArray objectId,
     jobject obj) {
-  auto object_id = JavaByteArrayToUniqueId<ray::ObjectID>(env, objectId);
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   auto status = ReadJavaNativeRayObject<ray::Status>(
       env, obj,
       [nativeObjectInterfacePointer,
@@ -86,7 +86,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, ids, &object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
@@ -109,7 +109,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<bool> results;
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
@@ -133,7 +133,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nati
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Delete(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);

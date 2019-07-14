@@ -22,7 +22,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerContext_nativeCreateWorkerCon
     JNIEnv *env, jclass, jint workerType, jbyteArray jobId) {
   return reinterpret_cast<jlong>(
       new ray::WorkerContext(static_cast<ray::rpc::WorkerType>(workerType),
-                             JavaByteArrayToUniqueId<ray::JobID>(env, jobId)));
+                             JavaByteArrayToId<ray::JobID>(env, jobId)));
 }
 
 /*
