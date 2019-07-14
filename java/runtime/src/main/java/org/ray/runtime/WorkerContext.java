@@ -10,14 +10,14 @@ import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.TaskSpec;
 
 /**
- * This is a wrapper class for core worker worker context.
+ * This is a wrapper class for worker context of core worker.
  */
 public class WorkerContext {
 
   /**
-   * The native pointer of core worker worker context.
+   * The native pointer of worker context of core worker.
    */
-  private final long nativeWorkerContext;
+  private final long nativeWorkerContextPointer;
 
   private ClassLoader currentClassLoader;
 
@@ -32,14 +32,14 @@ public class WorkerContext {
   private RunMode runMode;
 
   public WorkerContext(WorkerType workerType, JobId jobId, RunMode runMode) {
-    this.nativeWorkerContext = nativeCreateWorkerContext(workerType.getNumber(), jobId.getBytes());
+    this.nativeWorkerContextPointer = nativeCreateWorkerContext(workerType.getNumber(), jobId.getBytes());
     mainThreadId = Thread.currentThread().getId();
     this.runMode = runMode;
     currentClassLoader = null;
   }
 
   public long getNativeWorkerContext() {
-    return nativeWorkerContext;
+    return nativeWorkerContextPointer;
   }
 
   /**
@@ -47,7 +47,7 @@ public class WorkerContext {
    * for other threads, this method returns a random ID.
    */
   public TaskId getCurrentTaskId() {
-    return new TaskId(nativeGetCurrentTaskId(nativeWorkerContext));
+    return new TaskId(nativeGetCurrentTaskId(nativeWorkerContextPointer));
   }
 
   /**
@@ -64,7 +64,7 @@ public class WorkerContext {
 
     Preconditions.checkNotNull(task);
     byte[] taskSpec = RayletClientImpl.convertTaskSpecToProtobuf(task);
-    nativeSetCurrentTask(nativeWorkerContext, taskSpec);
+    nativeSetCurrentTask(nativeWorkerContextPointer, taskSpec);
     currentClassLoader = classLoader;
   }
 
@@ -72,28 +72,28 @@ public class WorkerContext {
    * Increment the put index and return the new value.
    */
   public int nextPutIndex() {
-    return nativeGetNextPutIndex(nativeWorkerContext);
+    return nativeGetNextPutIndex(nativeWorkerContextPointer);
   }
 
   /**
    * Increment the task index and return the new value.
    */
   public int nextTaskIndex() {
-    return nativeGetNextTaskIndex(nativeWorkerContext);
+    return nativeGetNextTaskIndex(nativeWorkerContextPointer);
   }
 
   /**
    * @return The ID of the current worker.
    */
   public UniqueId getCurrentWorkerId() {
-    return new UniqueId(nativeGetCurrentWorkerId(nativeWorkerContext));
+    return new UniqueId(nativeGetCurrentWorkerId(nativeWorkerContextPointer));
   }
 
   /**
    * The ID of the current job.
    */
   public JobId getCurrentJobId() {
-    return new JobId(nativeGetCurrentJobId(nativeWorkerContext));
+    return new JobId(nativeGetCurrentJobId(nativeWorkerContextPointer));
   }
 
   /**
@@ -107,7 +107,7 @@ public class WorkerContext {
    * Get the current task.
    */
   public TaskSpec getCurrentTask() {
-    byte[] bytes = nativeGetCurrentTask(nativeWorkerContext);
+    byte[] bytes = nativeGetCurrentTask(nativeWorkerContextPointer);
     if (bytes == null) {
       return null;
     }
@@ -115,24 +115,24 @@ public class WorkerContext {
   }
 
   public void destroy() {
-    nativeDestroy(nativeWorkerContext);
+    nativeDestroy(nativeWorkerContextPointer);
   }
 
   private static native long nativeCreateWorkerContext(int workerType, byte[] jobId);
 
-  private static native byte[] nativeGetCurrentTaskId(long nativeWorkerContext);
+  private static native byte[] nativeGetCurrentTaskId(long nativeWorkerContextPointer);
 
-  private static native void nativeSetCurrentTask(long nativeWorkerContext, byte[] taskSpec);
+  private static native void nativeSetCurrentTask(long nativeWorkerContextPointer, byte[] taskSpec);
 
-  private static native byte[] nativeGetCurrentTask(long nativeWorkerContext);
+  private static native byte[] nativeGetCurrentTask(long nativeWorkerContextPointer);
 
-  private static native byte[] nativeGetCurrentJobId(long nativeWorkerContext);
+  private static native byte[] nativeGetCurrentJobId(long nativeWorkerContextPointer);
 
-  private static native byte[] nativeGetCurrentWorkerId(long nativeWorkerContext);
+  private static native byte[] nativeGetCurrentWorkerId(long nativeWorkerContextPointer);
 
-  private static native int nativeGetNextTaskIndex(long nativeWorkerContext);
+  private static native int nativeGetNextTaskIndex(long nativeWorkerContextPointer);
 
-  private static native int nativeGetNextPutIndex(long nativeWorkerContext);
+  private static native int nativeGetNextPutIndex(long nativeWorkerContextPointer);
 
-  private static native void nativeDestroy(long nativeWorkerContext);
+  private static native void nativeDestroy(long nativeWorkerContextPointer);
 }

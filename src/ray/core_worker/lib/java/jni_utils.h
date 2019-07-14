@@ -41,6 +41,7 @@ extern jfieldID java_native_ray_object_data;
 extern jfieldID java_native_ray_object_metadata;
 
 /// Throws a Java RayException if the status is not OK.
+/// \return True if throwed exception, otherwise false.
 inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
   if (!status.ok()) {
     env->ThrowNew(java_ray_exception_class, status.message().c_str());
@@ -61,7 +62,7 @@ inline ID JavaByteArrayToUniqueId(JNIEnv *env, const jbyteArray &bytes) {
 
 /// Convert C++ UniqueID to a Java byte array.
 template <typename ID>
-inline jbyteArray UniqueIDToJavaByteArray(JNIEnv *env, const ID &id) {
+inline jbyteArray IdToJavaByteArray(JNIEnv *env, const ID &id) {
   jbyteArray array = env->NewByteArray(ID::Size());
   env->SetByteArrayRegion(array, 0, ID::Size(),
                           reinterpret_cast<const jbyte *>(id.Data()));

@@ -6,11 +6,11 @@ namespace ray {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   WorkerThreadContext()
-      : current_task_id_(TaskID::FromRandom()), task_index(0), put_index(0) {}
+      : current_task_id_(TaskID::FromRandom()), task_index_(0), put_index_(0) {}
 
-  int GetNextTaskIndex() { return ++task_index; }
+  int GetNextTaskIndex() { return ++task_index_; }
 
-  int GetNextPutIndex() { return ++put_index; }
+  int GetNextPutIndex() { return ++put_index_; }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
 
@@ -20,8 +20,8 @@ struct WorkerThreadContext {
 
   void SetCurrentTaskId(const TaskID &task_id) {
     current_task_id_ = task_id;
-    task_index = 0;
-    put_index = 0;
+    task_index_ = 0;
+    put_index_ = 0;
   }
 
   void SetCurrentTask(const TaskSpecification &spec) {
@@ -37,10 +37,10 @@ struct WorkerThreadContext {
   std::shared_ptr<const TaskSpecification> current_task_;
 
   /// Number of tasks that have been submitted from current task.
-  int task_index;
+  int task_index_;
 
   /// Number of objects that have been put from current task.
-  int put_index;
+  int put_index_;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
@@ -48,8 +48,6 @@ thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_
 
 WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type_(worker_type),
-      // TODO(qwang): Assign the driver id to worker id
-      // once we treat driver id as a special worker id.
       worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                     : WorkerID::FromRandom()),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()) {

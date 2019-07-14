@@ -30,8 +30,8 @@ public class ObjectStoreProxy {
   private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
       .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
 
-  private static final byte[] TASK_EXCEPTION_META = String
-      .valueOf(ErrorType.TASK_EXCEPTION.getNumber()).getBytes();
+  private static final byte[] TASK_EXECUTION_EXCEPTION_META = String
+      .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
   private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
@@ -112,7 +112,7 @@ public class ObjectStoreProxy {
       return new GetResult<>(true, null, RayActorException.INSTANCE);
     } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
       return new GetResult<>(true, null, new UnreconstructableException(objectId));
-    } else if (Arrays.equals(meta, TASK_EXCEPTION_META)) {
+    } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
       return new GetResult<>(true, null, Serializer.decode(data, classLoader));
     }
     throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
@@ -130,7 +130,7 @@ public class ObjectStoreProxy {
       // indicate it's raw binary. So that this object can also be read by Python.
       objectInterface.put(new NativeRayObject((byte[]) object, RAW_TYPE_META), id);
     } else if (object instanceof RayTaskException) {
-      objectInterface.put(new NativeRayObject(Serializer.encode(object), TASK_EXCEPTION_META), id);
+      objectInterface.put(new NativeRayObject(Serializer.encode(object), TASK_EXECUTION_EXCEPTION_META), id);
     } else {
       objectInterface.put(new NativeRayObject(Serializer.encode(object), null), id);
     }

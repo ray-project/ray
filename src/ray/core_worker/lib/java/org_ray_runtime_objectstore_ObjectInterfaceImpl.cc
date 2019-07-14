@@ -2,11 +2,11 @@
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/lib/java/jni_helper.h"
+#include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/core_worker/object_interface.h"
 
-inline ray::CoreWorkerObjectInterface *GetObjectInterface(jlong nativeObjectInterface) {
-  return reinterpret_cast<ray::CoreWorkerObjectInterface *>(nativeObjectInterface);
+inline ray::CoreWorkerObjectInterface *GetObjectInterfaceFromPointer(jlong nativeObjectInterfacePointer) {
+  return reinterpret_cast<ray::CoreWorkerObjectInterface *>(nativeObjectInterfacePointer);
 }
 
 #ifdef __cplusplus
@@ -35,20 +35,20 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeCreateObjectInterface
  */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__JLorg_ray_runtime_objectstore_NativeRayObject_2(
-    JNIEnv *env, jclass, jlong nativeObjectInterface, jobject obj) {
+    JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jobject obj) {
   ray::Status status;
   ray::ObjectID object_id = ReadJavaNativeRayObject<ray::ObjectID>(
       env, obj,
-      [nativeObjectInterface, &status](const std::shared_ptr<ray::RayObject> &rayObject) {
+      [nativeObjectInterfacePointer, &status](const std::shared_ptr<ray::RayObject> &rayObject) {
         RAY_CHECK(rayObject != nullptr);
         ray::ObjectID object_id;
-        status = GetObjectInterface(nativeObjectInterface)->Put(*rayObject, &object_id);
+        status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)->Put(*rayObject, &object_id);
         return object_id;
       });
   if (ThrowRayExceptionIfNotOK(env, status)) {
     return nullptr;
   }
-  return UniqueIDToJavaByteArray<ray::ObjectID>(env, object_id);
+  return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
 
 /*
@@ -58,14 +58,14 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__JLorg_ray_runtim
  */
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__J_3BLorg_ray_runtime_objectstore_NativeRayObject_2(
-    JNIEnv *env, jclass, jlong nativeObjectInterface, jbyteArray objectId, jobject obj) {
+    JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jbyteArray objectId, jobject obj) {
   auto object_id = JavaByteArrayToUniqueId<ray::ObjectID>(env, objectId);
   auto status = ReadJavaNativeRayObject<ray::Status>(
       env, obj,
-      [nativeObjectInterface,
+      [nativeObjectInterfacePointer,
        &object_id](const std::shared_ptr<ray::RayObject> &rayObject) {
         RAY_CHECK(rayObject != nullptr);
-        return GetObjectInterface(nativeObjectInterface)->Put(*rayObject, object_id);
+        return GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)->Put(*rayObject, object_id);
       });
   ThrowRayExceptionIfNotOK(env, status);
 }
@@ -76,14 +76,14 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__J_3BLorg_ray_run
  * Signature: (JLjava/util/List;J)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeGet(
-    JNIEnv *env, jclass, jlong nativeObjectInterface, jobject ids, jlong timeoutMs) {
+    JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, ids, &object_ids, [](JNIEnv *env, jobject id) {
         return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<std::shared_ptr<ray::RayObject>> results;
-  auto status = GetObjectInterface(nativeObjectInterface)
+  auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Get(object_ids, (int64_t)timeoutMs, &results);
   if (ThrowRayExceptionIfNotOK(env, status)) {
     return nullptr;
@@ -98,7 +98,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
  * Signature: (JLjava/util/List;IJ)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeWait(
-    JNIEnv *env, jclass, jlong nativeObjectInterface, jobject objectIds, jint numObjects,
+    JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jobject objectIds, jint numObjects,
     jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
@@ -106,7 +106,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
         return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<bool> results;
-  auto status = GetObjectInterface(nativeObjectInterface)
+  auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Wait(object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
   if (ThrowRayExceptionIfNotOK(env, status)) {
     return nullptr;
@@ -122,14 +122,14 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
  * Signature: (JLjava/util/List;ZZ)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeDelete(
-    JNIEnv *env, jclass, jlong nativeObjectInterface, jobject objectIds,
+    JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jobject objectIds,
     jboolean localOnly, jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
         return JavaByteArrayToUniqueId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
-  auto status = GetObjectInterface(nativeObjectInterface)
+  auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Delete(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);
   ThrowRayExceptionIfNotOK(env, status);
 }
@@ -140,8 +140,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nati
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeDestroy(
-    JNIEnv *env, jclass, jlong nativeObjectInterface) {
-  delete GetObjectInterface(nativeObjectInterface);
+    JNIEnv *env, jclass, jlong nativeObjectInterfacePointer) {
+  delete GetObjectInterfaceFromPointer(nativeObjectInterfacePointer);
 }
 
 #ifdef __cplusplus

@@ -22,24 +22,24 @@ public class ObjectInterfaceImpl implements ObjectInterface {
   /**
    * The native pointer of core worker object interface.
    */
-  private final long nativeObjectInterface;
+  private final long nativeObjectInterfacePointer;
 
   public ObjectInterfaceImpl(WorkerContext workerContext, RayletClient rayletClient,
       String storeSocketName) {
-    this.nativeObjectInterface =
+    this.nativeObjectInterfacePointer =
         nativeCreateObjectInterface(workerContext.getNativeWorkerContext(),
             ((RayletClientImpl) rayletClient).getClient(), storeSocketName);
   }
 
   @Override
   public ObjectId put(NativeRayObject obj) {
-    return new ObjectId(nativePut(nativeObjectInterface, obj));
+    return new ObjectId(nativePut(nativeObjectInterfacePointer, obj));
   }
 
   @Override
   public void put(NativeRayObject obj, ObjectId objectId) {
     try {
-      nativePut(nativeObjectInterface, objectId.getBytes(), obj);
+      nativePut(nativeObjectInterfacePointer, objectId.getBytes(), obj);
     } catch (RayException e) {
       LOGGER.warn(e.getMessage());
     }
@@ -47,21 +47,21 @@ public class ObjectInterfaceImpl implements ObjectInterface {
 
   @Override
   public List<NativeRayObject> get(List<ObjectId> objectIds, long timeoutMs) {
-    return nativeGet(nativeObjectInterface, toBinaryList(objectIds), timeoutMs);
+    return nativeGet(nativeObjectInterfacePointer, toBinaryList(objectIds), timeoutMs);
   }
 
   @Override
   public List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs) {
-    return nativeWait(nativeObjectInterface, toBinaryList(objectIds), numObjects, timeoutMs);
+    return nativeWait(nativeObjectInterfacePointer, toBinaryList(objectIds), numObjects, timeoutMs);
   }
 
   @Override
   public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    nativeDelete(nativeObjectInterface, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
+    nativeDelete(nativeObjectInterfacePointer, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
   public void destroy() {
-    nativeDestroy(nativeObjectInterface);
+    nativeDestroy(nativeObjectInterfacePointer);
   }
 
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {

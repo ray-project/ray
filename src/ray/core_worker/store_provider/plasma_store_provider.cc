@@ -150,10 +150,10 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
 
 bool CoreWorkerPlasmaStoreProvider::IsException(const plasma::ObjectBuffer &buffer) {
   // TODO (kfstorm): metadata should be structured.
-  std::string metadata = buffer.metadata->ToString();
-  auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
+  const std::string metadata = buffer.metadata->ToString();
+  const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
   for (int i = 0; i < error_type_descriptor->value_count(); i++) {
-    auto error_type_number = error_type_descriptor->value(i)->number();
+    const auto error_type_number = error_type_descriptor->value(i)->number();
     if (metadata == std::to_string(error_type_number)) {
       return true;
     }

@@ -3,38 +3,13 @@
 #include <jni.h>
 
 #include "ray/common/id.h"
+#include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/logging.h"
-
-template <typename ID>
-class UniqueIdFromJByteArray {
- public:
-  const ID &GetId() const { return id; }
-
-  UniqueIdFromJByteArray(JNIEnv *env, const jbyteArray &bytes) {
-    std::string id_str(ID::Size(), 0);
-    env->GetByteArrayRegion(bytes, 0, ID::Size(),
-                            reinterpret_cast<jbyte *>(&id_str.front()));
-    id = ID::FromBinary(id_str);
-  }
-
- private:
-  ID id;
-};
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
-  if (!status.ok()) {
-    jclass exception_class = env->FindClass("org/ray/api/exception/RayException");
-    env->ThrowNew(exception_class, status.message().c_str());
-    return true;
-  } else {
-    return false;
-  }
-}
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
