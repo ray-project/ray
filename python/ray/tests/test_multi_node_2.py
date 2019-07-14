@@ -59,6 +59,26 @@ def test_internal_config(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 1
 
 
+def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
+    while True:
+        monitor.process_messages()
+        resource_usage = monitor.load_metrics.get_resource_usage()
+
+        if expected_resource_usage is None:
+            if all(x for x in resource_usage[1:]):
+                break
+        elif all(x == y for x, y in zip(resource_usage, expected_resource_usage)):
+            break
+        else:
+            timeout -= 1
+            time.sleep(1)
+
+        if timeout <= 0:
+            raise ValueError("Should not be here.")
+
+    return resource_usage
+
+
 def test_heartbeats(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -67,28 +87,55 @@ def test_heartbeats(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     monitor = Monitor(cluster.redis_address, None)
 
+    work_handles = []
+
     @ray.remote
     class Actor():
-        pass
+        def work(self, timeout=10):
+            time.sleep(timeout)
+            return True
 
     test_actors = [Actor.remote()]
-    # This is only used to update the load metrics for the autoscaler.
 
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
 
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
-    # Process a round of messages.
-    monitor.process_messages()
-    from pprint import pprint; import ipdb; ipdb.set_trace(context=30)
-    pprint(vars(monitor.load_metrics))
 
-    # worker_nodes = [cluster.add_node() for i in range(4)]
-    # for i in range(3):
-    #     test_actors += [Actor.remote()]
-    # check_resource_usage(monitor.get_heartbeat())
-    # cluster.wait_for_nodes()
+    timeout = 5
+
+    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': 1.0}))
+
+    work_handles += [test_actors[0].work.remote(timeout=timeout * 2)]
+
+    verify_load_metrics(monitor, (1.0, {'CPU': 1.0}, {'CPU': 1.0}))
+
+    ray.get(work_handles)
+
+    num_workers = 4
+    num_nodes_total = float(num_workers + 1)
+    worker_nodes = [cluster.add_node() for i in range(num_workers)]
+
+    cluster.wait_for_nodes()
+    monitor.update_raylet_map()
+    monitor._maybe_flush_gcs()
+
+    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': num_nodes_total}))
+
+    work_handles = [test_actors[0].work.remote(timeout=timeout * 2)]
+    for i in range(num_workers):
+        new_actor = Actor.remote()
+        work_handles += [new_actor.work.remote(timeout=timeout * 2)]
+        test_actors += [new_actor]
+
+    verify_load_metrics(
+        monitor,
+        (num_nodes_total, {'CPU': num_nodes_total}, {'CPU': num_nodes_total}))
+
+    ray.get(work_handles)
+
+    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': num_nodes_total}))
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
