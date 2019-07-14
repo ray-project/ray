@@ -10,7 +10,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.JobId;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.StringUtil;
@@ -32,7 +32,7 @@ public class RayConfig {
   public final WorkerMode workerMode;
   public final RunMode runMode;
   public final Map<String, Double> resources;
-  public final UniqueId driverId;
+  private JobId jobId;
   public final String logDir;
   public final boolean redirectOutput;
   public final List<String> libraryPath;
@@ -53,7 +53,7 @@ public class RayConfig {
   public final String rayletSocketName;
   public final List<String> rayletConfigParameters;
 
-  public final String driverResourcePath;
+  public final String jobResourcePath;
   public final String pythonWorkerCommand;
 
   /**
@@ -105,12 +105,12 @@ public class RayConfig {
         resources.put("CPU", numCpu * 1.0);
       }
     }
-    // Driver id.
-    String driverId = config.getString("ray.driver.id");
-    if (!driverId.isEmpty()) {
-      this.driverId = UniqueId.fromHexString(driverId);
+    // Job id.
+    String jobId = config.getString("ray.job.id");
+    if (!jobId.isEmpty()) {
+      this.jobId = JobId.fromHexString(jobId);
     } else {
-      this.driverId = UniqueId.randomId();
+      this.jobId = JobId.NIL;
     }
     // Log dir.
     logDir = removeTrailingSlash(config.getString("ray.log-dir"));
@@ -160,11 +160,11 @@ public class RayConfig {
       rayletConfigParameters.add(parameter);
     }
 
-    // Driver resource path.
-    if (config.hasPath("ray.driver.resource-path")) {
-      driverResourcePath = config.getString("ray.driver.resource-path");
+    // Job resource path.
+    if (config.hasPath("ray.job.resource-path")) {
+      jobResourcePath = config.getString("ray.job.resource-path");
     } else {
-      driverResourcePath = null;
+      jobResourcePath = null;
     }
 
     // Number of threads that execute tasks.
@@ -198,6 +198,14 @@ public class RayConfig {
     return redisPort;
   }
 
+  public void setJobId(JobId jobId) {
+    this.jobId = jobId;
+  }
+
+  public JobId getJobId() {
+    return this.jobId;
+  }
+
   @Override
   public String toString() {
     return "RayConfig{"
@@ -205,7 +213,7 @@ public class RayConfig {
         + ", workerMode=" + workerMode
         + ", runMode=" + runMode
         + ", resources=" + resources
-        + ", driverId=" + driverId
+        + ", jobId=" + jobId
         + ", logDir='" + logDir + '\''
         + ", redirectOutput=" + redirectOutput
         + ", libraryPath=" + libraryPath
@@ -220,7 +228,7 @@ public class RayConfig {
         + ", objectStoreSize=" + objectStoreSize
         + ", rayletSocketName='" + rayletSocketName + '\''
         + ", rayletConfigParameters=" + rayletConfigParameters
-        + ", driverResourcePath='" + driverResourcePath + '\''
+        + ", jobResourcePath='" + jobResourcePath + '\''
         + ", pythonWorkerCommand='" + pythonWorkerCommand + '\''
         + '}';
   }

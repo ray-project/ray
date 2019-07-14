@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
 
@@ -227,10 +227,12 @@ class SchedulingQueue {
   ///
   /// \param task_id The task ID to remove from the queue. The corresponding
   /// task must be contained in the queue.
+  /// \param task The removed task will be written here, if any.
   /// \param task_state If this is not nullptr, then the state of the removed
   /// task will be written here.
-  /// \return The task that was removed.
-  Task RemoveTask(const TaskID &task_id, TaskState *task_state = nullptr);
+  /// \return true if the task was removed, false if it is not in the queue.
+  bool RemoveTask(const TaskID &task_id, Task *removed_task,
+                  TaskState *removed_task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
@@ -283,11 +285,11 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
-  /// \brief Get all the task IDs for a driver.
+  /// \brief Get all the task IDs for a job.
   ///
-  /// \param driver_id All the tasks that have the given driver_id are returned.
-  /// \return All the tasks that have the given driver ID.
-  std::unordered_set<TaskID> GetTaskIdsForDriver(const DriverID &driver_id) const;
+  /// \param job_id All the tasks that have the given job_id are returned.
+  /// \return All the tasks that have the given job ID.
+  std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
 
   /// \brief Get all the task IDs for an actor.
   ///
@@ -319,7 +321,7 @@ class SchedulingQueue {
   /// TaskState::kNumTaskQueues).
   void RemoveTasksFromQueue(ray::raylet::TaskState task_state,
                             std::unordered_set<ray::TaskID> &task_ids,
-                            std::vector<ray::raylet::Task> *removed_tasks);
+                            std::vector<ray::Task> *removed_tasks);
 
   /// A helper function to filter out tasks of a given state from the set of
   /// task IDs. The requested task state must correspond to one of the task

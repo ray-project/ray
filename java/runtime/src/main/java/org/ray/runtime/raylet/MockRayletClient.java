@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import org.apache.commons.lang3.NotImplementedException;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -164,7 +165,7 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public TaskId generateTaskId(UniqueId driverId, TaskId parentTaskId, int taskIndex) {
+  public TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
     return TaskId.randomId();
   }
 

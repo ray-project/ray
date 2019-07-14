@@ -28,8 +28,8 @@ class MyTrainableClass(Trainable):
 
     def _train(self):
         self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
+        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
+        v *= self.config.get("height", 1)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.

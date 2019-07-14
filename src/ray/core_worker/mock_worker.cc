@@ -1,6 +1,9 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
+
+using namespace std::placeholders;
 
 namespace ray {
 
@@ -16,37 +19,40 @@ namespace ray {
 class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
-      : worker_(WorkerType::WORKER, WorkerLanguage::PYTHON, store_socket, raylet_socket,
-                DriverID::FromRandom()) {}
+      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+                JobID::JobID::FromInt(1),
+                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {
-    auto executor_func = [this](const RayFunction &ray_function,
-                                const std::vector<std::shared_ptr<Buffer>> &args,
-                                const TaskID &task_id, int num_returns) {
-      // Note that this doesn't include dummy object id.
-      RAY_CHECK(num_returns >= 0);
-
-      // Merge all the content from input args.
-      std::vector<uint8_t> buffer;
-      for (const auto &arg : args) {
-        buffer.insert(buffer.end(), arg->Data(), arg->Data() + arg->Size());
-      }
-
-      LocalMemoryBuffer memory_buffer(buffer.data(), buffer.size());
-
-      // Write the merged content to each of return ids.
-      for (int i = 0; i < num_returns; i++) {
-        ObjectID id = ObjectID::ForTaskReturn(task_id, i + 1);
-        RAY_CHECK_OK(worker_.Objects().Put(memory_buffer, id));
-      }
-      return Status::OK();
-    };
-
     // Start executing tasks.
-    worker_.Execution().Run(executor_func);
+    worker_.Execution().Run();
   }
 
  private:
+  Status ExecuteTask(const RayFunction &ray_function,
+                     const std::vector<std::shared_ptr<RayObject>> &args,
+                     const TaskInfo &task_info, int num_returns) {
+    // Note that this doesn't include dummy object id.
+    RAY_CHECK(num_returns >= 0);
+
+    // Merge all the content from input args.
+    std::vector<uint8_t> buffer;
+    for (const auto &arg : args) {
+      auto &data = arg->GetData();
+      buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
+    }
+
+    auto return_value = RayObject(
+        std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
+
+    // Write the merged content to each of return ids.
+    for (int i = 0; i < num_returns; i++) {
+      ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
+      RAY_CHECK_OK(worker_.Objects().Put(return_value, id));
+    }
+    return Status::OK();
+  }
+
   CoreWorker worker_;
 };
 

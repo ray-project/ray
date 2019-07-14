@@ -1,21 +1,25 @@
 #ifndef RAYLET_CLIENT_H
 #define RAYLET_CLIENT_H
 
+#include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
 
 #include "ray/common/status.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task/task_spec.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
 using ray::ClientID;
-using ray::DriverID;
+using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::UniqueID;
+
+using ray::Language;
+using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -30,7 +34,7 @@ class RayletConnection {
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   ///        additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a
+  /// \param job_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
   RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
@@ -66,10 +70,11 @@ class RayletClient {
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
-  /// \param driver_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-               bool is_worker, const DriverID &driver_id, const Language &language);
+               bool is_worker, const JobID &job_id, const Language &language,
+               int port = -1);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -79,7 +84,7 @@ class RayletClient {
   /// \param The task specification.
   /// \return ray::Status.
   ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                         const ray::raylet::TaskSpecification &task_spec);
+                         const ray::TaskSpecification &task_spec);
 
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
@@ -87,7 +92,7 @@ class RayletClient {
   ///
   /// \param task_spec The assigned task.
   /// \return ray::Status.
-  ray::Status GetTask(std::unique_ptr<ray::raylet::TaskSpecification> *task_spec);
+  ray::Status GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec);
 
   /// Tell the raylet that the client has finished executing a task.
   ///
@@ -125,19 +130,19 @@ class RayletClient {
 
   /// Push an error to the relevant driver.
   ///
-  /// \param The ID of the job that the error is for.
+  /// \param The ID of the job_id that the error is for.
   /// \param The type of the error.
   /// \param The error message.
   /// \param The timestamp of the error.
   /// \return ray::Status.
-  ray::Status PushError(const DriverID &driver_id, const std::string &type,
+  ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
   /// Store some profile events in the GCS.
   ///
   /// \param profile_events A batch of profiling event information.
   /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableDataT &profile_events);
+  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
 
   /// Free a list of objects from object stores.
   ///
@@ -177,7 +182,7 @@ class RayletClient {
 
   ClientID GetClientID() const { return client_id_; }
 
-  DriverID GetDriverID() const { return driver_id_; }
+  JobID GetJobID() const { return job_id_; }
 
   bool IsWorker() const { return is_worker_; }
 
@@ -186,8 +191,9 @@ class RayletClient {
  private:
   const ClientID client_id_;
   const bool is_worker_;
-  const DriverID driver_id_;
+  const JobID job_id_;
   const Language language_;
+  const int port_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import glob
 import os
 import shutil
 import sys
@@ -314,21 +315,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 },
             }
         })
-
-    def testUploadDirNone(self):
-        def train(config, reporter):
-            reporter(timesteps_total=1)
-
-        [trial] = run_experiments({
-            "foo": {
-                "run": train,
-                "upload_dir": None,
-                "config": {
-                    "a": "b"
-                },
-            }
-        })
-        self.assertFalse(trial.upload_dir)
 
     def testLogdirStartingWithTilde(self):
         local_dir = "~/ray_results/local_dir"
@@ -930,50 +916,190 @@ class RunExperimentTest(unittest.TestCase):
             str(trial), "{}_{}_321".format(trial.trainable_name,
                                            trial.trial_id))
 
-    def testSyncFunction(self):
-        def fail_sync_local():
-            [trial] = run_experiments({
-                "foo": {
-                    "run": "__fake",
+
+class TestSyncFunctionality(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    def testNoUploadDir(self):
+        """No Upload Dir is given."""
+        with self.assertRaises(AssertionError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_cloud": "echo {source} {target}"
+                })
+
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    def testCloudProperString(self):
+        with self.assertRaises(ValueError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_function": "ls {remote_dir}"
-                }
-            })
+                    "sync_to_cloud": "ls {target}"
+                })
 
-        self.assertRaises(AssertionError, fail_sync_local)
-
-        def fail_sync_remote():
-            [trial] = run_experiments({
-                "foo": {
-                    "run": "__fake",
+        with self.assertRaises(ValueError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_function": "ls {local_dir}"
-                }
-            })
+                    "sync_to_cloud": "ls {source}"
+                })
 
-        self.assertRaises(AssertionError, fail_sync_remote)
+        tmpdir = tempfile.mkdtemp()
+        logfile = os.path.join(tmpdir, "test.log")
 
-        def sync_func(local, remote):
-            with open(os.path.join(local, "test.log"), "w") as f:
-                f.write(remote)
-
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            **{
                 "stop": {
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
-                "sync_function": tune.function(sync_func)
-            }
-        })
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+                "sync_to_cloud": "echo {source} {target} > " + logfile
+            })
+        with open(logfile) as f:
+            lines = f.read()
+            self.assertTrue("test" in lines)
+        shutil.rmtree(tmpdir)
+
+    def testClusterProperString(self):
+        """Tests that invalid commands throw.."""
+        with self.assertRaises(TuneError):
+            # This raises TuneError because logger is init in safe zone.
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "ls {target}"
+                })
+
+        with self.assertRaises(TuneError):
+            # This raises TuneError because logger is init in safe zone.
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "ls {source}"
+                })
+
+        with patch("ray.tune.syncer.CommandSyncer.sync_function"
+                   ) as mock_fn, patch(
+                       "ray.services.get_node_ip_address") as mock_sync:
+            mock_sync.return_value = "0.0.0.0"
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "echo {source} {target}"
+                })
+            self.assertGreater(mock_fn.call_count, 0)
+
+    def testCloudFunctions(self):
+        tmpdir = tempfile.mkdtemp()
+        tmpdir2 = tempfile.mkdtemp()
+        os.mkdir(os.path.join(tmpdir2, "foo"))
+
+        def sync_func(local, remote):
+            for filename in glob.glob(os.path.join(local, "*.json")):
+                shutil.copy(filename, remote)
+
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            local_dir=tmpdir,
+            stop={"training_iteration": 1},
+            upload_dir=tmpdir2,
+            sync_to_cloud=tune.function(sync_func))
+        test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
+        self.assertTrue(test_file_path)
+        shutil.rmtree(tmpdir)
+        shutil.rmtree(tmpdir2)
+
+    def testClusterSyncFunction(self):
+        def sync_func_driver(source, target):
+            assert ":" in source, "Source not a remote path."
+            assert ":" not in target, "Target is supposed to be local."
+            with open(os.path.join(target, "test.log2"), "w") as f:
+                print("writing to", f.name)
+                f.write(source)
+
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            stop={"training_iteration": 1},
+            sync_to_driver=tune.function(sync_func_driver))
+        test_file_path = os.path.join(trial.logdir, "test.log2")
+        self.assertFalse(os.path.exists(test_file_path))
+
+        with patch("ray.services.get_node_ip_address") as mock_sync:
+            mock_sync.return_value = "0.0.0.0"
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                stop={"training_iteration": 1},
+                sync_to_driver=tune.function(sync_func_driver))
+        test_file_path = os.path.join(trial.logdir, "test.log2")
+        self.assertTrue(os.path.exists(test_file_path))
+        os.remove(test_file_path)
+
+    def testNoSync(self):
+        def sync_func(source, target):
+            pass
+
+        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_sync:
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_to_driver": tune.function(sync_func),
+                    "sync_to_cloud": tune.function(sync_func)
+                })
+            self.assertEqual(mock_sync.call_count, 0)
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -1960,7 +2086,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         trials = [
             Trial(
                 "__fake",
@@ -1999,7 +2125,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
             original_trial = runner.get_trial(tid)
             restored_trial = runner2.get_trial(tid)
@@ -2019,8 +2145,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
-
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(
             Trial(
                 "__fake",
@@ -2051,7 +2176,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         runner.step()
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         new_trials = runner2.get_trials()
         self.assertEquals(len(new_trials), 3)
         self.assertTrue(
@@ -2074,13 +2199,13 @@ class TrialRunnerTest(unittest.TestCase):
             },
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
         self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
@@ -2095,7 +2220,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2103,13 +2228,36 @@ class TrialRunnerTest(unittest.TestCase):
         runner.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 1)
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for i in range(5):
             runner2.step()
         self.assertEquals(count_checkpoints(tmpdir), 2)
 
         runner2.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 2)
+        shutil.rmtree(tmpdir)
+
+    def testUserCheckpoint(self):
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        runner.step()  # 0
+        self.assertFalse(trials[0].has_checkpoint())
+        runner.step()  # 1
+        self.assertFalse(trials[0].has_checkpoint())
+        runner.step()  # 2
+        self.assertTrue(trials[0].has_checkpoint())
+
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2.step()
+        trials2 = runner2.get_trials()
+        self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
         shutil.rmtree(tmpdir)
 
 

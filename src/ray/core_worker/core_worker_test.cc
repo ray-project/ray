@@ -124,9 +124,8 @@ class CoreWorkerTest : public ::testing::Test {
   void TearDown() {}
 
   void TestNormalTask(const std::unordered_map<std::string, double> &resources) {
-    CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
-                      raylet_store_socket_names_[0], raylet_socket_names_[0],
-                      DriverID::FromRandom());
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                      raylet_socket_names_[0], JobID::FromInt(1), nullptr);
 
     // Test pass by value.
     {
@@ -134,7 +133,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{Language::PYTHON, {}};
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer1));
 
@@ -145,12 +144,13 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::Buffer>> results;
+      std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->Data(), buffer1->Data(), buffer1->Size()), 0);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
     }
 
     // Test pass by reference.
@@ -159,12 +159,12 @@ class CoreWorkerTest : public ::testing::Test {
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(*buffer1, &object_id));
+      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
 
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{Language::PYTHON, {}};
       TaskOptions options;
 
       std::vector<ObjectID> return_ids;
@@ -172,19 +172,19 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::Buffer>> results;
+      std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->Data(), buffer1->Data(), buffer1->Size()), 0);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
     }
   }
 
   void TestActorTask(const std::unordered_map<std::string, double> &resources) {
-    CoreWorker driver(WorkerType::DRIVER, WorkerLanguage::PYTHON,
-                      raylet_store_socket_names_[0], raylet_socket_names_[0],
-                      DriverID::FromRandom());
+    CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                      raylet_socket_names_[0], JobID::FromInt(1), nullptr);
 
     std::unique_ptr<ActorHandle> actor_handle;
 
@@ -193,7 +193,7 @@ class CoreWorkerTest : public ::testing::Test {
       uint8_t array[] = {1, 2, 3};
       auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{Language::PYTHON, {}};
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByValue(buffer));
 
@@ -212,7 +212,7 @@ class CoreWorkerTest : public ::testing::Test {
       auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(*buffer1, &object_id));
+      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
@@ -221,20 +221,21 @@ class CoreWorkerTest : public ::testing::Test {
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::WorkerLanguage::PYTHON, {}};
+      RayFunction func{Language::PYTHON, {}};
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
       RAY_CHECK(return_ids.size() == 1);
 
-      std::vector<std::shared_ptr<ray::Buffer>> results;
+      std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->Size(), buffer1->Size() + buffer2->Size());
-      ASSERT_EQ(memcmp(results[0]->Data(), buffer1->Data(), buffer1->Size()), 0);
-      ASSERT_EQ(
-          memcmp(results[0]->Data() + buffer1->Size(), buffer2->Data(), buffer2->Size()),
-          0);
+      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
+                0);
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+                       buffer2->Size()),
+                0);
     }
   }
 
@@ -275,9 +276,9 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {
-  auto driver_id = DriverID::FromRandom();
+  auto job_id = JobID::JobID::FromInt(1);
 
-  WorkerContext context(WorkerType::WORKER, driver_id);
+  WorkerContext context(WorkerType::WORKER, job_id);
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
@@ -299,17 +300,51 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   ASSERT_EQ(context.GetNextPutIndex(), 3);
 }
 
+TEST_F(ZeroNodeTest, TestActorHandle) {
+  ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(), Language::JAVA,
+                      {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
+
+  auto forkedHandle1 = handle1.Fork();
+  ASSERT_EQ(1, handle1.NumForks());
+  ASSERT_EQ(handle1.ActorID(), forkedHandle1.ActorID());
+  ASSERT_NE(handle1.ActorHandleID(), forkedHandle1.ActorHandleID());
+  ASSERT_EQ(handle1.ActorLanguage(), forkedHandle1.ActorLanguage());
+  ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
+            forkedHandle1.ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(handle1.ActorCursor(), forkedHandle1.ActorCursor());
+  ASSERT_EQ(0, forkedHandle1.TaskCounter());
+  ASSERT_EQ(0, forkedHandle1.NumForks());
+  auto forkedHandle2 = handle1.Fork();
+  ASSERT_EQ(2, handle1.NumForks());
+  ASSERT_EQ(0, forkedHandle2.TaskCounter());
+  ASSERT_EQ(0, forkedHandle2.NumForks());
+
+  std::string buffer;
+  handle1.Serialize(&buffer);
+  auto handle2 = ActorHandle::Deserialize(buffer);
+  ASSERT_EQ(handle1.ActorID(), handle2.ActorID());
+  ASSERT_EQ(handle1.ActorHandleID(), handle2.ActorHandleID());
+  ASSERT_EQ(handle1.ActorLanguage(), handle2.ActorLanguage());
+  ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
+            handle2.ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(handle1.ActorCursor(), handle2.ActorCursor());
+  ASSERT_EQ(handle1.TaskCounter(), handle2.TaskCounter());
+  ASSERT_EQ(handle1.NumForks(), handle2.NumForks());
+}
+
 TEST_F(SingleNodeTest, TestObjectInterface) {
-  CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON,
+  CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         DriverID::FromRandom());
+                         JobID::FromInt(1), nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
-  std::vector<LocalMemoryBuffer> buffers;
-  buffers.emplace_back(array1, sizeof(array1));
-  buffers.emplace_back(array2, sizeof(array2));
+  std::vector<RayObject> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -317,13 +352,19 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   }
 
   // Test Get().
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->Size(), buffers[i].Size());
-    ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
+    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].GetData()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].GetData()->Data(),
+                     buffers[i].GetData()->Size()),
+              0);
+    ASSERT_EQ(results[i]->GetMetadata()->Size(), buffers[i].GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), buffers[i].GetMetadata()->Data(),
+                     buffers[i].GetMetadata()->Size()),
+              0);
   }
 
   // Test Wait().
@@ -356,13 +397,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 }
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
-  CoreWorker worker1(WorkerType::DRIVER, WorkerLanguage::PYTHON,
-                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                     DriverID::FromRandom());
+  CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                     raylet_socket_names_[0], JobID::FromInt(1), nullptr);
 
-  CoreWorker worker2(WorkerType::DRIVER, WorkerLanguage::PYTHON,
-                     raylet_store_socket_names_[1], raylet_socket_names_[1],
-                     DriverID::FromRandom());
+  CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
+                     raylet_socket_names_[1], JobID::FromInt(1), nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -373,17 +412,19 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Objects().Put(buffers[i], &ids[i]));
+    RAY_CHECK_OK(worker1.Objects().Put(
+        RayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(worker2.Objects().Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->Size(), buffers[i].Size());
-    ASSERT_EQ(memcmp(results[i]->Data(), buffers[i].Data(), buffers[i].Size()), 0);
+    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].Size());
+    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].Data(), buffers[i].Size()),
+              0);
   }
 
   // Test Wait() from remote node.
@@ -445,8 +486,8 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
-    CoreWorker core_worker(WorkerType::DRIVER, WorkerLanguage::PYTHON, "",
-                           raylet_socket_names_[0], DriverID::FromRandom());
+    CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "",
+                           raylet_socket_names_[0], JobID::FromInt(1), nullptr);
   } catch (const std::exception &e) {
     std::cout << "Caught exception when constructing core worker: " << e.what();
   }

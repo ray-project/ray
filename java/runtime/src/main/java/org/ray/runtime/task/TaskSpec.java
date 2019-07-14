@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -18,8 +19,8 @@ import org.ray.runtime.util.IdUtil;
  */
 public class TaskSpec {
 
-  // ID of the driver that created this task.
-  public final UniqueId driverId;
+  // ID of the job that created this task.
+  public final JobId jobId;
 
   // Task ID of the task.
   public final TaskId taskId;
@@ -63,6 +64,8 @@ public class TaskSpec {
   // Language of this task.
   public final TaskLanguage language;
 
+  public final List<String> dynamicWorkerOptions;
+
   // Descriptor of the remote function.
   // Note, if task language is Java, the type is JavaFunctionDescriptor. If the task language
   // is Python, the type is PyFunctionDescriptor.
@@ -79,7 +82,7 @@ public class TaskSpec {
   }
 
   public TaskSpec(
-      UniqueId driverId,
+      JobId jobId,
       TaskId taskId,
       TaskId parentTaskId,
       int parentCounter,
@@ -93,8 +96,9 @@ public class TaskSpec {
       int numReturns,
       Map<String, Double> resources,
       TaskLanguage language,
-      FunctionDescriptor functionDescriptor) {
-    this.driverId = driverId;
+      FunctionDescriptor functionDescriptor,
+      List<String> dynamicWorkerOptions) {
+    this.jobId = jobId;
     this.taskId = taskId;
     this.parentTaskId = parentTaskId;
     this.parentCounter = parentCounter;
@@ -106,6 +110,8 @@ public class TaskSpec {
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;
+    this.dynamicWorkerOptions = dynamicWorkerOptions;
+
     returnIds = new ObjectId[numReturns];
     for (int i = 0; i < numReturns; ++i) {
       returnIds[i] = IdUtil.computeReturnId(taskId, i + 1);
@@ -142,7 +148,7 @@ public class TaskSpec {
   @Override
   public String toString() {
     return "TaskSpec{" +
-        "driverId=" + driverId +
+        "jobId=" + jobId +
         ", taskId=" + taskId +
         ", parentTaskId=" + parentTaskId +
         ", parentCounter=" + parentCounter +
@@ -157,6 +163,7 @@ public class TaskSpec {
         ", resources=" + resources +
         ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
+        ", dynamicWorkerOptions=" + dynamicWorkerOptions +
         ", executionDependencies=" + executionDependencies +
         '}';
   }

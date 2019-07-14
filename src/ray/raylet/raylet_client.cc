@@ -14,8 +14,8 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task_spec.h"
 #include "ray/util/logging.h"
 
 using MessageType = ray::protocol::MessageType;
@@ -202,19 +202,20 @@ ray::Status RayletConnection::AtomicRequestReply(
 }
 
 RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
-                           bool is_worker, const DriverID &driver_id,
-                           const Language &language)
+                           bool is_worker, const JobID &job_id, const Language &language,
+                           int port)
     : client_id_(client_id),
       is_worker_(is_worker),
-      driver_id_(driver_id),
-      language_(language) {
+      job_id_(job_id),
+      language_(language),
+      port_(port) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, driver_id),
-      language);
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
+      language, port);
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -223,17 +224,16 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
 }
 
 ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::raylet::TaskSpecification &task_spec) {
+                                     const ray::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
+      fbb, execution_dependencies_message, fbb.CreateString(task_spec.Serialize()));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(
-    std::unique_ptr<ray::raylet::TaskSpecification> *task_spec) {
+ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the raylet
   // gives this client a task.
@@ -266,8 +266,8 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(new ray::raylet::TaskSpecification(
-      string_from_flatbuf(*reply_message->task_spec())));
+  task_spec->reset(
+      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 
@@ -323,20 +323,20 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::PushError(const DriverID &driver_id, const std::string &type,
+ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreatePushErrorRequest(
-      fbb, to_flatbuf(fbb, driver_id), fbb.CreateString(type),
+      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
 
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_events) {
+ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateProfileTableData(fbb, &profile_events);
+  auto message = fbb.CreateString(profile_events.SerializeAsString());
   fbb.Finish(message);
 
   auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);

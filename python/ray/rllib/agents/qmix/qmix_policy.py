@@ -204,6 +204,8 @@ class QMixTorchPolicy(Policy):
 
         # Setup optimizer
         self.params = list(self.model.parameters())
+        if self.mixer:
+            self.params += list(self.mixer.parameters())
         self.loss = QMixLoss(self.model, self.target_model, self.mixer,
                              self.target_mixer, self.n_agents, self.n_actions,
                              self.config["double_q"], self.config["gamma"])

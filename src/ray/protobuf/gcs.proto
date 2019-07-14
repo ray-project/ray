@@ -1,0 +1,270 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+option java_package = "org.ray.runtime.generated";
+
+// These indexes are mapped to strings in ray_redis_module.cc.
+enum TablePrefix {
+  TABLE_PREFIX_MIN = 0;
+  UNUSED = 1;
+  TASK = 2;
+  RAYLET_TASK = 3;
+  CLIENT = 4;
+  OBJECT = 5;
+  ACTOR = 6;
+  FUNCTION = 7;
+  TASK_RECONSTRUCTION = 8;
+  HEARTBEAT = 9;
+  HEARTBEAT_BATCH = 10;
+  ERROR_INFO = 11;
+  JOB = 12;
+  PROFILE = 13;
+  TASK_LEASE = 14;
+  ACTOR_CHECKPOINT = 15;
+  ACTOR_CHECKPOINT_ID = 16;
+  NODE_RESOURCE = 17;
+  TABLE_PREFIX_MAX = 18;
+}
+
+// The channel that Add operations to the Table should be published on, if any.
+enum TablePubsub {
+  TABLE_PUBSUB_MIN = 0;
+  NO_PUBLISH = 1;
+  TASK_PUBSUB = 2;
+  RAYLET_TASK_PUBSUB = 3;
+  CLIENT_PUBSUB = 4;
+  OBJECT_PUBSUB = 5;
+  ACTOR_PUBSUB = 6;
+  HEARTBEAT_PUBSUB = 7;
+  HEARTBEAT_BATCH_PUBSUB = 8;
+  ERROR_INFO_PUBSUB = 9;
+  TASK_LEASE_PUBSUB = 10;
+  JOB_PUBSUB = 11;
+  NODE_RESOURCE_PUBSUB = 12;
+  TABLE_PUBSUB_MAX = 13;
+}
+
+enum GcsChangeMode {
+  APPEND_OR_ADD = 0;
+  REMOVE = 1;
+}
+
+message GcsEntry {
+  GcsChangeMode change_mode = 1;
+  bytes id = 2;
+  repeated bytes entries = 3;
+}
+
+message ObjectTableData {
+  // The size of the object.
+  uint64 object_size = 1;
+  // The node manager ID that this object appeared on or was evicted by.
+  bytes manager = 2;
+}
+
+message TaskReconstructionData {
+  // The number of times this task has been reconstructed so far.
+  uint64 num_reconstructions = 1;
+  // The node manager that is trying to reconstruct the task.
+  bytes node_manager_id = 2;
+}
+
+message TaskTableData {
+  Task task = 1;
+}
+
+message ActorTableData {
+  // State of an actor.
+  enum ActorState {
+    // Actor is alive.
+    ALIVE = 0;
+    // Actor is dead, now being reconstructed.
+    // After reconstruction finishes, the state will become alive again.
+    RECONSTRUCTING = 1;
+    // Actor is already dead and won't be reconstructed.
+    DEAD = 2;
+  }
+  // The ID of the actor that was created.
+  bytes actor_id = 1;
+  // The ID of the actor that created it, null if created by non-actor task.
+  bytes parent_actor_id = 2;
+  // The dummy object ID returned by the actor creation task. If the actor
+  // dies, then this is the object that should be reconstructed for the actor
+  // to be recreated.
+  bytes actor_creation_dummy_object_id = 3;
+  // The ID of the job that created the actor.
+  bytes job_id = 4;
+  // The ID of the node manager that created the actor.
+  bytes node_manager_id = 5;
+  // Current state of this actor.
+  ActorState state = 6;
+  // Max number of times this actor should be reconstructed.
+  uint64 max_reconstructions = 7;
+  // Remaining number of reconstructions.
+  uint64 remaining_reconstructions = 8;
+}
+
+message ErrorTableData {
+  // The ID of the job that the error is for.
+  bytes job_id = 1;
+  // The type of the error.
+  string type = 2;
+  // The error message.
+  string error_message = 3;
+  // The timestamp of the error message.
+  double timestamp = 4;
+}
+
+message ProfileTableData {
+  // Represents a profile event.
+  message ProfileEvent {
+    // The type of the event.
+    string event_type = 1;
+    // The start time of the event.
+    double start_time = 2;
+    // The end time of the event. If the event is a point event, then this should
+    // be the same as the start time.
+    double end_time = 3;
+    // Additional data associated with the event. This data must be serialized
+    // using JSON.
+    string extra_data = 4;
+  }
+
+  // The type of the component that generated the event, e.g., worker or
+  // object_manager, or node_manager.
+  string component_type = 1;
+  // An identifier for the component that generated the event.
+  bytes component_id = 2;
+  // An identifier for the node that generated the event.
+  string node_ip_address = 3;
+  // This is a batch of profiling events. We batch these together for
+  // performance reasons because a single task may generate many events, and
+  // we don't want each event to require a GCS command.
+  repeated ProfileEvent profile_events = 4;
+}
+
+message ResourceTableData {
+  // The total capacity of this resource type.
+  double resource_capacity = 1;
+}
+
+message ClientTableData {
+  // The client ID of the client that the message is about.
+  bytes client_id = 1;
+  // The IP address of the client's node manager.
+  string node_manager_address = 2;
+  // The IPC socket name of the client's raylet.
+  string raylet_socket_name = 3;
+  // The IPC socket name of the client's plasma store.
+  string object_store_socket_name = 4;
+  // The port at which the client's node manager is listening for TCP
+  // connections from other node managers.
+  int32 node_manager_port = 5;
+  // The port at which the client's object manager is listening for TCP
+  // connections from other object managers.
+  int32 object_manager_port = 6;
+  // True if the message is about the addition of a client and false if it is
+  // about the deletion of a client.
+  bool is_insertion = 7;
+
+  // TODO(hchen): Define the following resources in map format.
+  repeated string resources_total_label = 8;
+  repeated double resources_total_capacity = 9;
+}
+
+message HeartbeatTableData {
+  // Node manager client id
+  bytes client_id = 1;
+  // TODO(hchen): Define the following resources in map format.
+  // Resource capacity currently available on this node manager.
+  repeated string resources_available_label = 2;
+  repeated double resources_available_capacity = 3;
+  // Total resource capacity configured for this node manager.
+  repeated string resources_total_label = 4;
+  repeated double resources_total_capacity = 5;
+  // Aggregate outstanding resource load on this node manager.
+  repeated string resource_load_label = 6;
+  repeated double resource_load_capacity = 7;
+}
+
+message HeartbeatBatchTableData {
+  repeated HeartbeatTableData batch = 1;
+}
+
+// Data for a lease on task execution.
+message TaskLeaseData {
+  // Node manager client ID.
+  bytes node_manager_id = 1;
+  // The time that the lease was last acquired at. NOTE(swang): This is the
+  // system clock time according to the node that added the entry and is not
+  // synchronized with other nodes.
+  uint64 acquired_at = 2;
+  // The period that the lease is active for.
+  uint64 timeout = 3;
+}
+
+message JobTableData {
+  // The job ID.
+  bytes job_id = 1;
+  // Whether it's dead.
+  bool is_dead = 2;
+  // The UNIX timestamp corresponding to this event (job added or removed).
+  int64 timestamp = 3;
+  // IP of the node this job was started on.
+  string node_manager_address = 4;
+  // Process ID of the driver running this job.
+  int64 driver_pid = 5;
+}
+
+// This table stores the actor checkpoint data. An actor checkpoint
+// is the snapshot of an actor's state in the actor registration.
+// See `actor_registration.h` for more detailed explanation of these fields.
+message ActorCheckpointData {
+  // ID of this actor.
+  bytes actor_id = 1;
+  // The dummy object ID of actor's most recently executed task.
+  bytes execution_dependency = 2;
+  // A list of IDs of this actor's handles.
+  repeated bytes handle_ids = 3;
+  // The task counters of the above handles.
+  repeated uint64 task_counters = 4;
+  // The frontier dependencies of the above handles.
+  repeated bytes frontier_dependencies = 5;
+  // A list of unreleased dummy objects from this actor.
+  repeated bytes unreleased_dummy_objects = 6;
+  // The numbers of dependencies for the above unreleased dummy objects.
+  repeated uint32 num_dummy_object_dependencies = 7;
+}
+
+// This table stores the actor-to-available-checkpoint-ids mapping.
+message ActorCheckpointIdData {
+  // ID of this actor.
+  bytes actor_id = 1;
+  // IDs of this actor's available checkpoints.
+  repeated bytes checkpoint_ids = 2;
+  // A list of the timestamps for each of the above `checkpoint_ids`.
+  repeated uint64 timestamps = 3;
+}
+
+// This enum type is used as object's metadata to indicate the object's creating
+// task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may want
+// to distinguish between intentional and expected actor failures, and between
+// worker process failure and node failure.
+enum ErrorType {
+  // Indicates that a task failed because the worker died unexpectedly while executing it.
+  WORKER_DIED = 0;
+  // Indicates that a task failed because the actor died unexpectedly before finishing it.
+  ACTOR_DIED = 1;
+  // Indicates that an object is lost and cannot be reconstructed.
+  // Note, this currently only happens to actor objects. When the actor's state is already
+  // after the object's creating task, the actor cannot re-run the task.
+  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
+  // 1) A object that was put by the driver.
+  // 2) The object's creating task is already cleaned up from GCS (this currently
+  //    crashes raylet).
+  OBJECT_UNRECONSTRUCTABLE = 2;
+}

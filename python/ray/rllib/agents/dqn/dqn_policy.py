@@ -7,14 +7,16 @@ import numpy as np
 from scipy.stats import entropy
 
 import ray
-from ray.rllib.policy.policy import Policy
+from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
+from ray.rllib.agents.dqn.simple_q_policy import ExplorationStateMixin, \
+    TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog, Categorical
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.policy.tf_policy import TFPolicy, \
-    LearningRateSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
+    minimize_and_clip
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -93,187 +95,13 @@ class QLoss(object):
             self.td_error = (
                 q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
-                importance_weights * _huber_loss(self.td_error))
+                importance_weights * huber_loss(self.td_error))
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
                 "min_q": tf.reduce_min(q_t_selected),
                 "max_q": tf.reduce_max(q_t_selected),
                 "mean_td_error": tf.reduce_mean(self.td_error),
             }
-
-
-class QNetwork(object):
-    def __init__(self,
-                 model,
-                 num_actions,
-                 dueling=False,
-                 hiddens=[256],
-                 use_noisy=False,
-                 num_atoms=1,
-                 v_min=-10.0,
-                 v_max=10.0,
-                 sigma0=0.5,
-                 parameter_noise=False):
-        self.model = model
-        with tf.variable_scope("action_value"):
-            if hiddens:
-                action_out = model.last_layer
-                for i in range(len(hiddens)):
-                    if use_noisy:
-                        action_out = self.noisy_layer(
-                            "hidden_%d" % i, action_out, hiddens[i], sigma0)
-                    elif parameter_noise:
-                        import tensorflow.contrib.layers as layers
-                        action_out = layers.fully_connected(
-                            action_out,
-                            num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu,
-                            normalizer_fn=layers.layer_norm)
-                    else:
-                        action_out = tf.layers.dense(
-                            action_out,
-                            units=hiddens[i],
-                            activation=tf.nn.relu)
-            else:
-                # Avoid postprocessing the outputs. This enables custom models
-                # to be used for parametric action DQN.
-                action_out = model.outputs
-            if use_noisy:
-                action_scores = self.noisy_layer(
-                    "output",
-                    action_out,
-                    num_actions * num_atoms,
-                    sigma0,
-                    non_linear=False)
-            elif hiddens:
-                action_scores = tf.layers.dense(
-                    action_out, units=num_actions * num_atoms, activation=None)
-            else:
-                action_scores = model.outputs
-            if num_atoms > 1:
-                # Distributional Q-learning uses a discrete support z
-                # to represent the action value distribution
-                z = tf.range(num_atoms, dtype=tf.float32)
-                z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
-                support_logits_per_action = tf.reshape(
-                    tensor=action_scores, shape=(-1, num_actions, num_atoms))
-                support_prob_per_action = tf.nn.softmax(
-                    logits=support_logits_per_action)
-                action_scores = tf.reduce_sum(
-                    input_tensor=z * support_prob_per_action, axis=-1)
-                self.logits = support_logits_per_action
-                self.dist = support_prob_per_action
-            else:
-                self.logits = tf.expand_dims(tf.ones_like(action_scores), -1)
-                self.dist = tf.expand_dims(tf.ones_like(action_scores), -1)
-
-        if dueling:
-            with tf.variable_scope("state_value"):
-                state_out = model.last_layer
-                for i in range(len(hiddens)):
-                    if use_noisy:
-                        state_out = self.noisy_layer("dueling_hidden_%d" % i,
-                                                     state_out, hiddens[i],
-                                                     sigma0)
-                    elif parameter_noise:
-                        state_out = tf.contrib.layers.fully_connected(
-                            state_out,
-                            num_outputs=hiddens[i],
-                            activation_fn=tf.nn.relu,
-                            normalizer_fn=tf.contrib.layers.layer_norm)
-                    else:
-                        state_out = tf.layers.dense(
-                            state_out, units=hiddens[i], activation=tf.nn.relu)
-                if use_noisy:
-                    state_score = self.noisy_layer(
-                        "dueling_output",
-                        state_out,
-                        num_atoms,
-                        sigma0,
-                        non_linear=False)
-                else:
-                    state_score = tf.layers.dense(
-                        state_out, units=num_atoms, activation=None)
-            if num_atoms > 1:
-                support_logits_per_action_mean = tf.reduce_mean(
-                    support_logits_per_action, 1)
-                support_logits_per_action_centered = (
-                    support_logits_per_action - tf.expand_dims(
-                        support_logits_per_action_mean, 1))
-                support_logits_per_action = tf.expand_dims(
-                    state_score, 1) + support_logits_per_action_centered
-                support_prob_per_action = tf.nn.softmax(
-                    logits=support_logits_per_action)
-                self.value = tf.reduce_sum(
-                    input_tensor=z * support_prob_per_action, axis=-1)
-                self.logits = support_logits_per_action
-                self.dist = support_prob_per_action
-            else:
-                action_scores_mean = _reduce_mean_ignore_inf(action_scores, 1)
-                action_scores_centered = action_scores - tf.expand_dims(
-                    action_scores_mean, 1)
-                self.value = state_score + action_scores_centered
-        else:
-            self.value = action_scores
-
-    def f_epsilon(self, x):
-        return tf.sign(x) * tf.sqrt(tf.abs(x))
-
-    def noisy_layer(self, prefix, action_in, out_size, sigma0,
-                    non_linear=True):
-        """
-        a common dense layer: y = w^{T}x + b
-        a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x +
-            (b+\epsilon_b*\sigma_b)
-        where \epsilon are random variables sampled from factorized normal
-        distributions and \sigma are trainable variables which are expected to
-        vanish along the training procedure
-        """
-        import tensorflow.contrib.layers as layers
-
-        in_size = int(action_in.shape[1])
-
-        epsilon_in = tf.random_normal(shape=[in_size])
-        epsilon_out = tf.random_normal(shape=[out_size])
-        epsilon_in = self.f_epsilon(epsilon_in)
-        epsilon_out = self.f_epsilon(epsilon_out)
-        epsilon_w = tf.matmul(
-            a=tf.expand_dims(epsilon_in, -1), b=tf.expand_dims(epsilon_out, 0))
-        epsilon_b = epsilon_out
-        sigma_w = tf.get_variable(
-            name=prefix + "_sigma_w",
-            shape=[in_size, out_size],
-            dtype=tf.float32,
-            initializer=tf.random_uniform_initializer(
-                minval=-1.0 / np.sqrt(float(in_size)),
-                maxval=1.0 / np.sqrt(float(in_size))))
-        # TF noise generation can be unreliable on GPU
-        # If generating the noise on the CPU,
-        # lowering sigma0 to 0.1 may be helpful
-        sigma_b = tf.get_variable(
-            name=prefix + "_sigma_b",
-            shape=[out_size],
-            dtype=tf.float32,  # 0.5~GPU, 0.1~CPU
-            initializer=tf.constant_initializer(
-                sigma0 / np.sqrt(float(in_size))))
-
-        w = tf.get_variable(
-            name=prefix + "_fc_w",
-            shape=[in_size, out_size],
-            dtype=tf.float32,
-            initializer=layers.xavier_initializer())
-        b = tf.get_variable(
-            name=prefix + "_fc_b",
-            shape=[out_size],
-            dtype=tf.float32,
-            initializer=tf.zeros_initializer())
-
-        action_activation = tf.nn.xw_plus_b(action_in, w + sigma_w * epsilon_w,
-                                            b + sigma_b * epsilon_b)
-
-        if not non_linear:
-            return action_activation
-        return tf.nn.relu(action_activation)
 
 
 class QValuePolicy(object):
@@ -305,44 +133,6 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class ExplorationStateMixin(object):
-    def __init__(self, obs_space, action_space, config):
-        self.cur_epsilon = 1.0
-        self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.eps = tf.placeholder(tf.float32, (), name="eps")
-
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
-
-    def set_epsilon(self, epsilon):
-        self.cur_epsilon = epsilon
-
-    @override(Policy)
-    def get_state(self):
-        return [TFPolicy.get_state(self), self.cur_epsilon]
-
-    @override(Policy)
-    def set_state(self, state):
-        TFPolicy.set_state(self, state[0])
-        self.set_epsilon(state[1])
-
-
-class TargetNetworkMixin(object):
-    def __init__(self, obs_space, action_space, config):
-        # update_target_fn will be called periodically to copy Q network to
-        # target Q network
-        update_target_expr = []
-        assert len(self.q_func_vars) == len(self.target_q_func_vars), \
-            (self.q_func_vars, self.target_q_func_vars)
-        for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
-            update_target_expr.append(var_target.assign(var))
-        self.update_target_expr = tf.group(*update_target_expr)
-
-    def update_target(self):
-        return self.get_session().run(self.update_target_expr)
-
-
 class ComputeTDErrorMixin(object):
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -350,7 +140,7 @@ class ComputeTDErrorMixin(object):
             return np.zeros_like(rew_t)
 
         td_err = self.get_session().run(
-            self.loss.td_error,
+            self.q_loss.td_error,
             feed_dict={
                 self.get_placeholder(SampleBatch.CUR_OBS): [
                     np.array(ob) for ob in obs_t
@@ -394,20 +184,65 @@ def postprocess_trajectory(policy,
     return _postprocess_dqn(policy, sample_batch)
 
 
-def build_q_networks(policy, input_dict, observation_space, action_space,
-                     config):
+def build_q_model(policy, obs_space, action_space, config):
 
     if not isinstance(action_space, Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
+    if config["hiddens"]:
+        # try to infer the last layer size, otherwise fall back to 256
+        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
+        config["model"]["no_final_linear"] = True
+    else:
+        num_outputs = action_space.n
+
+    policy.q_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        num_outputs,
+        config["model"],
+        framework="tf",
+        model_interface=DistributionalQModel,
+        name=Q_SCOPE,
+        num_atoms=config["num_atoms"],
+        q_hiddens=config["hiddens"],
+        dueling=config["dueling"],
+        use_noisy=config["noisy"],
+        v_min=config["v_min"],
+        v_max=config["v_max"],
+        sigma0=config["sigma0"],
+        parameter_noise=config["parameter_noise"])
+
+    policy.target_q_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        num_outputs,
+        config["model"],
+        framework="tf",
+        model_interface=DistributionalQModel,
+        name=Q_TARGET_SCOPE,
+        num_atoms=config["num_atoms"],
+        q_hiddens=config["hiddens"],
+        dueling=config["dueling"],
+        use_noisy=config["noisy"],
+        v_min=config["v_min"],
+        v_max=config["v_max"],
+        sigma0=config["sigma0"],
+        parameter_noise=config["parameter_noise"])
+
+    return policy.q_model
+
+
+def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
+                     config):
+
     # Action Q network
-    with tf.variable_scope(Q_SCOPE) as scope:
-        q_values, q_logits, q_dist, _ = _build_q_network(
-            policy, input_dict[SampleBatch.CUR_OBS], observation_space,
-            action_space)
-        policy.q_values = q_values
-        policy.q_func_vars = _scope_vars(scope.name)
+    q_values, q_logits, q_dist = _compute_q_values(
+        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
+        action_space)
+    policy.q_values = q_values
+    policy.q_func_vars = q_model.variables()
 
     # Noise vars for Q network except for layer normalization vars
     if config["parameter_noise"]:
@@ -419,7 +254,7 @@ def build_q_networks(policy, input_dict, observation_space, action_space,
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
                        action_space.n, policy.stochastic, policy.eps,
-                       policy.config["soft_q"], policy.config["softmax_temp"])
+                       config["soft_q"], config["softmax_temp"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
     return policy.output_actions, policy.action_prob
@@ -463,37 +298,36 @@ def _build_parameter_noise(policy, pnet_params):
 
 
 def build_q_losses(policy, batch_tensors):
+    config = policy.config
     # q network evaluation
-    with tf.variable_scope(Q_SCOPE, reuse=True):
-        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-        q_t, q_logits_t, q_dist_t, model = _build_q_network(
-            policy, batch_tensors[SampleBatch.CUR_OBS],
-            policy.observation_space, policy.action_space)
-        policy.q_batchnorm_update_ops = list(
-            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    q_t, q_logits_t, q_dist_t = _compute_q_values(
+        policy, policy.q_model, batch_tensors[SampleBatch.CUR_OBS],
+        policy.observation_space, policy.action_space)
+    policy.q_batchnorm_update_ops = list(
+        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # target q network evalution
-    with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-        q_tp1, q_logits_tp1, q_dist_tp1, _ = _build_q_network(
-            policy, batch_tensors[SampleBatch.NEXT_OBS],
-            policy.observation_space, policy.action_space)
-        policy.target_q_func_vars = _scope_vars(scope.name)
+    q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
+        policy, policy.target_q_model, batch_tensors[SampleBatch.NEXT_OBS],
+        policy.observation_space, policy.action_space)
+    policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
-    one_hot_selection = tf.one_hot(batch_tensors[SampleBatch.ACTIONS],
-                                   policy.action_space.n)
+    one_hot_selection = tf.one_hot(
+        tf.cast(batch_tensors[SampleBatch.ACTIONS], tf.int32),
+        policy.action_space.n)
     q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
     q_logits_t_selected = tf.reduce_sum(
         q_logits_t * tf.expand_dims(one_hot_selection, -1), 1)
 
     # compute estimate of best possible value starting from state at t + 1
-    if policy.config["double_q"]:
-        with tf.variable_scope(Q_SCOPE, reuse=True):
-            q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-                q_dist_tp1_using_online_net, _ = _build_q_network(
-                    policy,
-                    batch_tensors[SampleBatch.NEXT_OBS],
-                    policy.observation_space, policy.action_space)
+    if config["double_q"]:
+        q_tp1_using_online_net, q_logits_tp1_using_online_net, \
+            q_dist_tp1_using_online_net = _compute_q_values(
+                policy, policy.q_model,
+                batch_tensors[SampleBatch.NEXT_OBS],
+                policy.observation_space, policy.action_space)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
                                                   policy.action_space.n)
@@ -507,12 +341,14 @@ def build_q_losses(policy, batch_tensors):
         q_dist_tp1_best = tf.reduce_sum(
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.loss = _build_q_loss(
+    policy.q_loss = QLoss(
         q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
-        batch_tensors[SampleBatch.REWARDS], batch_tensors[SampleBatch.DONES],
-        batch_tensors[PRIO_WEIGHTS], policy.config)
+        batch_tensors[PRIO_WEIGHTS], batch_tensors[SampleBatch.REWARDS],
+        tf.cast(batch_tensors[SampleBatch.DONES],
+                tf.float32), config["gamma"], config["n_step"],
+        config["num_atoms"], config["v_min"], config["v_max"])
 
-    return policy.loss.loss
+    return policy.q_loss.loss
 
 
 def adam_optimizer(policy, config):
@@ -522,7 +358,7 @@ def adam_optimizer(policy, config):
 
 def clip_gradients(policy, optimizer, loss):
     if policy.config["grad_norm_clipping"] is not None:
-        grads_and_vars = _minimize_and_clip(
+        grads_and_vars = minimize_and_clip(
             optimizer,
             loss,
             var_list=policy.q_func_vars,
@@ -544,7 +380,7 @@ def exploration_setting_inputs(policy):
 def build_q_stats(policy, batch_tensors):
     return dict({
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-    }, **policy.loss.stats)
+    }, **policy.q_loss.stats)
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
@@ -556,33 +392,45 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def _build_q_network(policy, obs, obs_space, action_space):
+def _compute_q_values(policy, model, obs, obs_space, action_space):
     config = policy.config
-    qnet = QNetwork(
-        ModelCatalog.get_model({
-            "obs": obs,
-            "is_training": policy._get_is_training_placeholder(),
-        }, obs_space, action_space, action_space.n, config["model"]),
-        action_space.n, config["dueling"], config["hiddens"], config["noisy"],
-        config["num_atoms"], config["v_min"], config["v_max"],
-        config["sigma0"], config["parameter_noise"])
-    return qnet.value, qnet.logits, qnet.dist, qnet.model
+    model_out, state = model({
+        "obs": obs,
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
 
+    if config["num_atoms"] > 1:
+        (action_scores, z, support_logits_per_action, logits,
+         dist) = model.get_q_value_distributions(model_out)
+    else:
+        (action_scores, logits,
+         dist) = model.get_q_value_distributions(model_out)
 
-def _build_q_value_policy(policy, q_values):
-    policy = QValuePolicy(q_values, policy.cur_observations,
-                          policy.num_actions, policy.stochastic, policy.eps,
-                          policy.config["soft_q"],
-                          policy.config["softmax_temp"])
-    return policy.action, policy.action_prob
+    if config["dueling"]:
+        state_score = model.get_state_value(model_out)
+        if config["num_atoms"] > 1:
+            support_logits_per_action_mean = tf.reduce_mean(
+                support_logits_per_action, 1)
+            support_logits_per_action_centered = (
+                support_logits_per_action - tf.expand_dims(
+                    support_logits_per_action_mean, 1))
+            support_logits_per_action = tf.expand_dims(
+                state_score, 1) + support_logits_per_action_centered
+            support_prob_per_action = tf.nn.softmax(
+                logits=support_logits_per_action)
+            value = tf.reduce_sum(
+                input_tensor=z * support_prob_per_action, axis=-1)
+            logits = support_logits_per_action
+            dist = support_prob_per_action
+        else:
+            action_scores_mean = reduce_mean_ignore_inf(action_scores, 1)
+            action_scores_centered = action_scores - tf.expand_dims(
+                action_scores_mean, 1)
+            value = state_score + action_scores_centered
+    else:
+        value = action_scores
 
-
-def _build_q_loss(q_t_selected, q_logits_t_selected, q_tp1_best,
-                  q_dist_tp1_best, rewards, dones, importance_weights, config):
-    return QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
-                 q_dist_tp1_best, importance_weights, rewards,
-                 tf.cast(dones, tf.float32), config["gamma"], config["n_step"],
-                 config["num_atoms"], config["v_min"], config["v_max"])
+    return value, logits, dist
 
 
 def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
@@ -634,61 +482,11 @@ def _postprocess_dqn(policy, batch):
     return batch
 
 
-def _reduce_mean_ignore_inf(x, axis):
-    """Same as tf.reduce_mean() but ignores -inf values."""
-    mask = tf.not_equal(x, tf.float32.min)
-    x_zeroed = tf.where(mask, x, tf.zeros_like(x))
-    return (tf.reduce_sum(x_zeroed, axis) / tf.reduce_sum(
-        tf.cast(mask, tf.float32), axis))
-
-
-def _huber_loss(x, delta=1.0):
-    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
-    return tf.where(
-        tf.abs(x) < delta,
-        tf.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
-
-
-def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):
-    """Minimized `objective` using `optimizer` w.r.t. variables in
-    `var_list` while ensure the norm of the gradients for each
-    variable is clipped to `clip_val`
-    """
-    gradients = optimizer.compute_gradients(objective, var_list=var_list)
-    for i, (grad, var) in enumerate(gradients):
-        if grad is not None:
-            gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
-    return gradients
-
-
-def _scope_vars(scope, trainable_only=False):
-    """
-    Get variables inside a scope
-    The scope can be specified as a string
-
-    Parameters
-    ----------
-    scope: str or VariableScope
-      scope in which the variables reside.
-    trainable_only: bool
-      whether or not to return only the variables that were marked as
-      trainable.
-
-    Returns
-    -------
-    vars: [tf.Variable]
-      list of variables in `scope`.
-    """
-    return tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf.GraphKeys.VARIABLES,
-        scope=scope if isinstance(scope, str) else scope.name)
-
-
 DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
-    make_action_sampler=build_q_networks,
+    make_model=build_q_model,
+    action_sampler_fn=build_q_networks,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_trajectory,
@@ -696,7 +494,7 @@ DQNTFPolicy = build_tf_policy(
     gradients_fn=clip_gradients,
     extra_action_feed_fn=exploration_setting_inputs,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy.loss.td_error},
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     update_ops_fn=lambda policy: policy.q_batchnorm_update_ops,
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,

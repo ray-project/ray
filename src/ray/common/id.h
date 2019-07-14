@@ -17,8 +17,15 @@
 
 namespace ray {
 
-class DriverID;
+class WorkerID;
 class UniqueID;
+class JobID;
+
+/// TODO(qwang): These 2 helper functions should be removed
+/// once we separated the `WorkerID` from `UniqueID`.
+///
+/// A helper function that get the `DriverID` of the given job.
+WorkerID ComputeDriverIdFromJob(const JobID &job_id);
 
 // Declaration.
 std::mt19937 RandomlySeededMersenneTwister();
@@ -58,8 +65,9 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-  UniqueID() : BaseID(){};
   static size_t Size() { return kUniqueIDSize; }
+
+  UniqueID() : BaseID() {}
 
  protected:
   UniqueID(const std::string &binary);
@@ -68,11 +76,28 @@ class UniqueID : public BaseID<UniqueID> {
   uint8_t id_[kUniqueIDSize];
 };
 
+class JobID : public BaseID<JobID> {
+ public:
+  static constexpr int64_t length = 4;
+
+  // TODO(qwang): Use `uint32_t` to store the data.
+  static JobID FromInt(uint32_t value);
+
+  static size_t Size() { return length; }
+
+  static JobID FromRandom() = delete;
+
+  JobID() : BaseID() {}
+
+ private:
+  uint8_t id_[length];
+};
+
 class TaskID : public BaseID<TaskID> {
  public:
   TaskID() : BaseID() {}
   static size_t Size() { return kTaskIDSize; }
-  static TaskID GetDriverTaskID(const DriverID &driver_id);
+  static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
  private:
   uint8_t id_[kTaskIDSize];
@@ -116,12 +141,15 @@ class ObjectID : public BaseID<ObjectID> {
   int32_t index_;
 };
 
+static_assert(sizeof(JobID) == JobID::length + sizeof(size_t),
+              "JobID size is not as expected");
 static_assert(sizeof(TaskID) == kTaskIDSize + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
               "ObjectID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
@@ -152,12 +180,20 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 /// Generate a task ID from the given info.
 ///
-/// \param driver_id The driver that creates the task.
+/// \param job_id The job that creates the task.
 /// \param parent_task_id The parent task of this task.
 /// \param parent_task_counter The task index of the worker.
 /// \return The task ID generated from the given info.
-const TaskID GenerateTaskId(const DriverID &driver_id, const TaskID &parent_task_id,
+const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
                             int parent_task_counter);
+
+/// Compute the next actor handle ID of a new actor handle during a fork operation.
+///
+/// \param actor_handle_id The actor handle ID of original actor.
+/// \param num_forks The count of forks of original actor.
+/// \return The next actor handle ID generated from the given info.
+const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
+                                             int64_t num_forks);
 
 template <typename T>
 BaseID<T>::BaseID() {
@@ -184,6 +220,7 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
+  RAY_CHECK(binary.size() == T::Size());
   T t = T::Nil();
   std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
@@ -264,6 +301,7 @@ namespace std {
   };
 
 DEFINE_UNIQUE_ID(UniqueID);
+DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 #include "id_def.h"

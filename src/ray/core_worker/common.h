@@ -5,21 +5,18 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
 
 /// Type of this worker.
 enum class WorkerType { WORKER, DRIVER };
 
-/// Language of Ray tasks and workers.
-enum class WorkerLanguage { PYTHON, JAVA };
-
 /// Information about a remote function.
 struct RayFunction {
   /// Language of the remote function.
-  const WorkerLanguage language;
+  const Language language;
   /// Function descriptor of the remote function.
   const std::vector<std::string> function_descriptor;
 };
@@ -68,26 +65,35 @@ class TaskArg {
   const std::shared_ptr<Buffer> data_;
 };
 
+/// Information of a task
+struct TaskInfo {
+  /// The ID of task.
+  const TaskID task_id;
+  /// The job ID.
+  const JobID job_id;
+  /// The type of task.
+  const TaskType task_type;
+};
+
 /// Task specification, which includes the immutable information about the task
 /// which are determined at the submission time.
 /// TODO(zhijunfu): this can be removed after everything is moved to protobuf.
 class TaskSpec {
  public:
-  TaskSpec(const raylet::TaskSpecification &task_spec,
-           const std::vector<ObjectID> &dependencies)
+  TaskSpec(const TaskSpecification &task_spec, const std::vector<ObjectID> &dependencies)
       : task_spec_(task_spec), dependencies_(dependencies) {}
 
-  TaskSpec(const raylet::TaskSpecification &&task_spec,
+  TaskSpec(const TaskSpecification &&task_spec,
            const std::vector<ObjectID> &&dependencies)
       : task_spec_(task_spec), dependencies_(dependencies) {}
 
-  const raylet::TaskSpecification &GetTaskSpecification() const { return task_spec_; }
+  const TaskSpecification &GetTaskSpecification() const { return task_spec_; }
 
   const std::vector<ObjectID> &GetDependencies() const { return dependencies_; }
 
  private:
   /// Raylet task specification.
-  raylet::TaskSpecification task_spec_;
+  TaskSpecification task_spec_;
 
   /// Dependencies.
   std::vector<ObjectID> dependencies_;

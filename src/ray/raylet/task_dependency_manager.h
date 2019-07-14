@@ -3,7 +3,7 @@
 
 // clang-format off
 #include "ray/common/id.h"
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/util/util.h"
@@ -12,6 +12,8 @@
 namespace ray {
 
 namespace raylet {
+
+using rpc::TaskLeaseData;
 
 class ReconstructionPolicy;
 
