@@ -73,13 +73,16 @@ def test_heartbeats(ray_start_cluster_head):
 
     test_actors = [Actor.remote()]
     # This is only used to update the load metrics for the autoscaler.
+
+    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
+    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
     # Process a round of messages.
     monitor.process_messages()
-    import ipdb
-    ipdb.set_trace()
-    print(test_actors)
+    from pprint import pprint; import ipdb; ipdb.set_trace(context=30)
+    pprint(vars(monitor.load_metrics))
 
     # worker_nodes = [cluster.add_node() for i in range(4)]
     # for i in range(3):
