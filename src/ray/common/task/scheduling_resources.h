@@ -429,6 +429,12 @@ class ResourceIdSet {
   std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
       flatbuffers::FlatBufferBuilder &fbb) const;
 
+  /// \brief Serialize this object as a string.
+  ///
+  /// \return A serialized string of this object.
+  /// TODO(zhijunfu): this can be removed after raylet client is migrated to grpc.
+  const std::string Serialize() const;
+
  private:
   /// A mapping from reosurce name to a set of resource IDs for that resource.
   std::unordered_map<std::string, ResourceIds> available_resources_;

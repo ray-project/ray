@@ -89,20 +89,22 @@ message ActorTableData {
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
+  // The ID of the actor that created it, null if created by non-actor task.
+  bytes parent_actor_id = 2;
   // The dummy object ID returned by the actor creation task. If the actor
   // dies, then this is the object that should be reconstructed for the actor
   // to be recreated.
-  bytes actor_creation_dummy_object_id = 2;
+  bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
-  bytes job_id = 3;
+  bytes job_id = 4;
   // The ID of the node manager that created the actor.
-  bytes node_manager_id = 4;
+  bytes node_manager_id = 5;
   // Current state of this actor.
-  ActorState state = 5;
+  ActorState state = 6;
   // Max number of times this actor should be reconstructed.
-  uint64 max_reconstructions = 6;
+  uint64 max_reconstructions = 7;
   // Remaining number of reconstructions.
-  uint64 remaining_reconstructions = 7;
+  uint64 remaining_reconstructions = 8;
 }
 
 message ErrorTableData {

@@ -70,7 +70,11 @@ class WorkerPoolMock : public WorkerPool {
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(), io_service_(), error_message_type_(1) {}
+  WorkerPoolTest()
+      : worker_pool_(),
+        io_service_(),
+        error_message_type_(1),
+        client_call_manager_(io_service_) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
@@ -85,7 +89,8 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(new Worker(pid, language, -1, client));
+    return std::shared_ptr<Worker>(
+        new Worker(pid, language, -1, client, client_call_manager_));
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
@@ -97,6 +102,7 @@ class WorkerPoolTest : public ::testing::Test {
   WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
   int64_t error_message_type_;
+  rpc::ClientCallManager client_call_manager_;
 
  private:
   void HandleNewClient(LocalClientConnection &){};
