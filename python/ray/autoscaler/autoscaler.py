@@ -209,15 +209,10 @@ class LoadMetrics(object):
     def num_workers_connected(self):
         return self._info()["NumNodesConnected"]
 
-    def info_string(self):
-        return ", ".join(
-            ["{}={}".format(k, v) for k, v in sorted(self._info().items())])
-
-    def _info(self):
+    def get_resource_usage(self):
         nodes_used = 0.0
         resources_used = {}
         resources_total = {}
-        now = time.time()
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
             max_frac = 0.0
@@ -234,6 +229,17 @@ class LoadMetrics(object):
                     if frac > max_frac:
                         max_frac = frac
             nodes_used += max_frac
+
+        return nodes_used, resources_used, resources_total
+
+    def info_string(self):
+        return ", ".join(
+            ["{}={}".format(k, v) for k, v in sorted(self._info().items())])
+
+    def _info(self):
+        nodes_used, resources_used, resources_total = self.get_resource_usage()
+
+        now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         heartbeat_times = [
             now - t for t in self.last_heartbeat_time_by_ip.values()
