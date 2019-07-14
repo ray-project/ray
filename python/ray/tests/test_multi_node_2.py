@@ -105,11 +105,11 @@ def test_heartbeats(ray_start_cluster_head):
 
     timeout = 5
 
-    verify_load_metrics(monitor, (0.0, {b'CPU': 0.0}, {b'CPU': 1.0}))
+    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': 1.0}))
 
     work_handles += [test_actors[0].work.remote(timeout=timeout * 2)]
 
-    verify_load_metrics(monitor, (1.0, {b'CPU': 1.0}, {b'CPU': 1.0}))
+    verify_load_metrics(monitor, (1.0, {'CPU': 1.0}, {'CPU': 1.0}))
 
     ray.get(work_handles)
 
@@ -121,7 +121,7 @@ def test_heartbeats(ray_start_cluster_head):
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
 
-    verify_load_metrics(monitor, (0.0, {b'CPU': 0.0}, {b'CPU': num_nodes_total}))
+    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': num_nodes_total}))
 
     work_handles = [test_actors[0].work.remote(timeout=timeout * 2)]
     for i in range(num_workers):
@@ -131,11 +131,11 @@ def test_heartbeats(ray_start_cluster_head):
 
     verify_load_metrics(
         monitor,
-        (num_nodes_total, {b'CPU': num_nodes_total}, {b'CPU': num_nodes_total}))
+        (num_nodes_total, {'CPU': num_nodes_total}, {'CPU': num_nodes_total}))
 
     ray.get(work_handles)
 
-    verify_load_metrics(monitor, (0.0, {b'CPU': 0.0}, {b'CPU': num_nodes_total}))
+    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': num_nodes_total}))
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
