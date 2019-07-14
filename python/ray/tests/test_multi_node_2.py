@@ -98,7 +98,7 @@ def test_heartbeats(ray_start_cluster_head):
     test_actors = [Actor.remote()]
 
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-    monitor.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
+    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
 
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
