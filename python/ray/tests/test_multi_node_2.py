@@ -67,7 +67,8 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
         if expected_resource_usage is None:
             if all(x for x in resource_usage[1:]):
                 break
-        elif all(x == y for x, y in zip(resource_usage, expected_resource_usage)):
+        elif all(x == y
+                 for x, y in zip(resource_usage, expected_resource_usage)):
             break
         else:
             timeout -= 1
@@ -105,23 +106,22 @@ def test_heartbeats(ray_start_cluster_head):
 
     timeout = 5
 
-    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': 1.0}))
+    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": 1.0}))
 
     work_handles += [test_actors[0].work.remote(timeout=timeout * 2)]
 
-    verify_load_metrics(monitor, (1.0, {'CPU': 1.0}, {'CPU': 1.0}))
+    verify_load_metrics(monitor, (1.0, {"CPU": 1.0}, {"CPU": 1.0}))
 
     ray.get(work_handles)
 
     num_workers = 4
     num_nodes_total = float(num_workers + 1)
-    worker_nodes = [cluster.add_node() for i in range(num_workers)]
-
+    [cluster.add_node() for i in range(num_workers)]
     cluster.wait_for_nodes()
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
 
-    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': num_nodes_total}))
+    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
 
     work_handles = [test_actors[0].work.remote(timeout=timeout * 2)]
     for i in range(num_workers):
@@ -129,13 +129,15 @@ def test_heartbeats(ray_start_cluster_head):
         work_handles += [new_actor.work.remote(timeout=timeout * 2)]
         test_actors += [new_actor]
 
-    verify_load_metrics(
-        monitor,
-        (num_nodes_total, {'CPU': num_nodes_total}, {'CPU': num_nodes_total}))
+    verify_load_metrics(monitor, (num_nodes_total, {
+        "CPU": num_nodes_total
+    }, {
+        "CPU": num_nodes_total
+    }))
 
     ray.get(work_handles)
 
-    verify_load_metrics(monitor, (0.0, {'CPU': 0.0}, {'CPU': num_nodes_total}))
+    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
