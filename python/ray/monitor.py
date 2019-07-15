@@ -107,10 +107,14 @@ class Monitor(object):
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
 
+        logger.info("Updating internal resource counter.")
+
         for heartbeat_message in message.batch:
             num_resources = len(heartbeat_message.resources_available_label)
             static_resources = {}
             dynamic_resources = {}
+
+            logger.info("Updating with {} res.".format(num_resources))
             for i in range(num_resources):
                 dyn = heartbeat_message.resources_available_label[i]
                 static = heartbeat_message.resources_total_label[i]
