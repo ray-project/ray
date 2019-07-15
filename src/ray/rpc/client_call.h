@@ -6,22 +6,11 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
-#include "ray/rpc/cq_tag.h"
 
 namespace ray {
 namespace rpc {
 
 /// Represents an outgoing gRPC request.
-///
-/// The lifecycle of a `ClientCall` is as follows.
-///
-/// When a client submits a new gRPC request, a new `ClientCall` object will be created
-/// by `ClientCallMangager::CreateCall`. Then the object will be used as the tag of
-/// `CompletionQueue`.
-///
-/// When the reply is received, `ClientCallMangager` will get the address of this object
-/// via `CompletionQueue`'s tag. And the manager should call `OnReplyReceived` and then
-/// delete this object.
 ///
 /// NOTE(hchen): Compared to `ClientCallImpl`, this abstract interface doesn't use
 /// template. This allows the users (e.g., `ClientCallMangager`) not having to use
@@ -85,8 +74,31 @@ class ClientCallImpl : public ClientCall {
   friend class ClientCallManager;
 };
 
+/// This class wraps a `ClientCall`, and is used as the `tag` of gRPC's `CompletionQueue`.
+///
+/// The lifecycle of a `ClientCallTag` is as follows.
+///
+/// When a client submits a new gRPC request, a new `ClientCallTag` object will be created
+/// by `ClientCallMangager::CreateCall`. Then the object will be used as the tag of
+/// `CompletionQueue`.
+///
+/// When the reply is received, `ClientCallMangager` will get the address of this object
+/// via `CompletionQueue`'s tag. And the manager should call
+/// `GetCall()->OnReplyReceived()` and then delete this object.
+class ClientCallTag {
+ public:
+  /// Constructor.
+  ///
+  /// \param call A `ClientCall` that represents a request.
+  explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
 
-using ClientCallTag = CqTag<ClientCall>;
+  /// Get the wrapped `ClientCall`.
+  const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
+
+ private:
+  std::shared_ptr<ClientCall> call_;
+};
+
 
 /// Represents the generic signature of a `FooService::Stub::PrepareAsyncBar`
 /// function, where `Foo` is the service name and `Bar` is the rpc method name.
@@ -99,7 +111,7 @@ using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Rep
     GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
                           grpc::CompletionQueue *cq);
 
-/// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
+/// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecyclesof
 /// `ClientCall` objects.
 ///
 /// It maintains a thread that keeps polling events from `CompletionQueue`, and post
@@ -112,7 +124,8 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service) : main_service_(main_service) {
+  explicit ClientCallManager(boost::asio::io_service &main_service)
+      : main_service_(main_service) {
     // Start the polling thread.
     std::thread polling_thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
     polling_thread.detach();
@@ -122,15 +135,17 @@ class ClientCallManager {
 
   /// Create a new `ClientCall` and send request.
   ///
+  /// \tparam GrpcService Type of the gRPC-generated service class.
+  /// \tparam Request Type of the request message.
+  /// \tparam Reply Type of the reply message.
+  ///
   /// \param[in] stub The gRPC-generated stub.
   /// \param[in] prepare_async_function Pointer to the gRPC-generated
   /// `FooService::Stub::PrepareAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   ///
-  /// \tparam GrpcService Type of the gRPC-generated service class.
-  /// \tparam Request Type of the request message.
-  /// \tparam Reply Type of the reply message.
+  /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
@@ -143,6 +158,10 @@ class ClientCallManager {
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
+    //
+    // NOTE(chen): We can't directly use `ClientCall` as the tag. Because this function
+    // must return a `shared_ptr` to make sure the returned `ClientCall` is safe to use.
+    // But `response_reader_->Finish` only accepts a raw pointer.
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
@@ -162,7 +181,7 @@ class ClientCallManager {
         // Post the callback to the main event loop.
         main_service_.post([tag]() {
           tag->GetCall()->OnReplyReceived();
-          // The call is finished, we can delete the `ClientCall` object now.
+          // The call is finished, and we can delete this tag now.
           delete tag;
         });
       } else {
