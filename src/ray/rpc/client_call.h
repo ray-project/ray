@@ -110,7 +110,7 @@ using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Rep
     GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
                           grpc::CompletionQueue *cq);
 
-/// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecyclesof
+/// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
 ///
 /// It maintains a thread that keeps polling events from `CompletionQueue`, and post
