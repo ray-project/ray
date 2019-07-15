@@ -139,7 +139,9 @@ public class MockRayletClient implements RayletClient {
       }
     }
     if (spec.isActorTask()) {
-      unreadyObjects.add(spec.previousActorTaskDummyObjectId);
+      if (!store.isObjectReady(spec.previousActorTaskDummyObjectId)) {
+        unreadyObjects.add(spec.previousActorTaskDummyObjectId);
+      }
     }
     return unreadyObjects;
   }
