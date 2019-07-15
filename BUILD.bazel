@@ -359,7 +359,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/core_worker_test.cc"],
     copts = COPTS,
