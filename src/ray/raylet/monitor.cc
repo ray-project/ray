@@ -85,10 +85,7 @@ void Monitor::Tick() {
   if (!heartbeat_buffer_.empty()) {
     auto batch = std::make_shared<HeartbeatBatchTableData>();
     for (const auto &heartbeat : heartbeat_buffer_) {
-      RAY_LOG(WARNING) << "Batching heartbeat.";
-      // batch->add_batch()->CopyFrom(heartbeat.second);
-      batch->batch.push_back(std::unique_ptr<HeartbeatTableData>(
-        new HeartbeatTableData(heartbeat.second)));
+      batch->add_batch()->CopyFrom(heartbeat.second);
     }
     RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(JobID::Nil(), ClientID::Nil(),
                                                          batch, nullptr));
