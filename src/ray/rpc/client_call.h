@@ -99,7 +99,6 @@ class ClientCallTag {
   std::shared_ptr<ClientCall> call_;
 };
 
-
 /// Represents the generic signature of a `FooService::Stub::PrepareAsyncBar`
 /// function, where `Foo` is the service name and `Bar` is the rpc method name.
 ///
@@ -159,9 +158,10 @@ class ClientCallManager {
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
     //
-    // NOTE(chen): We can't directly use `ClientCall` as the tag. Because this function
-    // must return a `shared_ptr` to make sure the returned `ClientCall` is safe to use.
-    // But `response_reader_->Finish` only accepts a raw pointer.
+    // NOTE(chen): Unlike `ServerCall`, we can't directly use `ClientCall` as the tag.
+    // Because this function must return a `shared_ptr` to make sure the returned
+    // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
+    // pointer.
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
