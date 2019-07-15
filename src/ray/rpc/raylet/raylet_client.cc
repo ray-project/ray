@@ -92,8 +92,10 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   // The actual RPC.
   auto status = stub_->GetTask(&context, get_task_request, &reply);
 
-  resource_ids_.clear();
   if (status.ok()) {
+    // Protect the global variable resource_ids_.
+    std::lock_guard<std::mutex> lock(mu_);
+    resource_ids_.clear();
     // Parse resources that would be used by this assigned task.
     for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
       auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];

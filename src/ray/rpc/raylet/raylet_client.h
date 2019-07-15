@@ -209,6 +209,9 @@ class RayletClient {
 
   /// Heartbeat timer.
   boost::asio::deadline_timer heartbeat_timer_;
+
+  /// Mutex for thread safe.
+  std::mutex mu_;
 };
 
 }  // namespace rpc
