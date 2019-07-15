@@ -1,5 +1,5 @@
-How To: Distributed Tuning on the cloud
-=======================================
+Distributed Optimization
+========================
 
 This is an example walkthrough for a distributed hyperparameter search in Tune. Launching a large cluster on AWS or GCP is simple with Ray.
 
@@ -16,7 +16,6 @@ You can use this YAML configuration file to kick off your cluster.
     TODO
 
 This code starts a cluster as specified by the given cluster configuration YAML file.
-
 
 .. code-block::bash
 
@@ -62,14 +61,36 @@ In GCP, you can use the following configuration modification:
         scheduling:
           - preemptible: true
 
-Spot instances may be removed suddenly while trials are still running. You can easily mitigate the effects of this by preserving the progress of your model training through checkpointing - The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example<https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. See the `Checkpointing <tune-checkpointing.html>`__ page for more details.
+Spot instances may be removed suddenly while trials are still running. You can easily mitigate the effects of this by preserving the progress of your model training through checkpointing - The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. See the `Checkpointing <tune-checkpointing.html>`__ page for more details.
 
 Common Commands
 ---------------
 
 Below are some commonly used commands for submitting experiments. Please see the `Autoscaler page <autoscaling.html>`__ to see find more comprehensive documentation of commands.
 
+.. code-block::bash
 
-    # Run a Python script in a detached tmux session
-    $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
+    # Upload `tune_experiment.py` from your local machine onto the cluster. Then,
+    # run `python tune_experiment.py --redis-address=localhost:6379` on the remote machine.
+    $ ray submit CLUSTER.YAML tune_experiment.py --args="--redis-address=localhost:6379"
 
+    # Start a cluster and run an experiment in a detached tmux session.
+    # Shut down the cluster as soon as the experiment completes.
+    # In `tune_experiment.py`, set `tune.run(upload_dir="s3://...")` to persist results
+    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py --args="--redis-address=localhost:6379"
+
+    # Run Tensorboard and forward the port to your own machine.
+    $ ray exec CLUSTER.YAML 'tensorboard --logdir ~/ray_results/ --port 6006' --port-forward 6006
+
+    # Run Jupyter Lab and forward the port to your own machine.
+    $ ray exec CLUSTER.YAML 'jupyter lab --port 6006' --port-forward 6006
+
+    # See all the experiments and trials that have executed so far
+    $ ray exec CLUSTER.YAML 'tune ls ~/ray_results'
+
+    # If you modify any of the file_mounts (like in a project repository), you can upload
+    # and sync all of the files up to the cluster with this command.
+    $ ray rsync-up CLUSTER.YAML
+
+    # Download the results directory from your cluster head node to your local machine
+    $ ray rsync-down CLUSTER.YAML '~/ray_results' ~/cluster_results

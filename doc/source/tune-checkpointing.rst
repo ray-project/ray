@@ -7,7 +7,7 @@ When running a hyperparameter search, Tune can automatically and periodically ch
  * modifying a model in the middle of training
  * fault-tolerance in experiments with pre-emptible machines.
 
-To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example<https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
+To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
 Note that implementing this interface is required in certain Trial Schedulers such as HyperBand and PBT.
 
