@@ -7,8 +7,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#undef org_ray_runtime_raylet_RayletClientImpl_TASK_SPEC_BUFFER_SIZE
-#define org_ray_runtime_raylet_RayletClientImpl_TASK_SPEC_BUFFER_SIZE 2097152L
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeInit
@@ -20,10 +18,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeSubmitTask
- * Signature: (J[B[B)V
+ * Signature: (J[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
