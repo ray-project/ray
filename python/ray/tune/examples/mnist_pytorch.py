@@ -35,7 +35,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device):
+def train(model, optimizer, train_loader, device=torch.device("cpu")):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > EPOCH_SIZE:
@@ -48,7 +48,7 @@ def train(model, optimizer, train_loader, device):
         optimizer.step()
 
 
-def test(model, data_loader, device):
+def test(model, data_loader, device=torch.device("cpu")):
     model.eval()
     correct = 0
     total = 0

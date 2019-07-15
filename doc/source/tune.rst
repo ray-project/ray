@@ -5,11 +5,66 @@ Tune: Scalable Hyperparameter Search
     :scale: 30%
     :align: center
 
-Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
+Tune is a scalable framework for hyperparameter search and model training with a focus on deep learning and deep reinforcement learning.
 
-You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras or PyTorch <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__.
+Getting Started
+---------------
 
-(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises>`__.
+  * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
+  * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
+  * `Tutorial Notebook <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
+
+Quick Start
+~~~~~~~~~~~
+
+This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 98`` is reached. Tune works with any deep learning framework. Here is an example with PyTorch:
+
+.. code-block:: python
+
+    import torch
+    import torch.optim as optim
+    from ray import tune
+    from ray.tune.examples.mnist import get_data_loaders, Net, train, test
+
+
+    def train_mnist(config):
+        train_loader, test_loader = get_data_loaders()
+        model = Net(config)
+        optimizer = optim.SGD(
+            model.parameters(), lr=config["lr"])
+        while True:
+            train(model, optimizer, train_loader)
+            acc = test(model, test_loader)
+            tune.track.log(mean_accuracy=acc)
+
+    analysis = tune.run(
+        train_mnist,
+        stop={"mean_accuracy": 0.98},
+        config={"lr": tune.grid_search([0.001, 0.01, 0.1])}
+    )
+
+    print("Best config: ", analysis.get_best_config())
+
+    # Get a dataframe for analyzing trial results:
+    df = analysis.dataframe()
+
+    # On command line, you can also use `tensorboard --logdir ~/ray_results` to visualize results.
+
+
+For massive parallelism, you can import and initialize Ray, and then run `ray submit`:
+
+.. code-block:: python
+
+    # Append to top of your script
+
+    import ray
+    from ray import tune
+
+    ray.init(redis_address=tune.DEFAULT_REDIS_ADDRESS)
+
+.. code-block:: bash
+
+    ray submit tune_cluster.yaml [TUNE_SCRIPT.py] --start
 
 
 Features
@@ -32,66 +87,6 @@ Features
 *  Scale to running on a large distributed cluster without changing your code.
 
 *  Parallelize training for models with GPU requirements or algorithms that may themselves be parallel and distributed, using Tune's `resource-aware scheduling <tune-usage.html#using-gpus-resource-allocation>`__,
-
-Take a look at `the User Guide <tune-usage.html>`__ for a comprehensive overview on how to use Tune's features.
-
-Getting Started
----------------
-
-Installation
-~~~~~~~~~~~~
-
-You'll need to first `install ray <installation.html>`__ to import Tune.
-
-.. code-block:: bash
-
-    pip install ray  # also recommended: ray[debug]
-
-
-Quick Start
-~~~~~~~~~~~
-
-This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached. Tune works with any deep learning framework. Here is an example with PyTorch:
-
-.. code-block:: python
-
-    def train_mnist(config):
-        train_loader, test_loader = get_mnist_dataloaders()
-        model = Net(config).to(torch.device("cpu"))
-        optimizer = optim.SGD(
-            model.parameters(), lr=config["lr"], momentum=config["momentum"])
-        while True:
-            train(model, optimizer, train_loader, torch.device("cpu"))
-            acc = test(model, test_loader, torch.device("cpu"))
-            track.log(mean_accuracy=acc)
-
-    tune.run(
-        train_mnist,
-        stop={"mean_accuracy": 0.98},
-        num_samples=10,
-        config={
-            "lr": tune.uniform(0.001, 0.1),
-            "momentum": tune.uniform(0.1, 0.9)
-        })
-
-
-For massive parallelism, you can import and initialize Ray, and then run `ray submit`:
-
-.. code-block:: python
-
-    #your_script_using_tune.py
-    import ray
-    from ray import tune
-
-    ray.init(redis_address=[ray_redis_address])
-    ...
-    tune.run(...)
-
-Then, on command prompt:
-
-.. code-block:: bash
-
-    ray submit [CLUSTER_YAML] [your_script_using_tune.py]
 
 
 Contribute to Tune

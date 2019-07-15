@@ -11,6 +11,8 @@ from ray.tune.suggest import grid_search
 from ray.tune.sample import (function, sample_from, uniform, choice, randint,
                              randn)
 
+DEFAULT_REDIS_ADDRESS = "localhost:6379"
+
 __all__ = [
     "Trainable", "TuneError", "grid_search", "register_env",
     "register_trainable", "run", "run_experiments", "Experiment", "function",

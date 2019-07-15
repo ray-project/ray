@@ -65,7 +65,7 @@ def run(run_or_experiment,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
-        return_trials=True,
+        return_trials=False,
         ray_auto_init=True,
         sync_function=None):
     """Executes training.
@@ -265,6 +265,9 @@ def run(run_or_experiment,
 
     if return_trials:
         return runner.get_trials()
+    logger.info("Returning an analysis object by default. You can call "
+                "`analysis.trials` to retrieve a list of trials. "
+                "This message will be removed in future versions of Tune.")
     return ExperimentAnalysis(experiment.checkpoint_dir)
 
 
