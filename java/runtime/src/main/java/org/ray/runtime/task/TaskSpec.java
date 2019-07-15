@@ -109,6 +109,7 @@ public class TaskSpec {
     this.actorId = actorId;
     this.actorHandleId = actorHandleId;
     this.actorCounter = actorCounter;
+    this.previousActorTaskDummyObjectId = previousActorTaskDummyObjectId;
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;

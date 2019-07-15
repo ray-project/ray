@@ -138,11 +138,8 @@ public class MockRayletClient implements RayletClient {
         }
       }
     }
-    // Check whether task dependencies are ready.
-    for (ObjectId id : spec.getExecutionDependencies()) {
-      if (!store.isObjectReady(id)) {
-        unreadyObjects.add(id);
-      }
+    if (spec.isActorTask()) {
+      unreadyObjects.add(spec.previousActorTaskDummyObjectId);
     }
     return unreadyObjects;
   }

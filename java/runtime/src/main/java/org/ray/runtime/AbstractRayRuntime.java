@@ -270,7 +270,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
       Object[] args, ActorCreationOptions options) {
     TaskSpec spec = createTaskSpec(actorFactoryFunc, null, RayActorImpl.NIL,
-        args, true, options);
+        args, true, false, options);
     RayActorImpl<?> actor = new RayActorImpl(new UniqueId(spec.returnIds[0].getBytes()));
     actor.increaseTaskCounter();
     actor.setTaskCursor(spec.returnIds[0]);
@@ -292,7 +292,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       CallOptions options) {
     checkPyArguments(args);
     PyFunctionDescriptor desc = new PyFunctionDescriptor(moduleName, "", functionName);
-    TaskSpec spec = createTaskSpec(null, desc, RayPyActorImpl.NIL, args, false, options);
+    TaskSpec spec = createTaskSpec(null, desc, RayPyActorImpl.NIL, args, false, false, options);
     rayletClient.submitTask(spec);
     return new RayObjectImpl(spec.returnIds[0]);
   }
@@ -381,9 +381,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       functionDescriptor = pyFunctionDescriptor;
     }
 
-    ObjectId previousActorTaskDummyId;
+    ObjectId previousActorTaskDummyObjectId = ObjectId.NIL;
     if (isActorTask) {
-      previousActorTaskDummyId = actor.getTaskCursor();
+      previousActorTaskDummyObjectId = actor.getTaskCursor();
     }
 
     return new TaskSpec(
@@ -396,7 +396,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.getId(),
         actor.getHandleId(),
         actor.increaseTaskCounter(),
-	previousActorTaskDummyId,
+	previousActorTaskDummyObjectId,
         actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
         numReturns,
