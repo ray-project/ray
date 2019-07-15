@@ -10,16 +10,6 @@ Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined
 
 More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__.
 
-Start by installing, importing, and initializing Ray.
-
-.. code-block:: python
-
-    import ray
-    import ray.tune as tune
-
-    ray.init()
-
-
 Experiment Configuration
 ------------------------
 
@@ -30,34 +20,53 @@ You can checkout out our `examples page <tune-examples.html>`__ for more code ex
 Training API
 ~~~~~~~~~~~~
 
-Training can be done with either the **function-based API** or **Trainable API**.
+Training can be done with either the **Trainable Class API** or **function-based API**.
 
-**Python functions** will need to have the following signature:
+**Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__. Here is an example:
+
 
 .. code-block:: python
 
-    def trainable(config, reporter):
+    class Example(Trainable):
         """
         Args:
             config (dict): Parameters provided from the search algorithm
                 or variant generation.
-            reporter (Reporter): Handle to report intermediate metrics to Tune.
+        """
+
+        def _setup(self, config):
+            ...
+
+        def _train(self):
+            # run training code
+            result_dict = {"accuracy": 0.5, "f1": 0.1, ...}
+            return result_dict
+
+**Python functions** will need to have the following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping.:
+
+.. code-block:: python
+
+    def trainable(config):
+        """
+        Args:
+            config (dict): Parameters provided from the search algorithm
+                or variant generation.
         """
 
         while True:
             # ...
-            reporter(**kwargs)
+            tune.track.log(**kwargs)
 
-The reporter will allow you to report metrics used for scheduling, search, or early stopping.
 
-Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. The reporter documentation can be `found here <tune-package-ref.html#ray.tune.function_runner.StatusReporter>`__.
+Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be `found here <tune-package-ref.html#ray.tune.track>`__.
+
+Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
 
 .. note::
     If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
 
-**Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
-
-Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
+.. note::
+    See previous versions of the documentation for the ``reporter`` API.
 
 See the `experiment specification <tune-usage.html#specifying-experiments>`__ section on how to specify and execute your training.
 
@@ -67,8 +76,13 @@ Launching an Experiment
 
 Tune provides a ``run`` function that generates and runs the trials.
 
-.. autofunction:: ray.tune.run
-    :noindex:
+.. code-block:: python
+
+    tune.run(
+        trainable,
+        name="example-experiment",
+        num_samples=10,
+    )
 
 This function will report status on the command line until all Trials stop:
 
@@ -84,6 +98,21 @@ This function will report status on the command line until all Trials stop:
      - train_func_3_lr=0.2,momentum=2:  RUNNING [pid=6791], 208 s, 41004 ts, 8.37 acc
      - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
+
+
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
+
+Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
+
+.. code-block:: python
+
+    from ray.tune.analysis import ExperimentAnalysis
+
+    ea = ExperimentAnalysis("~/ray_results/my_experiment")
+    trials_dataframe = ea.dataframe()
+
+You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
+
 
 
 Custom Trial Names
@@ -107,7 +136,7 @@ be sure to wrap it with `tune.function`:
 
     tune.run(
         MyTrainableClass,
-        name="hyperband_test",
+        name="example-experiment",
         num_samples=1,
         trial_name_creator=tune.function(trial_name_string)
     )
@@ -250,21 +279,8 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Logging, Analyzing, and Visualizing Results
--------------------------------------------
-
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
-
-Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
-
-.. code-block:: python
-
-    from ray.tune.analysis import ExperimentAnalysis
-
-    ea = ExperimentAnalysis("~/ray_results/my_experiment")
-    trials_dataframe = ea.dataframe()
-
-You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
+Visualizing Results
+-------------------
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -296,8 +312,8 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 .. image:: ray-tune-viskit.png
 
 
-Custom Loggers
-~~~~~~~~~~~~~~
+Logging
+-------
 
 You can pass in your own logging mechanisms to output logs in custom formats as follows:
 
@@ -311,16 +327,10 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
-These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__.
+These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune has default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
-Tune has default loggers for Tensorboard, CSV, and JSON formats.
-
-You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
-
-An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
-
-Custom Sync/Upload Commands
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Uploading/Syncing
+-----------------
 
 Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the `autoscaler <autoscaling.html>`__.
 By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.

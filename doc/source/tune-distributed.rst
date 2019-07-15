@@ -1,26 +1,38 @@
-Distributed Optimization
-========================
+Tune Distributed Experiments
+============================
 
-This is an example walkthrough for a distributed hyperparameter search in Tune. Launching a large cluster on AWS or GCP is simple with Ray.
+Tune is commonly used for large-scale distributed hyperparameter optimization. Tune provides many utilities that enable an effective workflow for interacting with a cluster.
 
 In this guide, we will use Ray's cluster launcher/autoscaler utility to start a cluster of machines on AWS. Then, we will modify an existing hyperparameter tuning script to connect to the Ray cluster, and launch the script. Finally, we will analyze the results.
 
 
-Quick Start
+Walkthrough
 -----------
+
+Connecting to a cluster
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Modifying an existing Tune Experiment to ray.
+
+
+Executing on the cloud
+~~~~~~~~~~~~~~~~~~~~~~
 
 You can use this YAML configuration file to kick off your cluster.
 
-.. code-block::yaml
+.. code-block:: yaml
 
     TODO
 
 This code starts a cluster as specified by the given cluster configuration YAML file.
 
-.. code-block::bash
+.. code-block:: bash
 
     export CLUSTER=[path/to/cluster/yaml]
     ray submit $CLUSTER tune_mnist_large.py --start
+
+    # Analyze your results on TensorBoard. This starts TensorBoard on the remote machine.
+    # Go to `http://localhost:6006` to access TensorBoard.
     ray exec $CLUSTER 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
 
@@ -29,7 +41,7 @@ Pre-emptible Instances (Cloud)
 
 Running on spot instances (or pre-emptible instances) can reduce the cost of your experiment. You can enable spot instances in AWS via the following configuration modification:
 
-.. code-block::yaml
+.. code-block:: yaml
 
     # Provider-specific config for worker nodes, e.g. instance type.
     worker_nodes:
@@ -44,7 +56,7 @@ Running on spot instances (or pre-emptible instances) can reduce the cost of you
 
 In GCP, you can use the following configuration modification:
 
-.. code-block::yaml
+.. code-block:: yaml
 
     worker_nodes:
         machineType: n1-standard-2
@@ -68,7 +80,7 @@ Common Commands
 
 Below are some commonly used commands for submitting experiments. Please see the `Autoscaler page <autoscaling.html>`__ to see find more comprehensive documentation of commands.
 
-.. code-block::bash
+.. code-block:: bash
 
     # Upload `tune_experiment.py` from your local machine onto the cluster. Then,
     # run `python tune_experiment.py --redis-address=localhost:6379` on the remote machine.

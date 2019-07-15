@@ -44,6 +44,13 @@ ray.tune.analysis
     :members:
 
 
+ray.tune.track
+--------------
+
+.. automodule:: ray.tune.track
+    :members:
+
+
 ray.tune.logger
 ---------------
 
