@@ -195,7 +195,7 @@ COMMON_CONFIG = {
     "timesteps_per_iteration": 0,
     # If set to the same integer, identically configured trials will have
     # identical random behavior. This makes experiments reproducible.
-    "reproducible_seed": None,
+    "seed": None,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -433,7 +433,7 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Get the seed for creating workers
-        self._reproducible_seed = self.config.get("reproducible_seed", None)
+        self._seed = self.config.get("seed", None)
 
         def get_scope():
             if tf:
@@ -488,7 +488,7 @@ class Trainer(Trainable):
             config,
             num_workers=num_workers,
             logdir=self.logdir,
-            reproducible_seed=self._reproducible_seed)
+            seed=self._seed)
 
     @DeveloperAPI
     def _init(self, config, env_creator):

@@ -31,6 +31,7 @@ from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.seed import seed as seed_all
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -314,7 +315,7 @@ class RolloutWorker(EvaluatorInterface):
                 with self.tf_sess.as_default():
                     if seed is not None:
                         # ensure each worker has unique exploration behavior
-                        tf.set_random_seed(seed)
+                        seed_all(seed, seed, seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
         else:
