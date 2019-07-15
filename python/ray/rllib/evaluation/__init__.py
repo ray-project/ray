@@ -1,4 +1,5 @@
 from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
 from ray.rllib.evaluation.interface import EvaluatorInterface
 from ray.rllib.evaluation.policy_graph import PolicyGraph
@@ -12,8 +13,19 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.metrics import collect_metrics
 
 __all__ = [
-    "EvaluatorInterface", "PolicyEvaluator", "PolicyGraph", "TFPolicyGraph",
-    "TorchPolicyGraph", "SampleBatch", "MultiAgentBatch", "SampleBatchBuilder",
-    "MultiAgentSampleBatchBuilder", "SyncSampler", "AsyncSampler",
-    "compute_advantages", "collect_metrics", "MultiAgentEpisode"
+    "EvaluatorInterface",
+    "RolloutWorker",
+    "PolicyGraph",
+    "TFPolicyGraph",
+    "TorchPolicyGraph",
+    "SampleBatch",
+    "MultiAgentBatch",
+    "SampleBatchBuilder",
+    "MultiAgentSampleBatchBuilder",
+    "SyncSampler",
+    "AsyncSampler",
+    "compute_advantages",
+    "collect_metrics",
+    "MultiAgentEpisode",
+    "PolicyEvaluator",
 ]

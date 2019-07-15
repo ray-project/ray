@@ -34,6 +34,11 @@ def _import_apex_ddpg():
     return ddpg.ApexDDPGTrainer
 
 
+def _import_td3():
+    from ray.rllib.agents import ddpg
+    return ddpg.TD3Trainer
+
+
 def _import_ppo():
     from ray.rllib.agents import ppo
     return ppo.PPOTrainer
@@ -52,6 +57,11 @@ def _import_ars():
 def _import_dqn():
     from ray.rllib.agents import dqn
     return dqn.DQNTrainer
+
+
+def _import_simple_q():
+    from ray.rllib.agents import dqn
+    return dqn.SimpleQTrainer
 
 
 def _import_apex():
@@ -87,10 +97,12 @@ def _import_marwil():
 ALGORITHMS = {
     "DDPG": _import_ddpg,
     "APEX_DDPG": _import_apex_ddpg,
+    "TD3": _import_td3,
     "PPO": _import_ppo,
     "ES": _import_es,
     "ARS": _import_ars,
     "DQN": _import_dqn,
+    "SimpleQ": _import_simple_q,
     "APEX": _import_apex,
     "A3C": _import_a3c,
     "A2C": _import_a2c,

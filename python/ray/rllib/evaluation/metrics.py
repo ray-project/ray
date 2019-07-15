@@ -7,21 +7,18 @@ import numpy as np
 import collections
 
 import ray
-from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
-# By convention, metrics from optimizing the loss can be reported in the
-# `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
-LEARNER_STATS_KEY = "learner_stats"
-
 
 @DeveloperAPI
 def get_learner_stats(grad_info):
-    """Return optimization stats reported from the policy graph.
+    """Return optimization stats reported from the policy.
 
     Example:
         >>> grad_info = evaluator.learn_on_batch(samples)
@@ -42,37 +39,38 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_evaluator=None,
-                    remote_evaluators=[],
-                    timeout_seconds=180):
-    """Gathers episode metrics from PolicyEvaluator instances."""
+def collect_metrics(local_worker=None, remote_workers=[], timeout_seconds=180):
+    """Gathers episode metrics from RolloutWorker instances."""
 
     episodes, num_dropped = collect_episodes(
-        local_evaluator, remote_evaluators, timeout_seconds=timeout_seconds)
+        local_worker, remote_workers, timeout_seconds=timeout_seconds)
     metrics = summarize_episodes(episodes, episodes, num_dropped)
     return metrics
 
 
 @DeveloperAPI
-def collect_episodes(local_evaluator=None,
-                     remote_evaluators=[],
+def collect_episodes(local_worker=None, remote_workers=[],
                      timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
-    pending = [
-        a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_evaluators
-    ]
-    collected, _ = ray.wait(
-        pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
-    num_metric_batches_dropped = len(pending) - len(collected)
-    if pending and len(collected) == 0:
-        raise ValueError(
-            "Timed out waiting for metrics from workers. You can configure "
-            "this timeout with `collect_metrics_timeout`.")
+    if remote_workers:
+        pending = [
+            a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
+        ]
+        collected, _ = ray.wait(
+            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
+        num_metric_batches_dropped = len(pending) - len(collected)
+        if pending and len(collected) == 0:
+            raise ValueError(
+                "Timed out waiting for metrics from workers. You can "
+                "configure this timeout with `collect_metrics_timeout`.")
+        metric_lists = ray_get_and_free(collected)
+    else:
+        metric_lists = []
+        num_metric_batches_dropped = 0
 
-    metric_lists = ray_get_and_free(collected)
-    if local_evaluator:
-        metric_lists.append(local_evaluator.get_metrics())
+    if local_worker:
+        metric_lists.append(local_worker.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)

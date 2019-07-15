@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
+CONTROL_PATH_MAX_LENGTH = 70
 
 
 def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
@@ -31,7 +32,7 @@ def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
         ("StrictHostKeyChecking", "no"),
         ("ControlMaster", "auto"),
         ("ControlPath", "{}/%C".format(ssh_control_path)),
-        ("ControlPersist", "5m"),
+        ("ControlPersist", "10s"),
     ]
 
     return ["-i", private_key] + [
@@ -56,7 +57,7 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
-            getuser(), cluster_name)
+            getuser(), cluster_name)[:CONTROL_PATH_MAX_LENGTH]
 
         self.daemon = True
         self.process_runner = process_runner
@@ -165,9 +166,10 @@ class NodeUpdater(object):
                 logger.debug("NodeUpdater: "
                              "{}: Waiting for SSH...".format(self.node_id))
 
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "uptime", connect_timeout=5, redirect=redirect)
+                # Setting redirect=False allows the user to see errors like
+                # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
+                # for Unix domain socket.
+                self.ssh_cmd("uptime", connect_timeout=5, redirect=False)
 
                 return True
 
@@ -183,6 +185,25 @@ class NodeUpdater(object):
 
         return False
 
+    def sync_file_mounts(self, sync_cmd):
+        # Rsync file mounts
+        for remote_path, local_path in self.file_mounts.items():
+            assert os.path.exists(local_path), local_path
+            if os.path.isdir(local_path):
+                if not local_path.endswith("/"):
+                    local_path += "/"
+                if not remote_path.endswith("/"):
+                    remote_path += "/"
+
+            m = "{}: Synced {} to {}".format(self.node_id, local_path,
+                                             remote_path)
+            with LogTimer("NodeUpdater {}".format(m)):
+                self.ssh_cmd(
+                    "mkdir -p {}".format(os.path.dirname(remote_path)),
+                    redirect=None,
+                )
+                sync_cmd(local_path, remote_path, redirect=None)
+
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
@@ -195,59 +216,41 @@ class NodeUpdater(object):
             ssh_ok = self.wait_for_ssh(deadline)
             assert ssh_ok, "Unable to SSH to node"
 
-        # Rsync file mounts
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
-        for remote_path, local_path in self.file_mounts.items():
-            logger.info("NodeUpdater: "
-                        "{}: Syncing {} to {}...".format(
-                            self.node_id, local_path, remote_path))
-            assert os.path.exists(local_path), local_path
-            if os.path.isdir(local_path):
-                if not local_path.endswith("/"):
-                    local_path += "/"
-                if not remote_path.endswith("/"):
-                    remote_path += "/"
-
-            m = "{}: Synced {} to {}".format(self.node_id, local_path,
-                                             remote_path)
-            with LogTimer("NodeUpdater {}".format(m)):
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "mkdir -p {}".format(os.path.dirname(remote_path)),
-                        redirect=redirect,
-                    )
-                    self.rsync_up(local_path, remote_path, redirect=redirect)
+        self.sync_file_mounts(self.rsync_up)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
-
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.initialization_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.initialization_commands:
+                self.ssh_cmd(cmd)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.setup_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.setup_commands:
+                self.ssh_cmd(cmd)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
+        logger.info("NodeUpdater: "
+                    "{}: Syncing {} to {}...".format(self.node_id, source,
+                                                     target))
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [
                 "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
-                    self.ssh_private_key, 120, self.ssh_control_path)),
-                "--delete", "-avz", source, "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, target)
+                    self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
+                source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
             ],
             stdout=redirect or sys.stdout,
             stderr=redirect or sys.stderr)
 
     def rsync_down(self, source, target, redirect=None, check_error=True):
+        logger.info("NodeUpdater: "
+                    "{}: Syncing {} from {}...".format(self.node_id, source,
+                                                       target))
         self.set_ssh_ip_if_required()
         self.get_caller(check_error)(
             [

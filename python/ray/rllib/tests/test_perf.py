@@ -7,8 +7,8 @@ import time
 import unittest
 
 import ray
-from ray.rllib.evaluation.policy_evaluator import PolicyEvaluator
-from ray.rllib.tests.test_policy_evaluator import MockPolicyGraph
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.tests.test_rollout_worker import MockPolicy
 
 
 class TestPerf(unittest.TestCase):
@@ -17,9 +17,9 @@ class TestPerf(unittest.TestCase):
     # 03/01/19: Samples per second 8610.164353268685
     def testBaselinePerformance(self):
         for _ in range(20):
-            ev = PolicyEvaluator(
+            ev = RolloutWorker(
                 env_creator=lambda _: gym.make("CartPole-v0"),
-                policy_graph=MockPolicyGraph,
+                policy=MockPolicy,
                 batch_steps=100)
             start = time.time()
             count = 0

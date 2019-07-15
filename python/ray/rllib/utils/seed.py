@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import numpy as np
 import random
-import tensorflow as tf
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 def seed(np_seed=0, random_seed=0, tf_seed=0):

@@ -20,10 +20,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeSubmitTask
- * Signature: (J[BLjava/nio/ByteBuffer;II)V
+ * Signature: (J[B[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jbyteArray, jobject, jint, jint);
+    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -115,6 +115,14 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *, j
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpoint(
     JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeSetResource
+ * Signature: (JLjava/lang/String;D[B)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetResource(
+    JNIEnv *, jclass, jlong, jstring, jdouble, jbyteArray);
 
 #ifdef __cplusplus
 }

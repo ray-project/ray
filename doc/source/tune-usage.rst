@@ -216,19 +216,15 @@ For TensorFlow model training, this would look something like this `(full tensor
         def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
-            self.iteration = 0
 
         def _train(self):
             self.sess.run(...)
-            self.iteration += 1
 
         def _save(self, checkpoint_dir):
-            return self.saver.save(
-                self.sess, checkpoint_dir + "/save",
-                global_step=self.iteration)
+            return self.saver.save(self.sess, os.path.join(checkpoint_dir, save))
 
-        def _restore(self, path):
-            return self.saver.restore(self.sess, path)
+        def _restore(self, checkpoint_prefix):
+            self.saver.restore(self.sess, checkpoint_prefix)
 
 
 Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
@@ -259,7 +255,7 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
 Recovering From Failures (Experimental)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed with ``resume=True``. The default setting of ``resume=False`` creates a new experiment, and ``resume="prompt"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. The default setting of ``resume=False`` creates a new experiment. ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``. ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``. ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 
 Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
 
@@ -327,10 +323,21 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Logging and Visualizing Results
--------------------------------
+Logging, Analyzing, and Visualizing Results
+-------------------------------------------
 
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node. The log records are compatible with a number of visualization tools:
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
+
+Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
+
+.. code-block:: python
+
+    from ray.tune.analysis import ExperimentAnalysis
+
+    ea = ExperimentAnalysis("~/ray_results/my_experiment")
+    trials_dataframe = ea.dataframe()
+
+You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -344,6 +351,12 @@ Then, after you run a experiment, you can visualize your experiment with TensorB
 
     $ tensorboard --logdir=~/ray_results/my_experiment
 
+If you are running Ray on a remote multi-user cluster where you do not have sudo access, you can run the following commands to make sure tensorboard is able to write to the tmp directory:
+
+.. code-block:: bash
+
+    $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
+
 .. image:: ray-tune-tensorboard.png
 
 To use rllab's VisKit (you may have to install some dependencies), run:
@@ -355,14 +368,6 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 
 .. image:: ray-tune-viskit.png
 
-Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParallelCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
-
-.. code-block:: bash
-
-    $ cd $RAY_HOME/python/ray/tune
-    $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
-
-.. image:: ray-tune-parcoords.png
 
 Custom Loggers
 ~~~~~~~~~~~~~~
@@ -390,31 +395,39 @@ An example can be found in `logging_example.py <https://github.com/ray-project/r
 Custom Sync/Upload Commands
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results to the given
-directory with standard S3/gsutil commands. You can customize the upload command by
-providing either a function or a string.
+Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the `autoscaler <autoscaling.html>`__.
+By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
 
-If a string is provided, then it must include replacement fields ``{local_dir}`` and
-``{remote_dir}``, like ``"aws s3 sync {local_dir} {remote_dir}"``.
-
-Alternatively, a function can be provided with the following signature (and must
-be wrapped with ``tune.function``):
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature (and must be wrapped with ``tune.function``):
 
 .. code-block:: python
 
-    def custom_sync_func(local_dir, remote_dir):
-        sync_cmd = "aws s3 sync {local_dir} {remote_dir}".format(
-            local_dir=local_dir,
-            remote_dir=remote_dir)
+    def custom_sync_func(source, target):
+        sync_cmd = "rsync {source} {target}".format(
+            source=source,
+            target=target)
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        sync_function=tune.function(custom_sync_func)
+        sync_to_driver=tune.function(custom_sync_func),
     )
 
+When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
+This custom sync command would be also be used in node failures, where the source argument would be the path to the trial directory and the target would be a remote path. The `sync_to_driver` would be invoked to push a checkpoint to new node for a queued trial to resume.
+
+If an upload directory is provided, Tune will automatically sync results to the given directory, natively supporting standard S3/gsutil commands.
+You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument. This argument is similar to ``sync_to_cloud`` in that it supports strings with the same replacement fields and arbitrary functions. See `syncer.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/syncer.py>`__ for implementation details.
+
+.. code-block:: python
+
+    tune.run(
+        MyTrainableClass,
+        name="experiment_name",
+        sync_to_cloud=tune.function(custom_sync_func),
+    )
 
 Tune Client API
 ---------------

@@ -7,7 +7,9 @@ mountaincarcontinuous-apex-ddpg:
     config:
         clip_rewards: False
         num_workers: 16
-        noise_scale: 1.0
+        exploration_ou_noise_scale: 1.0
         n_step: 3
         target_network_update_freq: 50000
         tau: 1.0
+        evaluation_interval: 5
+        evaluation_num_episodes: 10

@@ -1,10 +1,13 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.config.WorkerMode;
 import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +17,7 @@ public class WorkerContext {
 
   private UniqueId workerId;
 
-  private ThreadLocal<UniqueId> currentTaskId;
+  private ThreadLocal<TaskId> currentTaskId;
 
   /**
    * Number of objects that have been put from current task.
@@ -28,7 +31,7 @@ public class WorkerContext {
 
   private ThreadLocal<TaskSpec> currentTask;
 
-  private UniqueId currentDriverId;
+  private JobId currentJobId;
 
   private ClassLoader currentClassLoader;
 
@@ -42,22 +45,22 @@ public class WorkerContext {
    */
   private RunMode runMode;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId driverId, RunMode runMode) {
+  public WorkerContext(WorkerMode workerMode, JobId jobId, RunMode runMode) {
     mainThreadId = Thread.currentThread().getId();
     taskIndex = ThreadLocal.withInitial(() -> 0);
     putIndex = ThreadLocal.withInitial(() -> 0);
-    currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    currentTaskId = ThreadLocal.withInitial(TaskId::randomId);
     this.runMode = runMode;
     currentTask = ThreadLocal.withInitial(() -> null);
     currentClassLoader = null;
     if (workerMode == WorkerMode.DRIVER) {
-      workerId = driverId;
-      currentTaskId.set(UniqueId.randomId());
-      currentDriverId = driverId;
+      workerId = IdUtil.computeDriverId(jobId);
+      currentTaskId.set(TaskId.randomId());
+      currentJobId = jobId;
     } else {
       workerId = UniqueId.randomId();
-      this.currentTaskId.set(UniqueId.NIL);
-      this.currentDriverId = UniqueId.NIL;
+      this.currentTaskId.set(TaskId.NIL);
+      this.currentJobId = JobId.NIL;
     }
   }
 
@@ -65,7 +68,7 @@ public class WorkerContext {
    * @return For the main thread, this method returns the ID of this worker's current running task;
    *     for other threads, this method returns a random ID.
    */
-  public UniqueId getCurrentTaskId() {
+  public TaskId getCurrentTaskId() {
     return currentTaskId.get();
   }
 
@@ -83,7 +86,7 @@ public class WorkerContext {
 
     Preconditions.checkNotNull(task);
     this.currentTaskId.set(task.taskId);
-    this.currentDriverId = task.driverId;
+    this.currentJobId = task.jobId;
     taskIndex.set(0);
     putIndex.set(0);
     this.currentTask.set(task);
@@ -114,15 +117,14 @@ public class WorkerContext {
   }
 
   /**
-   * @return If this worker is a driver, this method returns the driver ID; Otherwise, it returns
-   *     the driver ID of the current running task.
+   * The ID of the current job.
    */
-  public UniqueId getCurrentDriverId() {
-    return currentDriverId;
+  public JobId getCurrentJobId() {
+    return currentJobId;
   }
 
   /**
-   * @return The class loader which is associated with the current driver.
+   * @return The class loader which is associated with the current job.
    */
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;

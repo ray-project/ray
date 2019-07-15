@@ -12,6 +12,10 @@ from torchvision import datasets, transforms
 
 from ray.tune import Trainable
 
+# Change these values if you want the training to run quicker or slower.
+EPOCH_SIZE = 512
+TEST_SIZE = 256
+
 # Training settings
 parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
 parser.add_argument(
@@ -50,6 +54,11 @@ parser.add_argument(
     default=False,
     help="disables CUDA training")
 parser.add_argument(
+    "--redis-address",
+    default=None,
+    type=str,
+    help="The Redis address of the cluster.")
+parser.add_argument(
     "--seed",
     type=int,
     default=1,
@@ -80,7 +89,7 @@ class Net(nn.Module):
 
 class TrainMNIST(Trainable):
     def _setup(self, config):
-        args = config.pop("args")
+        args = config.pop("args", parser.parse_args([]))
         vars(args).update(config)
         args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -93,7 +102,7 @@ class TrainMNIST(Trainable):
             datasets.MNIST(
                 "~/data",
                 train=True,
-                download=False,
+                download=True,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307, ), (0.3081, ))
@@ -124,6 +133,8 @@ class TrainMNIST(Trainable):
     def _train_iteration(self):
         self.model.train()
         for batch_idx, (data, target) in enumerate(self.train_loader):
+            if batch_idx * len(data) > EPOCH_SIZE:
+                return
             if self.args.cuda:
                 data, target = data.cuda(), target.cuda()
             self.optimizer.zero_grad()
@@ -137,7 +148,9 @@ class TrainMNIST(Trainable):
         test_loss = 0
         correct = 0
         with torch.no_grad():
-            for data, target in self.test_loader:
+            for batch_idx, (data, target) in enumerate(self.test_loader):
+                if batch_idx * len(data) > TEST_SIZE:
+                    break
                 if self.args.cuda:
                     data, target = data.cuda(), target.cuda()
                 output = self.model(data)
@@ -162,21 +175,20 @@ class TrainMNIST(Trainable):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.model.load_state_dict(checkpoint_path)
+        self.model.load_state_dict(torch.load(checkpoint_path))
 
 
 if __name__ == "__main__":
     datasets.MNIST("~/data", train=True, download=True)
     args = parser.parse_args()
 
-    import numpy as np
     import ray
     from ray import tune
     from ray.tune.schedulers import HyperBandScheduler
 
-    ray.init()
+    ray.init(redis_address=args.redis_address)
     sched = HyperBandScheduler(
-        time_attr="training_iteration", reward_attr="neg_mean_loss")
+        time_attr="training_iteration", metric="mean_loss", mode="min")
     tune.run(
         TrainMNIST,
         scheduler=sched,
@@ -193,9 +205,7 @@ if __name__ == "__main__":
             "checkpoint_at_end": True,
             "config": {
                 "args": args,
-                "lr": tune.sample_from(
-                    lambda spec: np.random.uniform(0.001, 0.1)),
-                "momentum": tune.sample_from(
-                    lambda spec: np.random.uniform(0.1, 0.9)),
+                "lr": tune.uniform(0.001, 0.1),
+                "momentum": tune.uniform(0.1, 0.9),
             }
         })

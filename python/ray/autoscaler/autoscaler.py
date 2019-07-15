@@ -10,6 +10,7 @@ import math
 import os
 import subprocess
 import threading
+import traceback
 import time
 from collections import defaultdict
 
@@ -158,7 +159,16 @@ class LoadMetrics(object):
 
     def update(self, ip, static_resources, dynamic_resources):
         self.static_resources_by_ip[ip] = static_resources
-        self.dynamic_resources_by_ip[ip] = dynamic_resources
+        # We are not guaranteed to have a corresponding dynamic resource for
+        # every static resource because dynamic resources are based on the
+        # available resources in the heartbeat, which does not exist if it is
+        # zero. Thus, we have to update dynamic resources here.
+        dynamic_resources_update = dynamic_resources.copy()
+        for resource_name, capacity in static_resources.items():
+            if resource_name not in dynamic_resources_update:
+                dynamic_resources_update[resource_name] = 0.0
+        self.dynamic_resources_by_ip[ip] = dynamic_resources_update
+
         now = time.time()
         if ip not in self.last_used_time_by_ip or \
                 static_resources != dynamic_resources:
@@ -186,6 +196,7 @@ class LoadMetrics(object):
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
+            assert not (unwanted & set(mapping))
 
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
@@ -256,16 +267,18 @@ class LoadMetrics(object):
 
 
 class NodeLauncher(threading.Thread):
-    def __init__(self, provider, queue, pending, *args, **kwargs):
+    def __init__(self, provider, queue, pending, index=None, *args, **kwargs):
         self.queue = queue
         self.pending = pending
         self.provider = provider
+        self.index = str(index) if index is not None else ""
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count):
-        tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
-        before = self.provider.non_terminated_nodes(tag_filters=tag_filters)
+        worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
+        before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
+        self.log("Launching {} nodes.".format(count))
         self.provider.create_node(
             config["worker_nodes"], {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
@@ -274,18 +287,24 @@ class NodeLauncher(threading.Thread):
                 TAG_RAY_NODE_STATUS: "uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: launch_hash,
             }, count)
-        after = self.provider.non_terminated_nodes(tag_filters=tag_filters)
+        after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
-            logger.error("NodeLauncher: "
-                         "No new nodes reported after node creation")
+            self.log("No new nodes reported after node creation.")
 
     def run(self):
         while True:
             config, count = self.queue.get()
+            self.log("Got {} nodes to launch.".format(count))
             try:
                 self._launch_node(config, count)
+            except Exception:
+                logger.exception("Launch failed")
             finally:
                 self.pending.dec(count)
+
+    def log(self, statement):
+        prefix = "NodeLauncher{}:".format(self.index)
+        logger.info(prefix + " {}".format(statement))
 
 
 class ConcurrentCounter():
@@ -365,6 +384,7 @@ class StandardAutoscaler(object):
             node_launcher = NodeLauncher(
                 provider=self.provider,
                 queue=self.launch_queue,
+                index=i,
                 pending=self.num_launches_pending)
             node_launcher.daemon = True
             node_launcher.start()
@@ -498,7 +518,7 @@ class StandardAutoscaler(object):
     def reload_config(self, errors_fatal=False):
         try:
             with open(self.config_path) as f:
-                new_config = yaml.load(f.read())
+                new_config = yaml.safe_load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
@@ -623,8 +643,8 @@ class StandardAutoscaler(object):
         return True
 
     def launch_new_node(self, count):
-        logger.info("StandardAutoscaler: "
-                    "Launching {} new nodes".format(count))
+        logger.info(
+            "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.num_launches_pending.inc(count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count))
@@ -651,6 +671,22 @@ class StandardAutoscaler(object):
 
         return "{}/{} target nodes{}".format(
             len(nodes), self.target_num_workers(), suffix)
+
+    def kill_workers(self):
+        logger.error("StandardAutoscaler: kill_workers triggered")
+
+        while True:
+            try:
+                nodes = self.workers()
+                if nodes:
+                    self.provider.terminate_nodes(nodes)
+                logger.error(
+                    "StandardAutoscaler: terminated {} node(s)".format(
+                        len(nodes)))
+            except Exception:
+                traceback.print_exc()
+
+            time.sleep(10)
 
 
 def typename(v):

@@ -10,13 +10,21 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid, const Language &language,
-               std::shared_ptr<LocalClientConnection> connection)
+Worker::Worker(pid_t pid, const Language &language, int port,
+               std::shared_ptr<LocalClientConnection> connection,
+               rpc::ClientCallManager &client_call_manager)
     : pid_(pid),
       language_(language),
+      port_(port),
       connection_(connection),
       dead_(false),
-      blocked_(false) {}
+      blocked_(false),
+      client_call_manager_(client_call_manager) {
+  if (port_ > 0) {
+    rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
+        new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
+  }
+}
 
 void Worker::MarkDead() { dead_ = true; }
 
@@ -31,6 +39,8 @@ bool Worker::IsBlocked() const { return blocked_; }
 pid_t Worker::Pid() const { return pid_; }
 
 Language Worker::GetLanguage() const { return language_; }
+
+int Worker::Port() const { return port_; }
 
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
@@ -50,16 +60,14 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignDriverId(const DriverID &driver_id) {
-  assigned_driver_id_ = driver_id;
-}
+void Worker::AssignJobId(const JobID &job_id) { assigned_job_id_ = job_id; }
 
-const DriverID &Worker::GetAssignedDriverId() const { return assigned_driver_id_; }
+const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
-  RAY_CHECK(actor_id_.is_nil())
+  RAY_CHECK(actor_id_.IsNil())
       << "A worker that is already an actor cannot be assigned an actor ID again.";
-  RAY_CHECK(!actor_id.is_nil());
+  RAY_CHECK(!actor_id.IsNil());
   actor_id_ = actor_id;
 }
 
@@ -100,6 +108,44 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   // The "release" terminology is a bit confusing here. The resources are being
   // given back to the worker and so "released" by the caller.
   task_resource_ids_.Release(cpu_resources);
+}
+
+bool Worker::UsePush() const { return rpc_client_ != nullptr; }
+
+void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
+                        const std::function<void(Status)> finish_assign_callback) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  if (rpc_client_ != nullptr) {
+    // Use push mode.
+    RAY_CHECK(port_ > 0);
+    rpc::AssignTaskRequest request;
+    request.mutable_task()->mutable_task_spec()->CopyFrom(
+        task.GetTaskSpecification().GetMessage());
+    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
+        task.GetTaskExecutionSpec().GetMessage());
+    request.set_resource_ids(resource_id_set.Serialize());
+
+    auto status = rpc_client_->AssignTask(
+        request, [](Status status, const rpc::AssignTaskReply &reply) {
+          // Worker has finished this task. There's nothing to do here
+          // and assigning new task will be done when raylet receives
+          // `TaskDone` message.
+        });
+    finish_assign_callback(status);
+  } else {
+    // Use pull mode. This corresponds to existing python/java workers that haven't been
+    // migrated to core worker architecture.
+    flatbuffers::FlatBufferBuilder fbb;
+    auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
+
+    auto message =
+        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
+                                     fbb.CreateVector(resource_id_set_flatbuf));
+    fbb.Finish(message);
+    Connection()->WriteMessageAsync(
+        static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
+        fbb.GetBufferPointer(), finish_assign_callback);
+  }
 }
 
 }  // namespace raylet

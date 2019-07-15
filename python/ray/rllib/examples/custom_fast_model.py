@@ -11,11 +11,13 @@ from __future__ import print_function
 from gym.spaces import Discrete, Box
 import gym
 import numpy as np
-import tensorflow as tf
 
 import ray
 from ray.rllib.models import Model, ModelCatalog
 from ray.tune import run_experiments, sample_from
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class FastModel(Model):
