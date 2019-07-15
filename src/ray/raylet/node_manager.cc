@@ -547,8 +547,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   SchedulingResources &remote_resources = it->second;
 
   ResourceSet remote_available(
-      VectorFromProtobuf(heartbeat_data.resources_total_label()),
-      VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+      VectorFromProtobuf(heartbeat_data.resources_available_label()),
+      VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
   ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
                           VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
