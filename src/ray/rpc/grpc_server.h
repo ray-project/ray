@@ -2,6 +2,7 @@
 #define RAY_RPC_GRPC_SERVER_H
 
 #include <thread>
+#include <utility>
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
@@ -30,15 +31,15 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(const std::string &name, const uint32_t port)
-      : name_(name), port_(port), is_closed_(false) {}
+  GrpcServer(std::string name, const uint32_t port)
+      : name_(std::move(name)), port_(port), is_closed_(false) {}
 
   /// Construct a gRPC server that listens on unix domain socket.
   ///
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] unix_socket_path Unix domain socket full path.
-  GrpcServer(const std::string &name, const std::string &unix_socket_path)
-      : GrpcServer(name, 0) {
+  GrpcServer(std::string name, const std::string &unix_socket_path)
+      : GrpcServer(std::move(name), 0) {
     unix_socket_path_ = unix_socket_path;
   }
 
@@ -107,10 +108,11 @@ class GrpcService {
   ///
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  GrpcService(boost::asio::io_service &main_service) : main_service_(main_service) {}
+  explicit GrpcService(boost::asio::io_service &main_service)
+      : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
-  ~GrpcService() {}
+  ~GrpcService() = default;
 
  protected:
   /// Return the underlying grpc::Service object for this class.

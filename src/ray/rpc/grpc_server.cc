@@ -18,8 +18,8 @@ void GrpcServer::Run() {
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
-  if (services_.size() == 0) {
-    RAY_LOG(FATAL) << "No service found when starting " << name_ << " grpc server.";
+  if (services_.empty()) {
+    RAY_LOG(WARNING) << "No service found when start grpc server " << name_;
   }
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
