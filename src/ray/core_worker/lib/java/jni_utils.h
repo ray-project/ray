@@ -69,6 +69,12 @@ inline jbyteArray IdToJavaByteArray(JNIEnv *env, const ID &id) {
   return array;
 }
 
+/// Convert C++ UniqueID to a Java ByteBuffer.
+template <typename ID>
+inline jobject IdToJavaByteBuffer(JNIEnv *env, const ID &id) {
+  return env->NewDirectByteBuffer(reinterpret_cast<void *>(const_cast<uint8_t *>(id.Data())), id.Size());
+}
+
 /// Convert a Java String to C++ std::string.
 inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
   const char *c_str = env->GetStringUTFChars(jstr, nullptr);

@@ -1,6 +1,7 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import java.nio.ByteBuffer;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -93,7 +94,7 @@ public class WorkerContext {
    * The ID of the current job.
    */
   public JobId getCurrentJobId() {
-    return new JobId(nativeGetCurrentJobId(nativeWorkerContextPointer));
+    return JobId.fromByteBuffer(nativeGetCurrentJobId(nativeWorkerContextPointer));
   }
 
   /**
@@ -126,7 +127,7 @@ public class WorkerContext {
 
   private static native byte[] nativeGetCurrentTask(long nativeWorkerContextPointer);
 
-  private static native byte[] nativeGetCurrentJobId(long nativeWorkerContextPointer);
+  private static native ByteBuffer nativeGetCurrentJobId(long nativeWorkerContextPointer);
 
   private static native byte[] nativeGetCurrentWorkerId(long nativeWorkerContextPointer);
 

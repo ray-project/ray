@@ -78,13 +78,13 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
 /*
  * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeGetCurrentJobId
- * Signature: (J)[B
+ * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(
     JNIEnv *env, jclass, jlong nativeWorkerContextFromPointer) {
   auto job_id =
       GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->GetCurrentJobID();
-  return IdToJavaByteArray<ray::JobID>(env, job_id);
+  return IdToJavaByteBuffer<ray::JobID>(env, job_id);
 }
 
 /*

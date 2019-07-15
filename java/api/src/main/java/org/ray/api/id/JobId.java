@@ -20,7 +20,7 @@ public class JobId extends BaseId implements Serializable {
   /**
    * Create a JobID instance according to the given bytes.
    */
-  public JobId(byte[] id) {
+  private JobId(byte[] id) {
     super(id);
   }
 

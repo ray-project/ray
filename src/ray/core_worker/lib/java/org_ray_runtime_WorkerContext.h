@@ -42,9 +42,9 @@ Java_org_ray_runtime_WorkerContext_nativeGetCurrentTask(JNIEnv *, jclass, jlong)
 /*
  * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeGetCurrentJobId
- * Signature: (J)[B
+ * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jbyteArray JNICALL
+JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass, jlong);
 
 /*
