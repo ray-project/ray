@@ -91,7 +91,7 @@ def test_heartbeats(ray_start_cluster_head):
     work_handles = []
 
     @ray.remote
-    class Actor():
+    class Actor(object):
         def work(self, timeout=10):
             time.sleep(timeout)
             return True
@@ -104,7 +104,7 @@ def test_heartbeats(ray_start_cluster_head):
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
 
-    timeout = 5
+    timeout = 8
 
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": 1.0}))
 
