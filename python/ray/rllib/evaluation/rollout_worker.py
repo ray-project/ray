@@ -130,7 +130,8 @@ class RolloutWorker(EvaluatorInterface):
                  remote_worker_envs=False,
                  remote_env_batch_wait_ms=0,
                  soft_horizon=False,
-                 _fake_sampler=False):
+                 _fake_sampler=False,
+                 seed=None):
         """Initialize a rollout worker.
 
         Arguments:
@@ -216,6 +217,8 @@ class RolloutWorker(EvaluatorInterface):
             soft_horizon (bool): Calculate rewards but don't reset the
                 environment when the horizon is hit.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
+            seed (int): If not None, set the graph-level seed to this value
+                to ensure each remote worker has unique explration behavior.
         """
 
         global _global_worker
@@ -309,6 +312,9 @@ class RolloutWorker(EvaluatorInterface):
                         config=tf.ConfigProto(
                             gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
+                    if seed is not None:
+                        # ensure each worker has unique exploration behavior
+                        tf.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
         else:
