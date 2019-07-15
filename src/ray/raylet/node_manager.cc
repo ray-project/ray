@@ -836,7 +836,6 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   PublishActorStateTransition(actor_id, new_actor_data, failure_callback);
 }
 
-/// Handle a `GetTask` request.
 void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::GetTaskReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
@@ -855,7 +854,6 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
   HandleWorkerAvailable(worker_id);
 }
 
-/// Handle a `TaskDone` request.
 void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
                                         rpc::TaskDoneReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
@@ -868,7 +866,6 @@ void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `DisconnectClient` request.
 void NodeManager::HandleDisconnectClientRequest(
     const rpc::DisconnectClientRequest &request, rpc::DisconnectClientReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -993,7 +990,6 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
   // these can be leaked.
 }
 
-/// Handle a `SubmitTask` request.
 void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -1014,7 +1010,6 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `HandleFetchOrReconstruct` request.
 void NodeManager::HandleFetchOrReconstructRequest(
     const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -1047,7 +1042,6 @@ void NodeManager::HandleFetchOrReconstructRequest(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `Wait` request.
 void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
                                     rpc::WaitReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
@@ -1099,7 +1093,6 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
   RAY_CHECK_OK(status);
 }
 
-/// Handle a `PushError` request.
 void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
                                          rpc::PushErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -1115,7 +1108,6 @@ void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `PrepareActorCheckpoint` request.
 void NodeManager::HandlePrepareActorCheckpointRequest(
     const rpc::PrepareActorCheckpointRequest &request,
     rpc::PrepareActorCheckpointReply *reply, rpc::SendReplyCallback send_reply_callback) {
@@ -1156,7 +1148,6 @@ void NodeManager::HandlePrepareActorCheckpointRequest(
       }));
 }
 
-/// Handle a `NotifyActorResumedFromCheckpoint` request.
 void NodeManager::HandleNotifyActorResumedFromCheckpointRequest(
     const rpc::NotifyActorResumedFromCheckpointRequest &request,
     rpc::NotifyActorResumedFromCheckpointReply *reply,
@@ -1188,7 +1179,6 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `SetResource` request.
 void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &request,
                                            rpc::SetResourceReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
@@ -1229,7 +1219,6 @@ void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &reques
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `HandleNotifyUnblocked` request.
 void NodeManager::HandleNotifyUnblockedRequest(
     const rpc::NotifyUnblockedRequest &request, rpc::NotifyUnblockedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -1241,7 +1230,6 @@ void NodeManager::HandleNotifyUnblockedRequest(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `PushProfileEvents` request.
 void NodeManager::HandlePushProfileEventsRequest(
     const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -1251,7 +1239,6 @@ void NodeManager::HandlePushProfileEventsRequest(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `FreeObjectsInStoreInObjectStore` request.
 void NodeManager::HandleFreeObjectsInStoreRequest(
     const rpc::FreeObjectsInStoreRequest &request, rpc::FreeObjectsInStoreReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -1269,14 +1256,12 @@ void NodeManager::HandleFreeObjectsInStoreRequest(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-/// Handle a `Heartbeat` request.
 void NodeManager::HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
                                          rpc::HeartbeatReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   bool is_worker = request.is_worker();
   const auto worker_id = WorkerID::FromBinary(request.worker_id());
-  RAY_LOG(DEBUG) << "Received a HeartbeatRequest from worker " << worker_id
-                 << ", is_worker=" << is_worker;
+
   std::shared_ptr<Worker> worker = nullptr;
   if (is_worker) {
     worker = worker_pool_.GetRegisteredWorker(worker_id);

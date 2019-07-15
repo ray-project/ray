@@ -98,6 +98,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Implementation of node manager grpc service.
 
   /// Handle a `ForwardTask` request.
+  ///
+  /// \param request The request.
+  /// \param reply The reply that will be sent to client.
+  /// \param send_reply_callback Invoke this callback to send reply asynchronously.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
@@ -108,59 +112,73 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleRegisterClientRequest(const rpc::RegisterClientRequest &request,
                                    rpc::RegisterClientReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `SubmitTask` request.
   void HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                rpc::SubmitTaskReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `DisconnectClient` request.
+
+  /// Handle a intentional `DisconnectClient` request to disconnect gracefully.
   void HandleDisconnectClientRequest(const rpc::DisconnectClientRequest &request,
                                      rpc::DisconnectClientReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `GetTask` request.
+
+  /// Raylet client sends this request to fetch a task and execute it.
   void HandleGetTaskRequest(const rpc::GetTaskRequest &request, rpc::GetTaskReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `TaskDone` request.
+
+  /// Raylet client notify the raylet that a task has been finished.
   void HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
                              rpc::TaskDoneReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `HandleFetchOrReconstruct` request.
   void HandleFetchOrReconstructRequest(
       const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `HandleNotifyUnblocked` request.
   void HandleNotifyUnblockedRequest(const rpc::NotifyUnblockedRequest &request,
                                     rpc::NotifyUnblockedReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `Wait` request.
   void HandleWaitRequest(const rpc::WaitRequest &request, rpc::WaitReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PushError` request.
   void HandlePushErrorRequest(const rpc::PushErrorRequest &request,
                               rpc::PushErrorReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PushProfileEvents` request.
   void HandlePushProfileEventsRequest(
       const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `FreeObjectsInStoreInObjectStore` request.
+
+  /// Handle a `FreeObjectsInStore` request.
   void HandleFreeObjectsInStoreRequest(
       const rpc::FreeObjectsInStoreRequest &request, rpc::FreeObjectsInStoreReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareActorCheckpoint` request.
   void HandlePrepareActorCheckpointRequest(
       const rpc::PrepareActorCheckpointRequest &request,
       rpc::PrepareActorCheckpointReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `NotifyActorResumedFromCheckpoint` request.
   void HandleNotifyActorResumedFromCheckpointRequest(
       const rpc::NotifyActorResumedFromCheckpointRequest &request,
       rpc::NotifyActorResumedFromCheckpointReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `SetResource` request.
   void HandleSetResourceRequest(const rpc::SetResourceRequest &request,
                                 rpc::SetResourceReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
-  /// Handle a `Heartbeat` request.
+
+  /// Handle heartbeat request from raylet client to check whether the client is alive.
   void HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
                               rpc::HeartbeatReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
