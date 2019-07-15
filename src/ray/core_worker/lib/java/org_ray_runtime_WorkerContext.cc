@@ -82,7 +82,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(
     JNIEnv *env, jclass, jlong nativeWorkerContextFromPointer) {
-  auto job_id =
+  const auto &job_id =
       GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->GetCurrentJobID();
   return IdToJavaByteBuffer<ray::JobID>(env, job_id);
 }
