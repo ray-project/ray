@@ -87,6 +87,23 @@ def test_heartbeats(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
     monitor = Monitor(cluster.redis_address, None)
+    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
+    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+    monitor.update_raylet_map()
+    monitor._maybe_flush_gcs()
+
+    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": 1.0}))
+    work_handles = []
+    timeout = 8
+
+    @ray.remote
+    def work(timeout=10):
+        time.sleep(timeout)
+        return True
+
+    work_handles += [work.remote(timeout=timeout * 2)]
+    verify_load_metrics(monitor, (1.0, {"CPU": 1.0}, {"CPU": 1.0}))
+    ray.get(work_handles)
 
     work_handles = []
 
@@ -98,15 +115,7 @@ def test_heartbeats(ray_start_cluster_head):
 
     test_actors = [Actor.remote()]
 
-    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
-
-    monitor.update_raylet_map()
-    monitor._maybe_flush_gcs()
-
     timeout = 8
-
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": 1.0}))
 
     work_handles += [test_actors[0].work.remote(timeout=timeout * 2)]
 
