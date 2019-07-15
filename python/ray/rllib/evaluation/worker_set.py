@@ -92,7 +92,8 @@ class WorkerSet(object):
         self._remote_workers.extend([
             self._make_worker(cls, self._env_creator, self._policy, i + 1,
                               self._remote_config,
-                              self._reproducible_seed+i+1) for i in range(num_workers)
+                              self._reproducible_seed + i + 1)
+            for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers):
@@ -136,7 +137,12 @@ class WorkerSet(object):
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(self, cls, env_creator, policy, worker_index, config,
+    def _make_worker(self,
+                     cls,
+                     env_creator,
+                     policy,
+                     worker_index,
+                     config,
                      seed=None):
         def session_creator():
             logger.debug("Creating TF session {}".format(
