@@ -20,6 +20,7 @@ RolloutMetrics = collections.namedtuple("RolloutMetrics", [
     "perf_stats"
 ])
 
+
 @DeveloperAPI
 def get_learner_stats(grad_info):
     """Return optimization stats reported from the policy.
