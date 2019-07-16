@@ -110,11 +110,11 @@ class Monitor(object):
             total_resources = dict(
                 zip(heartbeat_message.resources_total_label,
                     heartbeat_message.resources_total_capacity))
-            avail_resources = dict(
+            available_resources = dict(
                 zip(heartbeat_message.resources_available_label,
                     heartbeat_message.resources_available_capacity))
-            for res in total_resources:
-                avail_resources.setdefault(res, 0.0)
+            for resource in total_resources:
+                available_resources.setdefault(resource, 0.0)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
@@ -122,7 +122,7 @@ class Monitor(object):
             load_metrics_id = ip + "-" + client_id
             if ip:
                 self.load_metrics.update(load_metrics_id, total_resources,
-                                         avail_resources)
+                                         available_resources)
             else:
                 logger.warning(
                     "Monitor: "
