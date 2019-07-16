@@ -1083,10 +1083,6 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   rpc::Task task_message;
   RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
       fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
-  for (const auto &dependency :
-       string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
-    task_message.mutable_task_execution_spec()->add_dependencies(dependency);
-  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
@@ -2351,20 +2347,11 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
       // returned by the previous task, so the dependency will not be
       // released until this first task is submitted.
       for (auto &new_handle_id : spec.NewActorHandles()) {
-        // Get the execution dependency for the first task submitted on the new
-        // actor handle. Since the new actor handle was created after this task
-        // began and before this task finished, it must have the same execution
-        // dependency.
-        const auto &execution_dependencies =
-            assigned_task.GetTaskExecutionSpec().ExecutionDependencies();
-        // TODO(swang): We expect this task to have exactly 1 execution dependency,
-        // the dummy object returned by the previous actor task. However, this
-        // leaks information about the TaskExecutionSpecification implementation.
-        RAY_CHECK(execution_dependencies.size() == 1);
-        const ObjectID &execution_dependency = execution_dependencies.front();
+        const auto prev_actor_task_id = spec.PreviousActorTaskDummyObjectId();
+        RAY_CHECK(!prev_actor_task_id.IsNil());
         // Add the new handle and give it a reference to the finished task's
         // execution dependency.
-        actor_entry->second.AddHandle(new_handle_id, execution_dependency);
+        actor_entry->second.AddHandle(new_handle_id, prev_actor_task_id);
       }
 
       // TODO(swang): For actors with multiple actor handles, to

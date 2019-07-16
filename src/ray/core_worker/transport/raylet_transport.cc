@@ -8,9 +8,9 @@ CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
     std::unique_ptr<RayletClient> &raylet_client)
     : raylet_client_(raylet_client) {}
 
-Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
+Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) {
   RAY_CHECK(raylet_client_ != nullptr);
-  return raylet_client_->SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
+  return raylet_client_->SubmitTask(task);
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
@@ -26,8 +26,8 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
-  const auto &spec = task.GetTaskSpecification();
-  auto status = task_handler_(spec);
+  const auto &task_spec = task.GetTaskSpecification();
+  auto status = task_handler_(task_spec);
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous
   // raylet client calls are completed. For example, if the worker sends a

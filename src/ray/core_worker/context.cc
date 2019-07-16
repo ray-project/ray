@@ -20,7 +20,9 @@ struct WorkerThreadContext {
     put_index = 0;
   }
 
-  void SetCurrentTask(const TaskSpecification &spec) { SetCurrentTask(spec.TaskId()); }
+  void SetCurrentTask(const TaskSpecification &task_spec) {
+    SetCurrentTask(task_spec.TaskId());
+  }
 
  private:
   /// The task ID for current task.
@@ -62,9 +64,9 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentTask(const TaskSpecification &spec) {
-  current_job_id = spec.JobId();
-  GetThreadContext().SetCurrentTask(spec);
+void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
+  current_job_id = task_spec.JobId();
+  GetThreadContext().SetCurrentTask(task_spec);
 }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
