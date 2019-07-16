@@ -211,8 +211,8 @@ class LoadMetrics(object):
 
     def get_resource_usage(self):
         nodes_used = 0.0
-        resources_used = {"CPU": 0.0}
-        resources_total = {"CPU": 0.0}
+        resources_used = {}
+        resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
             max_frac = 0.0

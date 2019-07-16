@@ -2,7 +2,6 @@ import time
 
 import ray
 from ray.monitor import Monitor
-from ray.tests.cluster_utils import Cluster
 
 
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
@@ -32,7 +31,6 @@ def test_heartbeats():
 
     Test proper metrics.
     """
-    #cluster = Cluster(initialize_head=True, connect=True)
     redis_address = ray.init(num_cpus=1)["redis_address"]
     monitor = Monitor(redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)

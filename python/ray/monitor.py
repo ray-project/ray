@@ -110,26 +110,24 @@ class Monitor(object):
         logger.info("Updating internal resource counter.")
 
         for heartbeat_message in message.batch:
-            num_resources = len(heartbeat_message.resources_total_label)
-            static_resources = {}
-            dynamic_resources = {}
-
-            logger.info("Updating with {} res.".format(num_resources))
-            for i in range(num_resources):
-                dyn = heartbeat_message.resources_available_label[i]
-                static = heartbeat_message.resources_total_label[i]
-                dynamic_resources[dyn] = (
-                    heartbeat_message.resources_available_capacity[i])
-                static_resources[static] = (
-                    heartbeat_message.resources_total_capacity[i])
+            total_resources = dict(
+                zip(heartbeat_message.resources_total_label,
+                    heartbeat_message.resources_total_capacity))
+            avail_resources = dict(
+                zip(heartbeat_message.resources_available_label,
+                    heartbeat_message.resources_available_capacity))
+            for res in total_resources:
+                avail_resources.setdefault(res, 0.0)
+            logger.info("Updated resources: static ({}), dynamic ({}).".format(
+                len(total_resources), len(avail_resources)))
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             load_metrics_id = ip + "-" + client_id
             if ip:
-                self.load_metrics.update(load_metrics_id, static_resources,
-                                         dynamic_resources)
+                self.load_metrics.update(load_metrics_id, total_resources,
+                                         avail_resources)
             else:
                 logger.warning(
                     "Monitor: "
