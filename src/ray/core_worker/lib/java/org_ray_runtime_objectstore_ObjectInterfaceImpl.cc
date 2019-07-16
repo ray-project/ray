@@ -48,9 +48,7 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__JLorg_ray_runtim
                      ->Put(*rayObject, &object_id);
         return object_id;
       });
-  if (ThrowRayExceptionIfNotOK(env, status)) {
-    return nullptr;
-  }
+  ThrowRayExceptionIfNotOK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
 
@@ -72,7 +70,7 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__J_3BLorg_ray_run
         return GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
             ->Put(*rayObject, object_id);
       });
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*
@@ -91,9 +89,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
   std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Get(object_ids, (int64_t)timeoutMs, &results);
-  if (ThrowRayExceptionIfNotOK(env, status)) {
-    return nullptr;
-  }
+  ThrowRayExceptionIfNotOK(env, status, nullptr);
   return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(env, results,
                                                                  ToJavaNativeRayObject);
 }
@@ -114,9 +110,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
   std::vector<bool> results;
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Wait(object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
-  if (ThrowRayExceptionIfNotOK(env, status)) {
-    return nullptr;
-  }
+  ThrowRayExceptionIfNotOK(env, status, nullptr);
   return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
     return env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
   });
@@ -137,7 +131,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nati
       });
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Delete(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*

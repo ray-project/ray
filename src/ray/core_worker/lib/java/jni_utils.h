@@ -41,15 +41,13 @@ extern jfieldID java_native_ray_object_data;
 extern jfieldID java_native_ray_object_metadata;
 
 /// Throws a Java RayException if the status is not OK.
-/// \return True if throwed exception, otherwise false.
-inline bool ThrowRayExceptionIfNotOK(JNIEnv *env, const ray::Status &status) {
-  if (!status.ok()) {
-    env->ThrowNew(java_ray_exception_class, status.message().c_str());
-    return true;
-  } else {
-    return false;
+#define ThrowRayExceptionIfNotOK(env, status, ret)                           \
+  {                                                                          \
+    if (!(status).ok()) {                                                    \
+      (env)->ThrowNew(java_ray_exception_class, (status).message().c_str()); \
+      return (ret);                                                          \
+    }                                                                        \
   }
-}
 
 /// Convert a Java byte array to a C++ UniqueID.
 template <typename ID>

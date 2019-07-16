@@ -51,7 +51,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
 
   ray::TaskSpecification task_spec(task_spec_message);
   auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*
@@ -65,9 +65,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
 
   std::unique_ptr<ray::TaskSpecification> spec;
   auto status = raylet_client->GetTask(&spec);
-  if (ThrowRayExceptionIfNotOK(env, status)) {
-    return nullptr;
-  }
+  ThrowRayExceptionIfNotOK(env, status, nullptr);
 
   // Serialize the task spec and copy to Java byte array.
   auto task_data = spec->Serialize();
@@ -91,7 +89,8 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_native
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(
     JNIEnv *env, jclass, jlong client) {
   auto raylet_client = reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
-  ThrowRayExceptionIfNotOK(env, (*raylet_client)->Disconnect());
+  auto status = (*raylet_client)->Disconnect();
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
   delete raylet_client;
 }
 
@@ -116,7 +115,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
   const auto current_task_id = JavaByteArrayToId<TaskID>(env, currentTaskId);
   auto &raylet_client = *reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
   auto status = raylet_client->FetchOrReconstruct(object_ids, fetchOnly, current_task_id);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*
@@ -129,7 +128,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotify
   const auto current_task_id = JavaByteArrayToId<TaskID>(env, currentTaskId);
   auto &raylet_client = *reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
   auto status = raylet_client->NotifyUnblocked(current_task_id);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*
@@ -159,9 +158,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
   auto status =
       raylet_client->Wait(object_ids, numReturns, timeoutMillis,
                           static_cast<bool>(isWaitLocal), current_task_id, &result);
-  if (ThrowRayExceptionIfNotOK(env, status)) {
-    return nullptr;
-  }
+  ThrowRayExceptionIfNotOK(env, status, nullptr);
 
   // Convert result to java object.
   jboolean put_value = true;
@@ -230,7 +227,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(
   }
   auto &raylet_client = *reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
   auto status = raylet_client->FreeObjects(object_ids, localOnly, deleteCreatingTasks);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*
@@ -246,9 +243,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *env
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   ActorCheckpointID checkpoint_id;
   auto status = raylet_client->PrepareActorCheckpoint(actor_id, checkpoint_id);
-  if (ThrowRayExceptionIfNotOK(env, status)) {
-    return nullptr;
-  }
+  ThrowRayExceptionIfNotOK(env, status, nullptr);
   jbyteArray result = env->NewByteArray(checkpoint_id.Size());
   env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),
                           reinterpret_cast<const jbyte *>(checkpoint_id.Data()));
@@ -267,7 +262,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpo
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto checkpoint_id = JavaByteArrayToId<ActorCheckpointID>(env, checkpointId);
   auto status = raylet_client->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 /*
@@ -285,7 +280,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetRes
   auto status = raylet_client->SetResource(native_resource_name,
                                            static_cast<double>(capacity), node_id);
   env->ReleaseStringUTFChars(resourceName, native_resource_name);
-  ThrowRayExceptionIfNotOK(env, status);
+  ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 
 #ifdef __cplusplus
