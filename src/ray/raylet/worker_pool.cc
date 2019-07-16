@@ -367,6 +367,18 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
   return it != state.tasks_to_dedicated_workers.end();
 }
 
+std::shared_ptr<Worker> WorkerPool::GetActorWorker(const ActorID &actor_id){
+  for (const auto &entry : states_by_lang_){
+    for (const auto &worker : entry.second.registered_workers){
+      ActorID actor_worker_id = worker->GetActorId();
+      if (!actor_worker_id.IsNil() and actor_id == actor_worker_id){
+        return worker;
+      }
+    }
+  }
+  return std::shared_ptr<Worker>();
+}
+
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";

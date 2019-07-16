@@ -121,6 +121,12 @@ class WorkerPool {
   /// \param task_id The task that we want to query.
   bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
 
+  /// Get the worker in the worker pool that corresponds to the given actor.
+  /// If no such worker is present, return a null pointer.
+  ///
+  /// \param actor_id ActorID of the actor whose worker w're trying to find.
+  std::shared_ptr<Worker> GetActorWorker(const ActorID &actor_id);
+
   /// Returns debug string for class.
   ///
   /// \return string.
