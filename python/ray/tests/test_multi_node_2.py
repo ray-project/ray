@@ -86,7 +86,8 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
         "num_cpus": 1,
     }, {
         "num_cpus": 2,
-    }], indirect=True)
+    }],
+    indirect=True)
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
