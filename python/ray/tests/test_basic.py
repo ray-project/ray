@@ -1729,9 +1729,9 @@ def test_resource_constraints(shutdown_only):
     while True:
         if len(
                 set(
-                    ray.get(
-                        [get_worker_id.remote()
-                         for _ in range(num_workers)]))) == num_workers:
+                    ray.get([
+                        get_worker_id.remote() for _ in range(num_workers)
+                    ]))) == num_workers:
             break
 
     time_buffer = 2
@@ -1805,9 +1805,9 @@ def test_multi_resource_constraints(shutdown_only):
     while True:
         if len(
                 set(
-                    ray.get(
-                        [get_worker_id.remote()
-                         for _ in range(num_workers)]))) == num_workers:
+                    ray.get([
+                        get_worker_id.remote() for _ in range(num_workers)
+                    ]))) == num_workers:
             break
 
     @ray.remote(num_cpus=1, num_gpus=9)
@@ -3030,8 +3030,8 @@ def test_get_postprocess(ray_start_regular):
 
     ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
 
-    assert ray.get([ray.put(i)
-                    for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
+    assert ray.get(
+        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
 
 
 def test_export_after_shutdown(ray_start_regular):
