@@ -148,7 +148,7 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     monitor._maybe_flush_gcs()
     num_workers = 4
 
-    num_nodes_total = float(num_workers + 1)
+    num_nodes_total = int(num_workers + 1)
     [cluster.add_node() for i in range(num_workers)]
     cluster.wait_for_nodes()
 

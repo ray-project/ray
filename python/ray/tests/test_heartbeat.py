@@ -17,7 +17,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
             break
         else:
             timeout -= 1
-            time.sleep(2)
+            time.sleep(1)
 
         if timeout <= 0:
             raise ValueError("Timeout. {} != {}".format(
@@ -40,7 +40,7 @@ def test_heartbeats():
 
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": 1.0}))
     work_handles = []
-    timeout = 20
+    timeout = 5
 
     @ray.remote
     def work(timeout=10):
