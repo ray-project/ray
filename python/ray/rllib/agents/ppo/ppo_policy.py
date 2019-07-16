@@ -8,7 +8,8 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
@@ -125,7 +126,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
         policy.convert_to_eager(policy.value_function),
         policy.convert_to_eager(policy.kl_coeff),
         mask,
-        entropy_coeff=policy.config["entropy_coeff"],
+        entropy_coeff=policy.convert_to_eager(policy.entropy_coeff),
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
@@ -147,6 +148,8 @@ def kl_and_loss_stats(policy, batch_tensors):
             policy.convert_to_eager(policy.value_function)),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
+        "entropy_coeff": tf.cast(
+            policy.convert_to_eager(policy.entropy_coeff), tf.float64),
     }
 
 
@@ -241,9 +244,16 @@ class ValueNetworkMixin(object):
         return vf[0]
 
 
+def setup_config(policy, obs_space, action_space, config):
+    # auto set the model option for layer sharing
+    config["model"]["vf_share_layers"] = config["vf_share_layers"]
+
+
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
@@ -255,5 +265,9 @@ PPOTFPolicy = build_tf_policy(
     extra_action_fetches_fn=vf_preds_and_logits_fetches,
     postprocess_fn=postprocess_ppo_gae,
     gradients_fn=clip_gradients,
+    before_init=setup_config,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])
+    mixins=[
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        ValueNetworkMixin
+    ])

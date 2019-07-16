@@ -7,14 +7,15 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/raylet/task.h"
-#include "ray/object_manager/object_manager.h"
+#include "ray/common/task/task.h"
 #include "ray/common/client_connection.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
-#include "ray/raylet/scheduling_resources.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
@@ -35,6 +36,8 @@ using rpc::JobTableData;
 struct NodeManagerConfig {
   /// The node's resource configuration.
   ResourceSet resource_config;
+  /// The IP address this node manager is running on.
+  std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
@@ -46,7 +49,7 @@ struct NodeManagerConfig {
   /// worker pool.
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
-  std::unordered_map<Language, std::vector<std::string>> worker_commands;
+  WorkerCommandMap worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -126,14 +129,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ClientRemoved(const ClientTableData &client_data);
 
   /// Handler for the addition or updation of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that created or updated resources.
+  /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const ClientTableData &client_data);
+  void ResourceCreateUpdated(const ClientID &client_id,
+                             const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that deleted resources.
+  /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const ClientTableData &client_data);
+  void ResourceDeleted(const ClientID &client_id,
+                       const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local client.
@@ -211,13 +218,33 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignedTask(Worker &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task The actor creation task that created the actor.
-  ActorTableData CreateActorTableDataFromCreationTask(const Task &task);
+  /// \param task_spec Task specification of the actor creation task that created the
+  /// actor.
+  ActorTableData CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
-  /// \param task The actor task or actor creationt ask.
+  /// \param task The actor task or actor creation task.
   /// \return Void.
   void FinishAssignedActorTask(Worker &worker, const Task &task);
+  /// Helper function for handling worker to finish its assigned actor task
+  /// or actor creation task. Gets invoked when tasks's parent actor is known.
+  ///
+  /// \param actor_id The actor id corresponding to the actor (creation) task.
+  /// \param actor_handle_id The actor id corresponding to the actor (creation) task.
+  /// \param new_actor_data The struct which will be used to register the task.
+  /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param dummy_object Dummy object corresponding to the actor creation task.
+  /// \return Void.
+  void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
+                                       const TaskSpecification &task_spec,
+                                       bool resumed_from_checkpoint);
+  /// Extend actor frontier after an actor task or actor creation task executes.
+  ///
+  /// \param dummy_object Dummy object corresponding to the task.
+  /// \param actor_id The relevant actor ID.
+  /// \param actor_handle_id The relevant actor handle ID.
+  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
+                           const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
@@ -368,11 +395,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
-  /// Process client message of GetTask
+  /// Handle the case that a worker is available.
   ///
-  /// \param client The client that sent the message.
+  /// \param client The connection for the worker.
   /// \return Void.
-  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
@@ -452,10 +479,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
+  /// Finish assigning a task to a worker.
+  ///
+  /// \param task_id Id of the task.
+  /// \param worker Worker which the task is assigned to.
+  /// \param success Whether the task is successfully assigned to the worker.
+  /// \return void.
+  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
+
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
                          rpc::ForwardTaskReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -516,7 +551,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
 
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// as well as all `WorkerTaskClient`s.
   rpc::ClientCallManager client_call_manager_;
 
   /// Map from node ids to clients of the remote node managers.

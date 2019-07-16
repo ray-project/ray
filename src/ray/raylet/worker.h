@@ -5,7 +5,10 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_common.h"
+#include "ray/rpc/worker/worker_client.h"
 
 namespace ray {
 
@@ -18,7 +21,8 @@ class Worker {
  public:
   /// A constructor that initializes a worker object.
   Worker(pid_t pid, const Language &language, int port,
-         std::shared_ptr<LocalClientConnection> connection);
+         std::shared_ptr<LocalClientConnection> connection,
+         rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkDead();
@@ -52,6 +56,10 @@ class Worker {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
+  bool UsePush() const;
+  void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
+                  const std::function<void(Status)> finish_assign_callback);
+
  private:
   /// The worker's PID.
   pid_t pid_;
@@ -80,6 +88,11 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
+  /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
+  /// workers.
+  rpc::ClientCallManager &client_call_manager_;
+  /// The rpc client to send tasks to this worker.
+  std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
 };
 
 }  // namespace raylet

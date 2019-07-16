@@ -3,11 +3,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
 
@@ -23,7 +24,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status Add(const JobID &job_id, const TaskID &task_id,
-             std::shared_ptr<TaskTableData> &task_data,
+             const std::shared_ptr<TaskTableData> &task_data,
              const gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     auto callback = done;
@@ -125,21 +126,16 @@ class LineageCacheTest : public ::testing::Test {
 };
 
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
-                               int64_t num_returns) {
-  std::unordered_map<std::string, double> required_resources;
-  std::vector<std::shared_ptr<TaskArgument>> task_arguments;
-  for (auto &argument : arguments) {
-    std::vector<ObjectID> references = {argument};
-    task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
+                               uint64_t num_returns) {
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                            TaskID::FromRandom(), 0, num_returns, {}, {});
+  for (const auto &arg : arguments) {
+    builder.AddByRefArg(arg);
   }
-  std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
-                                num_returns, required_resources, Language::PYTHON,
-                                function_descriptor);
-  auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
-  execution_spec.IncrementNumForwards();
-  Task task = Task(execution_spec, spec);
-  return task;
+  rpc::TaskExecutionSpec execution_spec_message;
+  execution_spec_message.set_num_forwards(1);
+  return Task(builder.Build(), TaskExecutionSpecification(execution_spec_message));
 }
 
 /// Helper method to create a Lineage object with a single task.

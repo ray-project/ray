@@ -188,7 +188,10 @@ class DDPGModel(TFModelV2):
         This is called internally by the DDPG policy."""
 
         self.pi_distance = distance_in_action_space
-        if distance_in_action_space < policy.config["exploration_ou_sigma"]:
+        if (distance_in_action_space <
+                    policy.config["exploration_ou_sigma"] * policy.cur_noise_scale):
+            # multiplying the sampled OU noise by noise scale is
+            # equivalent to multiplying the sigma of OU by noise scale
             self.parameter_noise_sigma_val *= 1.01
         else:
             self.parameter_noise_sigma_val /= 1.01

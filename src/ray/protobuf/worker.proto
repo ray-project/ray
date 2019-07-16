@@ -2,15 +2,15 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 message AssignTaskRequest {
-  // The ID of the task to be pushed.
-  bytes task_id = 1;
-  // The task to be pushed. This should include task_id.
-  // TODO(hchen): Currently, `task_spec` are represented as
-  // flatbutters-serialized bytes. This is because the flatbuffers-defined Task data
-  // structure is being used in many places. We should move Task and all related data
-  // structures to protobuf.
-  bytes task_spec = 2;
+  // The task to be pushed.
+  Task task = 1;
+  // A list of the resources reserved for this worker.
+  // TODO(zhijunfu): `resource_ids` is represented as
+  // flatbutters-serialized bytes, will be moved to protobuf later.
+  bytes resource_ids = 2;
 }
 
 message AssignTaskReply {

@@ -49,6 +49,9 @@ def run(run_or_experiment,
         sync_to_driver=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
+        keep_checkpoints_num=None,
+        checkpoint_score_attr=None,
+        global_checkpoint_period=10,
         export_formats=None,
         max_failures=3,
         restore=None,
@@ -59,7 +62,7 @@ def run(run_or_experiment,
         verbose=2,
         resume=False,
         queue_trials=False,
-        reuse_actors=True,
+        reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
         return_trials=True,
@@ -113,6 +116,16 @@ def run(run_or_experiment,
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        keep_checkpoints_num (int): Number of checkpoints to keep. A value of
+            `None` keeps all checkpoints. Defaults to `None`. If set, need
+            to provide `checkpoint_score_attr`.
+        checkpoint_score_attr (str): Specifies by which attribute to rank the
+            best checkpoint. Default is increasing order. If attribute starts
+            with `min-` it will rank attribute in decreasing order, i.e.
+            `min-validation_loss`.
+        global_checkpoint_period (int): Seconds between global checkpointing.
+            This does not affect `checkpoint_freq`, which specifies frequency
+            for individual trials.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
         max_failures (int): Try to recover a trial from its last
@@ -195,6 +208,8 @@ def run(run_or_experiment,
             loggers=loggers,
             checkpoint_freq=checkpoint_freq,
             checkpoint_at_end=checkpoint_at_end,
+            keep_checkpoints_num=keep_checkpoints_num,
+            checkpoint_score_attr=checkpoint_score_attr,
             export_formats=export_formats,
             max_failures=max_failures,
             restore=restore,
@@ -212,6 +227,7 @@ def run(run_or_experiment,
         local_checkpoint_dir=experiment.checkpoint_dir,
         remote_checkpoint_dir=experiment.remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
+        checkpoint_period=global_checkpoint_period,
         resume=resume,
         launch_web_server=with_server,
         server_port=server_port,

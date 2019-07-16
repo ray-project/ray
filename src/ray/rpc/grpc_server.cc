@@ -12,7 +12,7 @@ void GrpcServer::Run() {
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
-  if (services_.size() == 0) {
+  if (services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
   }
   for (auto &entry : services_) {
@@ -49,9 +49,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
   // Keep reading events from the `CompletionQueue` until it's shutdown.
   while (cq_->Next(&tag, &ok)) {
     auto *server_call = static_cast<ServerCall *>(tag);
-    // `ok == false` indicates that the server has been shut down.
-    // We should delete the call object in this case.
-    bool delete_call = !ok;
+    bool delete_call = false;
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
@@ -63,14 +61,24 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:
-        // The reply has been sent, this call can be deleted now.
-        // This event is triggered by `ServerCallImpl::Finish`.
+        // GRPC has sent reply successfully, invoking the callback.
+        server_call->OnReplySent();
+        // The rpc call has finished and can be deleted now.
         delete_call = true;
         break;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
         break;
       }
+    } else {
+      // `ok == false` will occur in two situations:
+      // First, the server has been shut down, the server call's status is PENDING
+      // Second, server has sent reply to client and failed, the server call's status is
+      // SENDING_REPLY
+      if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
+        server_call->OnReplyFailed();
+      }
+      delete_call = true;
     }
     if (delete_call) {
       delete server_call;

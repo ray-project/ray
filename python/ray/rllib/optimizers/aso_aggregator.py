@@ -105,8 +105,13 @@ class AggregationWorkerBase(object):
             self.batch_buffer.append(sample_batch)
             if sum(b.count
                    for b in self.batch_buffer) >= self.train_batch_size:
-                train_batch = self.batch_buffer[0].concat_samples(
-                    self.batch_buffer)
+                if len(self.batch_buffer) == 1:
+                    # make a defensive copy to avoid sharing plasma memory
+                    # across multiple threads
+                    train_batch = self.batch_buffer[0].copy()
+                else:
+                    train_batch = self.batch_buffer[0].concat_samples(
+                        self.batch_buffer)
                 yield train_batch
                 self.batch_buffer = []
 

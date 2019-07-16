@@ -111,7 +111,7 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
   ClientID result_client_id = ClientID::FromBinary(client_data.client_id());
   if (!result_client_id.IsNil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
-    if (client_data.entry_type() == ClientTableData::INSERTION) {
+    if (client_data.is_insertion()) {
       connection_info.ip = client_data.node_manager_address();
       connection_info.port = static_cast<uint16_t>(client_data.object_manager_port());
     }

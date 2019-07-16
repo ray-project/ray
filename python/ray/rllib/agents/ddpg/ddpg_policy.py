@@ -7,7 +7,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.ddpg.ddpg_model import DDPGModel, PassThroughObs
+from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
@@ -20,6 +20,11 @@ from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, scope_vars
 
 tf = try_import_tf()
+
+
+class NoopModel(TFModelV2):
+    def forward(self, input_dict, state, seq_lens):
+        return input_dict["obs"]
 
 
 def build_ddpg_model(policy, obs_space, action_space, config):
@@ -35,14 +40,10 @@ def build_ddpg_model(policy, obs_space, action_space, config):
 
     if config["use_state_preprocessor"]:
         default_model = None  # catalog decides
+        num_outputs = 256  # arbitrary
     else:
-
-        class PassThroughObs(TFModelV2):
-            def forward(self, input_dict, state, seq_lens):
-                return input_dict["obs"]
-
-        default_model = PassThroughObs
-        num_outputs = np.product(action.shape)
+        default_model = NoopModel
+        num_outputs = np.product(observation_space.shape)
 
     prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy.model = ModelCatalog.get_model_v2(

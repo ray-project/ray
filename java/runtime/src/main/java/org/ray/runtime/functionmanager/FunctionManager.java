@@ -24,7 +24,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
 import org.ray.api.function.RayFunc;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.JobId;
 import org.ray.runtime.util.LambdaUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +48,7 @@ public class FunctionManager {
   /**
    * Mapping from the job id to the functions that belong to this job.
    */
-  private Map<UniqueId, JobFunctionTable> jobFunctionTables = new HashMap<>();
+  private Map<JobId, JobFunctionTable> jobFunctionTables = new HashMap<>();
 
   /**
    * The resource path which we can load the job's jar resources.
@@ -72,7 +72,7 @@ public class FunctionManager {
    * @param func The lambda.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId jobId, RayFunc func) {
+  public RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
@@ -92,7 +92,7 @@ public class FunctionManager {
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId jobId, JavaFunctionDescriptor functionDescriptor) {
+  public RayFunction getFunction(JobId jobId, JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
     if (jobFunctionTable == null) {
       ClassLoader classLoader;

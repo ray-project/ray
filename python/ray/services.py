@@ -615,6 +615,9 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to enable cross-languages.
     primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
+    # Init job counter to GCS.
+    primary_redis_client.set("JobCounter", 0)
+
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 
@@ -1299,6 +1302,32 @@ def determine_plasma_store_config(object_store_memory=None,
                 "when calling ray.init() or ray start.")
             object_store_memory = (
                 ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+
+        # Other applications may also be using a lot of memory on the same
+        # node. Try to detect when this is happening and log a warning or
+        # error in more severe cases.
+        avail_memory = ray.utils.estimate_available_memory()
+        object_store_fraction = object_store_memory / avail_memory
+        # Escape hatch, undocumented for now.
+        no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
+        if object_store_fraction > 0.9 and not no_check:
+            raise ValueError(
+                "The default object store size of {} GB "
+                "will use more than 90% of the available memory on this node "
+                "({} GB). Please reduce the object store memory size "
+                "to avoid memory contention with other applications, or "
+                "shut down the applications using this memory.".format(
+                    round(object_store_memory / 1e9, 2),
+                    round(avail_memory / 1e9, 2)))
+        elif object_store_fraction > 0.5:
+            logger.warning(
+                "WARNING: The default object store size of {} GB "
+                "will use more than 50% of the available memory on this node "
+                "({} GB). Consider setting the object store memory manually "
+                "to a smaller size to avoid memory contention with other "
+                "applications.".format(
+                    round(object_store_memory / 1e9, 2),
+                    round(avail_memory / 1e9, 2)))
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,

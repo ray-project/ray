@@ -6,6 +6,7 @@ import os
 import pickle
 import numpy as np
 
+from ray.tune import result as tune_result
 from ray.rllib.agents.trainer import Trainer, with_common_config
 
 
@@ -18,6 +19,7 @@ class _MockTrainer(Trainer):
         "persistent_error": False,
         "test_variable": 1,
         "num_workers": 0,
+        "user_checkpoint_freq": 0,
     })
 
     @classmethod
@@ -32,11 +34,15 @@ class _MockTrainer(Trainer):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
-        return dict(
+        result = dict(
             episode_reward_mean=10,
             episode_len_mean=10,
             timesteps_this_iter=10,
             info={})
+        if self.config["user_checkpoint_freq"] > 0 and self.iteration > 0:
+            if self.iteration % self.config["user_checkpoint_freq"] == 0:
+                result.update({tune_result.SHOULD_CHECKPOINT: True})
+        return result
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")

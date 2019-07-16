@@ -15,7 +15,8 @@ from ray.rllib.agents.impala import vtrace
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -195,7 +196,7 @@ def build_vtrace_loss(policy, batch_tensors):
         dist_class=Categorical if is_multidiscrete else policy.dist_class,
         valid_mask=make_time_major(mask, drop_last=True),
         vf_loss_coeff=policy.config["vf_loss_coeff"],
-        entropy_coeff=policy.config["entropy_coeff"],
+        entropy_coeff=policy.entropy_coeff,
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
@@ -210,6 +211,7 @@ def stats(policy, batch_tensors):
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         "var_gnorm": tf.global_norm(policy.var_list),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
@@ -278,6 +280,8 @@ class ValueNetworkMixin(object):
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     ValueNetworkMixin.__init__(policy)
 
 
@@ -293,5 +297,5 @@ VTraceTFPolicy = build_tf_policy(
     extra_action_fetches_fn=add_behaviour_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, ValueNetworkMixin],
+    mixins=[LearningRateSchedule, EntropyCoeffSchedule, ValueNetworkMixin],
     get_batch_divisibility_req=lambda p: p.config["sample_batch_size"])

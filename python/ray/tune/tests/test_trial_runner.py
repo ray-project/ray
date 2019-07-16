@@ -2086,7 +2086,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         trials = [
             Trial(
                 "__fake",
@@ -2145,8 +2145,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
-
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(
             Trial(
                 "__fake",
@@ -2200,7 +2199,7 @@ class TrialRunnerTest(unittest.TestCase):
             },
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2221,7 +2220,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2236,6 +2235,29 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner2.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 2)
+        shutil.rmtree(tmpdir)
+
+    def testUserCheckpoint(self):
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        runner.step()  # 0
+        self.assertFalse(trials[0].has_checkpoint())
+        runner.step()  # 1
+        self.assertFalse(trials[0].has_checkpoint())
+        runner.step()  # 2
+        self.assertTrue(trials[0].has_checkpoint())
+
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2.step()
+        trials2 = runner2.get_trials()
+        self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
         shutil.rmtree(tmpdir)
 
 

@@ -2,14 +2,16 @@
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
 #include "ray/common/buffer.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
-#include "ray/raylet/task.h"
-#include "ray/rpc/util.h"
 
 namespace ray {
 
@@ -45,7 +47,7 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const ::Language actor_language,
+              const Language actor_language,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   ActorHandle(const ActorHandle &other);
@@ -57,7 +59,7 @@ class ActorHandle {
   ray::ActorHandleID ActorHandleID() const;
 
   /// Language of the actor.
-  ::Language ActorLanguage() const;
+  Language ActorLanguage() const;
 
   // Function descriptor of actor creation task.
   std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
@@ -149,12 +151,21 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// Build the arguments for a task spec.
+  /// Build common attributes of the task spec, and compute return ids.
   ///
-  /// \param[in] args Arguments of a task.
-  /// \return Arguments as required by task spec.
-  std::vector<std::shared_ptr<raylet::TaskArgument>> BuildTaskArguments(
-      const std::vector<TaskArg> &args);
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] num_returns Number of returns.
+  /// \param[in] required_resources Resources required by this task.
+  /// \param[in] required_placement_resources Resources required by placing this task on a
+  /// node.
+  /// \param[out] return_ids Return IDs.
+  /// \return A `TaskSpecBuilder`.
+  TaskSpecBuilder BuildCommonTaskSpec(
+      const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      std::vector<ObjectID> *return_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import traceback
+import random
 
 # Ray modules
 import pyarrow
@@ -68,11 +69,11 @@ from ray.utils import (
     setup_logger,
     thread_safe_client,
 )
+from ray.local_mode_manager import LocalModeManager
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
-PYTHON_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -217,6 +218,13 @@ class Worker(object):
     def current_task_id(self):
         return self.task_context.current_task_id
 
+    @property
+    def current_session_and_job(self):
+        """Get the current session index and job id as pair."""
+        assert isinstance(self._session_index, int)
+        assert isinstance(self.current_job_id, ray.JobID)
+        return self._session_index, self.current_job_id
+
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
 
@@ -270,7 +278,7 @@ class Worker(object):
         The mode LOCAL_MODE should be used if this Worker is a driver and if
         you want to run the driver in a manner equivalent to serial Python for
         debugging purposes. It will not send remote function calls to the
-        scheduler and will insead execute them in a blocking fashion.
+        scheduler and will instead execute them in a blocking fashion.
 
         Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
@@ -382,7 +390,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
+        except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
@@ -490,6 +498,10 @@ class Worker(object):
         Args:
             object_ids (List[object_id.ObjectID]): A list of the object IDs
                 whose values should be retrieved.
+
+        Raises:
+            Exception if running in LOCAL_MODE and any of the object IDs do not
+            exist in the emulated object store.
         """
         # Make sure that the values are object IDs.
         for object_id in object_ids:
@@ -497,6 +509,10 @@ class Worker(object):
                 raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
+
+        if self.mode == LOCAL_MODE:
+            return self.local_mode_manager.get_object(object_ids)
+
         # Do an initial fetch for remote objects. We divide the fetch into
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
@@ -680,7 +696,7 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(job_id, JobID)
-            task = ray._raylet.Task(
+            task = ray._raylet.TaskSpec(
                 job_id,
                 function_descriptor_list,
                 args_for_raylet,
@@ -694,11 +710,10 @@ class Worker(object):
                 actor_handle_id,
                 actor_counter,
                 new_actor_handles,
-                execution_dependencies,
                 resources,
                 placement_resources,
             )
-            self.raylet_client.submit_task(task)
+            self.raylet_client.submit_task(task, execution_dependencies)
 
             return task.returns()
 
@@ -853,7 +868,7 @@ class Worker(object):
         assert self.current_task_id.is_nil()
         assert self.task_context.task_index == 0
         assert self.task_context.put_index == 1
-        if task.actor_id().is_nil():
+        if not task.is_actor_task():
             # If this worker is not an actor, check that `current_job_id`
             # was reset when the worker finished the previous task.
             assert self.current_job_id.is_nil()
@@ -872,8 +887,7 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        if (not task.actor_id().is_nil()
-                or not task.actor_creation_id().is_nil()):
+        if task.is_actor_task() or task.is_actor_creation_task():
             dummy_return_id = return_object_ids.pop()
         function_executor = function_execution_info.function
         function_name = function_execution_info.function_name
@@ -896,11 +910,10 @@ class Worker(object):
         try:
             self._current_task = task
             with profiling.profile("task:execute"):
-                if (task.actor_id().is_nil()
-                        and task.actor_creation_id().is_nil()):
+                if task.is_normal_task():
                     outputs = function_executor(*arguments)
                 else:
-                    if not task.actor_id().is_nil():
+                    if task.is_actor_task():
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
@@ -909,7 +922,7 @@ class Worker(object):
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
-            task_exception = task.actor_id().is_nil()
+            task_exception = not task.is_actor_task()
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             self._handle_process_task_failure(
@@ -965,8 +978,7 @@ class Worker(object):
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
-        if not task.actor_creation_id().is_nil():
-            assert self.actor_id.is_nil()
+        if task.is_actor_creation_task():
             self.actor_id = task.actor_creation_id()
             self.actor_creation_task_id = task.task_id()
             actor_class = self.function_actor_manager.load_actor_class(
@@ -984,8 +996,8 @@ class Worker(object):
         # Execute the task.
         function_name = execution_info.function_name
         extra_data = {"name": function_name, "task_id": task.task_id().hex()}
-        if task.actor_id().is_nil():
-            if task.actor_creation_id().is_nil():
+        if not task.is_actor_task():
+            if not task.is_actor_creation_task():
                 title = "ray_worker:{}()".format(function_name)
                 next_title = "ray_worker"
             else:
@@ -1064,7 +1076,7 @@ def get_gpu_ids():
         A list of GPU IDs.
     """
     if _mode() == LOCAL_MODE:
-        raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
+        raise Exception("ray.get_gpu_ids() currently does not work in LOCAL "
                         "MODE.")
 
     all_resource_ids = global_worker.raylet_client.resource_ids()
@@ -1092,7 +1104,7 @@ def get_resource_ids():
     """
     if _mode() == LOCAL_MODE:
         raise Exception(
-            "ray.get_resource_ids() currently does not work in PYTHON "
+            "ray.get_resource_ids() currently does not work in LOCAL "
             "MODE.")
 
     return global_worker.raylet_client.resource_ids()
@@ -1711,27 +1723,44 @@ def connect(node,
 
     worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
 
+    if mode is not LOCAL_MODE:
+        # Create a Redis client to primary.
+        # The Redis client can safely be shared between threads. However,
+        # that is not true of Redis pubsub clients. See the documentation at
+        # https://github.com/andymccurdy/redis-py#thread-safety.
+        worker.redis_client = node.create_redis_client()
+
     # Initialize some fields.
     if mode is WORKER_MODE:
+        # We should not specify the job_id if it's `WORKER_MODE`.
+        assert job_id is None
+        job_id = JobID.nil()
+        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
+    elif mode is LOCAL_MODE:
+        # Code path of local mode
+        if job_id is None:
+            job_id = JobID.from_int(random.randint(1, 100000))
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = JobID.from_random()
+            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
+            job_id = JobID.from_int(
+                int(worker.redis_client.incr("JobCounter")))
+        # When tasks are executed on remote workers in the context of multiple
+        # drivers, the current job ID is used to keep track of which job is
+        # responsible for the task so that error messages will be propagated to
+        # the correct driver.
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
 
-        if not isinstance(job_id, JobID):
-            raise TypeError("The type of given job id must be JobID.")
-
-        worker.worker_id = job_id.binary()
-
-    # When tasks are executed on remote workers in the context of multiple
-    # drivers, the current job ID is used to keep track of which driver is
-    # responsible for the task so that error messages will be propagated to
-    # the correct driver.
-    if mode != WORKER_MODE:
-        worker.current_job_id = JobID(worker.worker_id)
+    if not isinstance(job_id, JobID):
+        raise TypeError("The type of given job id must be JobID.")
+    worker.current_job_id = job_id
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1742,13 +1771,8 @@ def connect(node,
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
     if mode == LOCAL_MODE:
+        worker.local_mode_manager = LocalModeManager()
         return
-
-    # Create a Redis client.
-    # The Redis client can safely be shared between threads. However, that is
-    # not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1828,7 +1852,6 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
-    job_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1855,12 +1878,12 @@ def connect(node,
         nil_actor_counter = 0
 
         function_descriptor = FunctionDescriptor.for_driver_task()
-        driver_task = ray._raylet.Task(
+        driver_task_spec = ray._raylet.TaskSpec(
             worker.current_job_id,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(job_id_str[:TaskID.size()]),  # parent_task_id.
+            TaskID(worker.worker_id[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
@@ -1869,30 +1892,31 @@ def connect(node,
             ActorHandleID.nil(),  # actor_handle_id.
             nil_actor_counter,  # actor_counter.
             [],  # new_actor_handles.
-            [],  # execution_dependencies.
             {},  # resource_map.
             {},  # placement_resource_map.
         )
-        task_table_data = ray.gcs_utils.TaskTableData()
-        task_table_data.task = driver_task._serialized_raylet_task()
+        task_table_data = ray._raylet.generate_gcs_task_table_data(
+            driver_task_spec)
 
         # Add the driver task to the task table.
         ray.state.state._execute_command(
-            driver_task.task_id(), "RAY.TABLE_ADD",
+            driver_task_spec.task_id(),
+            "RAY.TABLE_ADD",
             ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
             ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
-            driver_task.task_id().binary(),
-            task_table_data.SerializeToString())
+            driver_task_spec.task_id().binary(),
+            task_table_data,
+        )
 
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
-        worker.task_context.current_task_id = driver_task.task_id()
+        worker.task_context.current_task_id = driver_task_spec.task_id()
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,
         ClientID(worker.worker_id),
         (mode == WORKER_MODE),
-        JobID(job_id_str),
+        worker.current_job_id,
     )
 
     # Start the import thread
@@ -2174,17 +2198,12 @@ def get(object_ids):
     worker = global_worker
     worker.check_connected()
     with profiling.profile("ray.get"):
-        if worker.mode == LOCAL_MODE:
-            # In LOCAL_MODE, ray.get is the identity operation (the input will
-            # actually be a value not an objectid).
-            return object_ids
-
         is_individual_id = isinstance(object_ids, ray.ObjectID)
         if is_individual_id:
             object_ids = [object_ids]
 
         if not isinstance(object_ids, list):
-            raise ValueError("'object_ids' must either by an object ID "
+            raise ValueError("'object_ids' must either be an object ID "
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
@@ -2216,13 +2235,13 @@ def put(value):
     worker.check_connected()
     with profiling.profile("ray.put"):
         if worker.mode == LOCAL_MODE:
-            # In LOCAL_MODE, ray.put is the identity operation.
-            return value
-        object_id = ray._raylet.compute_put_id(
-            worker.current_task_id,
-            worker.task_context.put_index,
-        )
-        worker.put_object(object_id, value)
+            object_id = worker.local_mode_manager.put_object(value)
+        else:
+            object_id = ray._raylet.compute_put_id(
+                worker.current_task_id,
+                worker.task_context.put_index,
+            )
+            worker.put_object(object_id, value)
         worker.task_context.put_index += 1
         return object_id
 
@@ -2282,12 +2301,10 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise ValueError("The 'timeout' argument must be nonnegative. "
                          "Received {}".format(timeout))
 
-    if worker.mode != LOCAL_MODE:
-        for object_id in object_ids:
-            if not isinstance(object_id, ObjectID):
-                raise TypeError("wait() expected a list of ray.ObjectID, "
-                                "got list containing {}".format(
-                                    type(object_id)))
+    for object_id in object_ids:
+        if not isinstance(object_id, ObjectID):
+            raise TypeError("wait() expected a list of ray.ObjectID, "
+                            "got list containing {}".format(type(object_id)))
 
     worker.check_connected()
     # TODO(swang): Check main thread.
