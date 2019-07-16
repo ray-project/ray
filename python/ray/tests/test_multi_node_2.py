@@ -75,18 +75,19 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
             time.sleep(1)
 
         if timeout <= 0:
-            raise ValueError("Should not be here.")
+            raise ValueError("Timeout. {} != {}".format(resource_usage, expected_resource_usage))
 
     return resource_usage
 
 
-def test_heartbeats(ray_start_cluster_head):
+def test_heartbeats():
     """Unit test for `Cluster.wait_for_nodes`.
 
     Test proper metrics.
     """
-    cluster = ray_start_cluster_head
-    monitor = Monitor(cluster.redis_address, None)
+    # cluster = ray_start_cluster_head
+    redis_address = ray.init(num_cpus=1)["redis_address"]
+    monitor = Monitor(redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
     monitor.update_raylet_map()
@@ -147,6 +148,7 @@ def test_heartbeats(ray_start_cluster_head):
     ray.get(work_handles)
 
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
+    ray.shutdown()
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
