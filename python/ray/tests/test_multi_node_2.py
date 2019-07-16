@@ -81,7 +81,13 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
     return resource_usage
 
 
-def test_heartbeats(ray_start_cluster_head):
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 1,
+    }, {
+        "num_cpus": 2,
+    }], indirect=True)
+def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
     Test proper metrics.
