@@ -17,7 +17,7 @@ Status BufferedRayObject::WriteDataTo(std::shared_ptr<Buffer> buffer) {
 
 Status PyRayObject::WriteDataTo(std::shared_ptr<Buffer> buffer) {
   arrow::MutableBuffer arrow_buffer(buffer->Data(), buffer->Size());
-  arrow::FixedSizeBufferWriter buffer_writer(arrow_buffer);
+  arrow::io::FixedSizeBufferWriter buffer_writer(arrow_buffer);
   RAY_ARROW_RETURN_NOT_OK(data_->WriteTo(buffer_writer));
   return Status::OK();
 }
