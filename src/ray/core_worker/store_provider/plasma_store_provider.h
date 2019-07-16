@@ -60,6 +60,20 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
                 bool delete_creating_tasks) override;
 
  private:
+  /// Whether the buffer represents an exception object.
+  ///
+  /// \param[in] buffer the object buffer.
+  /// \return Whether it represents an exception object.
+  static bool IsException(const plasma::ObjectBuffer &buffer);
+
+  /// Print a warning if we've attempted too many times, but some objects are still
+  /// unavailable.
+  ///
+  /// \param[in] num_attemps The number of attempted times.
+  /// \param[in] unready The unready objects.
+  static void WarnIfAttemptedTooManyTimes(
+      int num_attempts, const std::unordered_map<ObjectID, int> &unready);
+
   /// Plasma store client.
   plasma::PlasmaClient store_client_;
 
