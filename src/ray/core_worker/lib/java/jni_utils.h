@@ -41,7 +41,7 @@ extern jfieldID java_native_ray_object_data;
 extern jfieldID java_native_ray_object_metadata;
 
 /// Throws a Java RayException if the status is not OK.
-#define ThrowRayExceptionIfNotOK(env, status, ret)                           \
+#define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)               \
   {                                                                          \
     if (!(status).ok()) {                                                    \
       (env)->ThrowNew(java_ray_exception_class, (status).message().c_str()); \
