@@ -66,12 +66,10 @@ def make_aggregators_and_optimizer(workers, config):
     else:
         aggregators = None
     workers.add_workers(config["num_workers"])
-    old_worker = workers._make_worker(
-                RolloutWorker, workers._env_creator, workers._policy, 0, workers._local_config)
 
     optimizer = AsyncSamplesOptimizer(
         workers,
-        old_worker=old_worker,
+        use_importance_sampling=True,
         lr=config["lr"],
         num_envs_per_worker=config["num_envs_per_worker"],
         num_gpus=config["num_gpus"],

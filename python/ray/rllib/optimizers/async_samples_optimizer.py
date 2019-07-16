@@ -9,6 +9,7 @@ from __future__ import print_function
 import logging
 import time
 
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.optimizers.aso_aggregator import SimpleAggregator
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.optimizers.aso_learner import LearnerThread
@@ -29,7 +30,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     def __init__(self,
                  workers,
-                 old_worker = None,
+                 use_importance_sampling=False,
                  train_batch_size=500,
                  sample_batch_size=50,
                  num_envs_per_worker=1,
@@ -51,6 +52,8 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self._stats_start_time = time.time()
         self._last_stats_time = {}
         self._last_stats_sum = {}
+        self.old_worker = workers._make_worker(
+            RolloutWorker, workers._env_creator, workers._policy, 0, workers._local_config) if use_importance_sampling else None
 
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
@@ -76,12 +79,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 learner_queue_size=learner_queue_size,
                 _fake_gpus=_fake_gpus)
         else:
-            if old_worker:
-                weights = self.workers.local_worker().get_weights()
-                old_worker.set_weights(weights)
             self.learner = LearnerThread(self.workers.local_worker(),
                                          minibatch_buffer_size, num_sgd_iter,
-                                         learner_queue_size, old_worker=old_worker, use_kl_loss=use_kl_loss)
+                                         learner_queue_size, old_worker=self.old_worker, use_kl_loss=use_kl_loss)
         self.learner.start()
 
         # Stats

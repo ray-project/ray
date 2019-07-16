@@ -32,6 +32,9 @@ class TFRunBuilder(object):
         for k in feed_dict:
             if k in self.feed_dict:
                 raise ValueError("Key added twice: {}".format(k))
+        delete_str = [k for k in feed_dict if isinstance(k, str)]
+        for k in delete_str:
+            del feed_dict[k]
         self.feed_dict.update(feed_dict)
 
     def add_fetches(self, fetches):

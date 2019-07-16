@@ -11,7 +11,7 @@ class MinibatchBuffer(object):
     This is for use with AsyncSamplesOptimizer.
     """
 
-    def __init__(self, inqueue, size, num_passes):
+    def __init__(self, inqueue, size, num_passes, init_num_passes):
         """Initialize a minibatch buffer.
 
         Arguments:
@@ -22,7 +22,7 @@ class MinibatchBuffer(object):
         self.inqueue = inqueue
         self.size = size
         self.max_ttl = num_passes
-        self.cur_max_ttl = num_passes  # ramp up slowly to better mix the input data
+        self.cur_max_ttl = init_num_passes # 1 for gradual ramp-up, num_passes for immediate minibatching
         self.buffers = [None] * size
         self.ttl = [0] * size
         self.idx = 0

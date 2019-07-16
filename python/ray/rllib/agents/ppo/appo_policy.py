@@ -12,7 +12,8 @@ import gym
 
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
-        BEHAVIOUR_LOGITS, VTraceTFPolicy
+        BEHAVIOUR_LOGITS, VTraceTFPolicy, clip_gradients, \
+        validate_config, choose_optimizer, grad_stats, ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -58,6 +59,9 @@ class PPOSurrogateLoss(object):
                  cur_kl_coeff=None,
                  use_kl_loss=False):
 
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+
         logp_ratio = tf.exp(actions_logp - prev_actions_logp)
 
         surrogate_loss = tf.minimum(
@@ -65,17 +69,16 @@ class PPOSurrogateLoss(object):
             advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                           1 + clip_param))
 
-        self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = -tf.reduce_mean(surrogate_loss)
+        self.mean_kl = reduce_mean_valid(action_kl)
+        self.pi_loss = -reduce_mean_valid(surrogate_loss)
 
         # The baseline loss
-        delta = tf.boolean_mask(values - value_targets, valid_mask)
+        delta = values - value_targets
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_mean(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        self.entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -111,7 +114,7 @@ class VTraceSurrogateLoss(object):
                  clip_param=0.3,
                  cur_kl_coeff=None,
                  use_kl_loss=False):
-        """PPO surrogate loss with vtrace importance weighting.
+        """PPO surrogate loss with Vtrace importance weighting.
 
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
         batch_size. The reason we need to know `B` is for V-trace to properly
@@ -133,6 +136,9 @@ class VTraceSurrogateLoss(object):
             dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
         """
+
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
@@ -158,17 +164,16 @@ class VTraceSurrogateLoss(object):
             advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
                                           1 + clip_param))
 
-        self.mean_kl = tf.reduce_mean(action_kl)
-        self.pi_loss = -tf.reduce_mean(surrogate_loss)
+        self.mean_kl = reduce_mean_valid(action_kl)
+        self.pi_loss = -reduce_mean_valid(surrogate_loss)
 
         # The baseline loss
-        delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
+        delta = values - self.vtrace_returns.vs
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
 
         # The entropy loss
-        self.entropy = tf.reduce_mean(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        self.entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -233,7 +238,8 @@ def build_appo_surrogate_loss(policy, batch_tensors):
                 action_dist.logp(actions), drop_last=True),
             old_policy_actions_logp=make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=old_policy_action_dist.kl(action_dist),
+            action_kl=make_time_major(
+                old_policy_action_dist.kl(action_dist), drop_last=True),
             actions_entropy=make_time_major(
                 action_dist.entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
@@ -261,7 +267,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
             actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=prev_action_dist.kl(action_dist),
+            action_kl=make_time_major(prev_action_dist.kl(action_dist)),
             actions_entropy=make_time_major(action_dist.entropy()),
             values=make_time_major(values),
             valid_mask=make_time_major(mask),
@@ -303,12 +309,6 @@ def stats(policy, batch_tensors):
 
     return stats_dict
 
-
-def grad_stats(policy, grads):
-    return {
-        "grad_gnorm": tf.global_norm(grads),
-    }
-
 def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
@@ -333,64 +333,14 @@ def postprocess_trajectory(policy,
     del batch.data["new_obs"]  # not used, so save some bandwidth
     return batch
 
-
 def add_values_and_logits(policy):
     out = {BEHAVIOUR_LOGITS: policy.model_out}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.value_function
     return out
 
-def validate_config(policy, obs_space, action_space, config):
-    assert config["batch_mode"] == "truncate_episodes", \
-        "Must use `truncate_episodes` batch mode with V-trace."
-
-
-def choose_optimizer(policy, config):
-    if policy.config["opt_type"] == "adam":
-        return tf.train.AdamOptimizer(policy.cur_lr)
-    else:
-        return tf.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
-                                         config["momentum"], config["epsilon"])
-
-def clip_gradients(policy, optimizer, loss):
-    grads = tf.gradients(loss, policy.var_list)
-    policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
-    clipped_grads = list(zip(policy.grads, policy.var_list))
-    return clipped_grads
-    def __init__(self):
-        self.value_function = self.model.value_function()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
-
-    def value(self, ob, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.model.seq_lens: [1]
-        }
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.value_function, feed_dict)
-        return vf[0]
-
-class ValueNetworkMixin(object):
-    def __init__(self):
-        self.value_function = self.model.value_function()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
-
-    def value(self, ob, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.model.seq_lens: [1]
-        }
-        assert len(args) == len(self.model.state_in), \
-            (args, self.model.state_in)
-        for k, v in zip(self.model.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.value_function, feed_dict)
-        return vf[0]
+def add_old_policy_placeholder(policy):
+    return {"old_policy_behaviour_logits": tf.placeholder(tf.float32, shape=[None] +  [policy.logit_dim], name="old_policy_behaviour_logits")}
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
@@ -404,6 +354,7 @@ AsyncPPOTFPolicy = build_tf_policy(
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
     extra_action_fetches_fn=add_values_and_logits,
+    extra_learn_feed_fn=add_old_policy_placeholder,
     before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin],

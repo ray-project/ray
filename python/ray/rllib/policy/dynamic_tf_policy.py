@@ -329,12 +329,12 @@ class DynamicTFPolicy(TFPolicy):
             loss_inputs = [
                 (SampleBatch.CUR_OBS, self._obs_input),
             ]
-        # Only APPO agent has use_kl_loss in config. A bit hacky
-        if "use_kl_loss" in self.config:
-            batch_tensors = UsageTrackingDict({
-                "old_policy_behaviour_logits":tf.placeholder(tf.float32, shape=[None] +  [self.logit_dim], name="old_policy_behaviour_logits")
-            })
-            
+
+        for k,v in self.extra_compute_grad_feed_dict().items():
+            if k in batch_tensors and not isinstance(k, str):
+                continue
+            batch_tensors[k] = v
+    
         for k, v in postprocessed_batch.items():
             if k in batch_tensors:
                 continue
