@@ -87,13 +87,14 @@ def test_heartbeats(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
+    total_cpus = ray.state.cluster_resources()["CPU"]
     monitor = Monitor(cluster.redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
 
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": 1.0}))
+    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": total_cpus}))
     work_handles = []
     timeout = 8
 
@@ -103,7 +104,7 @@ def test_heartbeats(ray_start_cluster_head):
         return True
 
     work_handles += [work.remote(timeout=timeout * 2)]
-    verify_load_metrics(monitor, (1.0, {"CPU": 1.0}, {"CPU": 1.0}))
+    verify_load_metrics(monitor, (1.0 / total_cpus, {"CPU": 1.0}, {"CPU": total_cpus}))
     ray.get(work_handles)
 
     work_handles = []
@@ -120,14 +121,29 @@ def test_heartbeats(ray_start_cluster_head):
 
     work_handles += [test_actors[0].work.remote(timeout=timeout * 2)]
 
-    verify_load_metrics(monitor, (1.0, {"CPU": 1.0}, {"CPU": 1.0}))
+    verify_load_metrics(monitor, (1.0 / total_cpus, {"CPU": 1.0}, {"CPU": total_cpus}))
 
     ray.get(work_handles)
 
+
+def test_heartbeats_cluster(ray_start_cluster_head):
+    """Unit test for `Cluster.wait_for_nodes`.
+
+    Test proper metrics.
+    """
+    cluster = ray_start_cluster_head
+    total_cpus = ray.state.cluster_resources()["CPU"]
+    monitor = Monitor(cluster.redis_address, None)
+    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
+    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+    monitor.update_raylet_map()
+    monitor._maybe_flush_gcs()
     num_workers = 4
+
     num_nodes_total = float(num_workers + 1)
     [cluster.add_node() for i in range(num_workers)]
     cluster.wait_for_nodes()
+
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
 
