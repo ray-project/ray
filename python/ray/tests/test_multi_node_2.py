@@ -63,7 +63,7 @@ def setup_monitor(redis_address):
     monitor = Monitor(redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
-    monitor.update_raylet_map()
+    monitor.update_raylet_map(_remove_port=False)
     monitor._maybe_flush_gcs()
     return monitor
 

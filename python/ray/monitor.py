@@ -247,14 +247,23 @@ class Monitor(object):
                 # Call the handler.
                 message_handler(channel, data)
 
-    def update_raylet_map(self):
+    def update_raylet_map(self, _remove_port=True):
+        """Updates internal raylet map.
+
+        Args:
+            _remove_port (bool): Defaults to True. Appending the port is
+                useful in testing, as mock clusters have many nodes with
+                the same IP and cannot be uniquely identified.
+        """
         all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
             client_id = (raylet_info.get("DBClientID")
                          or raylet_info["ClientID"])
             ip_address = (raylet_info.get("AuxAddress")
-                          or raylet_info["NodeManagerAddress"]).split(":")[0]
+                          or raylet_info["NodeManagerAddress"])
+            if _remove_port:
+                ip_address = ip_address.split(":")[0]
             self.raylet_id_to_ip_map[client_id] = ip_address
 
     def _maybe_flush_gcs(self):
