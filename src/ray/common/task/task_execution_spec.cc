@@ -4,10 +4,6 @@
 
 namespace ray {
 
-const std::vector<ObjectID> TaskExecutionSpecification::ExecutionDependencies() const {
-  return IdVectorFromProtobuf<ObjectID>(message_.dependencies());
-}
-
 size_t TaskExecutionSpecification::NumForwards() const { return message_.num_forwards(); }
 
 void TaskExecutionSpecification::IncrementNumForwards() {
@@ -16,8 +12,7 @@ void TaskExecutionSpecification::IncrementNumForwards() {
 
 std::string TaskExecutionSpecification::DebugString() const {
   std::ostringstream stream;
-  stream << "num_dependencies=" << message_.dependencies_size()
-         << ", num_forwards=" << message_.num_forwards();
+  stream << "num_forwards=" << message_.num_forwards();
   return stream.str();
 }
 

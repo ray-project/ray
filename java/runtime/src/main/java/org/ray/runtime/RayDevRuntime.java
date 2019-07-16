@@ -3,7 +3,7 @@ package org.ray.runtime;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.objectstore.MockObjectStore;
+import org.ray.runtime.objectstore.MockObjectInterface;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.MockRayletClient;
 
@@ -13,19 +13,22 @@ public class RayDevRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private MockObjectStore store;
+  private MockObjectInterface objectInterface;
 
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
   @Override
   public void start() {
-    store = new MockObjectStore(this);
+    // Reset library path at runtime.
+    resetLibraryPath();
+
+    objectInterface = new MockObjectInterface(workerContext);
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
     workerContext = new WorkerContext(rayConfig.workerMode,
         rayConfig.getJobId(), rayConfig.runMode);
-    objectStoreProxy = new ObjectStoreProxy(this, null);
+    objectStoreProxy = new ObjectStoreProxy(workerContext, objectInterface);
     rayletClient = new MockRayletClient(this, rayConfig.numberExecThreadsForDevRuntime);
   }
 
@@ -34,8 +37,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
     rayletClient.destroy();
   }
 
-  public MockObjectStore getObjectStore() {
-    return store;
+  public MockObjectInterface getObjectInterface() {
+    return objectInterface;
   }
 
   @Override
