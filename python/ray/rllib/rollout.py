@@ -177,7 +177,7 @@ def rollout(agent, env_name, num_steps, out=None, no_render=True):
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id)
-                    a_action = _flatten_action([a_action])  # tuple actions
+                    a_action = _flatten_action(a_action)  # tuple actions
                     action_dict[agent_id] = a_action
                     prev_actions[agent_id] = a_action
             action = action_dict
