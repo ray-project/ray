@@ -106,9 +106,6 @@ class Monitor(object):
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
-
-        logger.info("Updating internal resource counter.")
-
         for heartbeat_message in message.batch:
             total_resources = dict(
                 zip(heartbeat_message.resources_total_label,
@@ -118,8 +115,6 @@ class Monitor(object):
                     heartbeat_message.resources_available_capacity))
             for res in total_resources:
                 avail_resources.setdefault(res, 0.0)
-            logger.info("Updated resources: static ({}), dynamic ({}).".format(
-                len(total_resources), len(avail_resources)))
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)

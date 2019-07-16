@@ -94,43 +94,37 @@ def test_heartbeats_single(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
+    timeout = 5
     total_cpus = ray.state.cluster_resources()["CPU"]
     monitor = Monitor(cluster.redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
 
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": total_cpus}))
-    work_handles = []
-    timeout = 8
 
     @ray.remote
-    def work(timeout=10):
+    def work(timeout):
         time.sleep(timeout)
         return True
 
-    work_handles += [work.remote(timeout=timeout * 2)]
+    work_handle = work.remote(timeout * 2)
     verify_load_metrics(monitor, (1.0 / total_cpus, {
         "CPU": 1.0
     }, {
         "CPU": total_cpus
     }))
-    ray.get(work_handles)
-
-    work_handles = []
+    ray.get(work_handle)
 
     @ray.remote
     class Actor(object):
-        def work(self, timeout=10):
+        def work(self, timeout):
             time.sleep(timeout)
             return True
 
-    test_actors = [Actor.remote()]
-
-    timeout = 8
-
-    work_handles += [test_actors[0].work.remote(timeout=timeout * 2)]
+    test_actor = Actor.remote()
+    work_handle = test_actor.work.remote(timeout * 2)
 
     verify_load_metrics(monitor, (1.0 / total_cpus, {
         "CPU": 1.0
@@ -138,7 +132,7 @@ def test_heartbeats_single(ray_start_cluster_head):
         "CPU": total_cpus
     }))
 
-    ray.get(work_handles)
+    ray.get(work_handle)
 
 
 def test_heartbeats_cluster(ray_start_cluster_head):
@@ -148,33 +142,30 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
     timeout = 5
+    num_workers_nodes = 4
     monitor = Monitor(cluster.redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
-    num_workers = 4
 
-    num_nodes_total = int(num_workers + 1)
-    [cluster.add_node() for i in range(num_workers)]
+    num_nodes_total = int(num_workers_nodes + 1)
+    [cluster.add_node() for i in range(num_workers_nodes)]
     cluster.wait_for_nodes()
 
     monitor.update_raylet_map()
     monitor._maybe_flush_gcs()
-
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
 
     @ray.remote
     class Actor(object):
-        def work(self, timeout=10):
+        def work(self, timeout):
             time.sleep(timeout)
             return True
 
     test_actors = [Actor.remote() for i in range(num_nodes_total)]
 
-    work_handles = [
-        actor.work.remote(timeout=timeout * 2) for actor in test_actors
-    ]
+    work_handles = [actor.work.remote(timeout * 2) for actor in test_actors]
 
     verify_load_metrics(monitor, (num_nodes_total, {
         "CPU": num_nodes_total
@@ -183,7 +174,6 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     }))
 
     ray.get(work_handles)
-
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
     ray.shutdown()
 
