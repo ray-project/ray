@@ -119,9 +119,8 @@ class Monitor(object):
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
-            load_metrics_id = ip + "-" + client_id
             if ip:
-                self.load_metrics.update(load_metrics_id, total_resources,
+                self.load_metrics.update(ip, total_resources,
                                          available_resources)
             else:
                 logger.warning(
