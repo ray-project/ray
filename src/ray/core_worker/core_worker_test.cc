@@ -20,14 +20,29 @@ std::string store_executable;
 std::string raylet_executable;
 std::string mock_worker_executable;
 
-ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
-
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
   freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
+}
+
+bool CompareObjectData(std::shared_ptr<RayObject> object, Buffer buffer) {
+  if (object->GetDataSize() != buffer->Size()) {
+    return false;
+  }
+
+  uint8_t mem[object->GetDataSize()];
+  auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(mem, object->GetDataSize());
+  if (object->WriteDataTo(tmp_buffer) != Status::OK()) {
+    return false;
+  }
+
+  if (memcmp(tmp_buffer->Data(), buffer->Data(), buffer->Size()) != 0) {
+    return false;
+  }
+  return true;
 }
 
 class CoreWorkerTest : public ::testing::Test {
@@ -67,7 +82,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + RandomObjectID().Hex();
+    std::string store_socket_name = "/tmp/store" + ObjectID::FromRandom().Hex();
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable + " -m 10000000 -s " +
                                  store_socket_name +
@@ -89,7 +104,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
+    std::string raylet_socket_name = "/tmp/raylet" + ObjectID::FromRandom().Hex();
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -148,9 +163,7 @@ class CoreWorkerTest : public ::testing::Test {
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
-                0);
+      CompareObjectData(results[0], buffer1);
     }
 
     // Test pass by reference.
@@ -176,9 +189,7 @@ class CoreWorkerTest : public ::testing::Test {
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
-                0);
+      CompareObjectData(results[0], buffer1);
     }
   }
 
@@ -207,9 +218,11 @@ class CoreWorkerTest : public ::testing::Test {
     {
       uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
       uint8_t array2[] = {10, 11, 12, 13, 14, 15};
+      uint8_t array3[] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15}
 
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
       auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
+      auto buffer3 = std::make_shared<LocalMemoryBuffer>(array3, sizeof(array3));
 
       ObjectID object_id;
       RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
@@ -230,12 +243,7 @@ class CoreWorkerTest : public ::testing::Test {
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
-                0);
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
-                       buffer2->Size()),
-                0);
+      CompareObjectData(results[0], buffer3);
     }
   }
 

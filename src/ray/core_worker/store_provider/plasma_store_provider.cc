@@ -21,17 +21,17 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
-  auto data = object.GetData();
-  auto metadata = object.GetMetadata();
-  std::shared_ptr<arrow::Buffer> out_buffer;
+  auto metadata = object.Metadata();
+  std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Create(
-        plasma_id, data->Size(), metadata ? metadata->Data() : nullptr,
-        metadata ? metadata->Size() : 0, &out_buffer));
+        plasma_id, object->DataSize(), metadata ? metadata->Data() : nullptr,
+        metadata ? metadata->Size() : 0, &arrow_buffer));
   }
 
-  memcpy(out_buffer->mutable_data(), data->Data(), data->Size());
+  std::shared_ptr<Buffer> out_buffer(arrow_buffer);
+  RAY_RETURN_NOT_OK(object.WriteDataTo(out_buffer));
 
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);

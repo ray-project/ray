@@ -36,14 +36,20 @@ class MockWorker {
     RAY_CHECK(num_returns >= 0);
 
     // Merge all the content from input args.
-    std::vector<uint8_t> buffer;
+    int total_size = 0;
     for (const auto &arg : args) {
-      auto &data = arg->GetData();
-      buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
+      total_size += arg->GetDataSize();
+    }
+
+    uint8_t buffer[total_size];
+    int curr = 0;
+    for (const auto &arg : args) {
+      auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(buffer+curr, arg->GetDataSize());
+      RAY_RETURN_NOT_OK(arg->WriteDataTo(tmp_buffer));
     }
 
     auto return_value = RayObject(
-        std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
+        std::make_shared<LocalMemoryBuffer>(buffer, total_size), nullptr);
 
     // Write the merged content to each of return ids.
     for (int i = 0; i < num_returns; i++) {

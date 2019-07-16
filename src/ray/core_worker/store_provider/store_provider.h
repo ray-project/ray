@@ -6,29 +6,65 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 
+namespace arrow {
+namespace py {
+struct SerializedPyObject;
+}
+}
+
 namespace ray {
 
-/// Binary representation of ray object.
+/// RayObjects consist of data and metadata. Metadata is always passed
+/// in as a buffer because it is small, but data can be handled
+/// differently by implementations in order to avoid copying large data.
 class RayObject {
  public:
-  /// Create a ray object instance.
-  ///
-  /// \param[in] data Data of the ray object.
-  /// \param[in] metadata Metadata of the ray object.
-  RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata)
-      : data_(data), metadata_(metadata) {}
+  RayObject(const std::shared_ptr<Buffer> &metadata)
+      : metadata_(metadata) {}
 
-  /// Return the data of the ray object.
-  const std::shared_ptr<Buffer> &GetData() const { return data_; };
+  virtual ~RayObject() {}
 
-  /// Return the metadata of the ray object.
-  const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; };
+  const std::shared_ptr<Buffer> &Metadata() const { return metadata_; };
+
+  virtual size_t DataSize() = 0;
+
+  virtual Status WriteDataTo(std::shared_ptr<Buffer> buffer) = 0;
 
  private:
-  /// Data of the ray object.
-  const std::shared_ptr<Buffer> data_;
-  /// Metadata of the ray object.
   const std::shared_ptr<Buffer> metadata_;
+}
+
+/// BufferedRayObject is a RayObject whose data is held in a buffer.
+class BufferedRayObject : RayObject {
+ public:
+  BufferedRayObject(const std::shared_ptr<Buffer> &metadata,
+		const std::shared_ptr<Buffer> &data)
+      : RayObject(metadata), data_(data) {}
+
+  const size_t DataSize() const { return data_.Size() };
+
+  Status WriteDataTo(std::shared_ptr<Buffer> buffer);
+
+ private:
+  const std::shared_ptr<Buffer> data_;
+};
+
+/// PyArrowRayObject is a RayObject whose data is a SerializedPyObject passed
+/// in from an Arrow serialization. This is not placed into a buffer because
+/// it consists of a collection of pointers directly into Python memory. The
+/// WriteDataTo method will directly write from this memory.
+class PyArrowRayObject : RayObject {
+ public:
+  PyArrowRayObject(const std::shared_ptr<Buffer> &metadata,
+		const SerializedPyObject &object)
+      : RayObject(metadata), object_(object) {}
+
+  const size_t DataSize() const { return object_.total_bytes };
+
+  Status WriteDataTo(std::shared_ptr<Buffer> buffer);
+
+ private:
+  const std::shared_ptr<arrow::py::SerializedPyObject> object_;
 };
 
 /// Provider interface for store access. Store provider should inherit from this class and
