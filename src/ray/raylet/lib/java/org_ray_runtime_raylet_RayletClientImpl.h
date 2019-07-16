@@ -18,10 +18,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeSubmitTask
- * Signature: (J[B[B)V
+ * Signature: (J[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl

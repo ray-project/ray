@@ -31,7 +31,7 @@ enum class ServerCallState {
 
 class ServerCallFactory;
 
-/// Reprensents an incoming request of a gRPC server.
+/// Represents an incoming request of a gRPC server.
 ///
 /// The lifecycle and state transition of a `ServerCall` is as follows:
 ///
@@ -79,10 +79,10 @@ class ServerCall {
 class ServerCallFactory {
  public:
   /// Create a new `ServerCall` and request gRPC runtime to start accepting the
-  /// corresonding type of requests.
+  /// corresponding type of requests.
   ///
   /// \return Pointer to the `ServerCall` object.
-  virtual ServerCall *CreateCall() const = 0;
+  virtual void CreateCall() const = 0;
 
   virtual ~ServerCallFactory() = default;
 };
@@ -145,7 +145,7 @@ class ServerCallImpl : public ServerCall {
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
-          // is aysnc and this `ServerCall` might be deleted right after `SendReply`.
+          // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
 
@@ -158,14 +158,14 @@ class ServerCallImpl : public ServerCall {
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
-  void OnReplySent() {
+  void OnReplySent() override {
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
       io_service_.post([callback]() { callback(); });
     }
   }
 
-  void OnReplyFailed() {
+  void OnReplyFailed() override {
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); });
@@ -174,7 +174,7 @@ class ServerCallImpl : public ServerCall {
 
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
-  void SendReply(Status status) {
+  void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
@@ -195,7 +195,7 @@ class ServerCallImpl : public ServerCall {
   /// of compression, authentication, as well as to send metadata back to the client.
   grpc::ServerContext context_;
 
-  /// The reponse writer.
+  /// The response writer.
   grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The event loop.
@@ -261,7 +261,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service) {}
 
-  ServerCall *CreateCall() const override {
+  void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
@@ -271,7 +271,6 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
-    return call;
   }
 
  private:

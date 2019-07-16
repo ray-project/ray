@@ -24,9 +24,9 @@ struct WorkerThreadContext {
     put_index_ = 0;
   }
 
-  void SetCurrentTask(const TaskSpecification &spec) {
-    SetCurrentTaskId(spec.TaskId());
-    current_task_ = std::make_shared<const TaskSpecification>(spec);
+  void SetCurrentTask(const TaskSpecification &task_spec) {
+    SetCurrentTaskId(task_spec.TaskId());
+    current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
  private:
@@ -72,9 +72,9 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentTask(const TaskSpecification &spec) {
-  current_job_id_ = spec.JobId();
-  GetThreadContext().SetCurrentTask(spec);
+void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
+  current_job_id_ = task_spec.JobId();
+  GetThreadContext().SetCurrentTask(task_spec);
 }
 
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {

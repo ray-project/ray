@@ -34,14 +34,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
  * Signature: (J[BLjava/nio/ByteBuffer;II)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
-    JNIEnv *env, jclass, jlong client, jbyteArray cursorId, jbyteArray taskSpec) {
+    JNIEnv *env, jclass, jlong client, jbyteArray taskSpec) {
   auto &raylet_client = *reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
-
-  std::vector<ObjectID> execution_dependencies;
-  if (cursorId != nullptr) {
-    const auto cursor_id = JavaByteArrayToId<ObjectID>(env, cursorId);
-    execution_dependencies.push_back(cursor_id);
-  }
 
   jbyte *data = env->GetByteArrayElements(taskSpec, NULL);
   jsize size = env->GetArrayLength(taskSpec);
@@ -50,7 +44,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
   env->ReleaseByteArrayElements(taskSpec, data, JNI_ABORT);
 
   ray::TaskSpecification task_spec(task_spec_message);
-  auto status = raylet_client->SubmitTask(execution_dependencies, task_spec);
+  auto status = raylet_client->SubmitTask(task_spec);
   ThrowRayExceptionIfNotOK(env, status, (void)0);
 }
 

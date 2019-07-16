@@ -21,7 +21,7 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpec &task) override;
+  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
   /// Raylet client.
