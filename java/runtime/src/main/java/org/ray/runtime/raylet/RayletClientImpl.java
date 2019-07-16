@@ -81,12 +81,7 @@ public class RayletClientImpl implements RayletClient {
     Preconditions.checkState(!spec.jobId.isNil());
 
     byte[] taskSpec = convertTaskSpecToProtobuf(spec);
-    byte[] cursorId = null;
-    if (!spec.getExecutionDependencies().isEmpty()) {
-      //TODO(hchen): handle more than one dependencies.
-      cursorId = spec.getExecutionDependencies().get(0).getBytes();
-    }
-    nativeSubmitTask(client, cursorId, taskSpec);
+    nativeSubmitTask(client, taskSpec);
   }
 
   @Override
@@ -195,6 +190,7 @@ public class RayletClientImpl implements RayletClient {
     // Parse ActorTaskSpec.
     UniqueId actorId = UniqueId.NIL;
     UniqueId actorHandleId = UniqueId.NIL;
+    ObjectId previousActorTaskDummyObjectId = ObjectId.NIL;
     int actorCounter = 0;
     if (taskSpec.getType() == Common.TaskType.ACTOR_TASK) {
       Common.ActorTaskSpec actorTaskSpec = taskSpec.getActorTaskSpec();
@@ -202,14 +198,17 @@ public class RayletClientImpl implements RayletClient {
       actorHandleId = UniqueId
           .fromByteBuffer(actorTaskSpec.getActorHandleId().asReadOnlyByteBuffer());
       actorCounter = (int) actorTaskSpec.getActorCounter();
+      previousActorTaskDummyObjectId = ObjectId.fromByteBuffer(
+		      actorTaskSpec.getPreviousActorTaskDummyObjectId().asReadOnlyByteBuffer());
       newActorHandles = actorTaskSpec.getNewActorHandlesList().stream()
           .map(byteString -> UniqueId.fromByteBuffer(byteString.asReadOnlyByteBuffer()))
           .toArray(UniqueId[]::new);
     }
 
     return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
-        maxActorReconstructions, actorId, actorHandleId, actorCounter, newActorHandles,
-        args, numReturns, resources, TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
+        maxActorReconstructions, actorId, actorHandleId, actorCounter,
+	previousActorTaskDummyObjectId, newActorHandles, args, numReturns, resources,
+	TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
   /**
@@ -275,6 +274,8 @@ public class RayletClientImpl implements RayletClient {
               .setActorId(ByteString.copyFrom(task.actorId.getBytes()))
               .setActorHandleId(ByteString.copyFrom(task.actorHandleId.getBytes()))
               .setActorCreationDummyObjectId(ByteString.copyFrom(task.actorId.getBytes()))
+              .setPreviousActorTaskDummyObjectId(
+		      ByteString.copyFrom(task.previousActorTaskDummyObjectId.getBytes()))
               .setActorCounter(task.actorCounter)
               .addAllNewActorHandles(newHandles)
       );
@@ -310,7 +311,7 @@ public class RayletClientImpl implements RayletClient {
   private static native long nativeInit(String localSchedulerSocket, byte[] workerId,
       boolean isWorker, byte[] driverTaskId);
 
-  private static native void nativeSubmitTask(long client, byte[] cursorId, byte[] taskSpec)
+  private static native void nativeSubmitTask(long client, byte[] taskSpec)
       throws RayException;
 
   private static native byte[] nativeGetTask(long client) throws RayException;

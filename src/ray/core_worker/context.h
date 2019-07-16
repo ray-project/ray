@@ -20,7 +20,7 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  void SetCurrentTask(const TaskSpecification &spec);
+  void SetCurrentTask(const TaskSpecification &task_spec);
 
   int GetNextTaskIndex();
 
