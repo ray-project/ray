@@ -110,7 +110,7 @@ class Monitor(object):
         logger.info("Updating internal resource counter.")
 
         for heartbeat_message in message.batch:
-            num_resources = len(heartbeat_message.resources_available_label)
+            num_resources = len(heartbeat_message.resources_total_label)
             static_resources = {}
             dynamic_resources = {}
 
