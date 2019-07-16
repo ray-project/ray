@@ -80,13 +80,12 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
     return resource_usage
 
 
-def test_heartbeats():
+def test_heartbeats(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
     Test proper metrics.
     """
-    # cluster = ray_start_cluster_head
-    redis_address = ray.init(num_cpus=1)["redis_address"]
+    cluster = ray_start_cluster_head
     monitor = Monitor(redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
