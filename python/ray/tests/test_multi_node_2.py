@@ -58,6 +58,14 @@ def test_internal_config(ray_start_cluster_head):
     time.sleep(2)
     assert ray.cluster_resources()["CPU"] == 1
 
+def setup_monitor(redis_address):
+    monitor = Monitor(redis_address, None)
+    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
+    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
+    monitor.update_raylet_map()
+    monitor._maybe_flush_gcs()
+    return monitor
+
 
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
     while True:
@@ -95,13 +103,8 @@ def test_heartbeats_single(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
     timeout = 5
+    monitor = setup_monitor(cluster.redis_address)
     total_cpus = ray.state.cluster_resources()["CPU"]
-    monitor = Monitor(cluster.redis_address, None)
-    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
-    monitor.update_raylet_map()
-    monitor._maybe_flush_gcs()
-
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": total_cpus}))
 
     @ray.remote
@@ -143,18 +146,11 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     timeout = 5
     num_workers_nodes = 4
-    monitor = Monitor(cluster.redis_address, None)
-    monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-    monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
-    monitor.update_raylet_map()
-    monitor._maybe_flush_gcs()
-
     num_nodes_total = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
     cluster.wait_for_nodes()
+    monitor = setup_monitor(cluster.redis_address)
 
-    monitor.update_raylet_map()
-    monitor._maybe_flush_gcs()
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
 
     @ray.remote
