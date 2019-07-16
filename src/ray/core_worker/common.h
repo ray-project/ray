@@ -9,9 +9,7 @@
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
-
-/// Type of this worker.
-enum class WorkerType { WORKER, DRIVER };
+using WorkerType = rpc::WorkerType;
 
 /// Information about a remote function.
 struct RayFunction {

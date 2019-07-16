@@ -1,7 +1,15 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -72,11 +80,59 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected RuntimeContext runtimeContext;
   protected GcsClient gcsClient;
 
+  static {
+    try {
+      LOGGER.debug("Loading native libraries.");
+      // Load native libraries.
+      String[] libraries = new String[]{"core_worker_library_java"};
+      for (String library : libraries) {
+        String fileName = System.mapLibraryName(library);
+        // Copy the file from resources to a temp dir, and load the native library.
+        File file = File.createTempFile(fileName, "");
+        file.deleteOnExit();
+        InputStream in = AbstractRayRuntime.class.getResourceAsStream("/" + fileName);
+        Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
+        Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
+        System.load(file.getAbsolutePath());
+      }
+      LOGGER.debug("Native libraries loaded.");
+    } catch (IOException e) {
+      throw new RuntimeException("Couldn't load native libraries.", e);
+    }
+  }
+
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     functionManager = new FunctionManager(rayConfig.jobResourcePath);
     worker = new Worker(this);
     runtimeContext = new RuntimeContextImpl(this);
+  }
+
+  protected void resetLibraryPath() {
+    if (rayConfig.libraryPath.isEmpty()) {
+      return;
+    }
+
+    String path = System.getProperty("java.library.path");
+    if (Strings.isNullOrEmpty(path)) {
+      path = "";
+    } else {
+      path += ":";
+    }
+    path += String.join(":", rayConfig.libraryPath);
+
+    // This is a hack to reset library path at runtime,
+    // see https://stackoverflow.com/questions/15409223/.
+    System.setProperty("java.library.path", path);
+    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
+    final Field sysPathsField;
+    try {
+      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
+      sysPathsField.setAccessible(true);
+      sysPathsField.set(null, null);
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      LOGGER.error("Failed to set library path.", e);
+    }
   }
 
   /**
@@ -330,8 +386,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * Create the task specification.
    *
    * @param func The target remote function.
-   * @param pyFunctionDescriptor Descriptor of the target Python function, if the task is a
-   *     Python task.
+   * @param pyFunctionDescriptor Descriptor of the target Python function, if the task is a Python
+   * task.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
    * @param args The arguments for the remote function.
    * @param isActorCreationTask Whether this task is an actor creation task.
