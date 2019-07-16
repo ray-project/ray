@@ -432,8 +432,8 @@ def _create_project_ssh_key_pair(project, public_key, ssh_user):
     common_instance_metadata = project["commonInstanceMetadata"]
     items = common_instance_metadata.get("items", [])
 
-    ssh_keys_i = next((i for i, item in enumerate(items)
-                       if item["key"] == "ssh-keys"), None)
+    ssh_keys_i = next(
+        (i for i, item in enumerate(items) if item["key"] == "ssh-keys"), None)
 
     if ssh_keys_i is None:
         items.append({"key": "ssh-keys", "value": new_ssh_meta})
