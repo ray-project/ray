@@ -58,6 +58,7 @@ def test_internal_config(ray_start_cluster_head):
     time.sleep(2)
     assert ray.cluster_resources()["CPU"] == 1
 
+
 def setup_monitor(redis_address):
     monitor = Monitor(redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
