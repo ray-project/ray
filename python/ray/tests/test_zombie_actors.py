@@ -9,6 +9,7 @@ import ray
 import signal
 import numpy as np
 
+
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
@@ -26,7 +27,7 @@ def test_zombie_actors(ray_start_10_cpus):
         def extend_branch(self, depth):
             if depth > 0:
                 self.child = Actor.remote()
-                ray.get(self.child.extend_branch.remote(depth-1))
+                ray.get(self.child.extend_branch.remote(depth - 1))
             return np.zeros(1000)
 
     def kill_actor(actor):
@@ -43,4 +44,3 @@ def test_zombie_actors(ray_start_10_cpus):
             kill_actor(parent_actor)
         except Exception as e:
             assert False
-            
