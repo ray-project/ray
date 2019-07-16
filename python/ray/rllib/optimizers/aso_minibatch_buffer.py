@@ -22,7 +22,7 @@ class MinibatchBuffer(object):
         self.inqueue = inqueue
         self.size = size
         self.max_ttl = num_passes
-        self.cur_max_ttl = init_num_passes # 1 for gradual ramp-up, num_passes for immediate minibatching
+        self.cur_max_ttl = init_num_passes  # 1 for gradual ramp-up, num_passes for immediate minibatching
         self.buffers = [None] * size
         self.ttl = [0] * size
         self.idx = 0

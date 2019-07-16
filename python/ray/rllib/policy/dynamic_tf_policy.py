@@ -330,11 +330,11 @@ class DynamicTFPolicy(TFPolicy):
                 (SampleBatch.CUR_OBS, self._obs_input),
             ]
 
-        for k,v in self.extra_compute_grad_feed_dict().items():
+        for k, v in self.extra_compute_grad_feed_dict().items():
             if k in batch_tensors and not isinstance(k, str):
                 continue
             batch_tensors[k] = v
-    
+
         for k, v in postprocessed_batch.items():
             if k in batch_tensors:
                 continue

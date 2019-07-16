@@ -58,6 +58,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # __sphinx_doc_end__
 # yapf: enable
 
+
 def make_aggregators_and_optimizer(workers, config):
     if config["num_aggregation_workers"] > 0:
         # Create co-located aggregator actors first for placement pref
@@ -90,6 +91,7 @@ def make_aggregators_and_optimizer(workers, config):
         # Assign the pre-created aggregators to the optimizer
         optimizer.aggregator.init(aggregators)
     return optimizer
+
 
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",

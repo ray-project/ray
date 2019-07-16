@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
+
 # Classic PPO Loss, no changes made to loss function
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
@@ -58,7 +59,6 @@ class PPOSurrogateLoss(object):
                  clip_param=0.3,
                  cur_kl_coeff=None,
                  use_kl_loss=False):
-
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
@@ -86,7 +86,8 @@ class PPOSurrogateLoss(object):
 
         # Optional additional KL Loss (helps with stability in continuous control environments)
         if use_kl_loss:
-            self.total_loss+=cur_kl_coeff*self.mean_kl
+            self.total_loss += cur_kl_coeff * self.mean_kl
+
 
 # APPO Loss, with IS modifications and V-trace for Advantage Estimation
 class VTraceSurrogateLoss(object):
@@ -155,8 +156,9 @@ class VTraceSurrogateLoss(object):
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
 
-        self.is_ratio = tf.clip_by_value(tf.exp(prev_actions_logp-old_policy_actions_logp), 0.0, 2.0)
-        logp_ratio = self.is_ratio*tf.exp(actions_logp - prev_actions_logp)
+        self.is_ratio = tf.clip_by_value(
+            tf.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
+        logp_ratio = self.is_ratio * tf.exp(actions_logp - prev_actions_logp)
 
         advantages = self.vtrace_returns.pg_advantages
         surrogate_loss = tf.minimum(
@@ -181,7 +183,7 @@ class VTraceSurrogateLoss(object):
 
         # Optional additional KL Loss (helps with stability in continuous control environments)
         if use_kl_loss:
-            self.total_loss+=cur_kl_coeff*self.mean_kl
+            self.total_loss += cur_kl_coeff * self.mean_kl
 
 
 def build_appo_surrogate_loss(policy, batch_tensors):
@@ -202,14 +204,14 @@ def build_appo_surrogate_loss(policy, batch_tensors):
     actions = batch_tensors[SampleBatch.ACTIONS]
     dones = batch_tensors[SampleBatch.DONES]
     rewards = batch_tensors[SampleBatch.REWARDS]
-    
+
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
     old_policy_behaviour_logits = batch_tensors["old_policy_behaviour_logits"]
-    
+
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_old_policy_behaviour_logits = tf.split(
-            old_policy_behaviour_logits, output_hidden_shape, axis=1)
+        old_policy_behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
     old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits)
@@ -283,6 +285,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
 
     return policy.loss.total_loss
 
+
 def stats(policy, batch_tensors):
     values_batched = _make_time_major(
         policy, policy.value_function, drop_last=policy.config["vtrace"])
@@ -299,7 +302,7 @@ def stats(policy, batch_tensors):
     }
 
     if policy.config["vtrace"]:
-        is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0,1])
+        is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0, 1])
         stats_dict.update({"mean_IS": is_stat_mean})
         stats_dict.update({"var_IS": is_stat_var})
 
@@ -308,6 +311,7 @@ def stats(policy, batch_tensors):
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict
+
 
 def postprocess_trajectory(policy,
                            sample_batch,
@@ -333,19 +337,28 @@ def postprocess_trajectory(policy,
     del batch.data["new_obs"]  # not used, so save some bandwidth
     return batch
 
+
 def add_values_and_logits(policy):
     out = {BEHAVIOUR_LOGITS: policy.model_out}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.value_function
     return out
 
+
 def add_old_policy_placeholder(policy):
-    return {"old_policy_behaviour_logits": tf.placeholder(tf.float32, shape=[None] +  [policy.logit_dim], name="old_policy_behaviour_logits")}
+    return {
+        "old_policy_behaviour_logits": tf.placeholder(
+            tf.float32,
+            shape=[None] + [policy.logit_dim],
+            name="old_policy_behaviour_logits")
+    }
+
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy)
+
 
 AsyncPPOTFPolicy = build_tf_policy(
     name="AsyncPPOTFPolicy",
