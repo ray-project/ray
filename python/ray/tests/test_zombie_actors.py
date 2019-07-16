@@ -40,7 +40,6 @@ def test_zombie_actors(ray_start_10_cpus):
         try:
             parent_actor = Actor.remote()
             ray.get(parent_actor.extend_branch.remote(depth=5))
-            #now kill parent_actor
             kill_actor(parent_actor)
         except Exception as e:
             assert False

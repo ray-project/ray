@@ -62,7 +62,7 @@ class ActorRegistration {
 
   /// Get the actor's parent's ActorID.
   ///
-  /// \return Parent actor's ActorID..
+  /// \return Parent actor's ActorID.
   const ActorID GetParentActorID() const;
 
   /// Get the actor's node manager location.

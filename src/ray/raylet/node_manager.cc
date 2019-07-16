@@ -693,7 +693,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto &actor_entry_it : actor_registry_) {
       if (actor_entry_it.second.GetParentActorID() == actor_id) {
         // Kill this actor as it is a child of the dead actor.
-        //HandleDisconnectedActor(actor_entry_it.first, true, true);
         auto worker = worker_pool_.GetActorWorker(actor_entry_it.first);
         ProcessDisconnectClientMessage(worker->Connection());
       }
@@ -1991,12 +1990,12 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
                                                   const TaskSpecification &task_spec,
                                                   bool resumed_from_checkpoint) {
   const ActorID actor_id = task_spec.ActorCreationId();
-  // Halt creation if parent actor is dead
+  // Halt creation if parent actor is dead.
   auto parent_actor_entry = actor_registry_.find(parent_actor_id);
   if (parent_actor_entry != actor_registry_.end() &&
       parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
     RAY_LOG(DEBUG) << "Halting creation of actor " << actor_id << " as parent actor "
-                   << parent_actor_id << " is dead";
+                   << parent_actor_id << " is dead.";
     return;
   }
   // Notify the other node managers that the actor has been created.
