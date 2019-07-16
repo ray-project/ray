@@ -397,8 +397,12 @@ class GlobalState(object):
             Information about the Ray clients in the cluster.
         """
         self._check_connected()
+        client_table = _parse_client_table(self.redis_client)
 
-        return _parse_client_table(self.redis_client)
+        for client in client_table:
+            # These are equivalent and is better for application developers.
+            client["alive"] = client["IsInsertion"]
+        return client_table
 
     def _job_table(self, job_id):
         """Fetch and parse the job table information for a single job ID.
