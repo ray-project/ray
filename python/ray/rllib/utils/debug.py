@@ -88,8 +88,8 @@ def _summarize(obj):
             return _StringValue(
                 "np.ndarray({}, dtype={}, min={}, max={}, mean={})".format(
                     obj.shape, obj.dtype, round(float(np.min(obj)), 3),
-                    round(float(np.max(obj)), 3),
-                    round(float(np.mean(obj)), 3)))
+                    round(float(np.max(obj)), 3), round(
+                        float(np.mean(obj)), 3)))
     elif isinstance(obj, MultiAgentBatch):
         return {
             "type": "MultiAgentBatch",
