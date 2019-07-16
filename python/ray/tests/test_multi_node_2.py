@@ -75,7 +75,8 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
             time.sleep(1)
 
         if timeout <= 0:
-            raise ValueError("Timeout. {} != {}".format(resource_usage, expected_resource_usage))
+            raise ValueError("Timeout. {} != {}".format(
+                resource_usage, expected_resource_usage))
 
     return resource_usage
 
@@ -86,7 +87,7 @@ def test_heartbeats(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    monitor = Monitor(redis_address, None)
+    monitor = Monitor(cluster.redis_address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
     monitor.update_raylet_map()

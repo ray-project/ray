@@ -4,6 +4,7 @@ import ray
 from ray.monitor import Monitor
 from ray.tests.cluster_utils import Cluster
 
+
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
     while True:
         monitor.process_messages()
@@ -20,7 +21,8 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
             time.sleep(2)
 
         if timeout <= 0:
-            raise ValueError("Timeout. {} != {}".format(resource_usage, expected_resource_usage))
+            raise ValueError("Timeout. {} != {}".format(
+                resource_usage, expected_resource_usage))
 
     return resource_usage
 
@@ -48,7 +50,12 @@ def test_heartbeats():
         return True
 
     work_handles += [work.remote(timeout=timeout * 2)]
-    verify_load_metrics(monitor, (1.0, {"CPU": 1.0}, {"CPU": 1.0}), timeout=timeout)
+    verify_load_metrics(
+        monitor, (1.0, {
+            "CPU": 1.0
+        }, {
+            "CPU": 1.0
+        }), timeout=timeout)
     ray.get(work_handles)
 
     work_handles = []
@@ -65,31 +72,6 @@ def test_heartbeats():
     verify_load_metrics(monitor, (1.0, {"CPU": 1.0}, {"CPU": 1.0}))
 
     ray.get(work_handles)
-
-    num_workers = 4
-    num_nodes_total = float(num_workers + 1)
-    [cluster.add_node() for i in range(num_workers)]
-    cluster.wait_for_nodes()
-    monitor.update_raylet_map()
-    monitor._maybe_flush_gcs()
-
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
-
-    work_handles = [test_actors[0].work.remote(timeout=timeout * 2)]
-    for i in range(num_workers):
-        new_actor = Actor.remote()
-        work_handles += [new_actor.work.remote(timeout=timeout * 2)]
-        test_actors += [new_actor]
-
-    verify_load_metrics(monitor, (num_nodes_total, {
-        "CPU": num_nodes_total
-    }, {
-        "CPU": num_nodes_total
-    }))
-
-    ray.get(work_handles)
-
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
 
 
 if __name__ == "__main__":
