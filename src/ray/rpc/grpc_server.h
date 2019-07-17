@@ -2,6 +2,7 @@
 #define RAY_RPC_GRPC_SERVER_H
 
 #include <thread>
+#include <utility>
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
@@ -32,8 +33,8 @@ class GrpcServer {
   ///  will be chosen.
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  GrpcServer(const std::string &name, const uint32_t port)
-      : name_(name), port_(port), is_closed_(true) {}
+  GrpcServer(std::string name, const uint32_t port)
+      : name_(std::move(name)), port_(port), is_closed_(true) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -98,10 +99,11 @@ class GrpcService {
   ///
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  GrpcService(boost::asio::io_service &main_service) : main_service_(main_service) {}
+  explicit GrpcService(boost::asio::io_service &main_service)
+      : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
-  ~GrpcService() {}
+  ~GrpcService() = default;
 
  protected:
   /// Return the underlying grpc::Service object for this class.

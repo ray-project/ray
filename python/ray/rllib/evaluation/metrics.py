@@ -15,6 +15,11 @@ from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
+RolloutMetrics = collections.namedtuple("RolloutMetrics", [
+    "episode_length", "episode_reward", "agent_rewards", "custom_metrics",
+    "perf_stats"
+])
+
 
 @DeveloperAPI
 def get_learner_stats(grad_info):
@@ -160,8 +165,6 @@ def summarize_episodes(episodes, new_episodes, num_dropped):
 
 def _partition(episodes):
     """Divides metrics data into true rollouts vs off-policy estimates."""
-
-    from ray.rllib.evaluation.sampler import RolloutMetrics
 
     rollouts, estimates = [], []
     for e in episodes:

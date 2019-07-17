@@ -218,13 +218,33 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignedTask(Worker &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task The actor creation task that created the actor.
-  ActorTableData CreateActorTableDataFromCreationTask(const Task &task);
+  /// \param task_spec Task specification of the actor creation task that created the
+  /// actor.
+  ActorTableData CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
-  /// \param task The actor task or actor creationt ask.
+  /// \param task The actor task or actor creation task.
   /// \return Void.
   void FinishAssignedActorTask(Worker &worker, const Task &task);
+  /// Helper function for handling worker to finish its assigned actor task
+  /// or actor creation task. Gets invoked when tasks's parent actor is known.
+  ///
+  /// \param actor_id The actor id corresponding to the actor (creation) task.
+  /// \param actor_handle_id The actor id corresponding to the actor (creation) task.
+  /// \param new_actor_data The struct which will be used to register the task.
+  /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param dummy_object Dummy object corresponding to the actor creation task.
+  /// \return Void.
+  void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
+                                       const TaskSpecification &task_spec,
+                                       bool resumed_from_checkpoint);
+  /// Extend actor frontier after an actor task or actor creation task executes.
+  ///
+  /// \param dummy_object Dummy object corresponding to the task.
+  /// \param actor_id The relevant actor ID.
+  /// \param actor_handle_id The relevant actor handle ID.
+  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
+                           const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///

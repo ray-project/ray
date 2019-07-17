@@ -69,7 +69,6 @@ define_java_module(
     ],
     deps = [
         ":org_ray_ray_api",
-        "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_typesafe_config",
@@ -97,7 +96,6 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@plasma//:org_apache_arrow_arrow_plasma",
         "@maven//:com_google_guava_guava",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
@@ -176,9 +174,8 @@ filegroup(
         "//:redis-server",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:raylet_library_java",
+        "//:core_worker_library_java",
         "@plasma//:plasma_store_server",
-        "@plasma//:plasma_client_java",
     ],
 )
 
@@ -189,7 +186,6 @@ genrule(
         ":all_java_proto",
         ":java_native_deps",
         ":copy_pom_file",
-        "@plasma//:org_apache_arrow_arrow_plasma",
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
@@ -208,9 +204,6 @@ genrule(
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
         done
-        # Install plasma jar to local maven repo.
-        mvn install:install-file -Dfile=$(locations @plasma//:org_apache_arrow_arrow_plasma) -Dpackaging=jar \
-            -DgroupId=org.apache.arrow -DartifactId=arrow-plasma -Dversion=0.13.0-SNAPSHOT
         echo $$(date) > $@
     """,
     local = 1,
