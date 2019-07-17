@@ -70,11 +70,8 @@ Other projects in development:
    :caption: Tutorial
 
    tutorial.rst
-   api.rst
    actors.rst
-   using-ray-with-gpus.rst
-   signals.rst
-   async_api.rst
+   resources.rst
 
 .. toctree::
    :maxdepth: 1
@@ -86,24 +83,21 @@ Other projects in development:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Tune
-
-   tune.rst
-   tune-usage.rst
-   tune-schedulers.rst
-   tune-searchalg.rst
-   tune-package-ref.rst
-   tune-design.rst
-   tune-examples.rst
-   tune-contrib.rst
-
-.. toctree::
-   :maxdepth: 1
    :caption: Other Libraries
 
    distributed_training.rst
    distributed_sgd.rst
    pandas_on_ray.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: How-to Guide
+
+   profiling.rst
+   user-profiling.rst
+   fault-tolerance.rst
+   signals.rst
+   async_api.rst
 
 .. toctree::
    :maxdepth: 1
@@ -127,7 +121,6 @@ Other projects in development:
 
    internals-overview.rst
    serialization.rst
-   fault-tolerance.rst
    plasma-object-store.rst
    resources.rst
    tempfile.rst
@@ -137,8 +130,6 @@ Other projects in development:
    :caption: Help
 
    troubleshooting.rst
-   user-profiling.rst
    security.rst
    development.rst
-   profiling.rst
    contact.rst
