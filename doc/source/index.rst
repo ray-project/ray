@@ -63,13 +63,11 @@ Other projects in development:
    :caption: Installation
 
    installation.rst
-   deploy-on-kubernetes.rst
-   install-on-docker.rst
    installation-troubleshooting.rst
 
 .. toctree::
    :maxdepth: 1
-   :caption: Getting Started
+   :caption: Tutorial
 
    tutorial.rst
    api.rst
@@ -80,8 +78,9 @@ Other projects in development:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Cluster Usage
+   :caption: Cluster Setup
 
+   deploy-on-kubernetes.rst
    autoscaling.rst
    using-ray-on-a-cluster.rst
 
@@ -97,21 +96,6 @@ Other projects in development:
    tune-design.rst
    tune-examples.rst
    tune-contrib.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: RLlib
-
-   rllib.rst
-   rllib-training.rst
-   rllib-env.rst
-   rllib-models.rst
-   rllib-algorithms.rst
-   rllib-offline.rst
-   rllib-concepts.rst
-   rllib-examples.rst
-   rllib-dev.rst
-   rllib-package-ref.rst
 
 .. toctree::
    :maxdepth: 1
