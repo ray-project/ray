@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+import numpy as np
 import gym
 import logging
 import pickle
@@ -31,7 +33,6 @@ from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.seed import seed as seed_all
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -131,8 +132,8 @@ class RolloutWorker(EvaluatorInterface):
                  remote_worker_envs=False,
                  remote_env_batch_wait_ms=0,
                  soft_horizon=False,
-                 _fake_sampler=False,
-                 seed=None):
+                 seed=None,
+                 _fake_sampler=False):
         """Initialize a rollout worker.
 
         Arguments:
@@ -217,9 +218,9 @@ class RolloutWorker(EvaluatorInterface):
                 step / reset and model inference perf.
             soft_horizon (bool): Calculate rewards but don't reset the
                 environment when the horizon is hit.
-            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
-            seed (int): If not None, set the graph-level seed to this value
+            seed (int): Set the seed of both np and tf to this value to
                 to ensure each remote worker has unique explration behavior.
+            _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
         global _global_worker
@@ -296,6 +297,9 @@ class RolloutWorker(EvaluatorInterface):
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy, self.env)
         self.policies_to_train = policies_to_train or list(policy_dict.keys())
+        # set numpy and python seed
+        np.random.seed(seed)
+        random.seed(seed)
         if _has_tensorflow_graph(policy_dict):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
@@ -313,9 +317,8 @@ class RolloutWorker(EvaluatorInterface):
                         config=tf.ConfigProto(
                             gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
-                    if seed is not None:
-                        # ensure each worker has unique exploration behavior
-                        seed_all(seed, seed, seed)
+                    # set graph-level seed
+                    tf.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
         else:

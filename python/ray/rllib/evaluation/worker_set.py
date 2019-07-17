@@ -32,8 +32,7 @@ class WorkerSet(object):
                  trainer_config=None,
                  num_workers=0,
                  logdir=None,
-                 _setup=True,
-                 seed=None):
+                 _setup=True):
         """Create a new WorkerSet and initialize its workers.
 
         Arguments:
@@ -44,8 +43,6 @@ class WorkerSet(object):
             num_workers (int): Number of remote rollout workers to create.
             logdir (str): Optional logging directory for workers.
             _setup (bool): Whether to setup workers. This is only for testing.
-            seed (int): If not None, used in conjunction with worker_index to
-                seed each worker.
         """
 
         if not trainer_config:
@@ -57,7 +54,6 @@ class WorkerSet(object):
         self._remote_config = trainer_config
         self._num_workers = num_workers
         self._logdir = logdir
-        self._seed = seed or int(time.time())
 
         if _setup:
             self._local_config = merge_dicts(
@@ -66,8 +62,7 @@ class WorkerSet(object):
 
             # Always create a local worker
             self._local_worker = self._make_worker(
-                RolloutWorker, env_creator, policy, 0, self._local_config,
-                self._seed)
+                RolloutWorker, env_creator, policy, 0, self._local_config)
 
             # Create a number of remote workers
             self._remote_workers = []
@@ -91,8 +86,7 @@ class WorkerSet(object):
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
             self._make_worker(cls, self._env_creator, self._policy, i + 1,
-                              self._remote_config, self._seed + i + 1)
-            for i in range(num_workers)
+                              self._remote_config) for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers):
@@ -141,8 +135,7 @@ class WorkerSet(object):
                      env_creator,
                      policy,
                      worker_index,
-                     config,
-                     seed=None):
+                     config):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -224,5 +217,5 @@ class WorkerSet(object):
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
             soft_horizon=config["soft_horizon"],
-            _fake_sampler=config.get("_fake_sampler", False),
-            seed=seed)
+            seed=config["seed"]+worker_index,
+            _fake_sampler=config.get("_fake_sampler", False))

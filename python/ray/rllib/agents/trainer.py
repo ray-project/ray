@@ -193,9 +193,10 @@ COMMON_CONFIG = {
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 0,
-    # If set to the same integer, identically configured trials will have
-    # identical random behavior. This makes experiments reproducible.
-    "seed": None,
+    # This argument, in conjunction with worker_index, sets the random seed of
+    # each worker, so that identically configured trials will have identical
+    # results. This makes experiments reproducible.
+    "seed": 123,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -432,9 +433,6 @@ class Trainer(Trainable):
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
-        # Get the seed for creating workers
-        self._seed = self.config.get("seed", None)
-
         def get_scope():
             if tf:
                 return tf.Graph().as_default()
@@ -487,8 +485,7 @@ class Trainer(Trainable):
             policy,
             config,
             num_workers=num_workers,
-            logdir=self.logdir,
-            seed=self._seed)
+            logdir=self.logdir)
 
     @DeveloperAPI
     def _init(self, config, env_creator):
