@@ -8,9 +8,9 @@ CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
     std::unique_ptr<RayletClient> &raylet_client)
     : raylet_client_(raylet_client) {}
 
-Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpec &task) {
+Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) {
   RAY_CHECK(raylet_client_ != nullptr);
-  return raylet_client_->SubmitTask(task.GetDependencies(), task.GetTaskSpecification());
+  return raylet_client_->SubmitTask(task);
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
@@ -28,12 +28,12 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
-  const auto &spec = task.GetTaskSpecification();
+  const auto &task_spec = task.GetTaskSpecification();
   std::vector<std::shared_ptr<Buffer>> results;
-  auto status = task_handler_(spec, &results);
+  auto status = task_handler_(task_spec, &results);
 
-  auto num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  auto num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
     // Decrease to account for the dummy object id.
     num_returns--;
@@ -41,7 +41,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   RAY_CHECK(results.size() == num_returns);
   for (int i = 0; i < num_returns; i++) {
-    ObjectID id = ObjectID::ForTaskReturn(spec.TaskId(), i + 1);
+    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
     object_interface_.Put(RayObject(results[i], nullptr), id);
   }
 

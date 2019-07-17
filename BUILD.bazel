@@ -647,13 +647,13 @@ pyx_library(
 )
 
 cc_binary(
-    name = "libraylet_library_java.so",
-    srcs = [
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
-        "src/ray/common/id.h",
-        "src/ray/raylet/raylet_client.h",
-        "src/ray/util/logging.h",
+    name = "libcore_worker_library_java.so",
+    srcs = glob([
+        "src/ray/core_worker/lib/java/*.h",
+        "src/ray/core_worker/lib/java/*.cc",
+        "src/ray/raylet/lib/java/*.h",
+        "src/ray/raylet/lib/java/*.cc",
+    ]) + [
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({
         "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
@@ -671,24 +671,23 @@ cc_binary(
     linkshared = 1,
     linkstatic = 1,
     deps = [
-        "//:raylet_lib",
-        "@plasma//:plasma_client",
+        "//:core_worker_lib",
     ],
 )
 
 genrule(
-    name = "raylet-jni-darwin-compat",
-    srcs = [":libraylet_library_java.so"],
-    outs = ["libraylet_library_java.dylib"],
+    name = "core_worker-jni-darwin-compat",
+    srcs = [":libcore_worker_library_java.so"],
+    outs = ["libcore_worker_library_java.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
 
 filegroup(
-    name = "raylet_library_java",
+    name = "core_worker_library_java",
     srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":libraylet_library_java.dylib"],
-        "//conditions:default": [":libraylet_library_java.so"],
+        "@bazel_tools//src/conditions:darwin": [":libcore_worker_library_java.dylib"],
+        "//conditions:default": [":libcore_worker_library_java.so"],
     }),
     visibility = ["//java:__subpackages__"],
 )

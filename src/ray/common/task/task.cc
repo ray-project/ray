@@ -22,16 +22,13 @@ void Task::ComputeDependencies() {
       dependencies_.push_back(task_spec_.ArgId(i, j));
     }
   }
-  // TODO(atumanov): why not just return a const reference to ExecutionDependencies() and
-  // avoid a copy.
-  auto execution_dependencies = task_execution_spec_.ExecutionDependencies();
-  dependencies_.insert(dependencies_.end(), execution_dependencies.begin(),
-                       execution_dependencies.end());
+  if (task_spec_.IsActorTask()) {
+    dependencies_.push_back(task_spec_.PreviousActorTaskDummyObjectId());
+  }
 }
 
 void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_ = task.task_execution_spec_;
-  ComputeDependencies();
 }
 
 std::string Task::DebugString() const {

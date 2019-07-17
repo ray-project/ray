@@ -267,4 +267,6 @@ enum ErrorType {
   // 2) The object's creating task is already cleaned up from GCS (this currently
   //    crashes raylet).
   OBJECT_UNRECONSTRUCTABLE = 2;
+  // Indicates that a task failed due to user code failure.
+  TASK_EXECUTION_EXCEPTION = 3;
 }

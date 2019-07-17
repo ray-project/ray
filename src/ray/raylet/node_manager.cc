@@ -547,8 +547,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   SchedulingResources &remote_resources = it->second;
 
   ResourceSet remote_available(
-      VectorFromProtobuf(heartbeat_data.resources_total_label()),
-      VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
+      VectorFromProtobuf(heartbeat_data.resources_available_label()),
+      VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
   ResourceSet remote_load(VectorFromProtobuf(heartbeat_data.resource_load_label()),
                           VectorFromProtobuf(heartbeat_data.resource_load_capacity()));
   // TODO(atumanov): assert that the load is a non-empty ResourceSet.
@@ -655,6 +655,10 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
+    // The actor is now alive (created for the first time or reconstructed). We can
+    // stop listening for the actor creation task. This is needed because we use
+    // `ListenAndMaybeReconstruct` to reconstruct the actor.
+    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -692,6 +696,10 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   } else {
     RAY_CHECK(actor_registration.GetState() == ActorTableData::RECONSTRUCTING);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
+    // The actor is dead and needs reconstruction. Attempting to reconstruct its
+    // creation task.
+    reconstruction_policy_.ListenAndMaybeReconstruct(
+        actor_registration.GetActorCreationDependency());
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
     // creation.
@@ -1075,10 +1083,6 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   rpc::Task task_message;
   RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
       fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
-  for (const auto &dependency :
-       string_vec_from_flatbuf(*fbs_message->execution_dependencies())) {
-    task_message.mutable_task_execution_spec()->add_dependencies(dependency);
-  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
@@ -1421,7 +1425,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   for (int64_t i = 0; i < num_returns; i++) {
     const auto object_id = spec.ReturnId(i).ToPlasmaId();
     arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
-    if (!status.ok() && !status.IsPlasmaObjectExists()) {
+    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
@@ -2056,8 +2060,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
         RAY_CHECK(lineage_cache_.ContainsTask(task_id))
-            << "Task metadata not found in either GCS or lineage cache. It may have been "
-               "evicted "
+            << "Metadata of task " << task_id
+            << " not found in either GCS or lineage cache. It may have been evicted "
             << "by the redis LRU configuration. Consider increasing the memory "
                "allocation via "
             << "ray.init(redis_max_memory=<max_memory_bytes>).";
@@ -2343,20 +2347,11 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
       // returned by the previous task, so the dependency will not be
       // released until this first task is submitted.
       for (auto &new_handle_id : spec.NewActorHandles()) {
-        // Get the execution dependency for the first task submitted on the new
-        // actor handle. Since the new actor handle was created after this task
-        // began and before this task finished, it must have the same execution
-        // dependency.
-        const auto &execution_dependencies =
-            assigned_task.GetTaskExecutionSpec().ExecutionDependencies();
-        // TODO(swang): We expect this task to have exactly 1 execution dependency,
-        // the dummy object returned by the previous actor task. However, this
-        // leaks information about the TaskExecutionSpecification implementation.
-        RAY_CHECK(execution_dependencies.size() == 1);
-        const ObjectID &execution_dependency = execution_dependencies.front();
+        const auto prev_actor_task_id = spec.PreviousActorTaskDummyObjectId();
+        RAY_CHECK(!prev_actor_task_id.IsNil());
         // Add the new handle and give it a reference to the finished task's
         // execution dependency.
-        actor_entry->second.AddHandle(new_handle_id, execution_dependency);
+        actor_entry->second.AddHandle(new_handle_id, prev_actor_task_id);
       }
 
       // TODO(swang): For actors with multiple actor handles, to
