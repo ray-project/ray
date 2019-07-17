@@ -84,13 +84,13 @@ class ActorStateAccessorTest : public ::testing::Test {
   std::atomic<int> pending_count_{0};
 };
 
-TEST_F(ActorStateAccessorTest, AddAndGet) {
+TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
-  // add
+  // register
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
     ++pending_count_;
-    actor_accessor.AsyncAdd(elem.first, actor, [this](Status status) {
+    actor_accessor.AsyncRegister(actor, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     });
@@ -138,19 +138,19 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   // wait do subscribe done
   WaitPendingDone(do_sub_pending_count, timeout);
 
-  // add
-  std::atomic<int> add_pending_count(0);
+  // register
+  std::atomic<int> register_pending_count(0);
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
     ++sub_pending_count;
-    ++add_pending_count;
-    actor_accessor.AsyncAdd(elem.first, actor, [&add_pending_count](Status status) {
+    ++register_pending_count;
+    actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
       RAY_CHECK_OK(status);
-      --add_pending_count;
+      --register_pending_count;
     });
   }
-  // wait add done
-  WaitPendingDone(add_pending_count, timeout);
+  // wait register done
+  WaitPendingDone(register_pending_count, timeout);
 
   // wait all sub notify
   WaitPendingDone(sub_pending_count, timeout);

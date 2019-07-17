@@ -22,9 +22,8 @@ Status ActorStateAccessor::AsyncGet(const ActorID &actor_id,
   return actor_table.Lookup(JobID::Nil(), actor_id, on_done);
 }
 
-Status ActorStateAccessor::AsyncAdd(const ActorID &actor_id,
-                                    const std::shared_ptr<ActorTableData> &data_ptr,
-                                    const StatusCallback &callback) {
+Status ActorStateAccessor::AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+                                         const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
     if (callback != nullptr) {
@@ -39,6 +38,7 @@ Status ActorStateAccessor::AsyncAdd(const ActorID &actor_id,
     }
   };
 
+  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
   ActorTable &actor_table = client_impl_.actor_table();
   return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
                               /*log_length*/ 0);

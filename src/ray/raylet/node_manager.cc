@@ -2002,7 +2002,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     } else {
       // The actor never created before.
       RAY_CHECK_OK(
-          gcs_client_->Actors().AsyncAdd(actor_id, actor_notification, update_callback));
+          gcs_client_->Actors().AsyncRegister(actor_notification, update_callback));
     }
   }
   if (!resumed_from_checkpoint) {

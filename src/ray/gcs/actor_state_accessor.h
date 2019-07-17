@@ -21,7 +21,7 @@ class ActorStateAccessor {
 
   ~ActorStateAccessor() {}
 
-  /// Get actor specification from gcs asynchronously.
+  /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor that is looked up in the GCS.
   /// \param callback Callback that is called after read data done.
@@ -29,21 +29,20 @@ class ActorStateAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const MultiItemCallback<ActorTableData> &callback);
 
-  /// Add a actor to gcs asynchronously.
+  /// Register a actor to GCS asynchronously.
   ///
-  /// \param actor_id The ID of actor that is add to the GCS.
-  /// \param data_ptr The actor that is add to the GCS.
-  /// \param callback Callback that is called after the data has been written to the GCS.
+  /// \param data_ptr The actor that is register to the GCS.
+  /// \param callback Callback that is called after actor has been registered to the GCS.
   /// \return Status
-  Status AsyncAdd(const ActorID &actor_id,
-                  const std::shared_ptr<ActorTableData> &data_ptr,
-                  const StatusCallback &callback);
+  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+                       const StatusCallback &callback);
 
-  /// Update actor runtime state to gcs asynchronously.
+  /// Update actor dynamic states to GCS asynchronously.
   ///
   /// \param actor_id The ID of actor that is update to the GCS.
   /// \param data_ptr The actor that is update to the GCS.
-  /// \param callback Callback that is called after the data has been written to the GCS.
+  /// \param callback Callback that is called after actor's states has been updated
+  /// to the GCS.
   /// \return Status
   /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
   /// updating dynamic states.
