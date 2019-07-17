@@ -263,7 +263,7 @@ class Monitor(object):
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             if _append_port:
-                ip_address += ":" + raylet_info["NodeManagerPort"]
+                ip_address += ":" + str(raylet_info["NodeManagerPort"])
             self.raylet_id_to_ip_map[client_id] = ip_address
 
     def _maybe_flush_gcs(self):
