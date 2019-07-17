@@ -491,6 +491,10 @@ class StandardAutoscaler(object):
             self.launch_new_node(num_launches)
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
+        elif self.load_metrics.num_workers_connected() >= target_workers:
+            logger.info("Ending bringup phase")
+            self.bringup = False
+            self.log_info_string(nodes, target_workers)
 
         # Process any completed updates
         completed = []
@@ -691,6 +695,8 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
+        if self.bringup:
+            suffix += " (bringup=True)"
 
         return "{}/{} target nodes{}".format(
             len(nodes), target, suffix)
