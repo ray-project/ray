@@ -46,6 +46,7 @@ class MockWorker {
     for (const auto &arg : args) {
       auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(buffer+curr, arg->GetDataSize());
       RAY_RETURN_NOT_OK(arg->WriteDataTo(tmp_buffer));
+      curr += arg->GetDataSize();
     }
 
     auto return_value = RayObject(
