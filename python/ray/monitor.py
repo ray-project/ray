@@ -38,7 +38,7 @@ class Monitor(object):
     def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
-            args.redis_address, redis_password=redis_password)
+            redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
@@ -106,25 +106,22 @@ class Monitor(object):
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
-
         for heartbeat_message in message.batch:
-            num_resources = len(heartbeat_message.resources_available_label)
-            static_resources = {}
-            dynamic_resources = {}
-            for i in range(num_resources):
-                dyn = heartbeat_message.resources_available_label[i]
-                static = heartbeat_message.resources_total_label[i]
-                dynamic_resources[dyn] = (
-                    heartbeat_message.resources_available_capacity[i])
-                static_resources[static] = (
-                    heartbeat_message.resources_total_capacity[i])
+            total_resources = dict(
+                zip(heartbeat_message.resources_total_label,
+                    heartbeat_message.resources_total_capacity))
+            available_resources = dict(
+                zip(heartbeat_message.resources_available_label,
+                    heartbeat_message.resources_available_capacity))
+            for resource in total_resources:
+                available_resources.setdefault(resource, 0.0)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
-                self.load_metrics.update(ip, static_resources,
-                                         dynamic_resources)
+                self.load_metrics.update(ip, total_resources,
+                                         available_resources)
             else:
                 logger.warning(
                     "Monitor: "
@@ -250,7 +247,14 @@ class Monitor(object):
                 # Call the handler.
                 message_handler(channel, data)
 
-    def update_raylet_map(self):
+    def update_raylet_map(self, _append_port=False):
+        """Updates internal raylet map.
+
+        Args:
+            _append_port (bool): Defaults to False. Appending the port is
+                useful in testing, as mock clusters have many nodes with
+                the same IP and cannot be uniquely identified.
+        """
         all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
@@ -258,6 +262,8 @@ class Monitor(object):
                          or raylet_info["ClientID"])
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
+            if _append_port:
+                ip_address += ":" + str(raylet_info["NodeManagerPort"])
             self.raylet_id_to_ip_map[client_id] = ip_address
 
     def _maybe_flush_gcs(self):
