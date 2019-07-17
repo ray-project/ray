@@ -196,7 +196,7 @@ COMMON_CONFIG = {
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
-    "seed": 123,
+    "seed": None,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
