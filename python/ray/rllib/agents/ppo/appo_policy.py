@@ -27,8 +27,6 @@ tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-BEHAVIOUR_LOGITS = "behaviour_logits"
-
 
 # Classic PPO Loss, no changes made to loss function
 class PPOSurrogateLoss(object):
