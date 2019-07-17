@@ -29,10 +29,6 @@ YAPF_VERSION=$(yapf --version | awk '{print $2}')
 tool_version_check() {
     if [[ $2 != $3 ]]; then
         echo "WARNING: Ray uses $1 $3, You currently are using $2. This might generate different results."
-        read -p "Do you want to continue? [y/n] " answer
-        if ! [ $answer = 'y' ] && ! [ $answer = 'Y' ]; then
-            exit 1
-        fi
     fi
 }
 

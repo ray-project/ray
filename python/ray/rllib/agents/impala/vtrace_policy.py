@@ -184,7 +184,8 @@ def build_vtrace_loss(policy, batch_tensors):
         actions=make_time_major(loss_actions, drop_last=True),
         actions_logp=make_time_major(
             action_dist.logp(actions), drop_last=True),
-        actions_entropy=make_time_major(action_dist.entropy(), drop_last=True),
+        actions_entropy=make_time_major(
+            action_dist.multi_entropy(), drop_last=True),
         dones=make_time_major(dones, drop_last=True),
         behaviour_logits=make_time_major(
             unpacked_behaviour_logits, drop_last=True),
