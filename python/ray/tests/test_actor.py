@@ -8,6 +8,10 @@ import random
 import numpy as np
 import os
 import pytest
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 import signal
 import sys
 import time
@@ -2647,3 +2651,38 @@ def test_decorated_method(ray_start_regular):
     assert isinstance(object_id, ray.ObjectID)
     assert extra == {"kwarg": 3}
     assert ray.get(object_id) == 7  # 2 * 3 + 1
+
+
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
+@pytest.mark.timeout(10)
+def test_ray_wait_dead_actor(ray_start_cluster):
+    """Tests that methods completed by dead actors are returned as ready"""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    node = cluster.add_node(num_cpus=1)
+    ray.init(redis_address=cluster.redis_address)
+    print(len(ray.state.state.client_table()), "clients")
+
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            time.sleep(1)
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+
+    ping_id = actor.ping.remote()
+    cluster.remove_node(node)
+
+    ready = []
+    while not ready:
+        ready, _ = ray.wait([ping_id], timeout=0.01)
+        time.sleep(1)
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ping_id)
