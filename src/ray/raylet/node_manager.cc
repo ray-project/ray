@@ -173,8 +173,8 @@ ray::Status NodeManager::RegisterGcs() {
     }
   };
 
-  RAY_RETURN_NOT_OK(gcs_client_->Actors().AsyncSubscribe(
-      JobID::Nil(), ClientID::Nil(), actor_notification_callback, nullptr));
+  RAY_RETURN_NOT_OK(
+      gcs_client_->Actors().AsyncSubscribe(actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,
@@ -892,8 +892,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     }
   };
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(JobID::Nil(), actor_id,
-                                                 actor_notification, done));
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification, done));
 }
 
 void NodeManager::HandleWorkerAvailable(
@@ -1535,8 +1534,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
             HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
           }
         };
-        RAY_CHECK_OK(
-            gcs_client_->Actors().AsyncGet(JobID::Nil(), actor_id, lookup_callback));
+        RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(actor_id, lookup_callback));
         actor_creation_dummy_object = spec.ActorCreationDummyObjectId();
       } else {
         actor_creation_dummy_object = actor_entry->second.GetActorCreationDependency();
@@ -1985,8 +1983,8 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
           HandleActorStateTransition(actor_id, std::move(actor_registration));
           auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
           // The actor was created before.
-          RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
-              JobID::Nil(), actor_id, actor_notification, update_callback));
+          RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification,
+                                                         update_callback));
         },
         [actor_id](ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id) {
           RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id << " for actor "
@@ -1999,12 +1997,12 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
     if (actor_registry_.find(actor_id) != actor_registry_.end()) {
       // The actor was created before.
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
-          JobID::Nil(), actor_id, actor_notification, update_callback));
+      RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification,
+                                                     update_callback));
     } else {
       // The actor never created before.
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncAdd(JobID::Nil(), actor_id,
-                                                  actor_notification, update_callback));
+      RAY_CHECK_OK(
+          gcs_client_->Actors().AsyncAdd(actor_id, actor_notification, update_callback));
     }
   }
   if (!resumed_from_checkpoint) {

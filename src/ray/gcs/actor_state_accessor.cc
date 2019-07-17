@@ -10,7 +10,7 @@ namespace gcs {
 ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
     : client_impl_(client_impl) {}
 
-Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id,
+Status ActorStateAccessor::AsyncGet(const ActorID &actor_id,
                                     const MultiItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -19,10 +19,10 @@ Status ActorStateAccessor::AsyncGet(const JobID &job_id, const ActorID &actor_id
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.Lookup(job_id, actor_id, on_done);
+  return actor_table.Lookup(JobID::Nil(), actor_id, on_done);
 }
 
-Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id,
+Status ActorStateAccessor::AsyncAdd(const ActorID &actor_id,
                                     const std::shared_ptr<ActorTableData> &data_ptr,
                                     const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -40,11 +40,11 @@ Status ActorStateAccessor::AsyncAdd(const JobID &job_id, const ActorID &actor_id
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.AppendAt(job_id, actor_id, data_ptr, on_success, on_failure,
+  return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
                               /*log_length*/ 0);
 }
 
-Status ActorStateAccessor::AsyncUpdate(const JobID &job_id, const ActorID &actor_id,
+Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
                                        const std::shared_ptr<ActorTableData> &data_ptr,
                                        const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
@@ -82,12 +82,11 @@ Status ActorStateAccessor::AsyncUpdate(const JobID &job_id, const ActorID &actor
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.AppendAt(job_id, actor_id, data_ptr, on_success, on_failure,
+  return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
                               log_length);
 }
 
 Status ActorStateAccessor::AsyncSubscribe(
-    const JobID &job_id, const ClientID &client_id,
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
@@ -103,7 +102,7 @@ Status ActorStateAccessor::AsyncSubscribe(
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.Subscribe(job_id, client_id, on_subscribe, on_done);
+  return actor_table.Subscribe(JobID::Nil(), ClientID::Nil(), on_subscribe, on_done);
 }
 
 }  // namespace gcs

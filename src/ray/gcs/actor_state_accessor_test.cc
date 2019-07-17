@@ -89,9 +89,8 @@ TEST_F(ActorStateAccessorTest, AddAndGet) {
   // add
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
-    JobID job_id = JobID::FromBinary(actor->job_id());
     ++pending_count_;
-    actor_accessor.AsyncAdd(job_id, elem.first, actor, [this](Status status) {
+    actor_accessor.AsyncAdd(elem.first, actor, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     });
@@ -103,9 +102,8 @@ TEST_F(ActorStateAccessorTest, AddAndGet) {
   // get
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
-    JobID job_id = JobID::FromBinary(actor->job_id());
     ++pending_count_;
-    actor_accessor.AsyncGet(job_id, elem.first,
+    actor_accessor.AsyncGet(elem.first,
                             [this](Status status, std::vector<ActorTableData> datas) {
                               ASSERT_EQ(datas.size(), 1U);
                               ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
@@ -136,7 +134,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   };
 
   ++do_sub_pending_count;
-  actor_accessor.AsyncSubscribe(JobID::Nil(), ClientID::Nil(), subscribe, done);
+  actor_accessor.AsyncSubscribe(subscribe, done);
   // wait do subscribe done
   WaitPendingDone(do_sub_pending_count, timeout);
 
@@ -144,14 +142,12 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   std::atomic<int> add_pending_count(0);
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
-    JobID job_id = JobID::FromBinary(actor->job_id());
     ++sub_pending_count;
     ++add_pending_count;
-    actor_accessor.AsyncAdd(job_id, elem.first, actor,
-                            [&add_pending_count](Status status) {
-                              RAY_CHECK_OK(status);
-                              --add_pending_count;
-                            });
+    actor_accessor.AsyncAdd(elem.first, actor, [&add_pending_count](Status status) {
+      RAY_CHECK_OK(status);
+      --add_pending_count;
+    });
   }
   // wait add done
   WaitPendingDone(add_pending_count, timeout);

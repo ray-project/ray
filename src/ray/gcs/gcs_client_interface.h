@@ -19,10 +19,10 @@ class ClientOption {
  public:
   /// Constructor of ClientOption.
   ///
-  /// \param ip GCS service ip
-  /// \param port GCS service port
-  /// \param password GCS service password
-  /// \param is_test_client Is test client
+  /// \param ip GCS service ip.
+  /// \param port GCS service port.
+  /// \param password GCS service password.
+  /// \param is_test_client is_test_client Whether this client is used for tests.
   ClientOption(const std::string &ip, int port, const std::string &password,
                bool is_test_client = false)
       : server_ip_(ip),
@@ -57,7 +57,7 @@ class ClientOption {
   // might be used, if available.
   CommandType command_type_ = CommandType::kUnknown;
 
-  // If it's test client.
+  // Whether this client is used for tests.
   bool is_test_client_{false};
 };
 
