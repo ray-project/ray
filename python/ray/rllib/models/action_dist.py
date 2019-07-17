@@ -77,13 +77,13 @@ class ActionDistribution(object):
         """
         return self.kl(other)
 
-    def multi_entropy(self, other):
+    def multi_entropy(self):
         """The entropy of the action distribution.
 
         This differs from entropy() in that it can return an array for
         MultiDiscrete. TODO(ekl) consider removing this.
         """
-        return self.entropy(other)
+        return self.entropy()
 
 
 class Categorical(ActionDistribution):
