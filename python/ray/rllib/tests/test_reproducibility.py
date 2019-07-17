@@ -18,7 +18,6 @@ class TestReproducibility(unittest.TestCase):
                 self.observation_space = gym.spaces.Box(
                     low=float("-inf"), high=float("inf"), shape=(4, ))
                 self.action_space = gym.spaces.Discrete(4)
-                np.random.seed(1234)
 
             def reset(self, **kwargs):
                 self.obs = np.random.randn(4)
