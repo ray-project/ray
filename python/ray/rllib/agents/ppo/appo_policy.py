@@ -123,10 +123,12 @@ class VTraceSurrogateLoss(object):
             actions: An int|float32 tensor of shape [T, B, logit_dim].
             prev_actions_logp: A float32 tensor of shape [T, B].
             actions_logp: A float32 tensor of shape [T, B].
+            old_policy_actions_logp: A float32 tensor of shape [T, B].
             action_kl: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
             behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
+            old_policy_behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
             target_logits: A float32 tensor of shape [T, B, logit_dim].
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T, B].
