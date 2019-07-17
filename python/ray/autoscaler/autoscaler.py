@@ -850,6 +850,20 @@ def hash_runtime_conf(file_mounts, extra_objs):
     return _hash_cache[conf_str]
 
 def request_cores(redis_address, cores, redis_password=None):
-    # For now this only supports CPUs. It is non blocking.
+    """Remotely request some CPU cores from the autoscaler.
+    This function is to be called e.g. on a node before submitting a bunch of
+    ray.remote calls to ensure that resources rapidly become available.
+
+    In the future this could be extended to do GPU cores or other custom
+    resources.
+
+    This function is non blocking.
+
+    Arguments:
+
+    redis_address: str      -- the redis address of the head ray node (required)
+    cores: int              -- the number of CPU cores to request (required)
+    redis_password: str     -- redis password (optional, default None)
+    """
     r = services.create_redis_client(redis_address, password=redis_password)
     r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps({"CPU": cores}))

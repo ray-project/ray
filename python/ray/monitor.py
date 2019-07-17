@@ -214,6 +214,13 @@ class Monitor(object):
             self._xray_clean_up_entries_for_job(job_id)
 
     def autoscaler_resource_request_handler(self, _, data):
+        """Handle a notification of a resource request for the autoscaler.
+
+        Args:
+            channel: unused
+            data: a resource request as JSON, e.g. {"CPU": 1}
+        """
+
         if not self.autoscaler:
             return
 
