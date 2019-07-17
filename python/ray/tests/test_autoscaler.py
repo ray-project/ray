@@ -106,6 +106,8 @@ SMALL_CLUSTER = {
     "cluster_name": "default",
     "min_workers": 2,
     "max_workers": 2,
+    "initial_workers": 0,
+    "autoscaling_mode": "default",
     "target_utilization_fraction": 0.8,
     "idle_timeout_minutes": 5,
     "provider": {
@@ -349,6 +351,80 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(6)
         autoscaler.update()
         self.waitForNodes(10)
+
+    def testInitialWorkers(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 20
+        config["initial_workers"] = 10
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            update_interval_s=0)
+        self.waitForNodes(0)
+        autoscaler.update()
+        self.waitForNodes(5)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(10)
+        autoscaler.update()
+
+    def testAggressiveAutoscaling(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 20
+        config["initial_workers"] = 10
+        config["idle_timeout_minutes"] = 0
+        config["autoscaling_mode"] = "aggressive"
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+        head_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
+
+        lm = LoadMetrics()
+        lm.local_ip = head_ip
+
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            update_interval_s=0)
+
+        self.waitForNodes(1)
+        autoscaler.update()
+        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(11)
+
+        # Connect the head and workers to end the bringup phase
+        addrs = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
+        addrs += head_ip
+        for addr in addrs:
+            lm.update(addr, {"CPU": 2}, {"CPU": 0})
+            lm.update(addr, {"CPU": 2}, {"CPU": 2})
+        assert autoscaler.bringup
+        autoscaler.update()
+
+        assert not autoscaler.bringup
+        autoscaler.update()
+        self.waitForNodes(1)
+
+        # All of the nodes are down. Simulate some load on the head node
+        lm.update(head_ip, {"CPU": 2}, {"CPU": 0})
+
+        autoscaler.update()
+        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+        autoscaler.update()
+        self.waitForNodes(11)
 
     def testDelayedLaunch(self):
         config_path = self.write_config(SMALL_CLUSTER)

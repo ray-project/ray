@@ -50,6 +50,12 @@ CLUSTER_CONFIG_SCHEMA = {
     # node. This takes precedence over min_workers.
     "max_workers": (int, REQUIRED),
 
+    # The number of workers to launch initially, in addition to the head node.
+    "initial_workers": (int, OPTIONAL),
+
+    # The mode of the autoscaler e.g. default, aggressive
+    "autoscaling_mode": (str, OPTIONAL),
+
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
     # and target_utilization was 0.8, it would resize the cluster to 10.
@@ -375,6 +381,7 @@ class StandardAutoscaler(object):
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
+        self.bringup = True
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -547,6 +554,14 @@ class StandardAutoscaler(object):
         cur_used = self.load_metrics.approx_workers_used()
         ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
         ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
+
+        initial_workers = self.config["initial_workers"]
+        aggressive = self.config["autoscaling_mode"] == "aggressive"
+        if self.bringup:
+            ideal_num_workers = max(ideal_num_workers, initial_workers)
+        elif aggressive and cur_used > 0:
+            # If we want any workers, we want at least initial_workers
+            ideal_num_workers = max(ideal_num_workers, initial_workers)
 
         # Other resources are not supported at present.
         if "CPU" in self.resource_requests:
