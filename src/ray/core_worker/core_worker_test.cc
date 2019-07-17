@@ -29,12 +29,12 @@ static void flushall_redis(void) {
 }
 
 bool CompareObjectData(std::shared_ptr<RayObject> object, Buffer buffer) {
-  if (object->GetDataSize() != buffer->Size()) {
+  if (object->DataSize() != buffer->Size()) {
     return false;
   }
 
-  uint8_t mem[object->GetDataSize()];
-  auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(mem, object->GetDataSize());
+  uint8_t mem[object->DataSize()];
+  auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(mem, object->DataSize());
   if (object->WriteDataTo(tmp_buffer) != Status::OK()) {
     return false;
   }
@@ -163,7 +163,7 @@ class CoreWorkerTest : public ::testing::Test {
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      CompareObjectData(results[0], buffer1);
+      ASSERT_TRUE(CompareObjectData(results[0], buffer1));
     }
 
     // Test pass by reference.
@@ -189,7 +189,7 @@ class CoreWorkerTest : public ::testing::Test {
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      CompareObjectData(results[0], buffer1);
+      ASSERT_TRUE(CompareObjectData(results[0], buffer1));
     }
   }
 
@@ -218,14 +218,14 @@ class CoreWorkerTest : public ::testing::Test {
     {
       uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
       uint8_t array2[] = {10, 11, 12, 13, 14, 15};
-      uint8_t array3[] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15}
+      uint8_t array3[] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15};
 
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
       auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
       auto buffer3 = std::make_shared<LocalMemoryBuffer>(array3, sizeof(array3));
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
+      RAY_CHECK_OK(driver.Objects().Put(BufferedRayObject(buffer1, nullptr), &object_id));
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
@@ -243,7 +243,7 @@ class CoreWorkerTest : public ::testing::Test {
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
-      CompareObjectData(results[0], buffer3);
+      ASSERT_TRUE(CompareObjectData(results[0], buffer3));
     }
   }
 
@@ -365,13 +365,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].GetData()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].GetData()->Data(),
-                     buffers[i].GetData()->Size()),
-              0);
-    ASSERT_EQ(results[i]->GetMetadata()->Size(), buffers[i].GetMetadata()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), buffers[i].GetMetadata()->Data(),
-                     buffers[i].GetMetadata()->Size()),
+    ASSERT_TRUE(CompareObjectData(results[i], buffers[i]));
+    ASSERT_EQ(results[i]->Metadata()->Size(), buffers[i].Metadata()->Size());
+    ASSERT_EQ(memcmp(results[i]->Metadata()->Data(), buffers[i].Metadata()->Data(),
+                     buffers[i].Metadata()->Size()),
               0);
   }
 
@@ -421,7 +418,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(worker1.Objects().Put(
-        RayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
+        BufferedRayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.
@@ -430,9 +427,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].Size());
-    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].Data(), buffers[i].Size()),
-              0);
+    ASSERT_TRUE(CompareObjectData(results[i], buffers[i]));
   }
 
   // Test Wait() from remote node.

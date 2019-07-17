@@ -1,16 +1,12 @@
 #ifndef RAY_CORE_WORKER_STORE_PROVIDER_H
 #define RAY_CORE_WORKER_STORE_PROVIDER_H
 
+#include "arrow/python/serialize.h"
+
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-
-namespace arrow {
-namespace py {
-struct SerializedPyObject;
-}
-}
 
 namespace ray {
 
@@ -32,7 +28,7 @@ class RayObject {
 
  private:
   const std::shared_ptr<Buffer> metadata_;
-}
+};
 
 /// BufferedRayObject is a RayObject whose data is held in a buffer.
 class BufferedRayObject : RayObject {
@@ -41,7 +37,7 @@ class BufferedRayObject : RayObject {
 		const std::shared_ptr<Buffer> &data)
       : RayObject(metadata), data_(data) {}
 
-  const size_t DataSize() const { return data_.Size() };
+  const size_t DataSize() const { return data_->Size(); };
 
   Status WriteDataTo(std::shared_ptr<Buffer> buffer);
 
@@ -56,15 +52,17 @@ class BufferedRayObject : RayObject {
 class PyArrowRayObject : RayObject {
  public:
   PyArrowRayObject(const std::shared_ptr<Buffer> &metadata,
-		const SerializedPyObject &object)
-      : RayObject(metadata), object_(object) {}
+		const std::shared_ptr<arrow::io::py::SerializedPyObject> &object,
+		const size_t object_size)
+      : RayObject(metadata), object_(object), object_size_(object_size) {}
 
-  const size_t DataSize() const { return object_.total_bytes };
+  const size_t DataSize() const { return object_size_; };
 
   Status WriteDataTo(std::shared_ptr<Buffer> buffer);
 
  private:
-  const std::shared_ptr<arrow::py::SerializedPyObject> object_;
+  const size_t object_size_;
+  const std::shared_ptr<arrow::io::py::SerializedPyObject> object_;
 };
 
 /// Provider interface for store access. Store provider should inherit from this class and
