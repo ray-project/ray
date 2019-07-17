@@ -90,7 +90,7 @@ Status ActorStateAccessor::AsyncSubscribe(
     const JobID &job_id, const ClientID &client_id,
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_DCHECK(subscribe != nullptr);
+  RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ActorID &actor_id,
                                   const std::vector<ActorTableData> &data) {
     subscribe(actor_id, data);
