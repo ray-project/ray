@@ -6,7 +6,6 @@ import unittest
 
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.agents.dqn.dqn_policy import _adjust_nstep
 from ray.tune.registry import register_env
 import numpy as np
 import gym
@@ -17,7 +16,7 @@ class TestReproducibility(unittest.TestCase):
         class PickLargest(gym.Env):
             def __init__(self):
                 self.observation_space = gym.spaces.Box(
-                    low=float("-inf"), high=float("inf"), shape=(4,))
+                    low=float("-inf"), high=float("inf"), shape=(4, ))
                 self.action_space = gym.spaces.Discrete(4)
                 np.random.seed(1234)
 
@@ -38,9 +37,7 @@ class TestReproducibility(unittest.TestCase):
             register_env("PickLargest", env_creator)
             agent = DQNTrainer(
                 env="PickLargest",
-                config={
-                    "seed": 666 if trial in [0, 1] else 999
-                })
+                config={"seed": 666 if trial in [0, 1] else 999})
 
             trajectory = list()
             for _ in range(8):
@@ -65,7 +62,7 @@ class TestReproducibility(unittest.TestCase):
         for v1, v2 in zip(trajs[1], trajs[2]):
             if v1 != v2:
                 diff_cnt += 1
-        self.assertTrue(diff_cnt>8)
+        self.assertTrue(diff_cnt > 8)
 
 
 if __name__ == "__main__":

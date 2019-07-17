@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 import logging
 from types import FunctionType
 
@@ -130,12 +129,7 @@ class WorkerSet(object):
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(self,
-                     cls,
-                     env_creator,
-                     policy,
-                     worker_index,
-                     config):
+    def _make_worker(self, cls, env_creator, policy, worker_index, config):
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -217,5 +211,5 @@ class WorkerSet(object):
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
             soft_horizon=config["soft_horizon"],
-            seed=config["seed"]+worker_index,
+            seed=config["seed"] + worker_index,
             _fake_sampler=config.get("_fake_sampler", False))
