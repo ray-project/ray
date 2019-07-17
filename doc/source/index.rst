@@ -72,6 +72,7 @@ Other projects in development:
    tutorial.rst
    actors.rst
    resources.rst
+   examples.rst
 
 .. toctree::
    :maxdepth: 1
@@ -80,24 +81,6 @@ Other projects in development:
    deploy-on-kubernetes.rst
    autoscaling.rst
    using-ray-on-a-cluster.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Other Libraries
-
-   distributed_training.rst
-   distributed_sgd.rst
-   pandas_on_ray.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: How-to Guide
-
-   profiling.rst
-   user-profiling.rst
-   fault-tolerance.rst
-   signals.rst
-   async_api.rst
 
 .. toctree::
    :maxdepth: 1
@@ -129,29 +112,51 @@ Other projects in development:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Examples
+   :caption: Other Libraries
 
-   example-rl-pong.rst
-   example-policy-gradient.rst
-   example-parameter-server.rst
-   example-newsreader.rst
-   example-resnet.rst
-   example-a3c.rst
-   example-lbfgs.rst
-   example-evolution-strategies.rst
-   example-cython.rst
-   example-streaming.rst
-   using-ray-with-tensorflow.rst
+   distributed_training.rst
+   distributed_sgd.rst
+   pandas_on_ray.rst
 
 .. toctree::
    :maxdepth: 1
-   :caption: Design
+   :caption: How-to Guide
 
+   profiling.rst
+   user-profiling.rst
+   fault-tolerance.rst
+   signals.rst
+   async_api.rst
+..   logging.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Ray Package Reference
+
+   package-ref.rst
+
+..    :maxdepth: 1
+..    :caption: Examples
+
+..    example-rl-pong.rst
+..    example-policy-gradient.rst
+..    example-parameter-server.rst
+..    example-newsreader.rst
+..    example-resnet.rst
+..    example-a3c.rst
+..    example-lbfgs.rst
+..    example-evolution-strategies.rst
+..    example-cython.rst
+..    example-streaming.rst
+..    using-ray-with-tensorflow.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Development
+
+   install-source.rst
+   contrib.rst
    internals-overview.rst
-   serialization.rst
-   plasma-object-store.rst
-   resources.rst
-   tempfile.rst
 
 .. toctree::
    :maxdepth: 1
