@@ -59,7 +59,7 @@ class MemoryMonitor(object):
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
         self.last_checked = time.time()
-        # If the error threshold env is set, overwrite the threshold with it.
+        # If the error threshold env is set, overwrite the threshold with it. 
         try:
             self.error_threshold = float(
                 os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD"))
