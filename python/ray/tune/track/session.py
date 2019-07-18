@@ -60,6 +60,8 @@ class TrackSession(object):
                             experiment_dir=None,
                             upload_dir=None,
                             trial_config=None):
+        if upload_dir:
+            raise NotImplementedError("Upload Dir is not yet implemented.")
 
         # TODO(rliaw): In other parts of the code, this is `local_dir`.
         if experiment_dir is None:
@@ -74,11 +76,10 @@ class TrackSession(object):
 
         # misc metadata to save as well
         self.trial_config["trial_id"] = self.trial_id
-        self._logger = UnifiedLogger(self.trial_config, self._logdir,
-                                     self._upload_dir)
+        self._logger = UnifiedLogger(self.trial_config, self._logdir)
 
     def log(self, **metrics):
-        """Logs all named arguments specified in **metrics.
+        """Logs all named arguments specified in `metrics`.
 
         This will log trial metrics locally, and they will be synchronized
         with the driver periodically through ray.
@@ -86,10 +87,9 @@ class TrackSession(object):
         Arguments:
             metrics: named arguments with corresponding values to log.
         """
-
+        self._iteration += 1
         # TODO: Implement a batching mechanism for multiple calls to `log`
         #     within the same iteration.
-        self._iteration += 1
         metrics_dict = metrics.copy()
         metrics_dict.update({"trial_id": self.trial_id})
 
