@@ -8,8 +8,8 @@
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/node_manager.grpc.pb.h"
-#include "src/ray/protobuf/node_manager.pb.h"
+#include "src/ray/protobuf/test.grpc.pb.h"
+#include "src/ray/protobuf/test.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -27,24 +27,32 @@ class DebugTestClient {
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = NodeManagerService::NewStub(channel);
+    stub_ = DebugEchoService::NewStub(channel);
   };
 
   /// Forward a task and its uncommitted lineage.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  void ForwardTask(const ForwardTaskRequest &request,
-                   const ClientCallback<ForwardTaskReply> &callback) {
+  void DebugEcho(const DebugEchoRequest &request,
+                   const ClientCallback<DebugEchoReply> &callback) {
     client_call_manager_
-        .CreateCall<NodeManagerService, ForwardTaskRequest, ForwardTaskReply>(
-            *stub_, &NodeManagerService::Stub::PrepareAsyncForwardTask, request,
+        .CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+            *stub_, &DebugEchoService::Stub::PrepareAsyncDebugEcho, request,
             callback);
+  }
+
+  /// Request for a stream message should be a synchronous call.
+  void DebugStreamEcho(const DebugEchoRequest &request,
+                   const ClientCallback<DebugEchoReply> &callback) {
+    client_call_manager_
+        .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+            *stub_, &DebugEchoService::Stub::DebugStreamEcho, request, callback);
   }
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<NodeManagerService::Stub> stub_;
+  std::unique_ptr<DebugEchoService::Stub> stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

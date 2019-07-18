@@ -48,7 +48,7 @@ using ClientCallback = std::function<void(const Status &status, const Reply &rep
 /// RPC method.
 ///
 /// \tparam Reply Type of the Reply message.
-template <class Reply>
+template <class Request, class Reply>
 class ClientCallImpl : public ClientCall {
  public:
   Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
@@ -70,15 +70,19 @@ class ClientCallImpl : public ClientCall {
   /// The callback function to handle the reply.
   ClientCallback<Reply> callback_;
 
-  /// The response reader.
-  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
-
   /// gRPC status of this request.
   grpc::Status status_;
 
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
   grpc::ClientContext context_;
+
+  /// The response reader.
+  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_ = nullptr;
+
+  /// The reader writer for request with stream message.
+  std::unique_ptr<::grpc::ClientReaderWriterInterface<Request, Reply>>
+      reader_writer_ = nullptr;
 
   friend class ClientCallManager;
 };
@@ -139,6 +143,19 @@ class ClientCallManager {
         (stub.*prepare_async_function)(&call->context_, request, &cq_);
     call->response_reader_->StartCall();
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)call);
+    return call;
+  }
+
+  templace <class GrpcService, class Request, class Reply>
+  ClientCall *CreateStreamCall(
+    typename GrpcService::Stub &stub,
+    const RpcFunction<GrpcService, Request, Reply> rpc_function,
+  ) {
+    auto call = new ClientCallImpl<Request, Reply>(callback);
+    // Setup connection with remote server.
+    if (!call->reader_writer_) {
+      call->reader_writer_ = (stub.*rpc_function);
+    }
     return call;
   }
 

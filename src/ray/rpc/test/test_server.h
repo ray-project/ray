@@ -40,9 +40,9 @@ class TestService : public GrpcService {
           *server_call_factories_and_concurrencies) override {
     // Initialize the factory for `DebugEcho` requests.
     std::unique_ptr<ServerCallFactory> debug_echo_call_factory(
-        new ServerCallFactoryImpl<TestService, TestServiceHandler,
+        new ServerCallFactoryImpl<DebugEchoService, DebugEchoServiceHandle,
                                   DebugEchoRequest, DebugEchoReply>(
-            service_, &TestService::AsyncService::RequestDebugEcho,
+            service_, &DebugEchoService::AsyncService::RequestDebugEcho,
             service_handler_, &TestServiceHandler::HandleDebugEcho, cq,
             main_service_));
     // Set `DebugEcho`'s accept concurrency.
@@ -51,9 +51,9 @@ class TestService : public GrpcService {
 
     // Initialize the factory for `DebugStreamEcho` requests.
     std::unique_ptr<ServerCallFactory> debug_stream_echo_call_factory(
-        new ServerCallFactoryImpl<TestService, TestServiceHandler,
+        new ServerCallFactoryImpl<DebugEchoService, TestServiceHandler,
                                   DebugEchoRequest, DebugEchoReply>(
-            service_, &TestService::AsyncService::RequestDebugStreamEcho,
+            service_, &DebugEchoService::AsyncService::RequestDebugStreamEcho,
             service_handler_, &TestServiceHandler::HandleDebugStreamEcho, cq,
             main_service_));
     // Set `DebugStreamEcho`'s accept concurrency.
