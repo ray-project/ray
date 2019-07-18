@@ -80,19 +80,37 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
   auto inserted = local_objects_.insert(object_id);
   RAY_CHECK(inserted.second);
 
-  // Find any tasks that are dependent on the newly available object.
+  // Find all tasks and workers that depend on the newly available object.
   std::vector<TaskID> ready_task_ids;
   auto creating_task_entry = required_tasks_.find(object_id.TaskId());
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
     if (object_entry != creating_task_entry->second.end()) {
-      for (auto &dependent_task_id : object_entry->second.dependent_tasks) {
+      // Loop through all tasks that depend on the newly available object.
+      for (const auto &dependent_task_id : object_entry->second.dependent_tasks) {
         auto &task_entry = task_dependencies_[dependent_task_id];
         task_entry.num_missing_get_dependencies--;
         // If the dependent task now has all of its arguments ready, it's ready
         // to run.
         if (task_entry.num_missing_get_dependencies == 0) {
           ready_task_ids.push_back(dependent_task_id);
+        }
+      }
+      // Remove the dependency from all workers that called `ray.wait` on the
+      // newly available object.
+      for (const auto &worker_id : object_entry->second.dependent_workers) {
+        RAY_CHECK(worker_dependencies_[worker_id].erase(object_id) > 0);
+      }
+      // Clear all workers that called `ray.wait` on this object, since the
+      // `ray.wait` calls can now return the object as ready.
+      object_entry->second.dependent_workers.clear();
+
+      // If there are no more tasks or workers dependent on the local object or
+      // the task that created it, then remove the entry completely.
+      if (object_entry->second.Empty()) {
+        creating_task_entry->second.erase(object_entry);
+        if (creating_task_entry->second.empty()) {
+          required_tasks_.erase(creating_task_entry);
         }
       }
     }
@@ -175,60 +193,26 @@ void TaskDependencyManager::SubscribeWaitDependencies(
     const WorkerID &worker_id, const std::vector<ObjectID> &required_objects) {
   auto &worker_entry = worker_dependencies_[worker_id];
 
-  // Record the task's dependencies.
+  // Record the worker's dependencies.
   for (const auto &object_id : required_objects) {
-    auto inserted = worker_entry.insert(object_id);
-    if (inserted.second) {
-      // Get the ID of the task that creates the dependency.
-      TaskID creating_task_id = object_id.TaskId();
-      // Add the subscribed task to the mapping from object ID to list of
-      // dependent tasks.
-      required_tasks_[creating_task_id][object_id].dependent_workers.insert(worker_id);
-    }
-  }
-
-  // These dependencies are required by the given task. Try to make them local
-  // if necessary.
-  for (const auto &object_id : required_objects) {
-    HandleRemoteDependencyRequired(object_id);
-  }
-}
-
-void TaskDependencyManager::UnsubscribeWaitDependencies(const WorkerID &worker_id) {
-  // Remove the task from the table of subscribed tasks.
-  auto it = worker_dependencies_.find(worker_id);
-  if (it == worker_dependencies_.end()) {
-    return;
-  }
-
-  const WorkerDependencies worker_entry = std::move(it->second);
-  worker_dependencies_.erase(it);
-
-  // Remove the task's dependencies.
-  for (const auto &object_id : worker_entry) {
-    // Remove the task from the list of tasks that are dependent on this
-    // object.
-    // Get the ID of the task that creates the dependency.
-    TaskID creating_task_id = object_id.TaskId();
-    auto creating_task_entry = required_tasks_.find(creating_task_id);
-    auto &dependent_workers = creating_task_entry->second[object_id].dependent_workers;
-    RAY_CHECK(dependent_workers.erase(worker_id) > 0);
-    // If the unsubscribed task was the only task dependent on the object, then
-    // erase the object entry.
-    if (creating_task_entry->second[object_id].Empty()) {
-      creating_task_entry->second.erase(object_id);
-      // Remove the task that creates this object if there are no more object
-      // dependencies created by the task.
-      if (creating_task_entry->second.empty()) {
-        required_tasks_.erase(creating_task_entry);
+    if (local_objects_.count(object_id) == 0) {
+      // Only add the dependency if the object is not local. If the object is
+      // local, then the `ray.wait` call can already return it.
+      auto inserted = worker_entry.insert(object_id);
+      if (inserted.second) {
+        // Get the ID of the task that creates the dependency.
+        TaskID creating_task_id = object_id.TaskId();
+        // Add the subscribed worker to the mapping from object ID to list of
+        // dependent workers.
+        required_tasks_[creating_task_id][object_id].dependent_workers.insert(worker_id);
       }
     }
   }
 
-  // These dependencies are no longer required by the given task. Cancel any
-  // in-progress operations to make them local.
-  for (const auto &object_id : worker_entry) {
-    HandleRemoteDependencyCanceled(object_id);
+  // These dependencies are required by the given worker. Try to make them
+  // local if necessary.
+  for (const auto &object_id : required_objects) {
+    HandleRemoteDependencyRequired(object_id);
   }
 }
 
@@ -238,21 +222,19 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
   if (it == task_dependencies_.end()) {
     return false;
   }
-
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
 
   // Remove the task's dependencies.
   for (const auto &object_id : task_entry.get_dependencies) {
-    // Remove the task from the list of tasks that are dependent on this
-    // object.
     // Get the ID of the task that creates the dependency.
     TaskID creating_task_id = object_id.TaskId();
     auto creating_task_entry = required_tasks_.find(creating_task_id);
+    // Remove the task from the list of tasks that are dependent on this
+    // object.
     auto &dependent_tasks = creating_task_entry->second[object_id].dependent_tasks;
     RAY_CHECK(dependent_tasks.erase(task_id) > 0);
-    // If the unsubscribed task was the only task dependent on the object, then
-    // erase the object entry.
+    // If nothing else depends on the object, then erase the object entry.
     if (creating_task_entry->second[object_id].Empty()) {
       creating_task_entry->second.erase(object_id);
       // Remove the task that creates this object if there are no more object
@@ -270,6 +252,42 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
   }
 
   return true;
+}
+
+void TaskDependencyManager::UnsubscribeWaitDependencies(const WorkerID &worker_id) {
+  // Remove the task from the table of subscribed tasks.
+  auto it = worker_dependencies_.find(worker_id);
+  if (it == worker_dependencies_.end()) {
+    return;
+  }
+  const WorkerDependencies worker_entry = std::move(it->second);
+  worker_dependencies_.erase(it);
+
+  // Remove the task's dependencies.
+  for (const auto &object_id : worker_entry) {
+    // Get the ID of the task that creates the dependency.
+    TaskID creating_task_id = object_id.TaskId();
+    auto creating_task_entry = required_tasks_.find(creating_task_id);
+    // Remove the worker from the list of workers that are dependent on this
+    // object.
+    auto &dependent_workers = creating_task_entry->second[object_id].dependent_workers;
+    RAY_CHECK(dependent_workers.erase(worker_id) > 0);
+    // If nothing else depends on the object, then erase the object entry.
+    if (creating_task_entry->second[object_id].Empty()) {
+      creating_task_entry->second.erase(object_id);
+      // Remove the task that creates this object if there are no more object
+      // dependencies created by the task.
+      if (creating_task_entry->second.empty()) {
+        required_tasks_.erase(creating_task_entry);
+      }
+    }
+  }
+
+  // These dependencies are no longer required by the given task. Cancel any
+  // in-progress operations to make them local.
+  for (const auto &object_id : worker_entry) {
+    HandleRemoteDependencyCanceled(object_id);
+  }
 }
 
 std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {

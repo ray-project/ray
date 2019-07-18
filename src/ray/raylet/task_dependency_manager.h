@@ -64,10 +64,11 @@ class TaskDependencyManager {
   /// Subscribe to object depedencies required by the worker. This should be called for
   /// ray.wait calls during task execution.
   ///
-  /// The TaskDependencyManager will track these dependencies until the dependencies are
-  /// local, or until UnsubscribeWaitDependencies is called with the same worker ID,
-  /// whichever occurs first. If any dependencies are remote, then they will be requested.
-  /// This method may be called multiple times per worker on the same objects.
+  /// The TaskDependencyManager will track all remote dependencies until the
+  /// dependencies are local, or until UnsubscribeWaitDependencies is called
+  /// with the same worker ID, whichever occurs first. Remote dependencies will
+  /// be requested.  This method may be called multiple times per worker on the
+  /// same objects.
   ///
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
