@@ -22,7 +22,9 @@ class RayObject {
 
   const std::shared_ptr<Buffer> &Metadata() const { return metadata_; };
 
-  virtual size_t DataSize() const = 0;
+  virtual const std::shared_ptr<Buffer> &Data() = 0;
+
+  virtual const size_t DataSize() const = 0;
 
   virtual Status WriteDataTo(std::shared_ptr<Buffer> buffer) const = 0;
 
@@ -37,11 +39,11 @@ class BufferedRayObject : public RayObject {
 		const std::shared_ptr<Buffer> &data)
       : RayObject(metadata), data_(data) {}
 
-  size_t DataSize() const override { return data_->Size(); };
+  const std::shared_ptr<Buffer> &Data() override { return data_; };
+
+  const size_t DataSize() const override { return data_->Size(); };
 
   Status WriteDataTo(std::shared_ptr<Buffer> buffer) const override;
-
-  const std::shared_ptr<Buffer> &Data() const { return data_; };
 
  private:
   const std::shared_ptr<Buffer> data_;
@@ -50,7 +52,9 @@ class BufferedRayObject : public RayObject {
 /// PyArrowRayObject is a RayObject whose data is a SerializedPyObject passed
 /// in from an Arrow serialization. This is not placed into a buffer because
 /// it consists of a collection of pointers directly into Python memory. The
-/// WriteDataTo method will directly write from this memory.
+/// WriteDataTo method will directly write from this memory. Note that calling
+/// Data() for the first time will induce a copy, because it must copy data
+/// from Python memory into a buffer.
 class PyArrowRayObject : public RayObject {
  public:
   PyArrowRayObject(const std::shared_ptr<Buffer> &metadata,
@@ -58,11 +62,18 @@ class PyArrowRayObject : public RayObject {
 		size_t object_size)
       : RayObject(metadata), object_(object), object_size_(object_size) {}
 
-  size_t DataSize() const override { return object_size_; };
+  ~PyArrowRayObject() {
+    if (data_) delete[] data_->Data();
+  }
+
+  const std::shared_ptr<Buffer> &Data() override;
+
+  const size_t DataSize() const override { return object_size_; };
 
   Status WriteDataTo(std::shared_ptr<Buffer> buffer) const override;
 
  private:
+  std::shared_ptr<Buffer> data_;
   const std::shared_ptr<arrow::py::SerializedPyObject> object_;
   size_t object_size_;
 };

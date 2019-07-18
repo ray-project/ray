@@ -18,4 +18,12 @@ Status PyArrowRayObject::WriteDataTo(std::shared_ptr<Buffer> buffer) const {
   return Status::OK();
 }
 
+const std::shared_ptr<Buffer>& PyArrowRayObject::Data() {
+  if (data_ == nullptr) {
+    data_ = std::make_shared<LocalMemoryBuffer>(new uint8_t[object_size_], object_size_);
+    auto status = this->WriteDataTo(data_);
+  }
+  return data_;
+}
+
 } // namespace ray

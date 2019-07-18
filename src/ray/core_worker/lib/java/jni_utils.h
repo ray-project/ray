@@ -170,8 +170,8 @@ inline jobject ToJavaNativeRayObject(JNIEnv *env,
   if (!rayObject) {
     return nullptr;
   }
-  auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
-  auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
+  auto java_data = NativeBufferToJavaByteArray(env, rayObject->Data());
+  auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->Metadata());
   auto java_obj = env->NewObject(java_native_ray_object_class,
                                  java_native_ray_object_init, java_data, java_metadata);
   return java_obj;
