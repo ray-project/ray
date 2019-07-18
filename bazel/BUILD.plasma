@@ -7,6 +7,7 @@ cc_library(
     srcs = [
         "cpp/src/arrow/buffer.cc",
         "cpp/src/arrow/io/interfaces.cc",
+        "cpp/src/arrow/io/memory.cc",
         "cpp/src/arrow/memory_pool.cc",
         "cpp/src/arrow/status.cc",
         "cpp/src/arrow/util/io-util.cc",
@@ -18,7 +19,10 @@ cc_library(
     hdrs = [
         "cpp/src/arrow/buffer.h",
         "cpp/src/arrow/io/interfaces.h",
+        "cpp/src/arrow/io/memory.h",
         "cpp/src/arrow/memory_pool.h",
+        "cpp/src/arrow/python/serialize.h",
+	"cpp/src/arrow/python/visibility.h",
         "cpp/src/arrow/status.h",
         "cpp/src/arrow/util/bit-util.h",
         "cpp/src/arrow/util/io-util.h",
@@ -40,6 +44,7 @@ cc_library(
     ],
     copts = COPTS,
     strip_include_prefix = "cpp/src",
+    visibility = ["//visibility:public"],
     deps = [
         "@boost//:filesystem",
         "@com_github_google_glog//:glog",

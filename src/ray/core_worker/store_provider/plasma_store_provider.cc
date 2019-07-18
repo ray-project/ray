@@ -26,11 +26,11 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Create(
-        plasma_id, object->DataSize(), metadata ? metadata->Data() : nullptr,
+        plasma_id, object.DataSize(), metadata ? metadata->Data() : nullptr,
         metadata ? metadata->Size() : 0, &arrow_buffer));
   }
 
-  std::shared_ptr<Buffer> out_buffer(arrow_buffer);
+  auto out_buffer = std::make_shared<PlasmaBuffer>(arrow_buffer);
   RAY_RETURN_NOT_OK(object.WriteDataTo(out_buffer));
 
   {
@@ -98,7 +98,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (size_t i = 0; i < object_buffers.size(); i++) {
       if (object_buffers[i].data != nullptr) {
         const auto &object_id = unready_ids[i];
-        (*results)[unready[object_id]] = std::make_shared<RayObject>(
+        (*results)[unready[object_id]] = std::make_shared<BufferedRayObject>(
             std::make_shared<PlasmaBuffer>(object_buffers[i].data),
             std::make_shared<PlasmaBuffer>(object_buffers[i].metadata));
         unready.erase(object_id);

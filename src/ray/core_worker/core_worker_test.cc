@@ -28,14 +28,14 @@ static void flushall_redis(void) {
   redisFree(context);
 }
 
-bool CompareObjectData(std::shared_ptr<RayObject> object, Buffer buffer) {
+bool CompareObjectData(std::shared_ptr<RayObject> object, std::shared_ptr<Buffer> buffer) {
   if (object->DataSize() != buffer->Size()) {
     return false;
   }
 
   uint8_t mem[object->DataSize()];
   auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(mem, object->DataSize());
-  if (object->WriteDataTo(tmp_buffer) != Status::OK()) {
+  if (!object->WriteDataTo(tmp_buffer).ok()) {
     return false;
   }
 
@@ -172,7 +172,7 @@ class CoreWorkerTest : public ::testing::Test {
       auto buffer1 = std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1));
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
+      RAY_CHECK_OK(driver.Objects().Put(BufferedRayObject(buffer1, nullptr), &object_id));
 
       std::vector<TaskArg> args;
       args.emplace_back(TaskArg::PassByReference(object_id));
@@ -348,7 +348,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
-  std::vector<RayObject> buffers;
+  std::vector<BufferedRayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
@@ -365,7 +365,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_TRUE(CompareObjectData(results[i], buffers[i]));
+    ASSERT_TRUE(CompareObjectData(results[i], buffers[i].Data()));
     ASSERT_EQ(results[i]->Metadata()->Size(), buffers[i].Metadata()->Size());
     ASSERT_EQ(memcmp(results[i]->Metadata()->Data(), buffers[i].Metadata()->Data(),
                      buffers[i].Metadata()->Size()),
@@ -411,14 +411,14 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
-  std::vector<LocalMemoryBuffer> buffers;
-  buffers.emplace_back(array1, sizeof(array1));
-  buffers.emplace_back(array2, sizeof(array2));
+  std::vector<std::shared_ptr<ray::LocalMemoryBuffer>> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)));
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(worker1.Objects().Put(
-        BufferedRayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
+        BufferedRayObject(buffers[i], nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.

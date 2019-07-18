@@ -22,24 +22,26 @@ class RayObject {
 
   const std::shared_ptr<Buffer> &Metadata() const { return metadata_; };
 
-  virtual size_t DataSize() = 0;
+  virtual size_t DataSize() const = 0;
 
-  virtual Status WriteDataTo(std::shared_ptr<Buffer> buffer) = 0;
+  virtual Status WriteDataTo(std::shared_ptr<Buffer> buffer) const = 0;
 
  private:
   const std::shared_ptr<Buffer> metadata_;
 };
 
 /// BufferedRayObject is a RayObject whose data is held in a buffer.
-class BufferedRayObject : RayObject {
+class BufferedRayObject : public RayObject {
  public:
   BufferedRayObject(const std::shared_ptr<Buffer> &metadata,
 		const std::shared_ptr<Buffer> &data)
       : RayObject(metadata), data_(data) {}
 
-  const size_t DataSize() const { return data_->Size(); };
+  size_t DataSize() const override { return data_->Size(); };
 
-  Status WriteDataTo(std::shared_ptr<Buffer> buffer);
+  Status WriteDataTo(std::shared_ptr<Buffer> buffer) const override;
+
+  const std::shared_ptr<Buffer> &Data() const { return data_; };
 
  private:
   const std::shared_ptr<Buffer> data_;
@@ -49,20 +51,20 @@ class BufferedRayObject : RayObject {
 /// in from an Arrow serialization. This is not placed into a buffer because
 /// it consists of a collection of pointers directly into Python memory. The
 /// WriteDataTo method will directly write from this memory.
-class PyArrowRayObject : RayObject {
+class PyArrowRayObject : public RayObject {
  public:
   PyArrowRayObject(const std::shared_ptr<Buffer> &metadata,
-		const std::shared_ptr<arrow::io::py::SerializedPyObject> &object,
-		const size_t object_size)
+		const std::shared_ptr<arrow::py::SerializedPyObject> &object,
+		size_t object_size)
       : RayObject(metadata), object_(object), object_size_(object_size) {}
 
-  const size_t DataSize() const { return object_size_; };
+  size_t DataSize() const override { return object_size_; };
 
-  Status WriteDataTo(std::shared_ptr<Buffer> buffer);
+  Status WriteDataTo(std::shared_ptr<Buffer> buffer) const override;
 
  private:
-  const size_t object_size_;
-  const std::shared_ptr<arrow::io::py::SerializedPyObject> object_;
+  const std::shared_ptr<arrow::py::SerializedPyObject> object_;
+  size_t object_size_;
 };
 
 /// Provider interface for store access. Store provider should inherit from this class and

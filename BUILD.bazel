@@ -347,6 +347,7 @@ cc_library(
         # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
         ":raylet_lib",
         ":worker_rpc",
+        "@plasma//:arrow",
     ],
 )
 

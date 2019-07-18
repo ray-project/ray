@@ -84,7 +84,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<RayObject>(
+      (*args)[i] = std::make_shared<BufferedRayObject>(
           std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgVal(i)),
                                               task.ArgValLength(i)),
           nullptr);
