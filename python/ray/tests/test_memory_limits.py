@@ -6,10 +6,7 @@ import unittest
 MB = 1024 * 1024
 
 OBJECT_EVICTED = ray.exceptions.UnreconstructableError
-INVALID_QUOTA = pyarrow._plasma.PlasmaStoreFull  # TODO better message
 OBJECT_TOO_LARGE = pyarrow._plasma.PlasmaStoreFull
-
-# TODO errors should include debug info
 
 
 @ray.remote
@@ -45,10 +42,12 @@ class TestMemoryLimits(unittest.TestCase):
         self._run(None, None, 50 * MB)
 
     def testQuotaTooLarge(self):
-        self.assertRaises(INVALID_QUOTA,
-                          lambda: self._run(100 * MB, None, None))
-        self.assertRaises(ray.exceptions.RayTaskError,
-                          lambda: self._run(None, None, 100 * MB))
+        self.assertRaisesRegexp(ray.exceptions.RayTaskError,
+                                ".*Failed to set output_memory_limit.*",
+                                lambda: self._run(100 * MB, None, None))
+        self.assertRaisesRegexp(ray.memory_monitor.RayOutOfMemoryError,
+                                ".*Failed to set output_memory_limit.*",
+                                lambda: self._run(None, None, 100 * MB))
 
     def testTooLargeAllocation(self):
         try:

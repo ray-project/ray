@@ -184,6 +184,7 @@ class ActorClass(object):
         _num_gpus: The default number of GPUs required by the actor creation
             task.
         _resources: The default resources required by the actor creation task.
+        _output_memory_limit: The object store output limit for this actor.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
         _last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
@@ -203,7 +204,7 @@ class ActorClass(object):
     """
 
     def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, resources):
+                 num_gpus, resources, output_memory_limit):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
@@ -211,6 +212,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
+        self._output_memory_limit = output_memory_limit
         self._last_export_session_and_job = None
 
         self._actor_methods = inspect.getmembers(
@@ -382,7 +384,9 @@ class ActorClass(object):
                 creation_args,
                 actor_creation_id=actor_id,
                 max_actor_reconstructions=self._max_reconstructions,
-                output_memory_limit=output_memory_limit,
+                output_memory_limit=output_memory_limit
+                if self._output_memory_limit is None else
+                self._output_memory_limit,
                 num_return_vals=1,
                 resources=resources,
                 placement_resources=actor_placement_resources)
@@ -802,7 +806,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions,
     class_id = ActorClassID.from_random()
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      resources)
+                      resources, output_memory_limit)
 
 
 def exit_actor():

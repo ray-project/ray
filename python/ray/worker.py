@@ -920,7 +920,7 @@ class Worker(object):
                     else:
                         key = task.actor_creation_id()
                     if "output_memory_limit" in task.task_options():
-                        self.plasma_client.set_client_options(
+                        self._set_plasma_client_options(
                             "ray_{}_{}".format(
                                 self.actors[key].__class__.__name__,
                                 os.getpid()),
@@ -953,6 +953,20 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
+
+    def _set_plasma_client_options(self, client_name, output_memory_limit):
+        try:
+            self.plasma_client.set_client_options(client_name,
+                                                  output_memory_limit)
+        except pyarrow._plasma.PlasmaStoreFull:
+            raise memory_monitor.RayOutOfMemoryError(
+                "Failed to set output_memory_limit={} for {}. The "
+                "plasma store may have insufficient memory remaining "
+                "to satisfy this limit (30% of object store memory is "
+                "permanently reserved for shared usage). The current "
+                "object store memory status is:\n\n{}".format(
+                    output_memory_limit, client_name,
+                    self.plasma_client.debug_string()))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1870,8 +1884,8 @@ def connect(node,
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
     if driver_output_memory_limit is not None:
-        worker.plasma_client.set_client_options(
-            "ray_driver_{}".format(os.getpid()), driver_output_memory_limit)
+        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
+                                          driver_output_memory_limit)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2480,7 +2494,7 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', "
+                    "'resources', 'max_calls', 'output_memory_limit', "
                     "or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
