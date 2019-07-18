@@ -194,8 +194,7 @@ void TaskDependencyManager::SubscribeWaitDependencies(
   }
 }
 
-void TaskDependencyManager::UnsubscribeWaitDependencies(
-    const WorkerID &worker_id) {
+void TaskDependencyManager::UnsubscribeWaitDependencies(const WorkerID &worker_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = worker_dependencies_.find(worker_id);
   if (it == worker_dependencies_.end()) {
