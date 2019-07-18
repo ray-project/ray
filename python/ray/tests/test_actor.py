@@ -8,6 +8,10 @@ import random
 import numpy as np
 import os
 import pytest
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 import signal
 import sys
 import time
@@ -899,6 +903,30 @@ def test_actor_load_balancing(ray_start_cluster):
         index = np.random.randint(num_actors)
         results.append(actors[index].get_location.remote())
     ray.get(results)
+
+
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
+@pytest.mark.timeout(10)
+def test_actor_lifetime_load_balancing(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    num_nodes = 4
+    for i in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(redis_address=cluster.redis_address)
+
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    actors = [Actor.remote() for _ in range(num_nodes)]
+    ray.get([actor.ping.remote() for actor in actors])
 
 
 @pytest.mark.skipif(
