@@ -9,7 +9,7 @@ namespace ray {
 
 namespace gcs {
 
-/// This callback is used to notify when a write/subscribe to GCS is completes.
+/// This callback is used to notify when a write/subscribe to GCS completes.
 /// \param status Status indicates whether the write/subscribe was successful.
 using StatusCallback = std::function<void(Status status)>;
 
@@ -28,12 +28,12 @@ template <typename Data>
 using MultiItemCallback =
     std::function<void(Status status, const std::vector<Data> &result)>;
 
-/// This callback is used to receive items that are subscribed from GCS.
-/// \param id The id of the items.
-/// \param result The items returned by GCS.
+/// This callback is used to receive notifications of the subscribed items in the GCS.
+/// \param id The id of the item.
+/// \param result The notification message.
 template <typename ID, typename Data>
 using SubscribeCallback =
-    std::function<void(const ID &id, const std::vector<Data> &result)>;
+    std::function<void(const ID &id, const Data &result)>;
 
 }  // namespace gcs
 

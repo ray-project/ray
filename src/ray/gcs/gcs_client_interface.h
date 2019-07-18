@@ -14,7 +14,8 @@ namespace ray {
 namespace gcs {
 
 /// \class GcsClientOptions
-/// GCS client's options(configuration items), such as service address, service password.
+/// GCS client's options (configuration items), such as service address, and service
+/// password.
 class GcsClientOptions {
  public:
   /// Constructor of GcsClientOptions.
@@ -71,7 +72,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   virtual ~GcsClientInterface() { RAY_CHECK(!is_connected_); }
 
   /// Connect to GCS Service. Non-thread safe.
-  /// Call this function before calling other functions.
+  /// This function must be called before calling other functions.
   ///
   /// \return Status
   virtual Status Connect(boost::asio::io_service &io_service) = 0;

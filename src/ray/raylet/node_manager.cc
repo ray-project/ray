@@ -165,12 +165,8 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
-                                            const std::vector<ActorTableData> &data) {
-    if (!data.empty()) {
-      // We only need the last entry, because it represents the latest state of
-      // this actor.
-      HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
-    }
+                                            const ActorTableData &data) {
+      HandleActorStateTransition(actor_id, ActorRegistration(data));
   };
 
   RAY_RETURN_NOT_OK(
