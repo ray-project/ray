@@ -376,7 +376,7 @@ std::shared_ptr<Worker> WorkerPool::GetActorWorker(const ActorID &actor_id){
       }
     }
   }
-  return std::shared_ptr<Worker>();
+  return nullptr;
 }
 
 std::string WorkerPool::DebugString() const {

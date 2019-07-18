@@ -124,7 +124,7 @@ class WorkerPool {
   /// Get the worker in the worker pool that corresponds to the given actor.
   /// If no such worker is present, return a null pointer.
   ///
-  /// \param actor_id ActorID of the actor whose worker w're trying to find.
+  /// \param actor_id ActorID of the actor whose worker we're trying to find.
   std::shared_ptr<Worker> GetActorWorker(const ActorID &actor_id);
 
   /// Returns debug string for class.

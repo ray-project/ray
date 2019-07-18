@@ -655,6 +655,16 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
+    // Kill actor if parent actor is dead.
+    auto parent_actor_entry = actor_registry_.find(actor_registration.GetParentActorID());
+    if (parent_actor_entry != actor_registry_.end() &&
+        parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
+      RAY_LOG(DEBUG) << "Killing newly created actor " << actor_id << " as parent actor "
+                     << actor_registration.GetParentActorID() << " is dead.";
+      auto worker = worker_pool_.GetActorWorker(actor_id);
+      ProcessDisconnectClientMessage(worker->Connection());
+      return;
+    }
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -682,18 +692,21 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       SubmitTask(method, Lineage());
     }
   } else if (actor_registration.GetState() == ActorTableData::DEAD) {
-    // When an actor dies, loop over (i) all of the queued tasks for that actor
-    // and treat them as failed (ii) all actors and kill those whose parent actor
-    // is the actor that just died.
+    // When an actor dies, loop over all of the queued tasks for that actor
+    // and treat them as failed
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
-    for (auto &actor_entry_it : actor_registry_) {
-      if (actor_entry_it.second.GetParentActorID() == actor_id) {
-        // Kill this actor as it is a child of the dead actor.
-        auto worker = worker_pool_.GetActorWorker(actor_entry_it.first);
+    // Loop over all actors and kill those whose parent actor
+    // is the actor that just died.
+    for (const auto &actor_entry : actor_registry_) {
+      auto node_manager_id = actor_entry.second.GetNodeManagerId();
+      // Kill this actor if it is local and is a child of the dead actor.
+      if (node_manager_id == gcs_client_->client_table().GetLocalClientId() && 
+          actor_entry.second.GetParentActorID() == actor_id) {
+        auto worker = worker_pool_.GetActorWorker(actor_entry.first);
         ProcessDisconnectClientMessage(worker->Connection());
       }
     }
@@ -1990,14 +2003,6 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
                                                   const TaskSpecification &task_spec,
                                                   bool resumed_from_checkpoint) {
   const ActorID actor_id = task_spec.ActorCreationId();
-  // Halt creation if parent actor is dead.
-  auto parent_actor_entry = actor_registry_.find(parent_actor_id);
-  if (parent_actor_entry != actor_registry_.end() &&
-      parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
-    RAY_LOG(DEBUG) << "Halting creation of actor " << actor_id << " as parent actor "
-                   << parent_actor_id << " is dead.";
-    return;
-  }
   // Notify the other node managers that the actor has been created.
   auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
   new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
