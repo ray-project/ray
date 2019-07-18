@@ -570,7 +570,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
     if (state != TaskState::INFEASIBLE) {
       // Don't unsubscribe for infeasible tasks because we never subscribed in
       // the first place.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(task_id));
+      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(task_id));
     }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
@@ -678,7 +678,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       // respective actor creation task. Since the actor location is now known,
       // we can remove the task from the queue and forget its dependency on the
       // actor creation task.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(
+      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(
           method.GetTaskSpecification().TaskId()));
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
@@ -1444,7 +1444,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   // here. However, we don't know at this point if the task was in the WAITING
   // or READY queue before, in which case we would not have been subscribed to
   // its dependencies.
-  task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+  task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
 void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
@@ -1587,9 +1587,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       // subscribed to its respective actor creation task and that task only.
       // Once the actor has been created and this method removed from the
       // waiting queue, the caller must make the corresponding call to
-      // UnsubscribeDependencies.
-      task_dependency_manager_.SubscribeDependencies(spec.TaskId(),
-                                                     {actor_creation_dummy_object});
+      // UnsubscribeGetDependencies.
+      task_dependency_manager_.SubscribeGetDependencies(spec.TaskId(),
+                                                        {actor_creation_dummy_object});
       // Mark the task as pending. It will be canceled once we discover the
       // actor's location and either execute the task ourselves or forward it
       // to another node.
@@ -1654,7 +1654,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
   // Subscribe to the objects required by the ray.get. These objects will
   // be fetched and/or reconstructed as necessary, until the objects become
   // local or are unsubscribed.
-  task_dependency_manager_.SubscribeDependencies(current_task_id, required_object_ids);
+  task_dependency_manager_.SubscribeGetDependencies(current_task_id, required_object_ids);
 }
 
 void NodeManager::HandleTaskUnblocked(
@@ -1712,7 +1712,7 @@ void NodeManager::HandleTaskUnblocked(
   worker->RemoveBlockedTaskId(current_task_id);
   // Unsubscribe to the objects. Any fetch or reconstruction operations to
   // make the objects local are canceled.
-  RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(current_task_id));
+  RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(current_task_id));
   local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
@@ -1720,7 +1720,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
-  bool args_ready = task_dependency_manager_.SubscribeDependencies(
+  bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.
@@ -2365,7 +2365,7 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
-    RAY_CHECK(task_dependency_manager_.UnsubscribeDependencies(spec.TaskId()));
+    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
