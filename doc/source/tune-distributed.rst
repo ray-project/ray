@@ -1,5 +1,5 @@
-Tune Distributed Experiments
-============================
+Distributed Experiments
+=======================
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. Tune provides many utilities that enable an effective workflow for interacting with a cluster.
 
@@ -12,11 +12,32 @@ Walkthrough
 Connecting to a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Modifying an existing Tune Experiment to ray.
+Modifying an existing Tune Experiment to ray. One common approach is to
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--redis-address", default=None)
+    args = parser.parse_args()
+    ray.init(redis_address=args.redis_address)
+
+.. code-block:: bash
+
+    python script --redis-address localhost:1234
 
 
-Executing on the cloud
-~~~~~~~~~~~~~~~~~~~~~~
+Using a local cluster
+~~~~~~~~~~~~~~~~~~~~~
+
+TODOXXX: Mention SLURM, a local set of nodes.
+
+
+Launching a cloud cluster
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use this YAML configuration file to kick off your cluster.
 

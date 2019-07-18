@@ -1,15 +1,14 @@
-Tune Checkpointing
-==================
+Saving and Recovery
+===================
 
-When running a hyperparameter search, Tune can automatically and periodically checkpoint your model. Checkpointing is used for
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
 
  * saving a model at the end of training
  * modifying a model in the middle of training
  * fault-tolerance in experiments with pre-emptible machines.
+ * enables certain Trial Schedulers such as HyperBand and PBT.
 
 To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
-
-Note that implementing this interface is required in certain Trial Schedulers such as HyperBand and PBT.
 
 For TensorFlow model training, this would look something like this `tensorflow example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
 
