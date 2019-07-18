@@ -282,6 +282,7 @@ class ActorClass(object):
                 kwargs=None,
                 num_cpus=None,
                 num_gpus=None,
+                output_memory_limit=None,
                 resources=None):
         """Create an actor.
 
@@ -294,6 +295,8 @@ class ActorClass(object):
             kwargs: The keyword arguments to forward to the actor constructor.
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
+            output_memory_limit: Restrict the object store memory used by this
+                actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
 
@@ -379,6 +382,7 @@ class ActorClass(object):
                 creation_args,
                 actor_creation_id=actor_id,
                 max_actor_reconstructions=self._max_reconstructions,
+                output_memory_limit=output_memory_limit,
                 num_return_vals=1,
                 resources=resources,
                 placement_resources=actor_placement_resources)
@@ -747,7 +751,8 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions,
+               output_memory_limit):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(

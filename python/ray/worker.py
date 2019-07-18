@@ -587,6 +587,7 @@ class Worker(object):
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
                     previous_actor_task_dummy_object_id=None,
+                    output_memory_limit=None,
                     max_actor_reconstructions=0,
                     new_actor_handles=None,
                     num_return_vals=None,
@@ -711,6 +712,8 @@ class Worker(object):
                 new_actor_handles,
                 resources,
                 placement_resources,
+                {"output_memory_limit": str(output_memory_limit)}
+                if output_memory_limit else {},
             )
             self.raylet_client.submit_task(task)
 
@@ -916,6 +919,12 @@ class Worker(object):
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
+                    if "output_memory_limit" in task.task_options():
+                        self.plasma_client.set_client_options(
+                            "ray_{}_{}".format(
+                                self.actors[key].__class__.__name__,
+                                os.getpid()),
+                            int(task.task_options()["output_memory_limit"]))
                     outputs = function_executor(dummy_return_id,
                                                 self.actors[key], *arguments)
         except Exception as e:
@@ -1009,6 +1018,7 @@ class Worker(object):
             title = "ray_{}:{}()".format(actor.__class__.__name__,
                                          function_name)
             next_title = "ray_{}".format(actor.__class__.__name__)
+
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
                 self._process_task(task, execution_info)
@@ -1225,6 +1235,7 @@ def init(redis_address=None,
          num_gpus=None,
          resources=None,
          object_store_memory=None,
+         driver_output_memory_limit=None,
          redis_max_memory=None,
          log_to_driver=True,
          node_ip_address=None,
@@ -1296,6 +1307,8 @@ def init(redis_address=None,
             drivers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
+        driver_output_memory_limit (int): Limit the amount of memory the driver
+            can use in the object store for creating objects.
         ignore_reinit_error: True if we should suppress errors from calling
             ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to
@@ -1457,6 +1470,7 @@ def init(redis_address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
+        driver_output_memory_limit=driver_output_memory_limit,
         job_id=job_id)
 
     for hook in _post_init_hooks:
@@ -1699,6 +1713,7 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
+            driver_output_memory_limit=None,
             job_id=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1709,6 +1724,8 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
+        driver_output_memory_limit: Limit the amount of memory the driver can
+            use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1852,6 +1869,10 @@ def connect(node,
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
+    if driver_output_memory_limit is not None:
+        worker.plasma_client.set_client_options(
+            "ray_driver_{}".format(os.getpid()), driver_output_memory_limit)
+
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if mode == SCRIPT_MODE:
@@ -1894,6 +1915,7 @@ def connect(node,
             [],  # new_actor_handles.
             {},  # resource_map.
             {},  # placement_resource_map.
+            {},  # task options
         )
         task_table_data = ray._raylet.generate_gcs_task_table_data(
             driver_task_spec)
@@ -2362,7 +2384,8 @@ def make_decorator(num_return_vals=None,
                    resources=None,
                    max_calls=None,
                    max_reconstructions=None,
-                   worker=None):
+                   worker=None,
+                   output_memory_limit=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2384,7 +2407,8 @@ def make_decorator(num_return_vals=None,
                                 "actors.")
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     resources, max_reconstructions)
+                                     resources, max_reconstructions,
+                                     output_memory_limit)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2464,7 +2488,7 @@ def remote(*args, **kwargs):
     for key in kwargs:
         assert key in [
             "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "max_reconstructions"
+            "max_calls", "max_reconstructions", "output_memory_limit"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2482,6 +2506,7 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     max_reconstructions = kwargs.get("max_reconstructions")
+    output_memory_limit = kwargs.get("output_memory_limit")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -2490,4 +2515,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
-        worker=worker)
+        worker=worker,
+        output_memory_limit=output_memory_limit)

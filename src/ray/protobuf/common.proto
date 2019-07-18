@@ -63,6 +63,9 @@ message TaskSpec {
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
+  // Dynamic metadata sent to the worker with the initial actor creation task.
+  // This includes memory limit options.
+  map<string, string> task_options = 16;
 }
 
 // Argument in the task.

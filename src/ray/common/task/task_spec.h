@@ -123,6 +123,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string DebugString() const;
 
+  std::unordered_map<std::string, std::string> TaskOptions() const;
+
  private:
   void ComputeResources();
   /// Field storing required resources. Initalized in constructor.

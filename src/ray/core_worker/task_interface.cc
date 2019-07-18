@@ -102,6 +102,7 @@ TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
+    const std::unordered_map<std::string, std::string> &task_options,
     std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
   auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -109,7 +110,7 @@ TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(
       function.language, function.function_descriptor, worker_context_.GetCurrentJobID(),
       worker_context_.GetCurrentTaskID(), next_task_index, num_returns,
-      required_resources, required_placement_resources);
+      required_resources, required_placement_resources, task_options);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -133,7 +134,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
   auto builder = BuildCommonTaskSpec(function, args, task_options.num_returns,
-                                     task_options.resources, {}, return_ids);
+                                     task_options.resources, {}, {}, return_ids);
   return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(
       builder.Build());
 }
@@ -144,7 +145,7 @@ Status CoreWorkerTaskInterface::CreateActor(
     std::unique_ptr<ActorHandle> *actor_handle) {
   std::vector<ObjectID> return_ids;
   auto builder = BuildCommonTaskSpec(function, args, 1, actor_creation_options.resources,
-                                     actor_creation_options.resources, &return_ids);
+                                     actor_creation_options.resources, {}, {}, &return_ids);
 
   const ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
@@ -169,7 +170,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   // Build common task spec.
   auto builder = BuildCommonTaskSpec(function, args, num_returns, task_options.resources,
-                                     {}, return_ids);
+                                     {}, {}, return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
