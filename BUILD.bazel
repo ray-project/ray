@@ -87,6 +87,16 @@ cc_proto_library(
     deps = ["core_worker_proto"],
 )
 
+proto_library(
+    name = "test_proto",
+    srcs = ["src/ray/protobuf/test.proto"],
+)
+
+cc_proto_library(
+    name = "test_cc_proto",
+    deps = [":test_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -179,6 +189,30 @@ cc_library(
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
+)
+
+cc_grpc_library(
+    name = "test_cc_grpc",
+    srcs = [":test_proto"],
+    grpc_only = True,
+    deps = [":test_cc_proto"],
+)
+
+cc_library(
+    name = "test_rpc",
+    hdrs = glob([
+        "src/ray/rpc/test/*.cc",
+        "src/ray/rpc/test/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":test_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_googletest//:gtest_main",
+    ]
 )
 
 # === End of rpc definitions ===
