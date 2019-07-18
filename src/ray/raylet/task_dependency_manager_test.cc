@@ -468,6 +468,9 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   ASSERT_TRUE(ready_tasks.empty());
 }
 
+/// Test that when no objects are locally available, a `ray.wait` call makes
+/// the correct requests to remote nodes and correctly cancels the requests
+/// when the `ray.wait` call is canceled.
 TEST_F(TaskDependencyManagerTest, TestWaitDependencies) {
   // Generate a random worker and objects to wait on.
   WorkerID worker_id = WorkerID::FromRandom();
@@ -488,23 +491,75 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependencies) {
   EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(num_objects);
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(num_objects);
   task_dependency_manager_.UnsubscribeWaitDependencies(worker_id);
+}
 
+/// Test that when one of the objects is already local at the time of the
+/// `ray.wait` call, the `ray.wait` call does not trigger any requests to
+/// remote nodes for that object.
+TEST_F(TaskDependencyManagerTest, TestWaitDependenciesObjectLocal) {
+  // Generate a random worker and objects to wait on.
+  WorkerID worker_id = WorkerID::FromRandom();
+  int num_objects = 3;
+  std::vector<ObjectID> wait_object_ids;
+  for (int i = 0; i < num_objects; i++) {
+    wait_object_ids.push_back(ObjectID::FromRandom());
+  }
+  // Simulate one of the objects becoming local. The later `ray.wait` call
+  // should have no effect because the object is already local.
+  const ObjectID local_object_id = std::move(wait_object_ids.back());
+  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(local_object_id);
+  ASSERT_TRUE(ready_task_ids.empty());
+
+  // Simulate a worker calling `ray.wait` on the objects. It should only make
+  // requests for the objects that are not local.
+  for (const auto &object_id : wait_object_ids) {
+    if (object_id != local_object_id) {
+      EXPECT_CALL(object_manager_mock_, Pull(object_id));
+      EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(object_id));
+    }
+  }
+  task_dependency_manager_.SubscribeWaitDependencies(worker_id, wait_object_ids);
+  // Simulate the local object getting evicted. The `ray.wait` call should not
+  // be reactivated.
+  auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(local_object_id);
+  ASSERT_TRUE(waiting_task_ids.empty());
+  // Simulate a worker calling `ray.wait` on the objects. It should only make
+  // requests for the objects that are not local.
+  for (const auto &object_id : wait_object_ids) {
+    if (object_id != local_object_id) {
+      EXPECT_CALL(object_manager_mock_, CancelPull(object_id));
+      EXPECT_CALL(reconstruction_policy_mock_, Cancel(object_id));
+    }
+  }
+  task_dependency_manager_.UnsubscribeWaitDependencies(worker_id);
+}
+
+/// Test that when one of the objects becomes local after a `ray.wait` call,
+/// all requests to remote nodes associated with the object are canceled.
+TEST_F(TaskDependencyManagerTest, TestWaitDependenciesHandleObjectLocal) {
+  // Generate a random worker and objects to wait on.
+  WorkerID worker_id = WorkerID::FromRandom();
+  int num_objects = 3;
+  std::vector<ObjectID> wait_object_ids;
+  for (int i = 0; i < num_objects; i++) {
+    wait_object_ids.push_back(ObjectID::FromRandom());
+  }
   // Simulate a worker calling `ray.wait` on some objects.
   EXPECT_CALL(object_manager_mock_, Pull(_)).Times(num_objects);
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_))
       .Times(num_objects);
   task_dependency_manager_.SubscribeWaitDependencies(worker_id, wait_object_ids);
-  // Simulate one of the objects becoming local. The `ray.wait` call should be
-  // canceled.
-  const ObjectID local_object = std::move(wait_object_ids.back());
+  // Simulate one of the objects becoming local while the `ray.wait` calls is
+  // active. The `ray.wait` call should be canceled.
+  const ObjectID local_object_id = std::move(wait_object_ids.back());
   wait_object_ids.pop_back();
-  EXPECT_CALL(object_manager_mock_, CancelPull(local_object));
-  EXPECT_CALL(reconstruction_policy_mock_, Cancel(local_object));
-  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(local_object);
+  EXPECT_CALL(object_manager_mock_, CancelPull(local_object_id));
+  EXPECT_CALL(reconstruction_policy_mock_, Cancel(local_object_id));
+  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(local_object_id);
   ASSERT_TRUE(ready_task_ids.empty());
   // Simulate the local object getting evicted. The `ray.wait` call should not
   // be reactivated.
-  auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(local_object);
+  auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(local_object_id);
   ASSERT_TRUE(waiting_task_ids.empty());
   // Cancel the worker's `ray.wait` calls. Only the objects that are still not
   // local should be canceled.
