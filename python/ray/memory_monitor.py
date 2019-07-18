@@ -62,13 +62,13 @@ class MemoryMonitor(object):
         # If the error threshold env is set, overwrite the threshold with it.
         try:
             self.error_threshold = float(
-                os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD")
-            )
+                os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD"))
         except (ValueError, TypeError):
             self.error_threshold = error_threshold
         # Try to read the cgroup memory limit if it is available.
         try:
-            with open("/sys/fs/cgroup/memory/memory.limit_in_bytes", "rb") as f:
+            with open("/sys/fs/cgroup/memory/memory.limit_in_bytes",
+                      "rb") as f:
                 self.cgroup_memory_limit_gb = int(f.read()) / 1e9
         except IOError:
             self.cgroup_memory_limit_gb = sys.maxsize / 1e9
@@ -91,7 +91,8 @@ class MemoryMonitor(object):
             used_gb = total_gb - psutil.virtual_memory().available / 1e9
             if self.cgroup_memory_limit_gb < total_gb:
                 total_gb = self.cgroup_memory_limit_gb
-                with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
+                with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
+                          "rb") as f:
                     used_gb = int(f.read()) / 1e9
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
