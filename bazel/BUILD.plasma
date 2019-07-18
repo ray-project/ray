@@ -22,7 +22,7 @@ cc_library(
         "cpp/src/arrow/io/memory.h",
         "cpp/src/arrow/memory_pool.h",
         "cpp/src/arrow/python/serialize.h",
-	"cpp/src/arrow/python/visibility.h",
+        "cpp/src/arrow/python/visibility.h",
         "cpp/src/arrow/status.h",
         "cpp/src/arrow/util/bit-util.h",
         "cpp/src/arrow/util/io-util.h",
