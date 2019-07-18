@@ -54,7 +54,7 @@ class ActorStateAccessor {
   ///
   /// \param subscribe Callback that will be called each time when an actor is registered
   /// or updated.
-  // \param done Callback that will be called when subscription is complete and we
+  /// \param done Callback that will be called when subscription is complete and we
   /// are ready to receive notification.
   /// \return Status
   Status AsyncSubscribe(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
