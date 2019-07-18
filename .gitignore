@@ -137,6 +137,7 @@ scripts/nodes.txt
 *.iml
 
 # Java
+java/**/bin
 java/**/target
 java/**/lib
 java/**/.settings
