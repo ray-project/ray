@@ -32,7 +32,7 @@ class MockWorker {
   Status ExecuteTask(const RayFunction &ray_function,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const TaskInfo &task_info, int num_returns,
-                     std::vector<std::shared_ptr<RayObject>>* results) {
+                     std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
 

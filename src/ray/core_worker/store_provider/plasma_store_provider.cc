@@ -60,7 +60,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
-    RAY_RETURN_NOT_OK(local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
+    RAY_RETURN_NOT_OK(
+        local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
 
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
@@ -115,8 +116,8 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
 
 bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
   // TODO (kfstorm): metadata should be structured.
-  const std::string metadata(reinterpret_cast<const char*>(object.GetMetadata()->Data()),
-      object.GetMetadata()->Size());
+  const std::string metadata(reinterpret_cast<const char *>(object.GetMetadata()->Data()),
+                             object.GetMetadata()->Size());
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
   for (int i = 0; i < error_type_descriptor->value_count(); i++) {
     const auto error_type_number = error_type_descriptor->value(i)->number();

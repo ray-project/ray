@@ -30,20 +30,21 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
-  return store_providers_[StoreProviderType::PLASMA]->Get(ids, timeout_ms, worker_context_.GetCurrentTaskID(),
-                                     results);
+  return store_providers_[StoreProviderType::PLASMA]->Get(
+      ids, timeout_ms, worker_context_.GetCurrentTaskID(), results);
 }
 
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  return store_providers_[StoreProviderType::PLASMA]->Wait(object_ids, num_objects, timeout_ms,
-                                      worker_context_.GetCurrentTaskID(), results);
+  return store_providers_[StoreProviderType::PLASMA]->Wait(
+      object_ids, num_objects, timeout_ms, worker_context_.GetCurrentTaskID(), results);
 }
 
 Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids,
                                          bool local_only, bool delete_creating_tasks) {
-  return store_providers_[StoreProviderType::PLASMA]->Delete(object_ids, local_only, delete_creating_tasks);
+  return store_providers_[StoreProviderType::PLASMA]->Delete(object_ids, local_only,
+                                                             delete_creating_tasks);
 }
 
 void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {

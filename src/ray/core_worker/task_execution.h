@@ -28,7 +28,7 @@ class CoreWorkerTaskExecutionInterface {
   /// \param ray_function[in] Information about the function to execute.
   /// \param args[in] Arguments of the task.
   /// \param task_info[in] Information of the task to execute.
-  /// \param results[out] Results of the task execution. 
+  /// \param results[out] Results of the task execution.
   /// \return Status.
   using TaskExecutor = std::function<Status(
       const RayFunction &ray_function,
@@ -73,7 +73,8 @@ class CoreWorkerTaskExecutionInterface {
   TaskExecutor execution_callback_;
 
   /// All the task task receivers supported.
-  UnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>> task_receivers_;
+  UnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
+      task_receivers_;
 
   /// The RPC server.
   rpc::GrpcServer worker_server_;
