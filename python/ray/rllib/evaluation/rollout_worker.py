@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+import numpy as np
 import gym
 import logging
 import pickle
@@ -130,6 +132,7 @@ class RolloutWorker(EvaluatorInterface):
                  remote_worker_envs=False,
                  remote_env_batch_wait_ms=0,
                  soft_horizon=False,
+                 seed=None,
                  _fake_sampler=False):
         """Initialize a rollout worker.
 
@@ -215,6 +218,8 @@ class RolloutWorker(EvaluatorInterface):
                 step / reset and model inference perf.
             soft_horizon (bool): Calculate rewards but don't reset the
                 environment when the horizon is hit.
+            seed (int): Set the seed of both np and tf to this value to
+                to ensure each remote worker has unique exploration behavior.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
 
@@ -292,6 +297,10 @@ class RolloutWorker(EvaluatorInterface):
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy, self.env)
         self.policies_to_train = policies_to_train or list(policy_dict.keys())
+        # set numpy and python seed
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
         if _has_tensorflow_graph(policy_dict):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
@@ -309,6 +318,9 @@ class RolloutWorker(EvaluatorInterface):
                         config=tf.ConfigProto(
                             gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
+                    # set graph-level seed
+                    if seed is not None:
+                        tf.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
         else:
