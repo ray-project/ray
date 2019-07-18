@@ -869,7 +869,7 @@ void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
   RAY_LOG(DEBUG) << "Received a TaskDoneRequest from worker " << worker_id;
 
   auto worker = worker_pool_.GetRegisteredWorker(worker_id);
-  RAY_CHECK(worker->UsePush());
+  RAY_CHECK(worker && worker->UsePush());
   HandleWorkerAvailable(worker_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

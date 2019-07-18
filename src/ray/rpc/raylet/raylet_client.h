@@ -49,7 +49,8 @@ class RayletClient {
   /// \param[in] is_worker Indicates whether a worker or a driver.
   /// \param[in] job_id The job id that this raylet client belongs to.
   /// \param[in] language The language type, python or java.
-  /// \param[in] port The listening port of the worker server.
+  /// \param[in] port The listening port of the worker server, -1 means that the worker
+  ///            does not have a server.
   RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                int port = -1);
@@ -165,7 +166,10 @@ class RayletClient {
 
   bool IsWorker() const { return is_worker_; }
 
-  const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
+  const ResourceMappingType &GetResourceIDs() const {
+    std::lock_guard<std::mutex> lock(resource_ids_lock_);
+    return resource_ids_;
+  }
 
  private:
   /// Try to register client in raylet, we would retry serveral time to
@@ -177,6 +181,7 @@ class RayletClient {
 
   ray::Status RegisterClient();
 
+  /// Send heartbeat requests to the raylet server.
   void Heartbeat();
   /// Id of the worker to which this raylet client belongs.
   const WorkerID worker_id_;
@@ -209,8 +214,8 @@ class RayletClient {
   /// Heartbeat timer.
   boost::asio::deadline_timer heartbeat_timer_;
 
-  /// Mutex for thread safe.
-  std::mutex mu_;
+  /// Mutex for to protect resource_ids_.
+  mutable std::mutex resource_ids_lock_;
 };
 
 }  // namespace rpc

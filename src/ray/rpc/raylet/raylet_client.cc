@@ -90,14 +90,16 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
 
   if (status.ok()) {
     // Protect the global variable resource_ids_.
-    std::lock_guard<std::mutex> lock(mu_);
+    std::lock_guard<std::mutex> lock(resource_ids_lock_);
     resource_ids_.clear();
     // Parse resources that would be used by this assigned task.
     for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
       auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];
       auto &acquired_resources = resource_ids_[fractional_resource_ids.resource_name()];
 
-      // Each resource includes a serial of ids and corresponding fractional numbers.
+      // Each resource includes a series of resource IDs (e.g., GPU 0) and corresponding
+      // amount for that resource ID. If the resource amount is fractional, then there
+      // should only be one resource ID.
       size_t num_resource_ids = fractional_resource_ids.resource_ids().size();
       size_t num_resource_fractions = fractional_resource_ids.resource_fractions().size();
       RAY_CHECK(num_resource_ids == num_resource_fractions);
@@ -357,7 +359,6 @@ ray::Status RayletClient::RegisterClient() {
   return GrpcStatusToRayStatus(status);
 }
 
-// Send heartbeat request to raylet server.
 void RayletClient::Heartbeat() {
   HeartbeatRequest heartbeat_request;
   heartbeat_request.set_is_worker(is_worker_);
