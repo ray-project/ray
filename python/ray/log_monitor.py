@@ -84,8 +84,7 @@ class LogMonitor(object):
         Currently, we only monitor worker log file.
         """
         return (filename.startswith("worker")
-                    and (filename.endswith("out")
-                        or filename.endswith("err")))
+                and (filename.endswith("out") or filename.endswith("err")))
 
     def close_all_files(self):
         """Close all open files (so that we can open more)."""
@@ -192,8 +191,9 @@ class LogMonitor(object):
                     lines_to_publish.append(next_line)
                 except:
                     logger.error("Error: Reading file: {}, position: {} "
-                                 "failed.".format(file_info.full_path,
-                                 file_info.file_info.file_handle.tell()))
+                                 "failed.".format(
+                                     file_info.full_path,
+                                     file_info.file_info.file_handle.tell()))
                     raise
 
             if file_info.file_position == 0:
