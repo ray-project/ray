@@ -23,7 +23,7 @@ class GcsClientOptions {
   /// \param ip GCS service ip.
   /// \param port GCS service port.
   /// \param password GCS service password.
-  /// \param is_test_client is_test_client Whether this client is used for tests.
+  /// \param is_test_client Whether this client is used for tests.
   GcsClientOptions(const std::string &ip, int port, const std::string &password,
                    bool is_test_client = false)
       : server_ip_(ip),
@@ -39,8 +39,8 @@ class GcsClientOptions {
 
   /// This constructor is only used for testing (RedisGcsClient's test).
   ///
-  /// \param ip Gcs service ip
-  /// \param port Gcs service port
+  /// \param ip GCS service ip
+  /// \param port GCS service port
   /// \param command_type Command type of RedisGcsClient
   GcsClientOptions(const std::string &ip, int port, CommandType command_type)
       : server_ip_(ip),
@@ -80,8 +80,8 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Get ActorStateAccessor for reading or writing or subscribing to an
-  /// actor. This function is thread safe.
+  /// Get ActorStateAccessor for reading or writing or subscribing to
+  /// actors. This function is thread safe.
   ActorStateAccessor &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
