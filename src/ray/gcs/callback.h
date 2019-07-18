@@ -9,7 +9,7 @@ namespace ray {
 
 namespace gcs {
 
-/// This callback is used to notify when a write/subscribe to GCS is completes.
+/// This callback is used to notify when a write/subscribe to GCS completes.
 /// \param status Status indicates whether the write/subscribe was successful.
 using StatusCallback = std::function<void(Status status)>;
 
