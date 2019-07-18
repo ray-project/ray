@@ -13,7 +13,7 @@ class RedisGcsClient;
 
 /// \class ActorStateAccessor
 /// ActorStateAccessor class encapsulates the implementation details of
-/// reading or writing or subscribing of actor's specification(immutable fields which
+/// reading or writing or subscribing of actor's specification (immutable fields which
 /// determined at submission time, and mutable fields which are determined at runtime).
 class ActorStateAccessor {
  public:
@@ -23,8 +23,8 @@ class ActorStateAccessor {
 
   /// Get actor specification from GCS asynchronously.
   ///
-  /// \param actor_id The ID of actor that is looked up in the GCS.
-  /// \param callback Callback that will be called after read data done.
+  /// \param actor_id The ID of actor to look up in the GCS.
+  /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   Status AsyncGet(const ActorID &actor_id,
                   const MultiItemCallback<ActorTableData> &callback);
@@ -40,10 +40,9 @@ class ActorStateAccessor {
 
   /// Update actor dynamic states to GCS asynchronously.
   ///
-  /// \param actor_id The ID of actor that is update to the GCS.
-  /// \param data_ptr The actor that is update to the GCS.
-  /// \param callback Callback that will be called after actor's states has been updated
-  /// to the GCS.
+  /// \param actor_id ID of the actor to update.
+  /// \param data_ptr Data of the actor to update.
+  /// \param callback Callback that will be called after update finishes.
   /// \return Status
   /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
   /// updating dynamic states.
@@ -53,10 +52,10 @@ class ActorStateAccessor {
 
   /// Subscribe to any register operations of actors.
   ///
-  /// \param subscribe Callback that is called on each received message. If the
-  /// callback is called with an empty vector, then there was no data of the actor.
-  /// \param done Callback that is called when subscription is complete and we
-  /// are ready to receive messages.
+  /// \param subscribe Callback that will be called each time when an actor is registered
+  /// or updated.
+  // \param done Callback that will be called when subscription is complete and we
+  /// are ready to receive notification.
   /// \return Status
   Status AsyncSubscribe(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
