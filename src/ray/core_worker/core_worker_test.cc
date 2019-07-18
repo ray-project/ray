@@ -34,7 +34,7 @@ bool CompareObjectData(std::shared_ptr<RayObject> object, std::shared_ptr<Buffer
   }
 
   uint8_t mem[object->DataSize()];
-  auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(mem, object->DataSize());
+  std::shared_ptr<LocalMemoryBuffer> tmp_buffer(new LocalMemoryBuffer(mem, object->DataSize()));
   if (!object->WriteDataTo(tmp_buffer).ok()) {
     return false;
   }

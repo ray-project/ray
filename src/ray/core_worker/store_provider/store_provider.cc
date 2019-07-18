@@ -12,10 +12,9 @@ Status BufferedRayObject::WriteDataTo(std::shared_ptr<Buffer> buffer) const {
 }
 
 Status PyArrowRayObject::WriteDataTo(std::shared_ptr<Buffer> buffer) const {
-  auto arrow_buffer = std::make_shared<arrow::ResizableBuffer>(buffer->Data(), buffer->Size());
-  arrow::io::BufferOutputStream buffer_stream(arrow_buffer);
-  //arrow::io::OutputStream output_stream(arrow_buffer);
-  RAY_ARROW_RETURN_NOT_OK(object_->WriteTo(&buffer_stream));
+  auto arrow_buffer = std::make_shared<arrow::MutableBuffer>(buffer->Data(), buffer->Size());
+  arrow::io::FixedSizeBufferWriter buffer_writer(arrow_buffer);
+  RAY_ARROW_RETURN_NOT_OK(object_->WriteTo(&buffer_writer));
   return Status::OK();
 }
 
