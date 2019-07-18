@@ -61,10 +61,9 @@ class RayletClient {
 
   /// Submit a task to the local raylet.
   ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                         const ray::TaskSpecification &task_spec);
+  /// \param The task specification.
+  /// \return ray::Status.
+  ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
 
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task

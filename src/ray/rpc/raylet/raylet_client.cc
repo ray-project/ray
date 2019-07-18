@@ -62,13 +62,9 @@ ray::Status RayletClient::Disconnect() {
   return GrpcStatusToRayStatus(status);
 }
 
-ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::TaskSpecification &task_spec) {
+ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   SubmitTaskRequest submit_task_request;
-  submit_task_request.set_task_spec(task_spec.Serialize());
-  IdVectorToProtobuf<ObjectID, SubmitTaskRequest>(
-      execution_dependencies, submit_task_request,
-      &SubmitTaskRequest::add_execution_dependencies);
+  submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   auto callback = [](const Status &status, const SubmitTaskReply &reply) {
     if (!status.ok()) {

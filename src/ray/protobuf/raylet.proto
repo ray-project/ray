@@ -5,7 +5,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
-// Service request and reply message
+/// Service request and reply messages.
 message RegisterClientRequest {
   // Indicates the client is a worker or a driver.
   bool is_worker = 1;
@@ -27,8 +27,7 @@ message RegisterClientReply {
 }
 
 message SubmitTaskRequest {
-  bytes task_spec = 1;
-  repeated bytes execution_dependencies = 2;
+  TaskSpec task_spec = 1;
 }
 message SubmitTaskReply {
 }
@@ -164,7 +163,7 @@ message HeartbeatRequest {
 message HeartbeatReply {
 }
 
-// Worker-to-raylet RPC service interface.
+/// Worker-to-raylet RPC service interface.
 service RayletService {
   // Register a new worker to the raylet.
   rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);

@@ -115,6 +115,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ActorCreationDummyObjectId() const;
 
+  ObjectID PreviousActorTaskDummyObjectId() const;
+
   std::vector<ActorHandleID> NewActorHandles() const;
 
   ObjectID ActorDummyObject() const;

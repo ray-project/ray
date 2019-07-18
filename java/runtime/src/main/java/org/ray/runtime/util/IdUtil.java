@@ -155,18 +155,6 @@ public class IdUtil {
 
 
   /**
-   * Compute the driver id from the given job.
-   */
-  public static UniqueId computeDriverId(JobId jobId) {
-    byte[] bytes = new byte[UniqueId.LENGTH];
-    System.arraycopy(jobId.getBytes(), 0, bytes, 0, jobId.size());
-    Arrays.fill(bytes, jobId.size(), UniqueId.LENGTH, (byte)0xFF);
-    ByteBuffer wbb = ByteBuffer.wrap(bytes);
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-    return new UniqueId(bytes);
-  }
-
-  /**
    * Compute the murmur hash code of this ID.
    */
   public static long murmurHashCode(BaseId id) {

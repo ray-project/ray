@@ -49,9 +49,7 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
                       const CWorkerID &worker_id,
                       c_bool is_worker, const CJobID &job_id,
                       const CLanguage &language)
-        CRayStatus SubmitTask(
-            const c_vector[CObjectID] &execution_dependencies,
-            const CTaskSpec &task_spec)
+        CRayStatus SubmitTask(const CTaskSpec &task_spec)
         CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
         CRayStatus TaskDone()
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
