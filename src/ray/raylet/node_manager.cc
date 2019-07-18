@@ -865,8 +865,13 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto client_id = from_flatbuf<ClientID>(*message->worker_id());
   client->SetClientID(client_id);
   Language language = static_cast<Language>(message->language());
-  auto worker = std::make_shared<Worker>(message->worker_pid(), language, message->port(),
-                                         client, client_call_manager_);
+  // TODO: Set the WorkerID according to the core worker client.
+  WorkerID worker_id = WorkerID::FromRandom();
+  if (message->is_worker()) {
+    worker_id = from_flatbuf<WorkerID>(*message->worker_id());
+  }
+  auto worker = std::make_shared<Worker>(worker_id, message->worker_pid(), language,
+                                         message->port(), client, client_call_manager_);
   if (message->is_worker()) {
     // Register the new worker.
     bool use_push_task = worker->UsePush();
@@ -878,10 +883,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     }
   } else {
     // Register the new driver.
-    const WorkerID driver_id = from_flatbuf<WorkerID>(*message->worker_id());
     const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     // Compute a dummy driver task id from a given driver.
-    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(driver_id);
+    const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
     worker_pool_.RegisterDriver(std::move(worker));
