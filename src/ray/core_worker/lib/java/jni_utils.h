@@ -151,7 +151,8 @@ inline ReturnT ReadJavaNativeRayObject(
                                    reinterpret_cast<uint8_t *>(metadata), metadata_size)
                              : nullptr;
 
-  auto native_obj = std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
+  auto native_obj =
+      std::make_shared<ray::BufferedRayObject>(data_buffer, metadata_buffer);
   auto result = reader(native_obj);
 
   if (data) {
