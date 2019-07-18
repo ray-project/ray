@@ -166,7 +166,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &data) {
-      HandleActorStateTransition(actor_id, ActorRegistration(data));
+    HandleActorStateTransition(actor_id, ActorRegistration(data));
   };
 
   RAY_RETURN_NOT_OK(

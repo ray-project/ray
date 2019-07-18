@@ -123,7 +123,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   std::atomic<int> sub_pending_count(0);
   std::atomic<int> do_sub_pending_count(0);
   auto subscribe = [this, &sub_pending_count](const ActorID &actor_id,
-                                              std::vector<ActorTableData> datas) {
+                                              const ActorTableData &data) {
     const auto it = actor_datas_.find(actor_id);
     ASSERT_TRUE(it != actor_datas_.end());
     --sub_pending_count;

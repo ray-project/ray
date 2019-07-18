@@ -32,8 +32,7 @@ using MultiItemCallback =
 /// \param id The id of the item.
 /// \param result The notification message.
 template <typename ID, typename Data>
-using SubscribeCallback =
-    std::function<void(const ID &id, const Data &result)>;
+using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 
 }  // namespace gcs
 
