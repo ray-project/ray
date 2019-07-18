@@ -71,7 +71,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
   builder.SetCommonTaskSpec(Language::PYTHON, {"", "", ""}, JobID::Nil(),
-                            TaskID::FromRandom(), 0, num_returns, {}, {});
+                            TaskID::FromRandom(), 0, num_returns, {}, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }
