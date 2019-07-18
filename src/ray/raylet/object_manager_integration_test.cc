@@ -56,9 +56,9 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
-    gcs::ClientOption client_option("127.0.0.1", 6379, /*password*/ "", true);
+    gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "", true);
     gcs_client_1 =
-        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_option));
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -68,7 +68,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
     // start second server
     gcs_client_2 =
-        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_option));
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;

@@ -29,8 +29,8 @@ inline JobID NextJobID() {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    ClientOption option("127.0.0.1", 6379, command_type_);
-    client_ = std::make_shared<gcs::RedisGcsClient>(option);
+    GcsClientOptions options("127.0.0.1", 6379, command_type_);
+    client_ = std::make_shared<gcs::RedisGcsClient>(options);
     job_id_ = NextJobID();
   }
 

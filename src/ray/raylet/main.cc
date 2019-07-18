@@ -161,8 +161,8 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service main_service;
 
   // Initialize gcs client
-  ray::gcs::ClientOption client_option(redis_address, redis_port, redis_password);
-  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_option);
+  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
+  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(

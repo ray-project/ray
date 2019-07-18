@@ -15,13 +15,13 @@ using StatusCallback = std::function<void(Status status)>;
 
 /// This callback is used to receive one item from GCS when a read completes.
 /// \param status Status indicates whether the read was successful.
-/// \param result The item returned by GCS. It's optional because what you read
-/// might not exist. So check if it's valid before use.
+/// \param result The item returned by GCS. If the item to read doesn't exist,
+/// this optional object is empty.
 template <typename Data>
 using OptionalItemCallback =
     std::function<void(Status status, boost::optional<Data> result)>;
 
-/// This callback is used to riceive multi items from GCS when a read completes.
+/// This callback is used to receive multiple items from GCS when a read completes.
 /// \param status Status indicates whether the read was successful.
 /// \param result The items returned by GCS.
 template <typename Data>

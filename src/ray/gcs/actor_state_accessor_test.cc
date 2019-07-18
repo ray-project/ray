@@ -12,12 +12,12 @@ namespace gcs {
 
 class ActorStateAccessorTest : public ::testing::Test {
  public:
-  ActorStateAccessorTest() : option_("127.0.0.1", 6379, "", true) {}
+  ActorStateAccessorTest() : options_("127.0.0.1", 6379, "", true) {}
 
   virtual void SetUp() {
     GenTestData();
 
-    gcs_client_.reset(new RedisGcsClient(option_));
+    gcs_client_.reset(new RedisGcsClient(options_));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread.reset(new std::thread([this] {
@@ -73,7 +73,7 @@ class ActorStateAccessorTest : public ::testing::Test {
   }
 
  protected:
-  ClientOption option_;
+  GcsClientOptions options_;
   std::unique_ptr<RedisGcsClient> gcs_client_;
 
   boost::asio::io_service io_service_;
@@ -135,7 +135,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
 
   ++do_sub_pending_count;
   actor_accessor.AsyncSubscribe(subscribe, done);
-  // wait do subscribe done
+  // Wait until subscribe finishes.
   WaitPendingDone(do_sub_pending_count, timeout);
 
   // register
@@ -149,10 +149,10 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
       --register_pending_count;
     });
   }
-  // wait register done
+  // Wait until register finishes.
   WaitPendingDone(register_pending_count, timeout);
 
-  // wait all sub notify
+  // Wait for all subscribe notifications.
   WaitPendingDone(sub_pending_count, timeout);
 }
 

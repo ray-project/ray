@@ -70,23 +70,24 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const ClientOption &option) : GcsClientInterface(option) {}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
+    : GcsClientInterface(options) {}
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
 
-  if (option_.server_ip_.empty()) {
+  if (options_.server_ip_.empty()) {
     RAY_LOG(ERROR) << "Failed to connect, gcs service address is empty.";
     return Status::Invalid("gcs service address is invalid!");
   }
 
   primary_context_ = std::make_shared<RedisContext>();
 
-  RAY_CHECK_OK(primary_context_->Connect(option_.server_ip_, option_.server_port_,
+  RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_, options_.server_port_,
                                          /*sharding=*/true,
-                                         /*password=*/option_.password_));
+                                         /*password=*/options_.password_));
 
-  if (!option_.is_test_client_) {
+  if (!options_.is_test_client_) {
     // Moving sharding into constructor defaultly means that sharding = true.
     // This design decision may worth a look.
     std::vector<std::string> addresses;
@@ -94,21 +95,21 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
     GetRedisShards(primary_context_->sync_context(), addresses, ports);
     if (addresses.empty()) {
       RAY_CHECK(ports.empty());
-      addresses.push_back(option_.server_ip_);
-      ports.push_back(option_.server_port_);
+      addresses.push_back(options_.server_ip_);
+      ports.push_back(options_.server_port_);
     }
 
     for (size_t i = 0; i < addresses.size(); ++i) {
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>());
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
-                                               /*password=*/option_.password_));
+                                               /*password=*/options_.password_));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>());
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(option_.server_ip_, option_.server_port_,
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
                                              /*sharding=*/true,
-                                             /*password=*/option_.password_));
+                                             /*password=*/options_.password_));
   }
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
@@ -125,7 +126,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this));
   raylet_task_table_.reset(
-      new raylet::TaskTable(shard_contexts_, this, option_.command_type_));
+      new raylet::TaskTable(shard_contexts_, this, options_.command_type_));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
@@ -140,15 +141,15 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   is_connected_ = status.ok();
 
   // TODO(micafan): Synchronously register node and look up existing nodes here
-  // for if this client is Raylet.
-  RAY_LOG(INFO) << "RedisGcsClient Connect status=" << status;
+  // for this client is Raylet.
+  RAY_LOG(INFO) << "RedisGcsClient::Connect finished with status " << status;
   return status;
 }
 
 void RedisGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  RAY_LOG(INFO) << "RedisGcsClient Disconnect.";
+  RAY_LOG(INFO) << "RedisGcsClient Disconnected.";
   // TODO(micafan): Synchronously unregister node if this client is Raylet.
 }
 

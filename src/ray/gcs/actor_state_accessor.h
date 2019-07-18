@@ -13,8 +13,8 @@ class RedisGcsClient;
 
 /// \class ActorStateAccessor
 /// ActorStateAccessor class encapsulates the implementation details of
-/// read or write or subscribe of actor's specification(immutable fields which
-/// determined at submission time, and mutable fields which determined at runtime).
+/// reading or writing or subscribing of actor's specification(immutable fields which
+/// determined at submission time, and mutable fields which are determined at runtime).
 class ActorStateAccessor {
  public:
   explicit ActorStateAccessor(RedisGcsClient &client_impl);
@@ -24,15 +24,16 @@ class ActorStateAccessor {
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor that is looked up in the GCS.
-  /// \param callback Callback that is called after read data done.
+  /// \param callback Callback that will be called after read data done.
   /// \return Status
   Status AsyncGet(const ActorID &actor_id,
                   const MultiItemCallback<ActorTableData> &callback);
 
-  /// Register a actor to GCS asynchronously.
+  /// Register an actor to GCS asynchronously.
   ///
-  /// \param data_ptr The actor that is register to the GCS.
-  /// \param callback Callback that is called after actor has been registered to the GCS.
+  /// \param data_ptr The actor that will be registered to the GCS.
+  /// \param callback Callback that will be called after actor has been registered
+  /// to the GCS.
   /// \return Status
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback);
@@ -41,7 +42,7 @@ class ActorStateAccessor {
   ///
   /// \param actor_id The ID of actor that is update to the GCS.
   /// \param data_ptr The actor that is update to the GCS.
-  /// \param callback Callback that is called after actor's states has been updated
+  /// \param callback Callback that will be called after actor's states has been updated
   /// to the GCS.
   /// \return Status
   /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
@@ -50,7 +51,7 @@ class ActorStateAccessor {
                      const std::shared_ptr<ActorTableData> &data_ptr,
                      const StatusCallback &callback);
 
-  /// Subscribe to any add operations of actors.
+  /// Subscribe to any register operations of actors.
   ///
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data of the actor.

@@ -23,11 +23,11 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
  public:
   /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
-  /// To read and write from the GCS tables requires a further call to Connect()
-  /// to the client table. Will fix this in next pr.
+  /// TODO(micafan) To read and write from the GCS tables requires a further
+  /// call to Connect() to the client table. Will fix this in next pr.
   ///
-  /// \param ClientOption Options of client, e.g. server address, is test client ...
-  RedisGcsClient(const ClientOption &option);
+  /// \param GcsClientOptions Options of client, e.g. server address, is test client ...
+  RedisGcsClient(const GcsClientOptions &options);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.

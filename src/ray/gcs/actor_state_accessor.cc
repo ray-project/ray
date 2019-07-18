@@ -57,10 +57,10 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
     log_length += 1;
   }
 
-  // If we successfully appended a record to the GCS table of the actor that
-  // has died, signal this to anyone receiving signals from this actor.
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
+    // If we successfully appended a record to the GCS table of the actor that
+    // has died, signal this to anyone receiving signals from this actor.
     if (data.state() == ActorTableData::DEAD ||
         data.state() == ActorTableData::RECONSTRUCTING) {
       std::vector<std::string> args = {"XADD", actor_id.Hex(), "*", "signal",
