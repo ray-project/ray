@@ -38,7 +38,7 @@ class ActorStateAccessor {
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback);
 
-  /// Update actor dynamic states to GCS asynchronously.
+  /// Update dynamic states of actor in GCS asynchronously.
   ///
   /// \param actor_id The ID of actor that is update to the GCS.
   /// \param data_ptr The actor that is update to the GCS.
