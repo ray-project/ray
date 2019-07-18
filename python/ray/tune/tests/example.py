@@ -17,18 +17,17 @@ from ray.tune.examples.mnist import get_data_loaders, Net, train, test
 def train_mnist(config):
     train_loader, test_loader = get_data_loaders()
     model = Net(config)
-    optimizer = optim.SGD(
-        model.parameters(), lr=config["lr"])
+    optimizer = optim.SGD(model.parameters(), lr=config["lr"])
     while True:
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
         tune.track.log(mean_accuracy=acc)
 
+
 analysis = tune.run(
     train_mnist,
     stop={"mean_accuracy": 0.98},
-    config={"lr": tune.grid_search([0.001, 0.01, 0.1])}
-)
+    config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
 
 print("Best config: ", analysis.get_best_config())
 # __quick_start_end__
