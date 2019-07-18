@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "ray/util/util.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
@@ -76,20 +77,6 @@ struct TaskInfo {
 enum class StoreProviderType { LOCAL_PLASMA, PLASMA };
 
 enum class TaskTransportType { RAYLET };
-
-struct EnumClassHash {
-  template <typename T>
-  std::size_t operator()(T t) const {
-    return static_cast<std::size_t>(t);
-  }
-};
-
-template <typename Key>
-using HashType = typename std::conditional<std::is_enum<Key>::value, EnumClassHash,
-                                           std::hash<Key>>::type;
-
-template <typename Key, typename T>
-using UnorderedMap = std::unordered_map<Key, T, HashType<Key>>;
 
 }  // namespace ray
 

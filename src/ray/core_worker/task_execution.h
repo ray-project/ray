@@ -73,7 +73,7 @@ class CoreWorkerTaskExecutionInterface {
   TaskExecutor execution_callback_;
 
   /// All the task task receivers supported.
-  UnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
+  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
       task_receivers_;
 
   /// The RPC server.

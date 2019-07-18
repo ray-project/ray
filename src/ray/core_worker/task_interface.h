@@ -171,7 +171,7 @@ class CoreWorkerTaskInterface {
   WorkerContext &worker_context_;
 
   /// All the task submitters supported.
-  UnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
+  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
       task_submitters_;
 };
 

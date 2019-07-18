@@ -82,7 +82,7 @@ class CoreWorkerObjectInterface {
   std::string store_socket_;
 
   /// All the store providers supported.
-  UnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
+  EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
       store_providers_;
 
   friend class CoreWorkerTaskInterface;

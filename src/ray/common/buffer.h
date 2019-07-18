@@ -30,7 +30,15 @@ class Buffer {
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
-  LocalMemoryBuffer(uint8_t *data, size_t size) : data_(data), size_(size) {}
+
+  LocalMemoryBuffer(uint8_t *data, size_t size, bool should_copy = false)
+    : data_(data), size_(size) {
+    if (should_copy) {
+      buffer_.insert(buffer_.end(), data, data + size);
+      data_ = buffer_.data();
+      size_ = buffer_.size();
+    }
+  }
 
   uint8_t *Data() const override { return data_; }
 
@@ -43,27 +51,7 @@ class LocalMemoryBuffer : public Buffer {
   uint8_t *data_;
   /// Size of the buffer.
   size_t size_;
-};
-
-/// Accumulative buffer which takes ownership of the data.
-class AccumulativeBuffer : public Buffer {
- public:
-  AccumulativeBuffer() {}
-
-  AccumulativeBuffer(uint8_t *data, size_t size) { Append(data, size); }
-
-  void Append(uint8_t *data, size_t size) {
-    buffer_.insert(buffer_.end(), data, data + size);
-  }
-
-  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_.data()); }
-
-  size_t Size() const override { return buffer_.size(); }
-
-  ~AccumulativeBuffer() {}
-
- private:
-  /// Pointer to the data.
+  /// This is only valid when `should_copy` is true.
   std::vector<uint8_t> buffer_;
 };
 
