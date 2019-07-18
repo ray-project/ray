@@ -56,16 +56,17 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects. \return Status.
+  /// created these objects.
+  /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
  private:
   /// Whether the buffer represents an exception object.
   ///
-  /// \param[in] buffer the object buffer.
+  /// \param[in] object Object data.
   /// \return Whether it represents an exception object.
-  static bool IsException(const plasma::ObjectBuffer &buffer);
+  static bool IsException(const RayObject &object);
 
   /// Print a warning if we've attempted too many times, but some objects are still
   /// unavailable.

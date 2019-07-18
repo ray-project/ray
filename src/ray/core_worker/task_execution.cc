@@ -18,7 +18,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
                         std::placeholders::_1, std::placeholders::_2);
   task_receivers_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
+      TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
           raylet_client, object_interface_, main_service_, worker_server_, func)));
 
@@ -27,7 +27,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
-    const TaskSpecification &task_spec, std::vector<std::shared_ptr<Buffer>> *results) {
+    const TaskSpecification &task_spec, std::vector<std::shared_ptr<RayObject>> *results) {
   worker_context_.SetCurrentTask(task_spec);
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};

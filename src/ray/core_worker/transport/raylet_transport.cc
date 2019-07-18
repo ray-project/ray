@@ -29,7 +29,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, &results);
 
   auto num_returns = task_spec.NumReturns();
@@ -42,7 +42,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   RAY_CHECK(results.size() == num_returns);
   for (int i = 0; i < num_returns; i++) {
     ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
-    object_interface_.Put(RayObject(results[i], nullptr), id);
+    object_interface_.Put(*results[i], id);
   }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to

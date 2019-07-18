@@ -8,6 +8,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
 
@@ -33,7 +34,7 @@ class CoreWorkerTaskSubmitter {
 class CoreWorkerTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec, std::vector<std::shared_ptr<Buffer>> *results)>;
+      const TaskSpecification &task_spec, std::vector<std::shared_ptr<RayObject>> *results)>;
 };
 
 }  // namespace ray

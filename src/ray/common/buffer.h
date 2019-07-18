@@ -45,6 +45,26 @@ class LocalMemoryBuffer : public Buffer {
   size_t size_;
 };
 
+/// Accumulative buffer which takes ownership of the data.
+class AccumulativeBuffer : public Buffer {
+ public:
+  AccumulativeBuffer() {}
+
+  void Append(uint8_t *data, size_t size) {
+    buffer_.insert(buffer_.end(), data, data + size);
+  }
+
+  uint8_t *Data() const override { return const_cast<uint8_t*>(buffer_.data()); }
+
+  size_t Size() const override { return buffer_.size(); }
+
+  ~AccumulativeBuffer() {}
+
+ private:
+  /// Pointer to the data.
+  std::vector<uint8_t> buffer_;
+};
+
 /// Represents a byte buffer for plasma object.
 class PlasmaBuffer : public Buffer {
  public:

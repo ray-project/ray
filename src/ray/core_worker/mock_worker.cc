@@ -21,7 +21,7 @@ class MockWorker {
   MockWorker(const std::string &store_socket, const std::string &raylet_socket)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
                 JobID::JobID::FromInt(1),
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
+                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5)) {}
 
   void Run() {
     // Start executing tasks.
@@ -31,24 +31,21 @@ class MockWorker {
  private:
   Status ExecuteTask(const RayFunction &ray_function,
                      const std::vector<std::shared_ptr<RayObject>> &args,
-                     const TaskInfo &task_info, int num_returns) {
+                     const TaskInfo &task_info, int num_returns,
+                     std::vector<std::shared_ptr<RayObject>>* results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
 
     // Merge all the content from input args.
-    std::vector<uint8_t> buffer;
+    auto memory_buffer = std::make_shared<AccumulativeBuffer>();
     for (const auto &arg : args) {
       auto &data = arg->GetData();
-      buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
+      memory_buffer->Append(data->Data(), data->Size());
     }
-
-    auto return_value = RayObject(
-        std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size()), nullptr);
 
     // Write the merged content to each of return ids.
     for (int i = 0; i < num_returns; i++) {
-      ObjectID id = ObjectID::ForTaskReturn(task_info.task_id, i + 1);
-      RAY_CHECK_OK(worker_.Objects().Put(return_value, id));
+      results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
     }
     return Status::OK();
   }

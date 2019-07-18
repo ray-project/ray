@@ -11,10 +11,8 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket) {
-  store_providers_.emplace(static_cast<int>(StoreProviderType::LOCAL_PLASMA),
-                           CreateStoreProvider(StoreProviderType::LOCAL_PLASMA));
-  store_providers_.emplace(static_cast<int>(StoreProviderType::PLASMA),
-                           CreateStoreProvider(StoreProviderType::PLASMA));
+  AddStoreProvider(StoreProviderType::LOCAL_PLASMA);
+  AddStoreProvider(StoreProviderType::PLASMA);
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
@@ -26,30 +24,30 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object,
                                       const ObjectID &object_id) {
-  auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Put(object, object_id);
+  return store_providers_[StoreProviderType::PLASMA]->Put(object, object_id);
 }
 
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
-  auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Get(ids, timeout_ms, worker_context_.GetCurrentTaskID(),
+  return store_providers_[StoreProviderType::PLASMA]->Get(ids, timeout_ms, worker_context_.GetCurrentTaskID(),
                                      results);
 }
 
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Wait(object_ids, num_objects, timeout_ms,
+  return store_providers_[StoreProviderType::PLASMA]->Wait(object_ids, num_objects, timeout_ms,
                                       worker_context_.GetCurrentTaskID(), results);
 }
 
 Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids,
                                          bool local_only, bool delete_creating_tasks) {
-  auto type = static_cast<int>(StoreProviderType::PLASMA);
-  return store_providers_[type]->Delete(object_ids, local_only, delete_creating_tasks);
+  return store_providers_[StoreProviderType::PLASMA]->Delete(object_ids, local_only, delete_creating_tasks);
+}
+
+void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {
+  store_providers_.emplace(type, CreateStoreProvider(type));
 }
 
 std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreProvider(

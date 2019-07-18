@@ -60,14 +60,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
-    local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects);
+    RAY_RETURN_NOT_OK(local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
 
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
         const auto &object_id = unready_ids[i];
         (*results)[unready[object_id]] = result_objects[i];
         unready.erase(object_id);
-        if (IsException(object_buffers[i])) {
+        if (IsException(*result_objects[i])) {
           should_break = true;
         }
       }
@@ -113,9 +113,10 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
 }
 
-bool CoreWorkerPlasmaStoreProvider::IsException(const plasma::ObjectBuffer &buffer) {
+bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
   // TODO (kfstorm): metadata should be structured.
-  const std::string metadata = buffer.metadata->ToString();
+  const std::string metadata(reinterpret_cast<const char*>(object.GetMetadata()->Data()),
+      object.GetMetadata()->Size());
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
   for (int i = 0; i < error_type_descriptor->value_count(); i++) {
     const auto error_type_number = error_type_descriptor->value(i)->number();

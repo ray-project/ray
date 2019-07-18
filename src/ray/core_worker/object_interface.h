@@ -67,9 +67,11 @@ class CoreWorkerObjectInterface {
 
  private:
   /// Create a new store provider for the specified type on demand.
-  /// This is internally used by core worker and is not supported to export to user.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
       StoreProviderType type) const;
+
+  /// Add a store provider for the specified type.
+  void AddStoreProvider(StoreProviderType type);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
@@ -80,7 +82,7 @@ class CoreWorkerObjectInterface {
   std::string store_socket_;
 
   /// All the store providers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
+  UnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
 
   friend class CoreWorkerTaskInterface;
 };
