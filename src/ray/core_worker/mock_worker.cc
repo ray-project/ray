@@ -44,13 +44,14 @@ class MockWorker {
     uint8_t buffer[total_size];
     int curr = 0;
     for (const auto &arg : args) {
-      auto tmp_buffer = std::make_shared<LocalMemoryBuffer>(buffer+curr, arg->DataSize());
+      auto tmp_buffer =
+          std::make_shared<LocalMemoryBuffer>(buffer + curr, arg->DataSize());
       RAY_RETURN_NOT_OK(arg->WriteDataTo(tmp_buffer));
       curr += arg->DataSize();
     }
 
-    auto return_value = RayObject(
-        std::make_shared<LocalMemoryBuffer>(buffer, total_size), nullptr);
+    auto return_value =
+        RayObject(std::make_shared<LocalMemoryBuffer>(buffer, total_size), nullptr);
 
     // Write the merged content to each of return ids.
     for (int i = 0; i < num_returns; i++) {

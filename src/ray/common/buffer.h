@@ -20,7 +20,7 @@ class Buffer {
   /// Size of this buffer.
   virtual size_t Size() const = 0;
 
-  virtual ~Buffer() {};
+  virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
     return this->Data() == rhs.Data() && this->Size() == rhs.Size();

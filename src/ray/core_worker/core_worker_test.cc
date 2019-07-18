@@ -147,8 +147,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->Data()->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->Data()->Data(), buffer1->Data(), buffer1->Size()),
-                0);
+      ASSERT_EQ(memcmp(results[0]->Data()->Data(), buffer1->Data(), buffer1->Size()), 0);
     }
 
     // Test pass by reference.
@@ -175,8 +174,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->Data()->Size(), buffer1->Size());
-      ASSERT_EQ(memcmp(results[0]->Data()->Data(), buffer1->Data(), buffer1->Size()),
-                0);
+      ASSERT_EQ(memcmp(results[0]->Data()->Data(), buffer1->Data(), buffer1->Size()), 0);
     }
   }
 
@@ -229,8 +227,7 @@ class CoreWorkerTest : public ::testing::Test {
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->Data()->Size(), buffer1->Size() + buffer2->Size());
-      ASSERT_EQ(memcmp(results[0]->Data()->Data(), buffer1->Data(), buffer1->Size()),
-                0);
+      ASSERT_EQ(memcmp(results[0]->Data()->Data(), buffer1->Data(), buffer1->Size()), 0);
       ASSERT_EQ(memcmp(results[0]->Data()->Data() + buffer1->Size(), buffer2->Data(),
                        buffer2->Size()),
                 0);
@@ -411,7 +408,8 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(worker1.Objects().Put(
-        BufferedRayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
+        BufferedRayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr),
+        &ids[i]));
   }
 
   // Test Get() from remote node.

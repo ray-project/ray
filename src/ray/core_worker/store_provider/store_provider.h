@@ -15,8 +15,7 @@ namespace ray {
 /// differently by implementations in order to avoid copying large data.
 class RayObject {
  public:
-  RayObject(const std::shared_ptr<Buffer> &metadata)
-      : metadata_(metadata) {}
+  RayObject(const std::shared_ptr<Buffer> &metadata) : metadata_(metadata) {}
 
   virtual ~RayObject() {}
 
@@ -36,7 +35,7 @@ class RayObject {
 class BufferedRayObject : public RayObject {
  public:
   BufferedRayObject(const std::shared_ptr<Buffer> &metadata,
-		const std::shared_ptr<Buffer> &data)
+                    const std::shared_ptr<Buffer> &data)
       : RayObject(metadata), data_(data) {}
 
   const std::shared_ptr<Buffer> &Data() override { return data_; };
@@ -58,8 +57,8 @@ class BufferedRayObject : public RayObject {
 class PyArrowRayObject : public RayObject {
  public:
   PyArrowRayObject(const std::shared_ptr<Buffer> &metadata,
-		const std::shared_ptr<arrow::py::SerializedPyObject> &object,
-		size_t object_size)
+                   const std::shared_ptr<arrow::py::SerializedPyObject> &object,
+                   size_t object_size)
       : RayObject(metadata), object_(object), object_size_(object_size) {}
 
   ~PyArrowRayObject() {
