@@ -89,7 +89,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       reconstruction_policy_(
           io_service_,
           [this](const TaskID &task_id, const ObjectID &required_object_id) {
-              HandleTaskReconstruction(task_id, required_object_id); },
+            HandleTaskReconstruction(task_id, required_object_id);
+          },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client_->task_lease_table(),
           object_directory_, gcs_client_->task_reconstruction_log()),
@@ -1404,7 +1405,8 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type, const ObjectID* required_object_id) {
+void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type,
+                                    const ObjectID *required_object_id) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
                  << ErrorType_Name(error_type) << ".";
@@ -1422,39 +1424,17 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
     // information about the TaskSpecification implementation.
     num_returns -= 1;
   }
-  const std::string meta = std::to_string(static_cast<int>(error_type));
+  // Determine which IDs should be marked as failed.
+  std::vector<plasma::ObjectID> objects_to_fail;
   if (num_returns == 0 && required_object_id != nullptr) {
-    const auto object_id = required_object_id->ToPlasmaId();
-    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
-    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
-      // If we failed to save the error code, log a warning and push an error message
-      // to the driver.
-      std::ostringstream stream;
-      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
-             << " error code to object " << object_id << ". Anyone who's getting this"
-             << " object may hang forever.";
-      std::string error_message = stream.str();
-      RAY_LOG(WARNING) << error_message;
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          task.GetTaskSpecification().JobId(), "task", error_message, current_time_ms()));
+    objects_to_fail.push_back(required_object_id->ToPlasmaId());
+  } else {
+    for (int64_t i = 0; i < num_returns; i++) {
+      objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
     }
   }
-  for (int64_t i = 0; i < num_returns; i++) {
-    const auto object_id = spec.ReturnId(i).ToPlasmaId();
-    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
-    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
-      // If we failed to save the error code, log a warning and push an error message
-      // to the driver.
-      std::ostringstream stream;
-      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
-             << " error code to object " << object_id << ". Anyone who's getting this"
-             << " object may hang forever.";
-      std::string error_message = stream.str();
-      RAY_LOG(WARNING) << error_message;
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          task.GetTaskSpecification().JobId(), "task", error_message, current_time_ms()));
-    }
-  }
+  const JobID job_id = task.GetTaskSpecification().JobId();
+  MarkObjectsAsFailed(error_type, objects_to_fail, &job_id);
   task_dependency_manager_.TaskCanceled(spec.TaskId());
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
@@ -1462,6 +1442,29 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   // or READY queue before, in which case we would not have been subscribed to
   // its dependencies.
   task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
+}
+
+void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
+                                      const std::vector<plasma::ObjectID> objects_to_fail,
+                                      const JobID *job_id) {
+  const std::string meta = std::to_string(static_cast<int>(error_type));
+  for (const auto &object_id : objects_to_fail) {
+    arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
+    if (!status.ok() && !plasma::IsPlasmaObjectExists(status)) {
+      // If we failed to save the error code, log a warning and push an error message
+      // to the driver.
+      std::ostringstream stream;
+      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
+             << " error code to object " << object_id << ". Anyone who's getting this"
+             << " object may hang forever.";
+      std::string error_message = stream.str();
+      RAY_LOG(WARNING) << error_message;
+      if (job_id != nullptr) {
+        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+            *job_id, "task", error_message, current_time_ms()));
+      }
+    }
+  }
 }
 
 void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
@@ -2061,31 +2064,37 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   }
 }
 
-void NodeManager::HandleTaskReconstruction(const TaskID &task_id, const ObjectID &required_object_id) {
+void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
+                                           const ObjectID &required_object_id) {
   // Retrieve the task spec in order to re-execute the task.
   RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
       JobID::Nil(), task_id,
       /*success_callback=*/
       [this, required_object_id](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskTableData &task_data) {
+                                 const TaskTableData &task_data) {
         // The task was in the GCS task table. Use the stored task spec to
         // re-execute the task.
         ResubmitTask(Task(task_data.task()), required_object_id);
       },
       /*failure_callback=*/
-      [this, required_object_id](ray::gcs::AsyncGcsClient *client, const TaskID &task_id) {
+      [this, required_object_id](ray::gcs::AsyncGcsClient *client,
+                                 const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
-        // TODO(ekl) fail the task there too
-        RAY_CHECK(lineage_cache_.ContainsTask(task_id))
-            << "Metadata of task " << task_id
-            << " not found in either GCS or lineage cache. It may have been evicted "
-            << "by the redis LRU configuration. Consider increasing the memory "
-               "allocation via "
-            << "ray.init(redis_max_memory=<max_memory_bytes>).";
-        // Use a copy of the cached task spec to re-execute the task.
-        const Task task = lineage_cache_.GetTaskOrDie(task_id);
-        ResubmitTask(task, required_object_id);
+        if (lineage_cache_.ContainsTask(task_id)) {
+          // Use a copy of the cached task spec to re-execute the task.
+          const Task task = lineage_cache_.GetTaskOrDie(task_id);
+          ResubmitTask(task, required_object_id);
+        } else {
+          RAY_LOG(WARNING)
+              << "Metadata of task " << task_id
+              << " not found in either GCS or lineage cache. It may have been evicted "
+              << "by the redis LRU configuration. Consider increasing the memory "
+                 "allocation via "
+              << "ray.init(redis_max_memory=<max_memory_bytes>).";
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                              {required_object_id.ToPlasmaId()});
+        }
       }));
 }
 
@@ -2116,7 +2125,7 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
     std::ostringstream error_message;
     error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
                   << " is a driver task and so the object created by ray.put "
-                  << "could not be reconstructed!!!";
+                  << "could not be reconstructed.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         task.GetTaskSpecification().JobId(), type, error_message.str(),
         current_time_ms()));

@@ -63,9 +63,8 @@ void ReconstructionPolicy::SetTaskTimeout(
       });
 }
 
-void ReconstructionPolicy::HandleReconstructionLogAppend(const TaskID &task_id,
-                                                         const ObjectID &required_object_id,
-                                                         bool success) {
+void ReconstructionPolicy::HandleReconstructionLogAppend(
+    const TaskID &task_id, const ObjectID &required_object_id, bool success) {
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     return;
@@ -114,12 +113,12 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
       JobID::Nil(), task_id, reconstruction_entry,
       /*success_callback=*/
       [this, required_object_id](gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskReconstructionData &data) {
+                                 const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/true);
       },
       /*failure_callback=*/
       [this, required_object_id](gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskReconstructionData &data) {
+                                 const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/false);
       },
       reconstruction_attempt));

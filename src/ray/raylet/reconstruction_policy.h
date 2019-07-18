@@ -127,7 +127,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
   /// Handle the response for an attempt at adding an entry to the task
   /// reconstruction log.
-  void HandleReconstructionLogAppend(const TaskID &task_id, const ObjectID &object_id, bool success);
+  void HandleReconstructionLogAppend(const TaskID &task_id, const ObjectID &object_id,
+                                     bool success);
 
   /// The event loop.
   boost::asio::io_service &io_service_;

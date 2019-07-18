@@ -187,8 +187,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param task The task to fail.
   /// \param error_type The type of the error that caused this task to fail.
+  /// \param required_object_id The object id that we should write the error
+  ///        message into. This is used in case the task has no outputs (e.g.,
+  ///        it is the driver task).
   /// \return Void.
-  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type, const ObjectID* required_object_id = nullptr);
+  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type,
+                         const ObjectID *required_object_id = nullptr);
+  void MarkObjectsAsFailed(const ErrorType &error_type,
+                           const std::vector<plasma::ObjectID> object_ids,
+                           const JobID *job_id = nullptr);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -257,14 +264,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
+  /// \param required_object_id The object id we are reconstructing for.
   /// \return Void.
-  void HandleTaskReconstruction(const TaskID &task_id, const ObjectID& required_object_id);
+  void HandleTaskReconstruction(const TaskID &task_id,
+                                const ObjectID &required_object_id);
   /// Resubmit a task for execution. This is a task that was previously already
   /// submitted to a raylet but which must now be re-executed.
   ///
   /// \param task The task being resubmitted.
+  /// \param required_object_id The object id that triggered the resubmission.
   /// \return Void.
-  void ResubmitTask(const Task &task, const ObjectID& required_object_id);
+  void ResubmitTask(const Task &task, const ObjectID &required_object_id);
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///
