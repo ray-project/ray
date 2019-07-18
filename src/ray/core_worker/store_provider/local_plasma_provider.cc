@@ -53,7 +53,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Get(
   std::vector<plasma::ObjectBuffer> object_buffers;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
-    auto status = store_client_.Get(plasma_ids, timeout_ms, &object_buffers);
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Get(plasma_ids, timeout_ms, &object_buffers));
   }
 
   (*results).resize(object_ids.size(), nullptr);

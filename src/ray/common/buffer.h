@@ -50,6 +50,8 @@ class AccumulativeBuffer : public Buffer {
  public:
   AccumulativeBuffer() {}
 
+  AccumulativeBuffer(uint8_t *data, size_t size) { Append(data, size); }
+
   void Append(uint8_t *data, size_t size) {
     buffer_.insert(buffer_.end(), data, data + size);
   }
