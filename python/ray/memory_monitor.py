@@ -52,6 +52,13 @@ class MemoryMonitor(object):
 
     This presents a much cleaner error message to users than what would happen
     if we actually ran out of memory.
+
+    The monitor tries to use the cgroup memory limit and usage if it is set
+    and available so that it is more reasonable inside containers. Otherwise,
+    it uses `psutil` to check the memory usage.
+
+    The environment variable `RAY_MEMORY_MONITOR_ERROR_THRESHOLD` can be used
+    to overwrite the default error_threshold setting.
     """
 
     def __init__(self, error_threshold=0.95, check_interval=1):
@@ -59,7 +66,6 @@ class MemoryMonitor(object):
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
         self.last_checked = time.time()
-        # If the error threshold env is set, overwrite the threshold with it. 
         try:
             self.error_threshold = float(
                 os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD"))
