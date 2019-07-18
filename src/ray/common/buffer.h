@@ -30,9 +30,8 @@ class Buffer {
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
-
   LocalMemoryBuffer(uint8_t *data, size_t size, bool should_copy = false)
-    : data_(data), size_(size) {
+      : data_(data), size_(size) {
     if (should_copy) {
       buffer_.insert(buffer_.end(), data, data + size);
       data_ = buffer_.data();

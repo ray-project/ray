@@ -42,8 +42,8 @@ class MockWorker {
       auto &data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
-    auto memory_buffer = std::make_shared<LocalMemoryBuffer>(
-        buffer.data(), buffer.size(), true);
+    auto memory_buffer =
+        std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size(), true);
 
     // Write the merged content to each of return ids.
     for (int i = 0; i < num_returns; i++) {

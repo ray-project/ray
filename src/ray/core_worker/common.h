@@ -3,11 +3,11 @@
 
 #include <string>
 
-#include "ray/util/util.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
 using WorkerType = rpc::WorkerType;
