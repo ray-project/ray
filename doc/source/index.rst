@@ -63,7 +63,6 @@ Other projects in development:
    :caption: Installation
 
    installation.rst
-   installation-troubleshooting.rst
 
 .. toctree::
    :maxdepth: 1
@@ -115,7 +114,6 @@ Other projects in development:
    :caption: Other Libraries
 
    distributed_training.rst
-   distributed_sgd.rst
    pandas_on_ray.rst
 
 .. toctree::

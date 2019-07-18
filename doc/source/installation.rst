@@ -41,3 +41,21 @@ Here are links to the latest wheels (which are built off of master). To install 
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp36-cp36m-macosx_10_6_intel.whl
 .. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp35-cp35m-macosx_10_6_intel.whl
 .. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp27-cp27m-macosx_10_6_intel.whl
+
+Trouble installing or running Ray
+---------------------------------
+
+One of the Ray libraries is compiled against the wrong version of Python
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If there is a segfault or a sigabort immediately upon importing Ray, one of the
+components may have been compiled against the wrong Python libraries. Bazel
+should normally find the right version of Python, but this process is not
+completely reliable. In this case, check the Bazel output from installation and
+make sure that the version of the Python libraries that were found match the
+version of Python that you're using.
+
+Note that it's common to have multiple versions of Python on your machine (for
+example both Python 2 and Python 3). Ray will be compiled against whichever
+version of Python is found when you run the ``python`` command from the
+command line, so make sure this is the version you wish to use.
