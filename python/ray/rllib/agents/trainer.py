@@ -193,6 +193,10 @@ COMMON_CONFIG = {
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 0,
+    # This argument, in conjunction with worker_index, sets the random seed of
+    # each worker, so that identically configured trials will have identical
+    # results. This makes experiments reproducible.
+    "seed": None,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
