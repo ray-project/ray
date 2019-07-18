@@ -39,20 +39,26 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_worker=None, remote_workers=[],
-                    to_be_collected=[], timeout_seconds=180):
+def collect_metrics(local_worker=None,
+                    remote_workers=[],
+                    to_be_collected=[],
+                    timeout_seconds=180):
     """Gathers episode metrics from RolloutWorker instances."""
 
     episodes, to_be_collected = collect_episodes(
-        local_worker, remote_workers, to_be_collected,
+        local_worker,
+        remote_workers,
+        to_be_collected,
         timeout_seconds=timeout_seconds)
     metrics = summarize_episodes(episodes, episodes)
     return metrics
 
 
 @DeveloperAPI
-def collect_episodes(local_worker=None, remote_workers=[],
-                     to_be_collected=[], timeout_seconds=180):
+def collect_episodes(local_worker=None,
+                     remote_workers=[],
+                     to_be_collected=[],
+                     timeout_seconds=180):
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     if remote_workers:
@@ -62,8 +68,9 @@ def collect_episodes(local_worker=None, remote_workers=[],
         collected, to_be_collected = ray.wait(
             pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
         if pending and len(collected) == 0:
-            logger.warning("WARNING: collected no metrics in {} seconds".format(
-            timeout_seconds))
+            logger.warning(
+                "WARNING: collected no metrics in {} seconds".format(
+                    timeout_seconds))
         metric_lists = ray_get_and_free(collected)
     else:
         metric_lists = []
