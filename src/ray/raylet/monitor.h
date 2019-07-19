@@ -11,7 +11,7 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ClientTableData;
+using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 
