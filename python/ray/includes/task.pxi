@@ -23,6 +23,7 @@ cdef class TaskSpec:
                  int num_returns, TaskID parent_task_id, int parent_counter,
                  ActorID actor_creation_id,
                  ObjectID actor_creation_dummy_object_id,
+                 ObjectID previous_actor_task_dummy_object_id,
                  int32_t max_actor_reconstructions, ActorID actor_id,
                  ActorHandleID actor_handle_id, int actor_counter,
                  new_actor_handles, resource_map, placement_resource_map):
@@ -85,6 +86,7 @@ cdef class TaskSpec:
                 actor_id.native(),
                 actor_handle_id.native(),
                 actor_creation_dummy_object_id.native(),
+                previous_actor_task_dummy_object_id.native(),
                 actor_counter,
                 c_new_actor_handles,
             )
@@ -229,6 +231,13 @@ cdef class TaskSpec:
         return ObjectID(
             self.task_spec.get().ActorCreationDummyObjectId().Binary())
 
+    def previous_actor_task_dummy_object_id(self):
+        """Return the object ID of the previously executed actor task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
+        return ObjectID(
+            self.task_spec.get().PreviousActorTaskDummyObjectId().Binary())
+
     def actor_id(self):
         """Return the actor ID for this task."""
         if not self.is_actor_task():
@@ -247,13 +256,10 @@ cdef class TaskExecutionSpec:
     cdef:
         unique_ptr[CTaskExecutionSpec] c_spec
 
-    def __init__(self, execution_dependencies):
+    def __init__(self):
         cdef:
             RpcTaskExecutionSpec message;
 
-        for dependency in execution_dependencies:
-            message.add_dependencies(
-                (<ObjectID?>dependency).binary())
         self.c_spec.reset(new CTaskExecutionSpec(message))
 
     @staticmethod
@@ -263,16 +269,6 @@ cdef class TaskExecutionSpec:
         cdef TaskExecutionSpec self = TaskExecutionSpec.__new__(TaskExecutionSpec)
         self.c_spec.reset(new CTaskExecutionSpec(string))
         return self
-
-    def dependencies(self):
-        cdef:
-            CObjectID c_id
-            c_vector[CObjectID] dependencies = (
-                self.c_spec.get().ExecutionDependencies())
-        ret = []
-        for c_id in dependencies:
-            ret.append(ObjectID(c_id.Binary()))
-        return ret
 
     def num_forwards(self):
         return self.c_spec.get().NumForwards()

@@ -33,7 +33,7 @@ CoreWorker::CoreWorker(
       *object_interface_, io_service_, *gcs_client_));      
 
   int rpc_server_port = 0;
-  if (worker_type_ == ray::WorkerType::WORKER) {
+  if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
@@ -46,7 +46,7 @@ CoreWorker::CoreWorker(
   // instead of crashing.
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       raylet_socket_, ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
-      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
+      (worker_type_ == WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, rpc_server_port));
 
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);

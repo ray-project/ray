@@ -11,6 +11,12 @@ enum Language {
   CPP = 2;
 }
 
+// Type of a worker.
+enum WorkerType {
+  WORKER = 0;
+  DRIVER = 1;
+}
+
 // Type of a task.
 enum TaskType {
   // Normal task.
@@ -86,30 +92,26 @@ message ActorCreationTaskSpec {
 
 // Task spec of an actor task.
 message ActorTaskSpec {
-  // Actor ID of the task. This is the actor that this task is executed on
-  // or NIL_ACTOR_ID if the task is just a normal task.
+  // Actor ID of the actor that this task is executed on.
   bytes actor_id = 2;
   // The ID of the handle that was used to submit the task. This should be
   // unique across handles with the same actor_id.
   bytes actor_handle_id = 3;
-  // The dummy object ID of the actor creation task if this is an actor method.
+  // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
   uint64 actor_counter = 5;
-  // If this is an actor task, then this will be populated with all of the new
-  // actor handles that were forked from this handle since the last task on
-  // this handle was submitted.
-  // Note that this is a long string that concatenate all of the new_actor_handle IDs.
+  // This will be populated with all of the new actor handles that were forked
+  // from this handle since the last task on this handle was submitted.
   repeated bytes new_actor_handles = 6;
+  // The dummy object ID of the previous actor task.
+  bytes previous_actor_task_dummy_object_id = 7;
 }
 
 // The task execution specification encapsulates all mutable information about
 // the task. These fields may change at execution time, converse to the
 // `TaskSpec` is determined at submission time.
 message TaskExecutionSpec {
-  // A list of object IDs representing the dependencies of this task that may
-  // change at execution time.
-  repeated bytes dependencies = 1;
   // The last time this task was received for scheduling.
   double last_timestamp = 2;
   // The number of times this task was spilled back by raylets.

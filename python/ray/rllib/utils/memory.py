@@ -56,7 +56,11 @@ def aligned_array(size, dtype, align=64):
     empty = np.empty(n + (align - 1), dtype=np.uint8)
     data_align = empty.ctypes.data % align
     offset = 0 if data_align == 0 else (align - data_align)
-    output = empty[offset:offset + n].view(dtype)
+    if n == 0:
+        # stop np from optimising out empty slice reference
+        output = empty[offset:offset + 1][0:0].view(dtype)
+    else:
+        output = empty[offset:offset + n].view(dtype)
 
     assert len(output) == size, len(output)
     assert output.ctypes.data % align == 0, output.ctypes.data

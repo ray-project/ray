@@ -3,13 +3,13 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket, std::unique_ptr<RayletClient> &raylet_client)
-    : local_store_provider_(store_socket),
-      raylet_client_(raylet_client) {}
+    : local_store_provider_(store_socket), raylet_client_(raylet_client) {}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
@@ -60,18 +60,22 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
-    local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects);
+    RAY_RETURN_NOT_OK(
+        local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
 
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
         const auto &object_id = unready_ids[i];
         (*results)[unready[object_id]] = result_objects[i];
         unready.erase(object_id);
+        if (IsException(*result_objects[i])) {
+          should_break = true;
+        }
       }
     }
 
     num_attempts += 1;
-    // TODO(zhijunfu): log a message if attempted too many times.
+    WarnIfAttemptedTooManyTimes(num_attempts, unready);
   }
 
   if (was_blocked) {
@@ -108,6 +112,48 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
                                              bool local_only,
                                              bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+}
+
+bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
+  // TODO (kfstorm): metadata should be structured.
+  const std::string metadata(reinterpret_cast<const char *>(object.GetMetadata()->Data()),
+                             object.GetMetadata()->Size());
+  const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
+  for (int i = 0; i < error_type_descriptor->value_count(); i++) {
+    const auto error_type_number = error_type_descriptor->value(i)->number();
+    if (metadata == std::to_string(error_type_number)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
+    int num_attempts, const std::unordered_map<ObjectID, int> &unready) {
+  if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
+      0) {
+    std::ostringstream oss;
+    size_t printed = 0;
+    for (auto &entry : unready) {
+      if (printed >=
+          RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
+        break;
+      }
+      if (printed > 0) {
+        oss << ", ";
+      }
+      oss << entry.first.Hex();
+    }
+    if (printed < unready.size()) {
+      oss << ", etc";
+    }
+    RAY_LOG(WARNING)
+        << "Attempted " << num_attempts << " times to reconstruct objects, but "
+        << "some objects are still unavailable. If this message continues to print,"
+        << " it may indicate that object's creating task is hanging, or something wrong"
+        << " happened in raylet backend. " << unready.size()
+        << " object(s) pending: " << oss.str() << ".";
+  }
 }
 
 }  // namespace ray

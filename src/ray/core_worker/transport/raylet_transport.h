@@ -3,6 +3,7 @@
 
 #include <list>
 
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
@@ -22,7 +23,7 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpec &task) override;
+  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
   /// Raylet client.

@@ -174,7 +174,8 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress individual observations
     "compress_observations": False,
-    # Drop metric batches from unresponsive workers after this many seconds
+    # Wait for metric batches for at most this many seconds. Those that
+    # have not returned in time will be collected in the next iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
@@ -193,6 +194,10 @@ COMMON_CONFIG = {
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 0,
+    # This argument, in conjunction with worker_index, sets the random seed of
+    # each worker, so that identically configured trials will have identical
+    # results. This makes experiments reproducible.
+    "seed": None,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:

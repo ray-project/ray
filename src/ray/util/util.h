@@ -3,6 +3,7 @@
 
 #include <boost/system/error_code.hpp>
 #include <chrono>
+#include <unordered_map>
 
 #include "ray/common/status.h"
 
@@ -77,5 +78,16 @@ class InitShutdownRAII {
  private:
   ShutdownFunc shutdown_;
 };
+
+struct EnumClassHash {
+  template <typename T>
+  std::size_t operator()(T t) const {
+    return static_cast<std::size_t>(t);
+  }
+};
+
+/// unodered_map for enum class type.
+template <typename Key, typename T>
+using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
 #endif  // RAY_UTIL_UTIL_H

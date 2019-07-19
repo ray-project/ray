@@ -147,9 +147,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            std::vector<ObjectID> *return_ids) {
   auto builder = BuildCommonTaskSpec(function, args, task_options.num_returns,
                                      task_options.resources, {}, return_ids);
-  TaskSpec task(builder.Build(), {});
-  // Normal tasks are always sent via raylet.
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -171,8 +169,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
-  const TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -193,17 +190,14 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
   const auto actor_creation_dummy_object_id = direct_call ?
-      ObjectID::Nil() : ObjectID::FromBinary(actor_handle.ActorID().Binary());      
-  builder.SetActorTaskSpec(actor_handle.ActorID(), actor_handle.ActorHandleID(),
-                           actor_creation_dummy_object_id,
-                           actor_handle.IncreaseTaskCounter(),
-                           actor_handle.NewActorHandles());
-
-  std::vector<ObjectID> dependencies;
-  if (!direct_call) {
-    dependencies.push_back(actor_handle.ActorCursor());
-  }
-  const TaskSpec task(builder.Build(), dependencies);
+      ObjectID::Nil() : ObjectID::FromBinary(actor_handle.ActorID().Binary());  
+  const auto previous_actor_task_dummy_object_id = direct_call ?
+      ObjectID::Nil() : actor_handle.ActorCursor();      
+  builder.SetActorTaskSpec(
+      actor_handle.ActorID(), actor_handle.ActorHandleID(),
+      actor_creation_dummy_object_id,
+      previous_actor_task_dummy_object_id,
+      actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
 
   if (!direct_call) {
     // Manipulate actor handle state.
@@ -214,8 +208,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   guard.unlock();
 
   // Submit task.
-  TaskTransportType trasnport_type = direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
-  auto status = task_submitters_[static_cast<int>(trasnport_type)]->SubmitTask(task);
+  const auto trasnport_type = direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
+  auto status = task_submitters_[trasnport_type]->SubmitTask(builder.Build());
   if (!direct_call) {
     // Remove cursor from return ids.
     (*return_ids).pop_back();

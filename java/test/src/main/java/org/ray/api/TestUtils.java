@@ -51,7 +51,12 @@ public class TestUtils {
   }
 
   /**
-   * Warm up the cluster.
+   * Warm up the cluster to make sure there's at least one idle worker.
+   *
+   * This is needed before calling `wait`. Because, in Travis CI, starting a new worker
+   * process could be slower than the wait timeout.
+   * TODO(hchen): We should consider supporting always reversing a certain number of
+   * idle workers in Raylet's worker pool.
    */
   public static void warmUpCluster() {
     RayObject<String> obj = Ray.call(TestUtils::hi);

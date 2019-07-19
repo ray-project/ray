@@ -17,7 +17,7 @@ CoreWorkerLocalPlasmaStoreProvider::CoreWorkerLocalPlasmaStoreProvider(
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
-                                          const ObjectID &object_id) {
+                                               const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
   auto data = object.GetData();
   auto metadata = object.GetMetadata();
@@ -44,7 +44,6 @@ Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
 Status CoreWorkerLocalPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
-
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {
@@ -54,7 +53,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Get(
   std::vector<plasma::ObjectBuffer> object_buffers;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
-    auto status = store_client_.Get(plasma_ids, timeout_ms, &object_buffers);
+    RAY_ARROW_RETURN_NOT_OK(store_client_.Get(plasma_ids, timeout_ms, &object_buffers));
   }
 
   (*results).resize(object_ids.size(), nullptr);
@@ -70,11 +69,11 @@ Status CoreWorkerLocalPlasmaStoreProvider::Get(
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
-                                           int num_objects, int64_t timeout_ms,
-                                           const TaskID &task_id,
-                                           std::vector<bool> *results) {
+                                                int num_objects, int64_t timeout_ms,
+                                                const TaskID &task_id,
+                                                std::vector<bool> *results) {
   if (num_objects != object_ids.size()) {
-    return Status::NotImplemented("num_objects should equal to number of items in object_ids");
+    return Status::Invalid("num_objects should equal to number of items in object_ids");
   }
 
   std::vector<std::shared_ptr<RayObject>> objects;
@@ -89,9 +88,8 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
-  
+                                                  bool local_only,
+                                                  bool delete_creating_tasks) {
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {
