@@ -26,27 +26,27 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &spec) {
-  worker_context_.SetCurrentTask(spec);
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &task_spec) {
+  worker_context_.SetCurrentTask(task_spec);
 
-  RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
+  RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
-  RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args));
 
   TaskType task_type;
-  if (spec.IsActorCreationTask()) {
+  if (task_spec.IsActorCreationTask()) {
     task_type = TaskType::ACTOR_CREATION_TASK;
-  } else if (spec.IsActorTask()) {
+  } else if (task_spec.IsActorTask()) {
     task_type = TaskType::ACTOR_TASK;
   } else {
     task_type = TaskType::NORMAL_TASK;
   }
 
-  TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
+  TaskInfo task_info{task_spec.TaskId(), task_spec.JobId(), task_type};
 
-  auto num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  auto num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
     // Decrease to account for the dummy object id.
     num_returns--;
@@ -68,25 +68,25 @@ void CoreWorkerTaskExecutionInterface::Run() {
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &spec, std::vector<std::shared_ptr<RayObject>> *args) {
-  auto num_args = spec.NumArgs();
+    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args) {
+  auto num_args = task.NumArgs();
   (*args).resize(num_args);
 
   std::vector<ObjectID> object_ids_to_fetch;
   std::vector<int> indices;
 
-  for (int i = 0; i < spec.NumArgs(); ++i) {
-    int count = spec.ArgIdCount(i);
+  for (int i = 0; i < task.NumArgs(); ++i) {
+    int count = task.ArgIdCount(i);
     if (count > 0) {
       // pass by reference.
       RAY_CHECK(count == 1);
-      object_ids_to_fetch.push_back(spec.ArgId(i, 0));
+      object_ids_to_fetch.push_back(task.ArgId(i, 0));
       indices.push_back(i);
     } else {
       // pass by value.
       (*args)[i] = std::make_shared<RayObject>(
-          std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(spec.ArgVal(i)),
-                                              spec.ArgValLength(i)),
+          std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgVal(i)),
+                                              task.ArgValLength(i)),
           nullptr);
     }
   }
