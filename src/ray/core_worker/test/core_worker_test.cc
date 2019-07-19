@@ -33,7 +33,8 @@ static void flushall_redis(void) {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest(int num_nodes) {
+  CoreWorkerTest(int num_nodes)
+    : gcs_options_("127.0.0.1", 6379, "") {
     // flush redis first.
     flushall_redis();
 
@@ -146,13 +147,14 @@ class CoreWorkerTest : public ::testing::Test {
  protected:
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
+  gcs::GcsClientOptions gcs_options_;
 };
 
 
 void CoreWorkerTest::TestNormalTask(const std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
+                    JobID::FromInt(1), gcs_options_, nullptr);
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -200,7 +202,7 @@ void CoreWorkerTest::TestActorTask(const std::unordered_map<std::string, double>
                     bool direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
+                    JobID::FromInt(1), gcs_options_, nullptr);
 
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -306,7 +308,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
                     bool direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
+                    JobID::FromInt(1), gcs_options_, nullptr);
 
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -399,7 +401,7 @@ void CoreWorkerTest::TestActorFailure(const std::unordered_map<std::string, doub
                     bool direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON,
                     raylet_store_socket_names_[0], raylet_socket_names_[0],
-                    JobID::FromInt(1), nullptr);
+                    JobID::FromInt(1), gcs_options_, nullptr);
 
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -582,7 +584,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         JobID::FromInt(1), nullptr);
+                         JobID::FromInt(1), gcs_options_, nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -645,10 +647,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                     raylet_socket_names_[0], JobID::FromInt(1), nullptr);
+                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
 
   CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
-                     raylet_socket_names_[1], JobID::FromInt(1), nullptr);
+                     raylet_socket_names_[1], JobID::FromInt(1), gcs_options_, nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -768,7 +770,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
 TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
   try {
     CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "",
-                           raylet_socket_names_[0], JobID::FromInt(1), nullptr);
+                           raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
   } catch (const std::exception &e) {
     std::cout << "Caught exception when constructing core worker: " << e.what();
   }

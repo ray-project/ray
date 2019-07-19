@@ -17,7 +17,7 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service,
-    gcs::GcsClient &gcs_client,
+    gcs::RedisGcsClient &gcs_client,
     CoreWorkerObjectInterface &object_interface)
     : io_service_(io_service),
       gcs_client_(gcs_client),
@@ -28,21 +28,21 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
   RAY_CHECK_OK(SubscribeActorTable());
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpec &task) {
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
 
-  if (HasByReferenceArgs(task.GetTaskSpecification())) {
+  if (HasByReferenceArgs(task_spec)) {
     return Status::Invalid("direct actor call only supports by value arguments");
   }
 
-  RAY_CHECK(task.GetTaskSpecification().IsActorTask());
-  const auto &actor_id = task.GetTaskSpecification().ActorId();
+  RAY_CHECK(task_spec.IsActorTask());
+  const auto &actor_id = task_spec.ActorId();
 
-  const auto task_id = task.GetTaskSpecification().TaskId();
-  const auto num_returns = task.GetTaskSpecification().NumReturns();
+  const auto task_id = task_spec.TaskId();
+  const auto num_returns = task_spec.NumReturns();
 
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-  request->set_task_id(task.GetTaskSpecification().TaskId().Binary());
-  request->set_task_spec(task.GetTaskSpecification().Serialize());
+  request->set_task_id(task_spec.TaskId().Binary());
+  request->set_task_spec(task_spec.Serialize());
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto entry = rpc_clients_.find(actor_id);
@@ -82,65 +82,60 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpec &task) {
 Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
-                                            const std::vector<ActorTableData> &data) {
-    if (!data.empty()) {
-      const auto &actor_data = data.back();
-      
-      if (actor_data.state() == ActorTableData::ALIVE) {
-        RAY_LOG(INFO) << "received notification on actor alive, actor_id: " << actor_id
-                      << ", ip address: " << actor_data.ip_address()
-                      << ", port: " << actor_data.port();
+                                            const ActorTableData &actor_data) {
+    
+    if (actor_data.state() == ActorTableData::ALIVE) {
+      RAY_LOG(INFO) << "received notification on actor alive, actor_id: " << actor_id
+                    << ", ip address: " << actor_data.ip_address()
+                    << ", port: " << actor_data.port();
 
-        std::unique_ptr<rpc::DirectActorClient> grpc_client(
-            new rpc::DirectActorClient(actor_data.ip_address(),
-            actor_data.port(), client_call_manager_));
+      std::unique_ptr<rpc::DirectActorClient> grpc_client(
+          new rpc::DirectActorClient(actor_data.ip_address(),
+          actor_data.port(), client_call_manager_));
 
-        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-        actor_state_[actor_id] = actor_data.state();
-        // replace old rpc client if it exists.
-        rpc_clients_[actor_id] = std::move(grpc_client);
+      std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+      actor_state_[actor_id] = actor_data.state();
+      // replace old rpc client if it exists.
+      rpc_clients_[actor_id] = std::move(grpc_client);
 
-        auto entry = rpc_clients_.find(actor_id);
-        RAY_CHECK(entry != rpc_clients_.end());
+      auto entry = rpc_clients_.find(actor_id);
+      RAY_CHECK(entry != rpc_clients_.end());
 
-        auto &client = entry->second;
-        auto &requests = pending_requests_[actor_id];
-        while (!requests.empty()) {
-          const auto &request = *requests.front();
-          RAY_LOG(DEBUG) << "push pending task " << "   " << request.task_id << "    " << client.get();
-          auto status = PushTask(*client, *request.request, request.task_id, request.num_returns);
-          requests.pop_front();
-        }
-        
-      } else if (actor_data.state() == ActorTableData::DEAD) {
-        RAY_LOG(INFO) << "received notification on actor dead, actor_id: " << actor_id;
-
-        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-        actor_state_[actor_id] = actor_data.state();
-
-        // There are a couple of cases for actor/objects:
-        // - dead
-        // - reconstruction
-        // - eviction
-        // For get, there are a few possibilities:
-        // - pending
-        // - future (but on old objects)
-
-      } else {
-        //
-        RAY_CHECK(actor_data.state() == ActorTableData::RECONSTRUCTING);
-        RAY_LOG(INFO) << "received notification on actor reconstruction, actor_id: " << actor_id;
-
-        std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-        actor_state_[actor_id] = actor_data.state();
+      auto &client = entry->second;
+      auto &requests = pending_requests_[actor_id];
+      while (!requests.empty()) {
+        const auto &request = *requests.front();
+        RAY_LOG(DEBUG) << "push pending task " << "   " << request.task_id << "    " << client.get();
+        auto status = PushTask(*client, *request.request, request.task_id, request.num_returns);
+        requests.pop_front();
       }
+      
+    } else if (actor_data.state() == ActorTableData::DEAD) {
+      RAY_LOG(INFO) << "received notification on actor dead, actor_id: " << actor_id;
 
-      // TODO: handle other states.
+      std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+      actor_state_[actor_id] = actor_data.state();
+
+      // There are a couple of cases for actor/objects:
+      // - dead
+      // - reconstruction
+      // - eviction
+      // For get, there are a few possibilities:
+      // - pending
+      // - future (but on old objects)
+
+    } else {
+      //
+      RAY_CHECK(actor_data.state() == ActorTableData::RECONSTRUCTING);
+      RAY_LOG(INFO) << "received notification on actor reconstruction, actor_id: " << actor_id;
+
+      std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+      actor_state_[actor_id] = actor_data.state();
     }
   };
 
   return gcs_client_.Actors().AsyncSubscribe(
-      JobID::Nil(), ClientID::Nil(), actor_notification_callback, nullptr);
+      actor_notification_callback, nullptr);
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
@@ -204,7 +199,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
-  std::vector<std::shared_ptr<Buffer>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(spec, &results);
   RAY_CHECK(results.size() == spec.NumReturns()) << results.size() << "  " << spec.NumReturns();
   for (int i = 0; i < spec.NumReturns(); i++) {
@@ -212,9 +207,10 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     (*reply).add_return_object_ids(id.Binary());
   }
 
+  // TODO(zhijunfu): this doesn't include metadata!!! Need a fix.
   for (int i = 0; i < results.size(); i++) {
     std::string data(reinterpret_cast<const char*>(
-        const_cast<const uint8_t*>(results[i]->Data())), results[i]->Size());
+        const_cast<const uint8_t*>(results[i]->GetData()->Data())), results[i]->GetData()->Size());
     (*reply).add_return_objects(data);
   }
 

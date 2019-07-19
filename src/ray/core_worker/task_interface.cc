@@ -98,14 +98,14 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface,
     boost::asio::io_service &io_service,
-    gcs::GcsClient &gcs_client)
+    gcs::RedisGcsClient &gcs_client)
     : worker_context_(worker_context) {
   task_submitters_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
+      TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
           new CoreWorkerRayletTaskSubmitter(raylet_client)));
   task_submitters_.emplace(
-      static_cast<int>(TaskTransportType::DIRECT_ACTOR),
+      TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
           new CoreWorkerDirectActorTaskSubmitter(
           io_service, gcs_client, object_interface)));                                 

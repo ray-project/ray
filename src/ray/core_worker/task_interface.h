@@ -13,7 +13,7 @@
 #include "ray/core_worker/transport/transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/core_worker/object_interface.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -128,7 +128,7 @@ class CoreWorkerTaskInterface {
                           std::unique_ptr<RayletClient> &raylet_client,
                           CoreWorkerObjectInterface &object_interface,
                           boost::asio::io_service &io_service,
-                          gcs::GcsClient &gcs_client);
+                          gcs::RedisGcsClient &gcs_client);
 
   /// Submit a normal task.
   ///

@@ -6,7 +6,7 @@ namespace ray {
 CoreWorker::CoreWorker(
     const WorkerType worker_type, const Language language,
     const std::string &store_socket, const std::string &raylet_socket,
-    const JobID &job_id,
+    const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
     const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback)
     : worker_type_(worker_type),
       language_(language),
@@ -14,17 +14,10 @@ CoreWorker::CoreWorker(
       worker_context_(worker_type, job_id),
       io_work_(io_service_) {
 
-  std::vector<std::pair<std::string, int>> server_list;
-  server_list.emplace_back("127.0.0.1", 6379);
-  gcs::ClientOption option;
-  option.server_list_ = server_list;
-  option.command_type_ = gcs::CommandType::kRegular;
-  gcs::ClientInfo info{ gcs::ClientInfo::ClientType::kClientTypeWorker,
-      ClientID::FromBinary(worker_context_.GetWorkerID().Binary()) };
-  gcs_client_ = std::unique_ptr<gcs::GcsClient>(new gcs::GcsClient(
-      option, info, io_service_));
-
-  RAY_CHECK_OK(gcs_client_->Connect());
+  // Initialize gcs client
+  gcs_client_ = std::unique_ptr<gcs::RedisGcsClient>(
+      new gcs::RedisGcsClient(gcs_options));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
       new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket));

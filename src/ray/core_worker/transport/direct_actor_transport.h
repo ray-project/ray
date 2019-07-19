@@ -5,7 +5,7 @@
 
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
-#include  "ray/gcs/gcs_client.h"
+#include  "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
 #include "ray/core_worker/object_interface.h"
@@ -27,14 +27,14 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       boost::asio::io_service &io_service,
-      gcs::GcsClient &gcs_client,
+      gcs::RedisGcsClient &gcs_client,
       CoreWorkerObjectInterface &object_interface);
 
   /// Submit a task for execution to raylet.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpec &task) override;
+  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
   /// Subscribe to actor table.
@@ -49,7 +49,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   boost::asio::io_service &io_service_;
 
   /// Gcs client.
-  gcs::GcsClient &gcs_client_;
+  gcs::RedisGcsClient &gcs_client_;
 
   /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
   rpc::ClientCallManager client_call_manager_;

@@ -86,6 +86,8 @@ class CoreWorkerObjectInterface {
       store_providers_;
 
   friend class CoreWorkerTaskInterface;
+
+  friend class CoreWorkerDirectActorTaskSubmitter;
 };
 
 }  // namespace ray

@@ -8,7 +8,7 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -25,7 +25,7 @@ class CoreWorker {
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
-             const JobID &job_id,
+             const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback);
 
   ~CoreWorker();
@@ -70,7 +70,7 @@ class CoreWorker {
   std::unique_ptr<RayletClient> raylet_client_;
 
   /// GCS client.
-  std::unique_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
 
   /// event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
