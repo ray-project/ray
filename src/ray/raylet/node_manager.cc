@@ -1405,8 +1405,7 @@ bool NodeManager::CheckDependencyManagerInvariant() const {
   return true;
 }
 
-void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type,
-                                    const ObjectID *required_object_id) {
+void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
                  << ErrorType_Name(error_type) << ".";
@@ -1426,13 +1425,8 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   }
   // Determine which IDs should be marked as failed.
   std::vector<plasma::ObjectID> objects_to_fail;
-  if (num_returns == 0 && required_object_id != nullptr) {
-    // This may be a driver task with no returns
-    objects_to_fail.push_back(required_object_id->ToPlasmaId());
-  } else {
-    for (int64_t i = 0; i < num_returns; i++) {
-      objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
-    }
+  for (int64_t i = 0; i < num_returns; i++) {
+    objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
@@ -2128,7 +2122,9 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         task.GetTaskSpecification().JobId(), type, error_message.str(),
         current_time_ms()));
-    TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE, &required_object_id);
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                        {required_object_id.ToPlasmaId()},
+                        task.GetTaskSpecification().JobId());
     return;
   }
 
