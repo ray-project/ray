@@ -1,24 +1,17 @@
 Tune Walkthrough
 ================
 
-Tuning hyperparameters is often the most expensive part of the machine
-learning workflow. Tune is built to address this, demonstrating an
-efficient and scalable solution for this pain point.
-
-**Code**: https://github.com/ray-project/ray/tree/master/python/ray/tune
-
-**Examples**:
-https://github.com/ray-project/ray/tree/master/python/ray/tune/examples
-
-**Documentation**: http://ray.readthedocs.io/en/latest/tune.html
-
-**Mailing List** https://groups.google.com/forum/#!forum/ray-dev
-
 This tutorial will walk you through the following process:
 
-1. Integrating Tune into your workflow
-2. Setting a stopping criteria
-3. Getting the best model and analyzing results
+  1. Integrating Tune into your workflow
+  2. Setting a stopping criteria
+  3. Specifying a TrialScheduler
+  4. Adding a SearchAlgorithm
+  3. Getting the best model and analyzing results
+
+Specifically, we'll leverage ASHA and Bayesian Optimization (via
+HyperOpt) without modifying your underlying code.
+
 
 .. code:: ipython3
 
@@ -29,54 +22,12 @@ This tutorial will walk you through the following process:
 
     from ray import tune
     from ray.tune.integration.keras import TuneReporterCallback
-    from ray.tune.examples.utils import get_iris_data
 
     import numpy as np
     import pandas as pd
-    import matplotlib.pyplot as plt
-    plt.style.use('ggplot')
-    %matplotlib inline
 
-Visualize your data
--------------------
 
-Let's first take a look at the distribution of the dataset.
-
-.. code:: ipython3
-
-    from sklearn.datasets import load_iris
-
-    iris = load_iris()
-    true_data = iris['data']
-    true_label = iris['target']
-    names = iris['target_names']
-    feature_names = iris['feature_names']
-
-    def plot_data(X, y):
-        # Visualize the data sets
-        plt.figure(figsize=(16, 6))
-        plt.subplot(1, 2, 1)
-        for target, target_name in enumerate(names):
-            X_plot = X[y == target]
-            plt.plot(X_plot[:, 0], X_plot[:, 1], linestyle='none', marker='o', label=target_name)
-        plt.xlabel(feature_names[0])
-        plt.ylabel(feature_names[1])
-        plt.axis('equal')
-        plt.legend();
-
-        plt.subplot(1, 2, 2)
-        for target, target_name in enumerate(names):
-            X_plot = X[y == target]
-            plt.plot(X_plot[:, 2], X_plot[:, 3], linestyle='none', marker='o', label=target_name)
-        plt.xlabel(feature_names[2])
-        plt.ylabel(feature_names[3])
-        plt.axis('equal')
-        plt.legend();
-
-    plot_data(true_data, true_label)
-
-Now, let's define a function that will train a model to classify this
-dataset.
+Now, let's define a function that will train a model to classify this dataset.
 
 .. code:: ipython3
 
@@ -92,15 +43,12 @@ dataset.
         # This saves the top model
         checkpoint_callback = ModelCheckpoint("model.h5", monitor='val_loss', save_best_only=True, period=3)
 
-
         # Train the model
         model.fit(
             train_x, train_y,
             validation_data=(test_x, test_y),
             verbose=0, batch_size=5, epochs=50, callbacks=[checkpoint_callback])
         return model
-
-.. code:: ipython3
 
     model = train_on_iris()
     train_x, train_y, test_x, test_y = get_iris_data()
@@ -144,10 +92,7 @@ This will take three steps:
     results = tune.run(
         tune_iris,
         config={"lr": 0.1, "dense_1": 1, "dense_2": 0.1},
-        num_samples=1,
-        return_trials=False)
-
-    assert len(results.trials) == 10
+        num_samples=1)
 
 Evaluate best trained model
 ---------------------------
@@ -186,19 +131,6 @@ Use Tensorboard for results
 
 In this tutorial, we'll show you how to use state-of-the-art hyperparameter tuning with Tune and PyTorch.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Specifically, we'll leverage ASHA and Bayesian Optimization (via
-HyperOpt) without modifying your underlying code.
-
-Tune is a scalable framework for model training and hyperparameter
-search with a focus on deep learning and deep reinforcement learning.
-
--  **Code**:
-   https://github.com/ray-project/ray/tree/master/python/ray/tune
--  **Examples**:
-   https://github.com/ray-project/ray/tree/master/python/ray/tune/examples
--  **Documentation**: http://ray.readthedocs.io/en/latest/tune.html
--  **Mailing List** https://groups.google.com/forum/#!forum/ray-dev
 
 Exercise 1: PyTorch Boilerplate Code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -261,7 +193,7 @@ the data loader.
         for i in range(20):
             train(model, optimizer, train_loader)
             acc = test(model, test_loader)
-            # TODO: Add track.log(mean_accuracy=acc) here
+            track.log(mean_accuracy=acc)
             if i % 5 == 0:
                 torch.save(model, "./model.pth") # This saves the model to the trial directory
 
@@ -299,32 +231,7 @@ Exercise 2: Early Stopping with ASHA
 
 ASHA is a scalable algorithm for principled early stopping. How does it
 work? On a high level, it terminates trials that are less promising and
-allocates more time and resources to more promising trials.
-
-::
-
-    The successive halving algorithm begins with all candidate configurations in the base rung and proceeds as follows:
-
-        1. Uniformly allocate a budget to a set of candidate hyperparameter configurations in a given rung.
-        2. Evaluate the performance of all candidate configurations.
-        3. Promote the top half of candidate configurations to the next rung.
-        4. Double the budget per configuration for the next rung and repeat until one configurations remains.
-
-
-A textual representation:
-
-::
-
-           | Configurations | Epochs per
-           | Remaining      | Configuration
-    ---------------------------------------
-    Rung 1 | 27             | 1
-    Rung 2 | 9              | 3
-    Rung 3 | 3              | 9
-    Rung 4 | 1              | 27
-
-(from
-https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/)
+allocates more time and resources to more promising trials. See from https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/ for more details.
 
 Now, let's integrate this with a PyTorch codebase.
 
@@ -350,9 +257,9 @@ about the Asynchronous Hyperband Scheduler*
 
 .. code:: ipython3
 
-    from ray.tune.schedulers import ASHAScheduler
+    from ray.tune.schedulers import
 
-    custom_scheduler = "FIX ME"
+    custom_scheduler = ASHAScheduler(metric=mean_)
 
     analysis = tune.run(
         train_mnist,
@@ -381,35 +288,7 @@ about the Asynchronous Hyperband Scheduler*
 Exercise 3: Search Algorithms in Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With Tune you can combine powerful Hyperparameter Search libraries such
-as HyperOpt (https://github.com/hyperopt/hyperopt) with state-of-the-art
-algorithms such as HyperBand without modifying any model training code.
-Tune allows you to use different search algorithms in combination with
-different trial schedulers.
-
-The documentation to doing this is here:
-https://ray.readthedocs.io/en/latest/tune-searchalg.html#hyperopt-search-tree-structured-parzen-estimators
-
-Currently, Tune offers the following search algorithms (and library
-integrations):
-
--  Grid Search and Random Search
--  BayesOpt
--  HyperOpt
--  SigOpt
--  Nevergrad
--  Scikit-Optimize
--  Ax
-
-Check out more at
-https://ray.readthedocs.io/en/latest/tune-searchalg.html
-
-**TODO:** Plug in ``HyperOptSearch`` into ``tune.run`` and enforce that
-only 2 trials can run concurrently, like this -
-
-.. code:: python
-
-        hyperopt_search = HyperOptSearch(space, max_concurrent=2, reward_attr="mean_accuracy")
+With Tune you can combine powerful Hyperparameter Search libraries such as HyperOpt (https://github.com/hyperopt/hyperopt) with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers.
 
 .. code:: ipython3
 
@@ -421,15 +300,15 @@ only 2 trials can run concurrently, like this -
         "momentum": hp.uniform("momentum", 0.1, 0.9),
     }
 
-    hyperopt_search = "FIX ME"  # TODO: Change this
+    hyperopt_search = HyperOptSearch(space, max_concurrent=2, reward_attr="mean_accuracy")
 
     analysis = tune.run(
         train_mnist,
         num_samples=10,
-        search_alg="FIX ME",  #  TODO: Change this
+        search_alg=hyperopt_search
         **experiment_config)
 
-Please: fill out this form to provide feedback on this tutorial!
-================================================================
+Feedback
+========
 
-https://goo.gl/forms/NVTFjUKFz4TH8kgK2
+Please: fill out this form to provide feedback on this tutorial! https://goo.gl/forms/NVTFjUKFz4TH8kgK2
