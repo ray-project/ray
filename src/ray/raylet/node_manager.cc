@@ -1427,6 +1427,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   // Determine which IDs should be marked as failed.
   std::vector<plasma::ObjectID> objects_to_fail;
   if (num_returns == 0 && required_object_id != nullptr) {
+    // This may be a driver task with no returns
     objects_to_fail.push_back(required_object_id->ToPlasmaId());
   } else {
     for (int64_t i = 0; i < num_returns; i++) {
@@ -1434,7 +1435,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
     }
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
-  MarkObjectsAsFailed(error_type, objects_to_fail, &job_id);
+  MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
   task_dependency_manager_.TaskCanceled(spec.TaskId());
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
@@ -1446,7 +1447,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
 
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const std::vector<plasma::ObjectID> objects_to_fail,
-                                      const JobID *job_id) {
+                                      const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
     arrow::Status status = store_client_.CreateAndSeal(object_id, "", meta);
@@ -1459,10 +1460,8 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(WARNING) << error_message;
-      if (job_id != nullptr) {
-        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            *job_id, "task", error_message, current_time_ms()));
-      }
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          job_id, "task", error_message, current_time_ms()));
     }
   }
 }
@@ -2093,7 +2092,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                  "allocation via "
               << "ray.init(redis_max_memory=<max_memory_bytes>).";
           MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                              {required_object_id.ToPlasmaId()});
+                              {required_object_id.ToPlasmaId()}, JobID::Nil());
         }
       }));
 }

@@ -30,9 +30,7 @@ class TestUnreconstructableErrors(unittest.TestCase):
 
         x_id = f.remote(None)
         ray.get(x_id)
-        for i in range(200):
-            if i % 100 == 0:
-                print("launching round of tasks to evict lineage", i)
+        for _ in range(200):
             ray.get([f.remote(np.zeros(10000)) for _ in range(100)])
         self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))
