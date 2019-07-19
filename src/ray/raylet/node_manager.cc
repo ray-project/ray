@@ -1096,9 +1096,9 @@ void NodeManager::HandlePrepareActorCheckpointRequest(
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(
       JobID::Nil(), checkpoint_id, checkpoint_data,
-      [worker, actor_id, this](ray::gcs::RedisGcsClient *client,
-                               const ActorCheckpointID &checkpoint_id,
-                               const ActorCheckpointData &data) {
+      [worker, actor_id, reply, send_reply_callback, this](
+          ray::gcs::RedisGcsClient *client, const ActorCheckpointID &checkpoint_id,
+          const ActorCheckpointData &data) {
         RAY_LOG(DEBUG) << "Checkpoint " << checkpoint_id << " saved for actor "
                        << worker->GetActorId();
         // Save this actor-to-checkpoint mapping, and remove old checkpoints
