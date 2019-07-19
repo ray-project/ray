@@ -10,7 +10,7 @@ import threading
 import time
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
-from ray.rllib.evaluation.metrics import RolloutMetrics
+from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
 from ray.rllib.policy.tf_policy import TFPolicy
