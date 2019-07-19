@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import logging
 import os
+import sys
 import time
 
 try:
@@ -51,6 +52,13 @@ class MemoryMonitor(object):
 
     This presents a much cleaner error message to users than what would happen
     if we actually ran out of memory.
+
+    The monitor tries to use the cgroup memory limit and usage if it is set
+    and available so that it is more reasonable inside containers. Otherwise,
+    it uses `psutil` to check the memory usage.
+
+    The environment variable `RAY_MEMORY_MONITOR_ERROR_THRESHOLD` can be used
+    to overwrite the default error_threshold setting.
     """
 
     def __init__(self, error_threshold=0.95, check_interval=1):
@@ -58,7 +66,18 @@ class MemoryMonitor(object):
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
         self.last_checked = time.time()
-        self.error_threshold = error_threshold
+        try:
+            self.error_threshold = float(
+                os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD"))
+        except (ValueError, TypeError):
+            self.error_threshold = error_threshold
+        # Try to read the cgroup memory limit if it is available.
+        try:
+            with open("/sys/fs/cgroup/memory/memory.limit_in_bytes",
+                      "rb") as f:
+                self.cgroup_memory_limit_gb = int(f.read()) / 1e9
+        except IOError:
+            self.cgroup_memory_limit_gb = sys.maxsize / 1e9
         if not psutil:
             print("WARNING: Not monitoring node memory since `psutil` is not "
                   "installed. Install this with `pip install psutil` "
@@ -76,6 +95,11 @@ class MemoryMonitor(object):
             self.last_checked = time.time()
             total_gb = psutil.virtual_memory().total / 1e9
             used_gb = total_gb - psutil.virtual_memory().available / 1e9
+            if self.cgroup_memory_limit_gb < total_gb:
+                total_gb = self.cgroup_memory_limit_gb
+                with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
+                          "rb") as f:
+                    used_gb = int(f.read()) / 1e9
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
                     RayOutOfMemoryError.get_message(used_gb, total_gb,

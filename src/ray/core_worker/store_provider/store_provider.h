@@ -79,8 +79,8 @@ class CoreWorkerStoreProvider {
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects.
   /// \return Status.
-  virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                        bool delete_creating_tasks) = 0;
+  virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                        bool delete_creating_tasks = false) = 0;
 };
 
 }  // namespace ray
