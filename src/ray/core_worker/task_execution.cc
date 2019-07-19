@@ -16,17 +16,19 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
-                        std::placeholders::_1);
+                        std::placeholders::_1, std::placeholders::_2);
   task_receivers_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
+      TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, main_service_, worker_server_, func)));
+          raylet_client, object_interface_, main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &task_spec) {
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(
+    const TaskSpecification &task_spec,
+    std::vector<std::shared_ptr<RayObject>> *results) {
   worker_context_.SetCurrentTask(task_spec);
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
@@ -48,11 +50,12 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &ta
   auto num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
-    // Decrease to account for the dummy object id.
+    // Decrease to account for the dummy object id, this logic only
+    // applies to task submitted via raylet.
     num_returns--;
   }
 
-  auto status = execution_callback_(func, args, task_info, num_returns);
+  auto status = execution_callback_(func, args, task_info, num_returns, results);
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.

@@ -6,7 +6,7 @@ extern "C" {
 }
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -29,8 +29,8 @@ inline JobID NextJobID() {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    client_ = std::make_shared<gcs::AsyncGcsClient>("127.0.0.1", 6379, command_type_,
-                                                    /*is_test_client=*/true);
+    GcsClientOptions options("127.0.0.1", 6379, command_type_);
+    client_ = std::make_shared<gcs::RedisGcsClient>(options);
     job_id_ = NextJobID();
   }
 
@@ -50,7 +50,7 @@ class TestGcs : public ::testing::Test {
  protected:
   uint64_t num_callbacks_;
   gcs::CommandType command_type_;
-  std::shared_ptr<gcs::AsyncGcsClient> client_;
+  std::shared_ptr<gcs::RedisGcsClient> client_;
   JobID job_id_;
 };
 
@@ -60,13 +60,14 @@ class TestGcsWithAsio : public TestGcs {
  public:
   TestGcsWithAsio(CommandType command_type)
       : TestGcs(command_type), io_service_(), work_(io_service_) {
-    RAY_CHECK_OK(client_->Attach(io_service_));
+    RAY_CHECK_OK(client_->Connect(io_service_));
   }
 
   TestGcsWithAsio() : TestGcsWithAsio(CommandType::kRegular) {}
 
   ~TestGcsWithAsio() {
     // Destroy the client first since it has a reference to the event loop.
+    client_->Disconnect();
     client_.reset();
   }
   void Start() override { io_service_.run(); }
@@ -102,19 +103,19 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
           spec1.num_returns() == spec2.num_returns());
 }
 
-void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   const auto task_id = TaskID::FromRandom();
   const auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
-  auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
+  auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
                                       const TaskTableData &d) {
     ASSERT_EQ(id, task_id);
     ASSERT_TRUE(TaskTableDataEqual(*data, d));
   };
 
   // Check that the lookup returns the added task.
-  auto lookup_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
+  auto lookup_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
                                          const TaskTableData &d) {
     ASSERT_EQ(id, task_id);
     ASSERT_TRUE(TaskTableDataEqual(*data, d));
@@ -122,7 +123,7 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   };
 
   // Check that the lookup does not return an empty entry.
-  auto failure_callback = [](gcs::AsyncGcsClient *client, const TaskID &id) {
+  auto failure_callback = [](gcs::RedisGcsClient *client, const TaskID &id) {
     RAY_CHECK(false);
   };
 
@@ -148,7 +149,7 @@ TEST_MACRO(TestGcsWithAsio, TestTableLookup);
 TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 #endif
 
-void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   // Append some entries to the log at an object ID.
   TaskID task_id = TaskID::FromRandom();
   std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
@@ -156,7 +157,7 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
     auto data = std::make_shared<TaskReconstructionData>();
     data->set_node_manager_id(node_manager_id);
     // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
+    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
                                         const TaskReconstructionData &d) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
@@ -167,7 +168,7 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
 
   // Check that lookup returns the added object entries.
   auto lookup_callback = [task_id, node_manager_ids](
-                             gcs::AsyncGcsClient *client, const TaskID &id,
+                             gcs::RedisGcsClient *client, const TaskID &id,
                              const std::vector<TaskReconstructionData> &data) {
     ASSERT_EQ(id, task_id);
     for (const auto &entry : data) {
@@ -194,15 +195,15 @@ TEST_F(TestGcsWithAsio, TestLogLookup) {
 }
 
 void TestTableLookupFailure(const JobID &job_id,
-                            std::shared_ptr<gcs::AsyncGcsClient> client) {
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
   TaskID task_id = TaskID::FromRandom();
 
   // Check that the lookup does not return data.
-  auto lookup_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
+  auto lookup_callback = [](gcs::RedisGcsClient *client, const TaskID &id,
                             const TaskTableData &d) { RAY_CHECK(false); };
 
   // Check that the lookup returns an empty entry.
-  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id) {
+  auto failure_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id) {
     ASSERT_EQ(id, task_id);
     test->Stop();
   };
@@ -220,7 +221,7 @@ TEST_MACRO(TestGcsWithAsio, TestTableLookupFailure);
 TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
 
-void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   TaskID task_id = TaskID::FromRandom();
   std::vector<std::string> node_manager_ids = {"A", "B"};
   std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
@@ -231,7 +232,7 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   }
 
   // Check that we added the correct task.
-  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
+  auto failure_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
                                     const TaskReconstructionData &d) {
     ASSERT_EQ(id, task_id);
     test->IncrementNumCallbacks();
@@ -256,7 +257,7 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
       /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
 
   auto lookup_callback = [node_manager_ids](
-                             gcs::AsyncGcsClient *client, const TaskID &id,
+                             gcs::RedisGcsClient *client, const TaskID &id,
                              const std::vector<TaskReconstructionData> &data) {
     std::vector<std::string> appended_managers;
     for (const auto &entry : data) {
@@ -278,7 +279,7 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   TestLogAppendAt(job_id_, client_);
 }
 
-void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestSet(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add some entries to the set at an object ID.
   ObjectID object_id = ObjectID::FromRandom();
   std::vector<std::string> managers = {"abc", "def", "ghi"};
@@ -286,7 +287,7 @@ void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
     auto data = std::make_shared<ObjectTableData>();
     data->set_manager(manager);
     // Check that we added the correct object entries.
-    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const ObjectID &id,
+    auto add_callback = [object_id, data](gcs::RedisGcsClient *client, const ObjectID &id,
                                           const ObjectTableData &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager(), d.manager());
@@ -296,7 +297,7 @@ void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   }
 
   // Check that lookup returns the added object entries.
-  auto lookup_callback = [object_id, managers](gcs::AsyncGcsClient *client,
+  auto lookup_callback = [object_id, managers](gcs::RedisGcsClient *client,
                                                const ObjectID &id,
                                                const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(id, object_id);
@@ -311,7 +312,7 @@ void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
     auto data = std::make_shared<ObjectTableData>();
     data->set_manager(manager);
     // Check that we added the correct object entries.
-    auto remove_entry_callback = [object_id, data](gcs::AsyncGcsClient *client,
+    auto remove_entry_callback = [object_id, data](gcs::RedisGcsClient *client,
                                                    const ObjectID &id,
                                                    const ObjectTableData &d) {
       ASSERT_EQ(id, object_id);
@@ -324,7 +325,7 @@ void TestSet(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
 
   // Check that the entries are removed.
   auto lookup_callback2 = [object_id, managers](
-                              gcs::AsyncGcsClient *client, const ObjectID &id,
+                              gcs::RedisGcsClient *client, const ObjectID &id,
                               const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(id, object_id);
     ASSERT_EQ(data.size(), 0);
@@ -346,7 +347,7 @@ TEST_F(TestGcsWithAsio, TestSet) {
 }
 
 void TestDeleteKeysFromLog(
-    const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client,
+    const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
     std::vector<std::shared_ptr<TaskReconstructionData>> &data_vector) {
   std::vector<TaskID> ids;
   TaskID task_id;
@@ -354,7 +355,7 @@ void TestDeleteKeysFromLog(
     task_id = TaskID::FromRandom();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
+    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
                                         const TaskReconstructionData &d) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
@@ -366,7 +367,7 @@ void TestDeleteKeysFromLog(
   for (const auto &task_id : ids) {
     // Check that lookup returns the added object entries.
     auto lookup_callback = [task_id, data_vector](
-                               gcs::AsyncGcsClient *client, const TaskID &id,
+                               gcs::RedisGcsClient *client, const TaskID &id,
                                const std::vector<TaskReconstructionData> &data) {
       ASSERT_EQ(id, task_id);
       ASSERT_EQ(data.size(), 1);
@@ -381,7 +382,7 @@ void TestDeleteKeysFromLog(
     client->task_reconstruction_log().Delete(job_id, ids);
   }
   for (const auto &task_id : ids) {
-    auto lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
+    auto lookup_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
                                      const std::vector<TaskReconstructionData> &data) {
       ASSERT_EQ(id, task_id);
       ASSERT_TRUE(data.size() == 0);
@@ -393,7 +394,7 @@ void TestDeleteKeysFromLog(
 }
 
 void TestDeleteKeysFromTable(const JobID &job_id,
-                             std::shared_ptr<gcs::AsyncGcsClient> client,
+                             std::shared_ptr<gcs::RedisGcsClient> client,
                              std::vector<std::shared_ptr<TaskTableData>> &data_vector,
                              bool stop_at_end) {
   std::vector<TaskID> ids;
@@ -402,7 +403,7 @@ void TestDeleteKeysFromTable(const JobID &job_id,
     task_id = TaskID::FromRandom();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const TaskID &id,
+    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
                                         const TaskTableData &d) {
       ASSERT_EQ(id, task_id);
       ASSERT_TRUE(TaskTableDataEqual(*data, d));
@@ -411,7 +412,7 @@ void TestDeleteKeysFromTable(const JobID &job_id,
     RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, add_callback));
   }
   for (const auto &task_id : ids) {
-    auto task_lookup_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
+    auto task_lookup_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
                                           const TaskTableData &data) {
       ASSERT_EQ(id, task_id);
       test->IncrementNumCallbacks();
@@ -424,25 +425,25 @@ void TestDeleteKeysFromTable(const JobID &job_id,
   } else {
     client->raylet_task_table().Delete(job_id, ids);
   }
-  auto expected_failure_callback = [](AsyncGcsClient *client, const TaskID &id) {
+  auto expected_failure_callback = [](RedisGcsClient *client, const TaskID &id) {
     ASSERT_TRUE(true);
     test->IncrementNumCallbacks();
   };
-  auto undesired_callback = [](gcs::AsyncGcsClient *client, const TaskID &id,
+  auto undesired_callback = [](gcs::RedisGcsClient *client, const TaskID &id,
                                const TaskTableData &data) { ASSERT_TRUE(false); };
   for (size_t i = 0; i < ids.size(); ++i) {
     RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, undesired_callback,
                                                     expected_failure_callback));
   }
   if (stop_at_end) {
-    auto stop_callback = [](AsyncGcsClient *client, const TaskID &id) { test->Stop(); };
+    auto stop_callback = [](RedisGcsClient *client, const TaskID &id) { test->Stop(); };
     RAY_CHECK_OK(
         client->raylet_task_table().Lookup(job_id, ids[0], nullptr, stop_callback));
   }
 }
 
 void TestDeleteKeysFromSet(const JobID &job_id,
-                           std::shared_ptr<gcs::AsyncGcsClient> client,
+                           std::shared_ptr<gcs::RedisGcsClient> client,
                            std::vector<std::shared_ptr<ObjectTableData>> &data_vector) {
   std::vector<ObjectID> ids;
   ObjectID object_id;
@@ -450,7 +451,7 @@ void TestDeleteKeysFromSet(const JobID &job_id,
     object_id = ObjectID::FromRandom();
     ids.push_back(object_id);
     // Check that we added the correct object entries.
-    auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const ObjectID &id,
+    auto add_callback = [object_id, data](gcs::RedisGcsClient *client, const ObjectID &id,
                                           const ObjectTableData &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager(), d.manager());
@@ -461,7 +462,7 @@ void TestDeleteKeysFromSet(const JobID &job_id,
   for (const auto &object_id : ids) {
     // Check that lookup returns the added object entries.
     auto lookup_callback = [object_id, data_vector](
-                               gcs::AsyncGcsClient *client, const ObjectID &id,
+                               gcs::RedisGcsClient *client, const ObjectID &id,
                                const std::vector<ObjectTableData> &data) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data.size(), 1);
@@ -475,7 +476,7 @@ void TestDeleteKeysFromSet(const JobID &job_id,
     client->object_table().Delete(job_id, ids);
   }
   for (const auto &object_id : ids) {
-    auto lookup_callback = [object_id](gcs::AsyncGcsClient *client, const ObjectID &id,
+    auto lookup_callback = [object_id](gcs::RedisGcsClient *client, const ObjectID &id,
                                        const std::vector<ObjectTableData> &data) {
       ASSERT_EQ(id, object_id);
       ASSERT_TRUE(data.size() == 0);
@@ -486,7 +487,7 @@ void TestDeleteKeysFromSet(const JobID &job_id,
 }
 
 // Test delete function for keys of Log or Table.
-void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   // Test delete function for keys of Log.
   std::vector<std::shared_ptr<TaskReconstructionData>> task_reconstruction_vector;
   auto AppendTaskReconstructionData = [&task_reconstruction_vector](size_t add_count) {
@@ -574,13 +575,13 @@ TEST_F(TestGcsWithAsio, TestDeleteKey) {
 }
 
 void TestLogSubscribeAll(const JobID &job_id,
-                         std::shared_ptr<gcs::AsyncGcsClient> client) {
+                         std::shared_ptr<gcs::RedisGcsClient> client) {
   std::vector<JobID> job_ids;
   for (int i = 0; i < 3; i++) {
     job_ids.emplace_back(NextJobID());
   }
   // Callback for a notification.
-  auto notification_callback = [job_ids](gcs::AsyncGcsClient *client, const JobID &id,
+  auto notification_callback = [job_ids](gcs::RedisGcsClient *client, const JobID &id,
                                          const std::vector<JobTableData> data) {
     ASSERT_EQ(id, job_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
@@ -595,7 +596,7 @@ void TestLogSubscribeAll(const JobID &job_id,
 
   // Callback for subscription success. We are guaranteed to receive
   // notifications after this is called.
-  auto subscribe_callback = [job_ids](gcs::AsyncGcsClient *client) {
+  auto subscribe_callback = [job_ids](gcs::RedisGcsClient *client) {
     // We have subscribed. Do the writes to the table.
     for (size_t i = 0; i < job_ids.size(); i++) {
       RAY_CHECK_OK(
@@ -622,7 +623,7 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeAll) {
 }
 
 void TestSetSubscribeAll(const JobID &job_id,
-                         std::shared_ptr<gcs::AsyncGcsClient> client) {
+                         std::shared_ptr<gcs::RedisGcsClient> client) {
   std::vector<ObjectID> object_ids;
   for (int i = 0; i < 3; i++) {
     object_ids.emplace_back(ObjectID::FromRandom());
@@ -631,7 +632,7 @@ void TestSetSubscribeAll(const JobID &job_id,
 
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
-                                   gcs::AsyncGcsClient *client, const ObjectID &id,
+                                   gcs::RedisGcsClient *client, const ObjectID &id,
                                    const GcsChangeMode change_mode,
                                    const std::vector<ObjectTableData> data) {
     if (test->NumCallbacks() < 3 * 3) {
@@ -652,7 +653,7 @@ void TestSetSubscribeAll(const JobID &job_id,
 
   // Callback for subscription success. We are guaranteed to receive
   // notifications after this is called.
-  auto subscribe_callback = [job_id, object_ids, managers](gcs::AsyncGcsClient *client) {
+  auto subscribe_callback = [job_id, object_ids, managers](gcs::RedisGcsClient *client) {
     // We have subscribed. Do the writes to the table.
     for (size_t i = 0; i < object_ids.size(); i++) {
       for (size_t j = 0; j < managers.size(); j++) {
@@ -698,7 +699,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeAll) {
 }
 
 void TestTableSubscribeId(const JobID &job_id,
-                          std::shared_ptr<gcs::AsyncGcsClient> client) {
+                          std::shared_ptr<gcs::RedisGcsClient> client) {
   int num_modifications = 3;
 
   // Add a table entry.
@@ -709,7 +710,7 @@ void TestTableSubscribeId(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id2, num_modifications](gcs::AsyncGcsClient *client,
+  auto notification_callback = [task_id2, num_modifications](gcs::RedisGcsClient *client,
                                                              const TaskID &id,
                                                              const TaskTableData &data) {
     // Check that we only get notifications for the requested key.
@@ -726,7 +727,7 @@ void TestTableSubscribeId(const JobID &job_id,
   // The failure callback should be called once since both keys start as empty.
   bool failure_notification_received = false;
   auto failure_callback = [task_id2, &failure_notification_received](
-                              gcs::AsyncGcsClient *client, const TaskID &id) {
+                              gcs::RedisGcsClient *client, const TaskID &id) {
     ASSERT_EQ(id, task_id2);
     // The failure notification should be the first notification received.
     ASSERT_EQ(test->NumCallbacks(), 0);
@@ -736,7 +737,7 @@ void TestTableSubscribeId(const JobID &job_id,
   // The callback for subscription success. Once we've subscribed, request
   // notifications for only one of the keys, then write to both keys.
   auto subscribe_callback = [job_id, task_id1, task_id2,
-                             num_modifications](gcs::AsyncGcsClient *client) {
+                             num_modifications](gcs::RedisGcsClient *client) {
     // Request notifications for one of the keys.
     RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
         job_id, task_id2, client->client_table().GetLocalClientId()));
@@ -774,7 +775,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 #endif
 
 void TestLogSubscribeId(const JobID &job_id,
-                        std::shared_ptr<gcs::AsyncGcsClient> client) {
+                        std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a log entry.
   JobID job_id1 = NextJobID();
   std::vector<std::string> job_ids1 = {"abc", "def", "ghi"};
@@ -792,7 +793,7 @@ void TestLogSubscribeId(const JobID &job_id,
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [job_id2, job_ids2](
-                                   gcs::AsyncGcsClient *client, const JobID &id,
+                                   gcs::RedisGcsClient *client, const JobID &id,
                                    const std::vector<JobTableData> &data) {
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, job_id2);
@@ -809,7 +810,7 @@ void TestLogSubscribeId(const JobID &job_id,
   // The callback for subscription success. Once we've subscribed, request
   // notifications for only one of the keys, then write to both keys.
   auto subscribe_callback = [job_id, job_id1, job_id2, job_ids1,
-                             job_ids2](gcs::AsyncGcsClient *client) {
+                             job_ids2](gcs::RedisGcsClient *client) {
     // Request notifications for one of the keys.
     RAY_CHECK_OK(client->job_table().RequestNotifications(
         job_id, job_id2, client->client_table().GetLocalClientId()));
@@ -848,7 +849,7 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeId) {
 }
 
 void TestSetSubscribeId(const JobID &job_id,
-                        std::shared_ptr<gcs::AsyncGcsClient> client) {
+                        std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a set entry.
   ObjectID object_id1 = ObjectID::FromRandom();
   std::vector<std::string> managers1 = {"abc", "def", "ghi"};
@@ -866,7 +867,7 @@ void TestSetSubscribeId(const JobID &job_id,
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
-                                   gcs::AsyncGcsClient *client, const ObjectID &id,
+                                   gcs::RedisGcsClient *client, const ObjectID &id,
                                    const GcsChangeMode change_mode,
                                    const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
@@ -885,7 +886,7 @@ void TestSetSubscribeId(const JobID &job_id,
   // The callback for subscription success. Once we've subscribed, request
   // notifications for only one of the keys, then write to both keys.
   auto subscribe_callback = [job_id, object_id1, object_id2, managers1,
-                             managers2](gcs::AsyncGcsClient *client) {
+                             managers2](gcs::RedisGcsClient *client) {
     // Request notifications for one of the keys.
     RAY_CHECK_OK(client->object_table().RequestNotifications(
         job_id, object_id2, client->client_table().GetLocalClientId()));
@@ -924,7 +925,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
 }
 
 void TestTableSubscribeCancel(const JobID &job_id,
-                              std::shared_ptr<gcs::AsyncGcsClient> client) {
+                              std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a table entry.
   const auto task_id = TaskID::FromRandom();
   const int num_modifications = 3;
@@ -933,13 +934,13 @@ void TestTableSubscribeCancel(const JobID &job_id,
 
   // The failure callback should not be called since all keys are non-empty
   // when notifications are requested.
-  auto failure_callback = [](gcs::AsyncGcsClient *client, const TaskID &id) {
+  auto failure_callback = [](gcs::RedisGcsClient *client, const TaskID &id) {
     RAY_CHECK(false);
   };
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id](gcs::AsyncGcsClient *client, const TaskID &id,
+  auto notification_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
                                          const TaskTableData &data) {
     ASSERT_EQ(id, task_id);
     // Check that we only get notifications for the first and last writes,
@@ -958,7 +959,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto subscribe_callback = [job_id, task_id](gcs::AsyncGcsClient *client) {
+  auto subscribe_callback = [job_id, task_id](gcs::RedisGcsClient *client) {
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
@@ -996,7 +997,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 #endif
 
 void TestLogSubscribeCancel(const JobID &job_id,
-                            std::shared_ptr<gcs::AsyncGcsClient> client) {
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a log entry.
   JobID random_job_id = NextJobID();
   std::vector<std::string> job_ids = {"jkl", "mno", "pqr"};
@@ -1007,7 +1008,7 @@ void TestLogSubscribeCancel(const JobID &job_id,
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [random_job_id, job_ids](
-                                   gcs::AsyncGcsClient *client, const JobID &id,
+                                   gcs::RedisGcsClient *client, const JobID &id,
                                    const std::vector<JobTableData> &data) {
     ASSERT_EQ(id, random_job_id);
     // Check that we get a duplicate notification for the first write. We get a
@@ -1027,7 +1028,7 @@ void TestLogSubscribeCancel(const JobID &job_id,
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto subscribe_callback = [job_id, random_job_id,
-                             job_ids](gcs::AsyncGcsClient *client) {
+                             job_ids](gcs::RedisGcsClient *client) {
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->job_table().RequestNotifications(
@@ -1068,7 +1069,7 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeCancel) {
 }
 
 void TestSetSubscribeCancel(const JobID &job_id,
-                            std::shared_ptr<gcs::AsyncGcsClient> client) {
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a set entry.
   ObjectID object_id = ObjectID::FromRandom();
   std::vector<std::string> managers = {"jkl", "mno", "pqr"};
@@ -1079,7 +1080,7 @@ void TestSetSubscribeCancel(const JobID &job_id,
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
-                                   gcs::AsyncGcsClient *client, const ObjectID &id,
+                                   gcs::RedisGcsClient *client, const ObjectID &id,
                                    const GcsChangeMode change_mode,
                                    const std::vector<ObjectTableData> &data) {
     ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
@@ -1109,7 +1110,7 @@ void TestSetSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto subscribe_callback = [job_id, object_id, managers](gcs::AsyncGcsClient *client) {
+  auto subscribe_callback = [job_id, object_id, managers](gcs::RedisGcsClient *client) {
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->object_table().RequestNotifications(
@@ -1149,7 +1150,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
   TestSetSubscribeCancel(job_id_, client_);
 }
 
-void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client_id,
+void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client_id,
                              const ClientTableData &data, bool is_insertion) {
   ClientID added_id = client->client_table().GetLocalClientId();
   ASSERT_EQ(client_id, added_id);
@@ -1164,11 +1165,11 @@ void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client
 }
 
 void TestClientTableConnect(const JobID &job_id,
-                            std::shared_ptr<gcs::AsyncGcsClient> client) {
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, true);
         test->Stop();
       });
@@ -1189,18 +1190,18 @@ TEST_F(TestGcsWithAsio, TestClientTableConnect) {
 }
 
 void TestClientTableDisconnect(const JobID &job_id,
-                               std::shared_ptr<gcs::AsyncGcsClient> client) {
+                               std::shared_ptr<gcs::RedisGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/true);
         // Disconnect from the client table. We should receive a notification
         // for the removal of our own entry.
         RAY_CHECK_OK(client->client_table().Disconnect());
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/false);
         test->Stop();
       });
@@ -1220,15 +1221,15 @@ TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
 }
 
 void TestClientTableImmediateDisconnect(const JobID &job_id,
-                                        std::shared_ptr<gcs::AsyncGcsClient> client) {
+                                        std::shared_ptr<gcs::RedisGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, true);
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });
@@ -1249,7 +1250,7 @@ TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
 }
 
 void TestClientTableMarkDisconnected(const JobID &job_id,
-                                     std::shared_ptr<gcs::AsyncGcsClient> client) {
+                                     std::shared_ptr<gcs::RedisGcsClient> client) {
   ClientTableData local_client_info = client->client_table().GetLocalClient();
   local_client_info.set_node_manager_address("127.0.0.1");
   local_client_info.set_node_manager_port(0);
@@ -1262,7 +1263,7 @@ void TestClientTableMarkDisconnected(const JobID &job_id,
   // Make sure we only get a notification for the removal of the client we
   // marked as dead.
   client->client_table().RegisterClientRemovedCallback(
-      [dead_client_id](gcs::AsyncGcsClient *client, const UniqueID &id,
+      [dead_client_id](gcs::RedisGcsClient *client, const UniqueID &id,
                        const ClientTableData &data) {
         ASSERT_EQ(ClientID::FromBinary(data.client_id()), dead_client_id);
         test->Stop();
@@ -1275,7 +1276,7 @@ TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   TestClientTableMarkDisconnected(job_id_, client_);
 }
 
-void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   const int expected_count = 14;
   ClientID client_id = ClientID::FromRandom();
   // Prepare the first resource map: data_map1.
@@ -1309,12 +1310,12 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
       ASSERT_EQ(iter->second->resource_capacity(), data.second->resource_capacity());
     }
   };
-  auto subscribe_callback = [](AsyncGcsClient *client) {
+  auto subscribe_callback = [](RedisGcsClient *client) {
     ASSERT_TRUE(true);
     test->IncrementNumCallbacks();
   };
   auto notification_callback = [data_map1, data_map2, compare_test](
-                                   AsyncGcsClient *client, const ClientID &id,
+                                   RedisGcsClient *client, const ClientID &id,
                                    const GcsChangeMode change_mode,
                                    const DynamicResourceTable::DataMap &data) {
     if (change_mode == GcsChangeMode::REMOVE) {
@@ -1345,7 +1346,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
 
   // Step 1: Add elements to the hash table.
   auto update_callback1 = [data_map1, compare_test](
-                              AsyncGcsClient *client, const ClientID &id,
+                              RedisGcsClient *client, const ClientID &id,
                               const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
@@ -1353,7 +1354,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   RAY_CHECK_OK(
       client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
   auto lookup_callback1 = [data_map1, compare_test](
-                              AsyncGcsClient *client, const ClientID &id,
+                              RedisGcsClient *client, const ClientID &id,
                               const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
@@ -1363,16 +1364,16 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   // Step 2: Decrease one element, increase one and add a new one.
   RAY_CHECK_OK(client->resource_table().Update(job_id, client_id, data_map2, nullptr));
   auto lookup_callback2 = [data_map2, compare_test](
-                              AsyncGcsClient *client, const ClientID &id,
+                              RedisGcsClient *client, const ClientID &id,
                               const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map2, callback_data);
     test->IncrementNumCallbacks();
   };
   RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback2));
   std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
-  auto remove_callback = [delete_keys](AsyncGcsClient *client, const ClientID &id,
+  auto remove_callback = [delete_keys](RedisGcsClient *client, const ClientID &id,
                                        const std::vector<std::string> &callback_data) {
-    for (int i = 0; i < callback_data.size(); ++i) {
+    for (size_t i = 0; i < callback_data.size(); ++i) {
       // All deleting keys exist in this argument even if the key doesn't exist.
       ASSERT_EQ(callback_data[i], delete_keys[i]);
     }
@@ -1384,7 +1385,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   data_map3.erase("GPU");
   data_map3.erase("CUSTOM");
   auto lookup_callback3 = [data_map3, compare_test](
-                              AsyncGcsClient *client, const ClientID &id,
+                              RedisGcsClient *client, const ClientID &id,
                               const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map3, callback_data);
     test->IncrementNumCallbacks();
@@ -1395,7 +1396,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   RAY_CHECK_OK(
       client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
   auto lookup_callback4 = [data_map1, compare_test](
-                              AsyncGcsClient *client, const ClientID &id,
+                              RedisGcsClient *client, const ClientID &id,
                               const DynamicResourceTable::DataMap &callback_data) {
     compare_test(data_map1, callback_data);
     test->IncrementNumCallbacks();
@@ -1405,7 +1406,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   // Step 4: Removing all elements will remove the home Hash table from GCS.
   RAY_CHECK_OK(client->resource_table().RemoveEntries(
       job_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
-  auto lookup_callback5 = [](AsyncGcsClient *client, const ClientID &id,
+  auto lookup_callback5 = [](RedisGcsClient *client, const ClientID &id,
                              const DynamicResourceTable::DataMap &callback_data) {
     ASSERT_EQ(callback_data.size(), 0);
     test->IncrementNumCallbacks();

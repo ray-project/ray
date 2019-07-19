@@ -32,7 +32,7 @@ class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+             std::shared_ptr<gcs::RedisGcsClient> gcs_client)
       : config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, object_manager_config,
@@ -44,8 +44,6 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
-
     auto object_manager_port = config_.object_manager_port;
     ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
     client_info.set_node_manager_address("127.0.0.1");
@@ -60,7 +58,7 @@ class MockServer {
   friend class StressTestObjectManager;
 
   ObjectManagerConfig config_;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   ObjectManager object_manager_;
 };
 
@@ -102,8 +100,11 @@ class TestObjectManagerBase : public ::testing::Test {
     int push_timeout_ms = 10000;
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+    gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
+                                         /*is_test_client=*/true);
+    gcs_client_1 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
+    RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
@@ -114,8 +115,9 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+    gcs_client_2 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
+    RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
@@ -134,6 +136,9 @@ class TestObjectManagerBase : public ::testing::Test {
     arrow::Status client1_status = client1.Disconnect();
     arrow::Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
+
+    gcs_client_1->Disconnect();
+    gcs_client_2->Disconnect();
 
     this->server1.reset();
     this->server2.reset();
@@ -161,8 +166,8 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_1;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
   std::unique_ptr<MockServer> server2;
 
@@ -210,7 +215,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+        [this](gcs::RedisGcsClient *client, const ClientID &id,
                const ClientTableData &data) {
           ClientID parsed_id = ClientID::FromBinary(data.client_id());
           if (parsed_id == client_id_1 || parsed_id == client_id_2) {
