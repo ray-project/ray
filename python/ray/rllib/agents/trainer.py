@@ -174,7 +174,9 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress individual observations
     "compress_observations": False,
-    # Drop metric batches from unresponsive workers after this many seconds
+    # Wait for metric batches for at most this many seconds where those have
+    # not been returned in time will be cached. Trainer will try to collect 
+    # them at the end of next training iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
