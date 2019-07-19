@@ -166,6 +166,7 @@ bool TaskDependencyManager::SubscribeGetDependencies(
   for (const auto &object_id : required_objects) {
     auto inserted = task_entry.get_dependencies.insert(object_id);
     if (inserted.second) {
+      RAY_LOG(DEBUG) << "Task " << task_id << " blocked on object " << object_id;
       // Get the ID of the task that creates the dependency.
       TaskID creating_task_id = object_id.TaskId();
       // Determine whether the dependency can be fulfilled by the local node.
@@ -196,6 +197,8 @@ void TaskDependencyManager::SubscribeWaitDependencies(
   // Record the worker's dependencies.
   for (const auto &object_id : required_objects) {
     if (local_objects_.count(object_id) == 0) {
+      RAY_LOG(DEBUG) << "Worker " << worker_id << " called ray.wait on remote object "
+                     << object_id;
       // Only add the dependency if the object is not local. If the object is
       // local, then the `ray.wait` call can already return it.
       auto inserted = worker_entry.insert(object_id);
@@ -217,6 +220,7 @@ void TaskDependencyManager::SubscribeWaitDependencies(
 }
 
 bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Task " << task_id << " no longer blocked";
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   if (it == task_dependencies_.end()) {
@@ -255,6 +259,7 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
 }
 
 void TaskDependencyManager::UnsubscribeWaitDependencies(const WorkerID &worker_id) {
+  RAY_LOG(DEBUG) << "Worker " << worker_id << " no longer blocked";
   // Remove the task from the table of subscribed tasks.
   auto it = worker_dependencies_.find(worker_id);
   if (it == worker_dependencies_.end()) {
@@ -301,6 +306,7 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 
 void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "Task execution " << task_id << " pending";
 
   // Record that the task is pending execution.
   auto inserted =
@@ -362,6 +368,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
 }
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Task execution " << task_id << " canceled";
   // Record that the task is no longer pending execution.
   auto it = pending_tasks_.find(task_id);
   if (it == pending_tasks_.end()) {

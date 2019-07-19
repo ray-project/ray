@@ -271,6 +271,7 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
 
       // Kill all the workers. The actual cleanup for these workers is done
       // later when we receive the DisconnectClient message from them.
+      // TODO(swang): Clean up worker's ray.wait dependencies.
       for (const auto &worker : workers) {
         // Mark the worker as dead so further messages from it are ignored
         // (except DisconnectClient).
@@ -283,7 +284,11 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       // the results for these tasks as not required, cancel any attempts
       // at reconstruction. Note that at this time the workers are likely
       // alive because of the delay in killing workers.
-      CleanUpTasksForFinishedJob(job_id);
+      auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
+      task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
+      // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
+      // call it last.
+      local_queues_.RemoveTasks(tasks_to_remove);
     }
   }
 }
@@ -674,14 +679,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   }
 }
 
-void NodeManager::CleanUpTasksForFinishedJob(const JobID &job_id) {
-  auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-  task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-  // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-  // call it last.
-  local_queues_.RemoveTasks(tasks_to_remove);
-}
-
 void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
   client.ProcessMessages();
@@ -778,7 +775,8 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    HandleTaskUnblocked(client, from_flatbuf<TaskID>(*message->task_id()));
+    HandleTaskUnblocked(client, from_flatbuf<TaskID>(*message->task_id()),
+                        /*ray_get=*/true);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -953,9 +951,10 @@ void NodeManager::ProcessDisconnectClientMessage(
         // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        HandleTaskUnblocked(client, task_id);
+        HandleTaskUnblocked(client, task_id, /*ray_get=*/true);
       }
     }
+    // TODO: Unsubscribe from ray.wait dependencies.
   }
 
   if (is_worker) {
@@ -1080,7 +1079,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 
   if (!required_object_ids.empty()) {
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
-    HandleTaskBlocked(client, required_object_ids, task_id);
+    HandleTaskBlocked(client, required_object_ids, task_id, /*ray_get=*/true);
   }
 }
 
@@ -1106,7 +1105,7 @@ void NodeManager::ProcessWaitRequestMessage(
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
-    HandleTaskBlocked(client, required_object_ids, current_task_id);
+    HandleTaskBlocked(client, required_object_ids, current_task_id, /*ray_get=*/false);
   }
 
   ray::Status status = object_manager_.Wait(
@@ -1125,7 +1124,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (client_blocked) {
-            HandleTaskUnblocked(client, current_task_id);
+            HandleTaskUnblocked(client, current_task_id, /*ray_get=*/false);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1579,7 +1578,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 
 void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                                     const std::vector<ObjectID> &required_object_ids,
-                                    const TaskID &current_task_id) {
+                                    const TaskID &current_task_id, bool ray_get) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
@@ -1617,14 +1616,21 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
     local_queues_.AddBlockedTaskId(current_task_id);
   }
 
-  // Subscribe to the objects required by the ray.get. These objects will
-  // be fetched and/or reconstructed as necessary, until the objects become
-  // local or are unsubscribed.
-  task_dependency_manager_.SubscribeGetDependencies(current_task_id, required_object_ids);
+  // Subscribe to the objects required by the task. These objects will be
+  // fetched and/or reconstructed as necessary, until the objects become local
+  // or are unsubscribed.
+  if (ray_get) {
+    task_dependency_manager_.SubscribeGetDependencies(current_task_id,
+                                                      required_object_ids);
+  } else {
+    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
+                                                       required_object_ids);
+  }
 }
 
 void NodeManager::HandleTaskUnblocked(
-    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id) {
+    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id,
+    bool ray_get) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
   // TODO(swang): Because the object dependencies are tracked in the task
@@ -1676,9 +1682,14 @@ void NodeManager::HandleTaskUnblocked(
   // If the task was previously blocked, then stop waiting for its dependencies
   // and mark the task as unblocked.
   worker->RemoveBlockedTaskId(current_task_id);
-  // Unsubscribe to the objects. Any fetch or reconstruction operations to
-  // make the objects local are canceled.
-  RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(current_task_id));
+  if (ray_get) {
+    // Unsubscribe to the objects if this was a `ray.get` since the task is no
+    // longer blocked on the objects. Any fetch or reconstruction operations to
+    // make the objects local are canceled. `ray.wait` calls will stay active
+    // until the objects become local, or the task/actor that called `ray.wait`
+    // exits.
+    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(current_task_id));
+  }
   local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
@@ -1776,6 +1787,7 @@ bool NodeManager::AssignTask(const Task &task) {
 }
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
+  // TODO: Unsubscribe from ray.wait dependencies.
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 

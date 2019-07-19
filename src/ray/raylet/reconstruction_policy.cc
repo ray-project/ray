@@ -171,6 +171,7 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
 }
 
 void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
   // Add this object to the list of objects created by the same task.
@@ -185,6 +186,7 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Reconstruction for object " << object_id << " canceled";
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {

@@ -2656,7 +2656,7 @@ def test_decorated_method(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(10)
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -2680,6 +2680,8 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     ray.get([actor.ping.remote() for actor in actors])
 
     ping_ids = [actor.ping.remote() for actor in actors]
+    ray.get(ping_ids)
+    ray.internal.free(ping_ids, local_only=True)
     cluster.remove_node(worker_node)
 
     unready = ping_ids[:]
@@ -2689,3 +2691,4 @@ def test_ray_wait_dead_actor(ray_start_cluster):
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(ping_ids)
+    # TODO(swang): Write another test that calls ray.wait in separate tasks.
