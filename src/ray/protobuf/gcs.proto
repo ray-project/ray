@@ -156,8 +156,6 @@ message ResourceUsage {
   double total_capacity = 1;
   // Resource capacity currently available on node.
   double available_capacity = 2;
-  // Aggregate outstanding resource load on node.
-  double load_capacity = 3;
 }
 
 message GcsNodeInfo {

@@ -5,7 +5,7 @@
 #include <unordered_set>
 
 #include "ray/common/id.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -43,7 +43,7 @@ class Monitor {
 
  private:
   /// A client to the GCS, through which heartbeats are received.
-  gcs::AsyncGcsClient gcs_client_;
+  gcs::RedisGcsClient gcs_client_;
   /// The number of heartbeats that can be missed before a client is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
