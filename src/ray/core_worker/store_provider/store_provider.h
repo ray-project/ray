@@ -10,6 +10,8 @@
 
 namespace ray {
 
+const std::string kBufferTooSmallErrMsg = "Target buffer smaller than object data.";
+
 /// RayObjects consist of data and metadata. Metadata is always passed
 /// in as a buffer because it is small, but data can be handled
 /// differently by implementations in order to avoid copying large data.
