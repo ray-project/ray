@@ -417,7 +417,7 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
   // them.
   for (const auto &task_id : task_ids) {
     RAY_CHECK(required_tasks_.find(task_id) == required_tasks_.end())
-        << "RemoveTasksAndRelatedObjects was called on" << task_id
+        << "RemoveTasksAndRelatedObjects was called on " << task_id
         << ", but another task depends on it that was not included in the argument";
   }
 }

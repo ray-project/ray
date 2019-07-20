@@ -2708,7 +2708,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     # Evict the result from the dead node.
     ray.internal.free([remote_ping_id], local_only=True)
     # Create an actor on the local node that will call ray.wait in a loop.
-    head_node_resource = 'HEAD_NODE'
+    head_node_resource = "HEAD_NODE"
     ray.experimental.set_resource(head_node_resource, 1)
 
     @ray.remote(num_cpus=0, resources={head_node_resource: 1})

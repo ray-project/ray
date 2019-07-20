@@ -271,8 +271,9 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
 
       // Kill all the workers. The actual cleanup for these workers is done
       // later when we receive the DisconnectClient message from them.
-      // TODO(swang): Clean up worker's ray.wait dependencies.
       for (const auto &worker : workers) {
+        // Clean up any open ray.wait calls that the worker made.
+        task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
         // Mark the worker as dead so further messages from it are ignored
         // (except DisconnectClient).
         worker->MarkDead();
@@ -942,14 +943,16 @@ void NodeManager::ProcessDisconnectClientMessage(
       // Because in this case, its task is already cleaned up.
       RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
     } else {
+      // Clean up any open ray.get calls that the worker made.
       while (!worker->GetBlockedTaskIds().empty()) {
         // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
         HandleTaskUnblocked(client, task_id, /*ray_get=*/true);
       }
+      // Clean up any open ray.wait calls that the worker made.
+      task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
     }
-    // TODO: Unsubscribe from ray.wait dependencies.
   }
 
   if (is_worker) {
@@ -1782,7 +1785,6 @@ bool NodeManager::AssignTask(const Task &task) {
 }
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
-  // TODO: Unsubscribe from ray.wait dependencies.
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -1799,10 +1801,15 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
 
-  // If this was an actor or actor creation task, handle the actor's new state.
   if (task.GetTaskSpecification().IsActorCreationTask() ||
       task.GetTaskSpecification().IsActorTask()) {
+    // If this was an actor or actor creation task, handle the actor's new
+    // state.
     FinishAssignedActorTask(worker, task);
+  } else {
+    // If this was a non-actor task, then cancel any ray.wait calls that were
+    // made during the task execution.
+    task_dependency_manager_.UnsubscribeWaitDependencies(worker.WorkerId());
   }
 
   // Notify the task dependency manager that this task has finished execution.
