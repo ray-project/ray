@@ -24,13 +24,13 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
 import org.ray.api.function.RayFunc;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.JobId;
 import org.ray.runtime.util.LambdaUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Manages functions by driver id.
+ * Manages functions by job id.
  */
 public class FunctionManager {
 
@@ -46,33 +46,33 @@ public class FunctionManager {
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
-   * Mapping from the driver id to the functions that belong to this driver.
+   * Mapping from the job id to the functions that belong to this job.
    */
-  private Map<UniqueId, DriverFunctionTable> driverFunctionTables = new HashMap<>();
+  private Map<JobId, JobFunctionTable> jobFunctionTables = new HashMap<>();
 
   /**
-   * The resource path which we can load the driver's jar resources.
+   * The resource path which we can load the job's jar resources.
    */
-  private String driverResourcePath;
+  private String jobResourcePath;
 
   /**
-   * Construct a FunctionManager with the specified driver resource path.
+   * Construct a FunctionManager with the specified job resource path.
    *
-   * @param driverResourcePath The specified driver resource that can store the driver's
+   * @param jobResourcePath The specified job resource that can store the job's
    *     resources.
    */
-  public FunctionManager(String driverResourcePath) {
-    this.driverResourcePath = driverResourcePath;
+  public FunctionManager(String jobResourcePath) {
+    this.jobResourcePath = jobResourcePath;
   }
 
   /**
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
-   * @param driverId current driver id.
+   * @param jobId current job id.
    * @param func The lambda.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId driverId, RayFunc func) {
+  public RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
@@ -82,24 +82,24 @@ public class FunctionManager {
       functionDescriptor = new JavaFunctionDescriptor(className, methodName, typeDescriptor);
       RAY_FUNC_CACHE.get().put(func.getClass(), functionDescriptor);
     }
-    return getFunction(driverId, functionDescriptor);
+    return getFunction(jobId, functionDescriptor);
   }
 
   /**
    * Get the RayFunction from a function descriptor.
    *
-   * @param driverId Current driver id.
+   * @param jobId Current job id.
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId driverId, JavaFunctionDescriptor functionDescriptor) {
-    DriverFunctionTable driverFunctionTable = driverFunctionTables.get(driverId);
-    if (driverFunctionTable == null) {
+  public RayFunction getFunction(JobId jobId, JavaFunctionDescriptor functionDescriptor) {
+    JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
+    if (jobFunctionTable == null) {
       ClassLoader classLoader;
-      if (Strings.isNullOrEmpty(driverResourcePath)) {
+      if (Strings.isNullOrEmpty(jobResourcePath)) {
         classLoader = getClass().getClassLoader();
       } else {
-        File resourceDir = new File(driverResourcePath + "/" + driverId.toString() + "/");
+        File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
         Collection<File> files = FileUtils.listFiles(resourceDir,
             new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
         files.add(resourceDir);
@@ -111,23 +111,23 @@ public class FunctionManager {
           }
         }).collect(Collectors.toList());
         classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
-        LOGGER.debug("Resource loaded for driver {} from path {}.", driverId,
+        LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
             resourceDir.getAbsolutePath());
       }
 
-      driverFunctionTable = new DriverFunctionTable(classLoader);
-      driverFunctionTables.put(driverId, driverFunctionTable);
+      jobFunctionTable = new JobFunctionTable(classLoader);
+      jobFunctionTables.put(jobId, jobFunctionTable);
     }
-    return driverFunctionTable.getFunction(functionDescriptor);
+    return jobFunctionTable.getFunction(functionDescriptor);
   }
 
   /**
-   * Manages all functions that belong to one driver.
+   * Manages all functions that belong to one job.
    */
-  static class DriverFunctionTable {
+  static class JobFunctionTable {
 
     /**
-     * The driver's corresponding class loader.
+     * The job's corresponding class loader.
      */
     ClassLoader classLoader;
     /**
@@ -135,7 +135,7 @@ public class FunctionManager {
      */
     Map<String, Map<Pair<String, String>, RayFunction>> functions;
 
-    DriverFunctionTable(ClassLoader classLoader) {
+    JobFunctionTable(ClassLoader classLoader) {
       this.classLoader = classLoader;
       this.functions = new HashMap<>();
     }

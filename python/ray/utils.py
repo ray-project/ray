@@ -51,7 +51,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker, error_type, message, driver_id=None):
+def push_error_to_driver(worker, error_type, message, job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -59,19 +59,19 @@ def push_error_to_driver(worker, error_type, message, driver_id=None):
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
-    worker.raylet_client.push_error(driver_id, error_type, message,
-                                    time.time())
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
+    worker.raylet_client.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
                                        error_type,
                                        message,
-                                       driver_id=None):
+                                       job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -84,19 +84,20 @@ def push_error_to_driver_through_redis(redis_client,
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
+    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
     redis_client.execute_command(
         "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-        driver_id.binary(), error_data)
+        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
+        error_data)
 
 
 def is_cython(obj):
@@ -229,6 +230,20 @@ def binary_to_hex(identifier):
 
 def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
+
+
+# TODO(qwang): Remove these hepler functions
+# once we separate `WorkerID` from `UniqueID`.
+def compute_job_id_from_driver(driver_id):
+    assert isinstance(driver_id, ray.WorkerID)
+    return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
+
+
+def compute_driver_id_from_job(job_id):
+    assert isinstance(job_id, ray.JobID)
+    rest_length = ray_constants.ID_SIZE - job_id.size()
+    driver_id_str = job_id.binary() + (rest_length * b"\xff")
+    return ray.WorkerID(driver_id_str)
 
 
 def get_cuda_visible_devices():
@@ -399,6 +414,31 @@ def get_system_memory():
         return memory_in_bytes
 
 
+def estimate_available_memory():
+    """Return the currently available amount of system memory in bytes.
+
+    Returns:
+        The total amount of available memory in bytes. It may be an
+        overestimate if psutil is not installed.
+    """
+
+    # Use psutil if it is available.
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except ImportError:
+        pass
+
+    # Handle Linux.
+    if sys.platform == "linux" or sys.platform == "linux2":
+        bytes_in_kilobyte = 1024
+        return (
+            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
+
+    # Give up
+    return get_system_memory()
+
+
 def get_shared_memory_bytes():
     """Get the size of the shared memory file system.
 
@@ -443,7 +483,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
-        driver_id=worker.task_driver_id)
+        job_id=worker.current_job_id)
 
 
 class _ThreadSafeProxy(object):

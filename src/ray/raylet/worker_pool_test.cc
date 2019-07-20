@@ -18,8 +18,7 @@ class WorkerPoolMock : public WorkerPool {
       : WorkerPoolMock({{Language::PYTHON, {"dummy_py_worker_command"}},
                         {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
-  explicit WorkerPoolMock(
-      const std::unordered_map<Language, std::vector<std::string>> &worker_commands)
+  explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
       : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, nullptr,
                    worker_commands),
         last_worker_pid_(0) {}
@@ -71,7 +70,11 @@ class WorkerPoolMock : public WorkerPool {
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(), io_service_(), error_message_type_(1) {}
+  WorkerPoolTest()
+      : worker_pool_(),
+        io_service_(),
+        error_message_type_(1),
+        client_call_manager_(io_service_) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
@@ -86,11 +89,11 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(new Worker(pid, language, client));
+    return std::shared_ptr<Worker>(
+        new Worker(pid, language, -1, client, client_call_manager_));
   }
 
-  void SetWorkerCommands(
-      const std::unordered_map<Language, std::vector<std::string>> &worker_commands) {
+  void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
     WorkerPoolMock worker_pool(worker_commands);
     this->worker_pool_ = std::move(worker_pool);
   }
@@ -99,6 +102,7 @@ class WorkerPoolTest : public ::testing::Test {
   WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
   int64_t error_message_type_;
+  rpc::ClientCallManager client_call_manager_;
 
  private:
   void HandleNewClient(LocalClientConnection &){};
@@ -107,11 +111,23 @@ class WorkerPoolTest : public ::testing::Test {
 
 static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
-    const ActorID actor_creation_id = ActorID::Nil()) {
-  std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(DriverID::Nil(), TaskID::Nil(), 0, actor_creation_id,
-                           ObjectID::Nil(), 0, actor_id, ActorHandleID::Nil(), 0, {}, {},
-                           0, {}, {}, language, function_descriptor);
+    const ActorID actor_creation_id = ActorID::Nil(),
+    const std::vector<std::string> &dynamic_worker_options = {}) {
+  rpc::TaskSpec message;
+  message.set_language(language);
+  if (!actor_id.IsNil()) {
+    message.set_type(TaskType::ACTOR_TASK);
+    message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
+  } else if (!actor_creation_id.IsNil()) {
+    message.set_type(TaskType::ACTOR_CREATION_TASK);
+    message.mutable_actor_creation_task_spec()->set_actor_id(actor_creation_id.Binary());
+    for (const auto &option : dynamic_worker_options) {
+      message.mutable_actor_creation_task_spec()->add_dynamic_worker_options(option);
+    }
+  } else {
+    message.set_type(TaskType::NORMAL_TASK);
+  }
+  return TaskSpecification(std::move(message));
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
@@ -226,10 +242,8 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
-  TaskSpecification task_spec(DriverID::Nil(), TaskID::Nil(), 0, ActorID::FromRandom(),
-                              ObjectID::Nil(), 0, ActorID::Nil(), ActorHandleID::Nil(), 0,
-                              {}, {}, 0, {}, {}, Language::JAVA, {"", "", ""},
-                              {"test_op_0", "test_op_1"});
+  TaskSpecification task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::JAVA, ActorID::FromRandom(), {"test_op_0", "test_op_1"});
   worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());

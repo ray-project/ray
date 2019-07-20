@@ -1586,22 +1586,21 @@ def test_local_mode(shutdown_only):
         return np.ones([3, 4, 5])
 
     xref = f.remote()
-    # Remote functions should return by value.
-    assert np.alltrue(xref == np.ones([3, 4, 5]))
-    # Check that ray.get is the identity.
-    assert np.alltrue(xref == ray.get(xref))
+    # Remote functions should return ObjectIDs.
+    assert isinstance(xref, ray.ObjectID)
+    assert np.alltrue(ray.get(xref) == np.ones([3, 4, 5]))
     y = np.random.normal(size=[11, 12])
-    # Check that ray.put is the identity.
-    assert np.alltrue(y == ray.put(y))
+    # Check that ray.get(ray.put) is the identity.
+    assert np.alltrue(y == ray.get(ray.put(y)))
 
     # Make sure objects are immutable, this example is why we need to copy
     # arguments before passing them into remote functions in python mode
     aref = local_mode_f.remote()
-    assert np.alltrue(aref == np.array([0, 0]))
-    bref = local_mode_g.remote(aref)
+    assert np.alltrue(ray.get(aref) == np.array([0, 0]))
+    bref = local_mode_g.remote(ray.get(aref))
     # Make sure local_mode_g does not mutate aref.
-    assert np.alltrue(aref == np.array([0, 0]))
-    assert np.alltrue(bref == np.array([1, 0]))
+    assert np.alltrue(ray.get(aref) == np.array([0, 0]))
+    assert np.alltrue(ray.get(bref) == np.array([1, 0]))
 
     # wait should return the first num_returns values passed in as the
     # first list and the remaining values as the second list
@@ -1611,6 +1610,25 @@ def test_local_mode(shutdown_only):
         object_ids, num_returns=num_returns, timeout=None)
     assert ready == object_ids[:num_returns]
     assert remaining == object_ids[num_returns:]
+
+    # Check that ray.put() and ray.internal.free() work in local mode.
+
+    v1 = np.ones(10)
+    v2 = np.zeros(10)
+
+    k1 = ray.put(v1)
+    assert np.alltrue(v1 == ray.get(k1))
+    k2 = ray.put(v2)
+    assert np.alltrue(v2 == ray.get(k2))
+
+    ray.internal.free([k1, k2])
+    with pytest.raises(Exception):
+        ray.get(k1)
+    with pytest.raises(Exception):
+        ray.get(k2)
+
+    # Should fail silently.
+    ray.internal.free([k1, k2])
 
     # Test actors in LOCAL_MODE.
 
@@ -1629,9 +1647,14 @@ def test_local_mode(shutdown_only):
             array[0] = -1
             self.array = array
 
+        @ray.method(num_return_vals=3)
+        def returns_multiple(self):
+            return 1, 2, 3
+
     test_actor = LocalModeTestClass.remote(np.arange(10))
-    # Remote actor functions should return by value
-    assert np.alltrue(test_actor.get_array.remote() == np.arange(10))
+    obj = test_actor.get_array.remote()
+    assert isinstance(obj, ray.ObjectID)
+    assert np.alltrue(ray.get(obj) == np.arange(10))
 
     test_array = np.arange(10)
     # Remote actor functions should not mutate arguments
@@ -1639,9 +1662,9 @@ def test_local_mode(shutdown_only):
     assert np.alltrue(test_array == np.arange(10))
     # Remote actor functions should keep state
     test_array[0] = -1
-    assert np.alltrue(test_array == test_actor.get_array.remote())
+    assert np.alltrue(test_array == ray.get(test_actor.get_array.remote()))
 
-    # Check that actor handles work in Python mode.
+    # Check that actor handles work in local mode.
 
     @ray.remote
     def use_actor_handle(handle):
@@ -1650,6 +1673,47 @@ def test_local_mode(shutdown_only):
         assert np.alltrue(array == ray.get(handle.get_array.remote()))
 
     ray.get(use_actor_handle.remote(test_actor))
+
+    # Check that exceptions are deferred until ray.get().
+
+    exception_str = "test_basic remote task exception"
+
+    @ray.remote
+    def throws():
+        raise Exception(exception_str)
+
+    obj = throws.remote()
+    with pytest.raises(Exception, match=exception_str):
+        ray.get(obj)
+
+    # Check that multiple return values are handled properly.
+
+    @ray.remote(num_return_vals=3)
+    def returns_multiple():
+        return 1, 2, 3
+
+    obj1, obj2, obj3 = returns_multiple.remote()
+    assert ray.get(obj1) == 1
+    assert ray.get(obj2) == 2
+    assert ray.get(obj3) == 3
+    assert ray.get([obj1, obj2, obj3]) == [1, 2, 3]
+
+    obj1, obj2, obj3 = test_actor.returns_multiple.remote()
+    assert ray.get(obj1) == 1
+    assert ray.get(obj2) == 2
+    assert ray.get(obj3) == 3
+    assert ray.get([obj1, obj2, obj3]) == [1, 2, 3]
+
+    @ray.remote(num_return_vals=2)
+    def returns_multiple_throws():
+        raise Exception(exception_str)
+
+    obj1, obj2 = returns_multiple_throws.remote()
+    with pytest.raises(Exception, match=exception_str):
+        ray.get(obj)
+        ray.get(obj1)
+    with pytest.raises(Exception, match=exception_str):
+        ray.get(obj2)
 
 
 def test_resource_constraints(shutdown_only):
@@ -1670,7 +1734,7 @@ def test_resource_constraints(shutdown_only):
                     ]))) == num_workers:
             break
 
-    time_buffer = 0.5
+    time_buffer = 2
 
     # At most 10 copies of this can run at once.
     @ray.remote(num_cpus=1)
@@ -2423,14 +2487,21 @@ def wait_for_num_objects(num_objects, timeout=10):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
 def test_global_state_api(shutdown_only):
-    with pytest.raises(Exception):
+
+    error_message = ("The ray global state API cannot be used "
+                     "before ray.init has been called.")
+
+    with pytest.raises(Exception, match=error_message):
         ray.objects()
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match=error_message):
         ray.tasks()
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match=error_message):
         ray.nodes()
+
+    with pytest.raises(Exception, match=error_message):
+        ray.jobs()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
@@ -2439,7 +2510,8 @@ def test_global_state_api(shutdown_only):
 
     assert ray.objects() == {}
 
-    driver_id = ray.utils.binary_to_hex(ray.worker.global_worker.worker_id)
+    job_id = ray.utils.compute_job_id_from_driver(
+        ray.WorkerID(ray.worker.global_worker.worker_id))
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     # One task is put in the task table which corresponds to this driver.
@@ -2453,7 +2525,7 @@ def test_global_state_api(shutdown_only):
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == []
-    assert task_spec["DriverID"] == driver_id
+    assert task_spec["JobID"] == job_id.hex()
     assert task_spec["FunctionID"] == nil_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
@@ -2481,7 +2553,7 @@ def test_global_state_api(shutdown_only):
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
-    assert task_spec["DriverID"] == driver_id
+    assert task_spec["JobID"] == job_id.hex()
     assert task_spec["ReturnObjectIDs"] == [result_id]
 
     assert task_table[task_id] == ray.tasks(task_id)
@@ -2508,6 +2580,12 @@ def test_global_state_api(shutdown_only):
     assert object_table[x_id] == ray.objects(x_id)
     object_table_entry = ray.objects(result_id)
     assert object_table[result_id] == object_table_entry
+
+    job_table = ray.jobs()
+
+    assert len(job_table) == 1
+    assert job_table[0]["JobID"] == job_id.hex()
+    assert job_table[0]["NodeManagerAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
@@ -2613,9 +2691,9 @@ def test_workers(shutdown_only):
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
 
-def test_specific_driver_id():
-    dummy_driver_id = ray.DriverID(b"00112233445566778899")
-    ray.init(num_cpus=1, driver_id=dummy_driver_id)
+def test_specific_job_id():
+    dummy_driver_id = ray.JobID.from_int(1)
+    ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id
@@ -2727,7 +2805,7 @@ def test_ray_setproctitle(ray_start_2_cpus):
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
-    driver_id = ray.DriverID.nil()
+    driver_id = ray.WorkerID.nil()
     error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
                                                        "message", 0)
 

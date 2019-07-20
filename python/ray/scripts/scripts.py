@@ -12,8 +12,8 @@ import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
-    attach_cluster, exec_cluster, create_or_update_cluster, rsync,
-    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
+    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -495,15 +495,40 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     default=False,
     help="Don't ask for confirmation.")
 @click.option(
+    "--hard",
+    is_flag=True,
+    default=False,
+    help="Terminates the node via node provider (defaults to a 'soft kill'"
+    " which terminates Ray but does not actually delete the instances).")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def kill_random_node(cluster_config_file, yes, cluster_name):
+def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     """Kills a random Ray node. For testing purposes only."""
     click.echo("Killed node with IP " +
-               kill_node(cluster_config_file, yes, cluster_name))
+               kill_node(cluster_config_file, yes, hard, cluster_name))
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--lines",
+    required=False,
+    default=100,
+    type=int,
+    help="Number of lines to tail.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def monitor(cluster_config_file, lines, cluster_name):
+    """Runs `tail -n [lines] -f /tmp/ray/session_*/logs/monitor*` on head."""
+    monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
 @cli.command()

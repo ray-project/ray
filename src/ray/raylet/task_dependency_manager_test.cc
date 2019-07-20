@@ -5,6 +5,7 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/task/task_util.h"
 #include "ray/raylet/task_dependency_manager.h"
 
 namespace ray {
@@ -29,8 +30,8 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskLeaseData> {
  public:
   MOCK_METHOD4(
       Add,
-      ray::Status(const DriverID &driver_id, const TaskID &task_id,
-                  std::shared_ptr<TaskLeaseData> &task_data,
+      ray::Status(const JobID &job_id, const TaskID &task_id,
+                  const std::shared_ptr<TaskLeaseData> &task_data,
                   const gcs::TableInterface<TaskID, TaskLeaseData>::WriteCallback &done));
 };
 
@@ -67,21 +68,16 @@ class TaskDependencyManagerTest : public ::testing::Test {
 };
 
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
-                               int64_t num_returns) {
-  std::unordered_map<std::string, double> required_resources;
-  std::vector<std::shared_ptr<TaskArgument>> task_arguments;
-  for (auto &argument : arguments) {
-    std::vector<ObjectID> references = {argument};
-    task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
+                               uint64_t num_returns) {
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                            TaskID::FromRandom(), 0, num_returns, {}, {});
+  for (const auto &arg : arguments) {
+    builder.AddByRefArg(arg);
   }
-  std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(DriverID::Nil(), TaskID::FromRandom(), 0, task_arguments,
-                                num_returns, required_resources, Language::PYTHON,
-                                function_descriptor);
-  auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
-  execution_spec.IncrementNumForwards();
-  Task task = Task(execution_spec, spec);
-  return task;
+  rpc::TaskExecutionSpec execution_spec_message;
+  execution_spec_message.set_num_forwards(1);
+  return Task(builder.Build(), TaskExecutionSpecification(execution_spec_message));
 }
 
 std::vector<Task> MakeTaskChain(int chain_size,

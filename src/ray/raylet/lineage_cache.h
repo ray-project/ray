@@ -6,8 +6,8 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task.h"
 #include "ray/gcs/tables.h"
-#include "ray/raylet/task.h"
 
 namespace ray {
 
@@ -244,13 +244,12 @@ class LineageCache {
   /// The uncommitted lineage consists of all tasks in the given task's lineage
   /// that have not been committed in the GCS, as far as we know.
   ///
-  /// \param task_id The ID of the task to get the uncommitted lineage for. It is
-  ///                a fatal error if the task is not found.
+  /// \param task_id The ID of the task to get the uncommitted lineage for. If
+  /// the task is not found, then the returned lineage will be empty.
   /// \param node_id The ID of the receiving node.
   /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineageOrDie(const TaskID &task_id,
-                                     const ClientID &node_id) const;
+  Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
 
   /// Handle the commit of a task entry in the GCS. This attempts to evict the
   /// task if possible.

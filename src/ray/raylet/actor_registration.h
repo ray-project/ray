@@ -4,8 +4,8 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
+#include "ray/common/task/task.h"
 #include "ray/protobuf/gcs.pb.h"
-#include "ray/raylet/task.h"
 
 namespace ray {
 
@@ -73,8 +73,8 @@ class ActorRegistration {
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
 
-  /// Get actor's driver ID.
-  const DriverID GetDriverId() const;
+  /// Get actor's job ID.
+  const JobID GetJobId() const;
 
   /// Get the max number of times this actor should be reconstructed.
   const int64_t GetMaxReconstructions() const;

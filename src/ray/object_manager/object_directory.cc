@@ -3,7 +3,7 @@
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
-                                 std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
+                                 std::shared_ptr<gcs::RedisGcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
@@ -44,7 +44,7 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
 
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback =
-      [this](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+      [this](gcs::RedisGcsClient *client, const ObjectID &object_id,
              const GcsChangeMode change_mode,
              const std::vector<ObjectTableData> &location_updates) {
         // Objects are added to this map in SubscribeObjectLocations.
@@ -74,7 +74,7 @@ void ObjectDirectory::RegisterBackend() {
         }
       };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      DriverID::Nil(), gcs_client_->client_table().GetLocalClientId(),
+      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
       object_notification_callback, nullptr));
 }
 
@@ -87,7 +87,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   data->set_manager(client_id.Binary());
   data->set_object_size(object_info.data_size);
   ray::Status status =
-      gcs_client_->object_table().Add(DriverID::Nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Add(JobID::Nil(), object_id, data, nullptr);
   return status;
 }
 
@@ -100,7 +100,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
   data->set_manager(client_id.Binary());
   data->set_object_size(object_info.data_size);
   ray::Status status =
-      gcs_client_->object_table().Remove(DriverID::Nil(), object_id, data, nullptr);
+      gcs_client_->object_table().Remove(JobID::Nil(), object_id, data, nullptr);
   return status;
 };
 
@@ -111,7 +111,7 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
   ClientID result_client_id = ClientID::FromBinary(client_data.client_id());
   if (!result_client_id.IsNil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
-    if (client_data.entry_type() == ClientTableData::INSERTION) {
+    if (client_data.is_insertion()) {
       connection_info.ip = client_data.node_manager_address();
       connection_info.port = static_cast<uint16_t>(client_data.object_manager_port());
     }
@@ -159,7 +159,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
-        DriverID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -187,7 +187,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
-        DriverID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
     listeners_.erase(entry);
   }
   return status;
@@ -210,8 +210,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // SubscribeObjectLocations call, so look up the object's locations
     // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
-        DriverID::Nil(), object_id,
-        [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+        JobID::Nil(), object_id,
+        [this, callback](gcs::RedisGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableData> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;

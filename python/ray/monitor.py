@@ -38,7 +38,7 @@ class Monitor(object):
     def __init__(self, redis_address, autoscaling_config, redis_password=None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
-            args.redis_address, redis_password=redis_password)
+            redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
         # Setup subscriptions to the primary Redis server and the Redis shards.
@@ -106,38 +106,35 @@ class Monitor(object):
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
-
         for heartbeat_message in message.batch:
-            num_resources = len(heartbeat_message.resources_available_label)
-            static_resources = {}
-            dynamic_resources = {}
-            for i in range(num_resources):
-                dyn = heartbeat_message.resources_available_label[i]
-                static = heartbeat_message.resources_total_label[i]
-                dynamic_resources[dyn] = (
-                    heartbeat_message.resources_available_capacity[i])
-                static_resources[static] = (
-                    heartbeat_message.resources_total_capacity[i])
+            total_resources = dict(
+                zip(heartbeat_message.resources_total_label,
+                    heartbeat_message.resources_total_capacity))
+            available_resources = dict(
+                zip(heartbeat_message.resources_available_label,
+                    heartbeat_message.resources_available_capacity))
+            for resource in total_resources:
+                available_resources.setdefault(resource, 0.0)
 
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
-                self.load_metrics.update(ip, static_resources,
-                                         dynamic_resources)
+                self.load_metrics.update(ip, total_resources,
+                                         available_resources)
             else:
                 logger.warning(
                     "Monitor: "
                     "could not find ip for client {}".format(client_id))
 
-    def _xray_clean_up_entries_for_driver(self, driver_id):
-        """Remove this driver's object/task entries from redis.
+    def _xray_clean_up_entries_for_job(self, job_id):
+        """Remove this job's object/task entries from redis.
 
         Removes control-state entries of all tasks and task return
         objects belonging to the driver.
 
         Args:
-            driver_id: The driver id.
+            job_id: The job id.
         """
 
         xray_task_table_prefix = (
@@ -146,23 +143,23 @@ class Monitor(object):
             ray.gcs_utils.TablePrefix_OBJECT_string.encode("ascii"))
 
         task_table_objects = ray.tasks()
-        driver_id_hex = binary_to_hex(driver_id)
-        driver_task_id_bins = set()
+        job_id_hex = binary_to_hex(job_id)
+        job_task_id_bins = set()
         for task_id_hex, task_info in task_table_objects.items():
             task_table_object = task_info["TaskSpec"]
-            task_driver_id_hex = task_table_object["DriverID"]
-            if driver_id_hex != task_driver_id_hex:
+            task_job_id_hex = task_table_object["JobID"]
+            if job_id_hex != task_job_id_hex:
                 # Ignore tasks that aren't from this driver.
                 continue
-            driver_task_id_bins.add(hex_to_binary(task_id_hex))
+            job_task_id_bins.add(hex_to_binary(task_id_hex))
 
         # Get objects associated with the driver.
         object_table_objects = ray.objects()
-        driver_object_id_bins = set()
+        job_object_id_bins = set()
         for object_id, _ in object_table_objects.items():
             task_id_bin = ray._raylet.compute_task_id(object_id).binary()
-            if task_id_bin in driver_task_id_bins:
-                driver_object_id_bins.add(object_id.binary())
+            if task_id_bin in job_task_id_bins:
+                job_object_id_bins.add(object_id.binary())
 
         def to_shard_index(id_bin):
             if len(id_bin) == ray.TaskID.size():
@@ -174,10 +171,10 @@ class Monitor(object):
 
         # Form the redis keys to delete.
         sharded_keys = [[] for _ in range(len(ray.state.state.redis_clients))]
-        for task_id_bin in driver_task_id_bins:
+        for task_id_bin in job_task_id_bins:
             sharded_keys[to_shard_index(task_id_bin)].append(
                 xray_task_table_prefix + task_id_bin)
-        for object_id_bin in driver_object_id_bins:
+        for object_id_bin in job_object_id_bins:
             sharded_keys[to_shard_index(object_id_bin)].append(
                 xray_object_table_prefix + object_id_bin)
 
@@ -198,21 +195,22 @@ class Monitor(object):
                                "entries from redis shard {}.".format(
                                    len(keys) - num_deleted, shard_index))
 
-    def xray_driver_removed_handler(self, unused_channel, data):
-        """Handle a notification that a driver has been removed.
+    def xray_job_notification_handler(self, unused_channel, data):
+        """Handle a notification that a job has been added or removed.
 
         Args:
             unused_channel: The message channel.
             data: The message data.
         """
         gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        driver_data = gcs_entries.entries[0]
-        message = ray.gcs_utils.DriverTableData.FromString(driver_data)
-        driver_id = message.driver_id
-        logger.info("Monitor: "
-                    "XRay Driver {} has been removed.".format(
-                        binary_to_hex(driver_id)))
-        self._xray_clean_up_entries_for_driver(driver_id)
+        job_data = gcs_entries.entries[0]
+        message = ray.gcs_utils.JobTableData.FromString(job_data)
+        job_id = message.job_id
+        if message.is_dead:
+            logger.info("Monitor: "
+                        "XRay Driver {} has been removed.".format(
+                            binary_to_hex(job_id)))
+            self._xray_clean_up_entries_for_job(job_id)
 
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
@@ -240,16 +238,23 @@ class Monitor(object):
                 if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
                     # Similar functionality as raylet info channel
                     message_handler = self.xray_heartbeat_batch_handler
-                elif channel == ray.gcs_utils.XRAY_DRIVER_CHANNEL:
+                elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
                     # Handles driver death.
-                    message_handler = self.xray_driver_removed_handler
+                    message_handler = self.xray_job_notification_handler
                 else:
                     raise Exception("This code should be unreachable.")
 
                 # Call the handler.
                 message_handler(channel, data)
 
-    def update_raylet_map(self):
+    def update_raylet_map(self, _append_port=False):
+        """Updates internal raylet map.
+
+        Args:
+            _append_port (bool): Defaults to False. Appending the port is
+                useful in testing, as mock clusters have many nodes with
+                the same IP and cannot be uniquely identified.
+        """
         all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
@@ -257,6 +262,8 @@ class Monitor(object):
                          or raylet_info["ClientID"])
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
+            if _append_port:
+                ip_address += ":" + str(raylet_info["NodeManagerPort"])
             self.raylet_id_to_ip_map[client_id] = ip_address
 
     def _maybe_flush_gcs(self):
@@ -290,7 +297,7 @@ class Monitor(object):
 
         self.gcs_flush_policy.record_flush()
 
-    def run(self):
+    def _run(self):
         """Run the monitor.
 
         This function loops forever, checking for messages about dead database
@@ -298,7 +305,7 @@ class Monitor(object):
         """
         # Initialize the subscription channel.
         self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-        self.subscribe(ray.gcs_utils.XRAY_DRIVER_CHANNEL)
+        self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
         # up the associated state in the state tables.
@@ -322,9 +329,13 @@ class Monitor(object):
             # messages.
             time.sleep(ray._config.heartbeat_timeout_milliseconds() * 1e-3)
 
-        # TODO(rkn): This infinite loop should be inside of a try/except block,
-        # and if an exception is thrown we should push an error message to all
-        # drivers.
+    def run(self):
+        try:
+            self._run()
+        except Exception:
+            if self.autoscaler:
+                self.autoscaler.kill_workers()
+            raise
 
 
 if __name__ == "__main__":
