@@ -1,5 +1,6 @@
 # To connect to a cluster, uncomment below:
 
+# import ray
 # import argparse
 # parser = argparse.ArgumentParser()
 # parser.add_argument("--redis-address", default=None)
@@ -7,8 +8,6 @@
 # ray.init(redis_address=args.redis_address)
 
 # __quick_start_begin__
-import ray
-import torch
 import torch.optim as optim
 from ray import tune
 from ray.tune.examples.mnist import get_data_loaders, Net, train, test
