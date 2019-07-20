@@ -822,15 +822,10 @@ void NodeManager::ProcessClientMessage(
 
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  client->Register();
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  auto client_id = from_flatbuf<ClientID>(*message->worker_id());
-  client->SetClientID(client_id);
   Language language = static_cast<Language>(message->language());
-  // TODO: Set the WorkerID according to the core worker client.
-  WorkerID worker_id = WorkerID::FromRandom();
-  if (message->is_worker()) {
-    worker_id = from_flatbuf<WorkerID>(*message->worker_id());
-  }
+  WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   auto worker = std::make_shared<Worker>(worker_id, message->worker_pid(), language,
                                          message->port(), client, client_call_manager_);
   if (message->is_worker()) {
