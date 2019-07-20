@@ -539,7 +539,19 @@ In summary, the main differences between the PyTorch and TensorFlow policy build
 Extending Existing Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-(todo)
+You can use the ``with_updates`` method on Trainers and Policy objects built with ``make_*`` to create a copy of the object with some changes, for example:
+
+.. code-block:: python
+
+    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+
+    CustomPolicy = PPOTFPolicy.with_updates(
+        name="MyCustomPPOTFPolicy",
+        loss_fn=some_custom_loss_fn)
+
+    CustomTrainer = PPOTrainer.with_updates(
+        default_policy=CustomPolicy)
 
 Policy Evaluation
 -----------------

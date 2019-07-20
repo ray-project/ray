@@ -56,8 +56,9 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+    gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "", true);
+    gcs_client_1 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -66,8 +67,8 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+    gcs_client_2 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
@@ -113,8 +114,8 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_1;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_2;
   std::unique_ptr<ray::raylet::Raylet> server1;
   std::unique_ptr<ray::raylet::Raylet> server2;
 
@@ -137,7 +138,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+        [this](gcs::RedisGcsClient *client, const ClientID &id,
                const ClientTableDataT &data) {
           ClientID parsed_id = ClientID::FromBinary(data.client_id);
           if (parsed_id == client_id_1 || parsed_id == client_id_2) {

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.id.JobId;
+import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.StringUtil;
@@ -29,7 +30,7 @@ public class RayConfig {
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
 
   public final String nodeIp;
-  public final WorkerMode workerMode;
+  public final WorkerType workerMode;
   public final RunMode runMode;
   public final Map<String, Double> resources;
   private JobId jobId;
@@ -62,7 +63,7 @@ public class RayConfig {
   public final int numberExecThreadsForDevRuntime;
 
   private void validate() {
-    if (workerMode == WorkerMode.WORKER) {
+    if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
           "Redis address must be set in worker mode.");
     }
@@ -78,14 +79,14 @@ public class RayConfig {
 
   public RayConfig(Config config) {
     // Worker mode.
-    WorkerMode localWorkerMode;
+    WorkerType localWorkerMode;
     try {
-      localWorkerMode = config.getEnum(WorkerMode.class, "ray.worker.mode");
+      localWorkerMode = config.getEnum(WorkerType.class, "ray.worker.mode");
     } catch (ConfigException.Missing e) {
-      localWorkerMode = WorkerMode.DRIVER;
+      localWorkerMode = WorkerType.DRIVER;
     }
     workerMode = localWorkerMode;
-    boolean isDriver = workerMode == WorkerMode.DRIVER;
+    boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
     runMode = config.getEnum(RunMode.class, "ray.run-mode");
     // Node ip.

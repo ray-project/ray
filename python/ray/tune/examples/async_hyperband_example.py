@@ -50,8 +50,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--ray-redis-address",
+        help="Address of Ray cluster for seamless distributed execution.")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(redis_address=args.ray_redis_address)
 
     # asynchronous hyperband early stopping, configured with
     # `episode_reward_mean` as the

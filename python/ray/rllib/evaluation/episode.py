@@ -196,9 +196,6 @@ def _flatten_action(action):
     if isinstance(action, list) or isinstance(action, tuple):
         expanded = []
         for a in action:
-            if not hasattr(a, "shape") or len(a.shape) == 0:
-                expanded.append(np.expand_dims(a, 1))
-            else:
-                expanded.append(a)
+            expanded.append(np.reshape(a, [-1]))
         action = np.concatenate(expanded, axis=0).flatten()
     return action
