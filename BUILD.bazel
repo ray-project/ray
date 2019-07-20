@@ -586,9 +586,20 @@ cc_library(
 )
 
 cc_binary(
-    name = "gcs_client_test",
+    name = "redis_gcs_client_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/client_test.cc"],
+    srcs = ["src/ray/gcs/redis_gcs_client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "actor_state_accessor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",

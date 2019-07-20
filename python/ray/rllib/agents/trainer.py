@@ -174,7 +174,8 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress individual observations
     "compress_observations": False,
-    # Drop metric batches from unresponsive workers after this many seconds
+    # Wait for metric batches for at most this many seconds. Those that
+    # have not returned in time will be collected in the next iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,

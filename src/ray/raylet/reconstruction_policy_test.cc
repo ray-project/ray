@@ -162,12 +162,12 @@ class ReconstructionPolicyTest : public ::testing::Test {
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
-        [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+        [this](gcs::RedisGcsClient *client, const TaskID &task_id,
                const TaskLeaseData &task_lease) {
           reconstruction_policy_->HandleTaskLeaseNotification(task_id,
                                                               task_lease.timeout());
         },
-        [this](gcs::AsyncGcsClient *client, const TaskID &task_id) {
+        [this](gcs::RedisGcsClient *client, const TaskID &task_id) {
           reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
         });
   }
@@ -403,7 +403,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   RAY_CHECK_OK(
       mock_gcs_.AppendAt(JobID::Nil(), task_id, task_reconstruction_data, nullptr,
                          /*failure_callback=*/
-                         [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                         [](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
                             const TaskReconstructionData &data) { ASSERT_TRUE(false); },
                          /*log_index=*/0));
 
