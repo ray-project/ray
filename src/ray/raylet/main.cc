@@ -179,6 +179,7 @@ int main(int argc, char *argv[]) {
       server.reset();
       gcs_client->Disconnect();
       main_service.stop();
+      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
     // Give a timeout for this Disconnect operation.

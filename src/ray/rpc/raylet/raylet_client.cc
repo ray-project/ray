@@ -66,11 +66,16 @@ ray::Status RayletClient::Disconnect() {
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
+  if (!is_connected_) {
+    return Status::Invalid("ConnectionClosed");
+  }
   SubmitTaskRequest submit_task_request;
   submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
-  auto callback = [](const Status &status, const SubmitTaskReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const SubmitTaskReply &reply) {
+    /// We check is_connnected_ here to avoid verbose fail logs.
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to submit task, msg: " << status.message();
     }
   };
@@ -145,6 +150,9 @@ ray::Status RayletClient::TaskDone() {
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                              bool fetch_only,
                                              const TaskID &current_task_id) {
+  if (!is_connected_) {
+    return Status::Invalid("ConnectionClosed");
+  }
   FetchOrReconstructRequest fetch_or_reconstruct_request;
   fetch_or_reconstruct_request.set_fetch_only(fetch_only);
   fetch_or_reconstruct_request.set_task_id(current_task_id.Binary());
@@ -154,8 +162,8 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
       &FetchOrReconstructRequest::add_object_ids);
 
   // Callback to deal with reply.
-  auto callback = [](const Status &status, const FetchOrReconstructReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const FetchOrReconstructReply &reply) {
+    if (!status.ok() && is_connected_) {
       RAY_LOG(INFO) << "Failed to send FetchOrReconstructRequest, msg: "
                     << status.message();
     }
@@ -236,6 +244,9 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
 }
 
 ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
+  if (!is_connected_) {
+    return Status::Invalid("ConnectionClosed");
+  }
   PushProfileEventsRequest push_profile_events_request;
   push_profile_events_request.mutable_profile_table_data()->CopyFrom(profile_events);
 
@@ -371,7 +382,7 @@ void RayletClient::Heartbeat() {
   heartbeat_request.set_worker_id(worker_id_.Binary());
 
   auto callback = [this](const Status &status, const HeartbeatReply &reply) {
-    if (!status.ok()) {
+    if (!status.ok() && is_connected_) {
       is_connected_ = false;
       RAY_LOG(INFO) << "Heartbeat failed, msg: " << status.message();
     }
