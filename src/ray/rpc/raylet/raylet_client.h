@@ -216,6 +216,9 @@ class RayletClient {
 
   /// Mutex for to protect resource_ids_.
   mutable std::mutex resource_ids_lock_;
+
+  /// Indicates whether the connection has been closed.
+  bool is_connected_;
 };
 
 }  // namespace rpc

@@ -15,7 +15,8 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
       main_service_(),
       work_(main_service_),
       client_call_manager_(main_service_),
-      heartbeat_timer_(main_service_) {
+      heartbeat_timer_(main_service_),
+      is_connected_(false) {
   std::shared_ptr<grpc::Channel> channel =
       grpc::CreateChannel("unix://" + raylet_socket, grpc::InsecureChannelCredentials());
   stub_ = RayletService::NewStub(channel);
@@ -34,6 +35,7 @@ void RayletClient::TryRegisterClient(int retry_times) {
   for (int i = 0; i < retry_times; i++) {
     auto st = RegisterClient();
     if (st.ok()) {
+      is_connected_ = true;
       Heartbeat();
       return;
     }
@@ -45,6 +47,7 @@ void RayletClient::TryRegisterClient(int retry_times) {
 }
 
 RayletClient::~RayletClient() {
+  is_connected_ = false;
   main_service_.stop();
   rpc_thread_.join();
 }
@@ -360,12 +363,16 @@ ray::Status RayletClient::RegisterClient() {
 }
 
 void RayletClient::Heartbeat() {
+  if (!is_connected_) {
+    return;
+  }
   HeartbeatRequest heartbeat_request;
   heartbeat_request.set_is_worker(is_worker_);
   heartbeat_request.set_worker_id(worker_id_.Binary());
 
-  auto callback = [](const Status &status, const HeartbeatReply &reply) {
+  auto callback = [this](const Status &status, const HeartbeatReply &reply) {
     if (!status.ok()) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Heartbeat failed, msg: " << status.message();
     }
   };
