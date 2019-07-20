@@ -106,7 +106,7 @@ class QLoss(object):
 
 class QValuePolicy(object):
     def __init__(self, q_values, observations, num_actions, stochastic, eps,
-                 softmax, softmax_temp):
+                 softmax, softmax_temp, is_stochastic_q_values=False):
         if softmax:
             action_dist = Categorical(q_values / softmax_temp)
             self.action = action_dist.sample()
@@ -128,7 +128,8 @@ class QValuePolicy(object):
             tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
         stochastic_actions = tf.where(chose_random, random_actions,
                                       deterministic_actions)
-        self.action = tf.cond(stochastic, lambda: stochastic_actions,
+        self.action = tf.cond(tf.logical_and(stochastic, not is_stochastic_q_values),
+                              lambda: stochastic_actions,
                               lambda: deterministic_actions)
         self.action_prob = None
 
@@ -270,7 +271,8 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
                        action_space.n, policy.stochastic, policy.eps,
-                       config["soft_q"], config["softmax_temp"])
+                       config["soft_q"], config["softmax_temp"],
+                       config["noisy"] or config["parameter_noise"] or config["num_heads"]>1)
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
     return policy.output_actions, policy.action_prob
