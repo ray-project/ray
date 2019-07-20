@@ -1522,8 +1522,9 @@ def custom_excepthook(type, value, tb):
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
         try:
-            global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
-                                             {"exception": error_message})
+            global_worker.redis_client.hmset(
+                b"Drivers:" + global_worker.worker_id,
+                {"exception": error_message})
         except (ConnectionRefusedError, redis.exceptions.ConnectionError):
             logger.warning("Could not push exception to redis.")
     # Call the normal excepthook.
