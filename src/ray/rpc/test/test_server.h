@@ -17,7 +17,7 @@ class TestServiceHandler {
   virtual void DebugEcho(const DebugEchoRequest &request,
                                  DebugEchoReply *reply,
                                  SendReplyCallback send_reply_callback) = 0
-  //virtual void DebugStreamEcho(const ) = 0;
+  virtual void DebugStreamEcho(const DebugEchoRequest &request) = 0;
 };
 
 /// The `GrpcService` for `TestService`.

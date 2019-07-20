@@ -45,9 +45,12 @@ class DebugTestClient {
   /// Request for a stream message should be a synchronous call.
   void DebugStreamEcho(const DebugEchoRequest &request,
                    const ClientCallback<DebugEchoReply> &callback) {
-    client_call_manager_
-        .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
-            *stub_, &DebugEchoService::Stub::DebugStreamEcho, request, callback);
+    if (!debug_stream_call_) {
+        debug_stream_call_ = client_call_manager_
+            .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+                *stub_, &DebugEchoService::Stub::DebugStreamEcho, request, callback);
+    }
+    debug_stream_call_->SendStreamMessage();
   }
 
  private:
@@ -56,6 +59,9 @@ class DebugTestClient {
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
+
+  /// The call for stream.
+  ClientCall * debug_stream_call_ = nullptr;
 };
 
 }  // namespace rpc
