@@ -2689,7 +2689,8 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     remote_node = cluster.list_all_nodes()[-1]
     remote_ping_id = None
     for i, actor in enumerate(actors):
-        if ray.get(actor.local_plasma.remote()) == remote_node.plasma_store_socket_name:
+        if ray.get(actor.local_plasma.remote()
+                   ) == remote_node.plasma_store_socket_name:
             remote_ping_id = ping_ids[i]
     ray.internal.free([remote_ping_id], local_only=True)
     cluster.remove_node(remote_node)
@@ -2709,6 +2710,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     # Create an actor on the local node that will call ray.wait in a loop.
     head_node_resource = 'HEAD_NODE'
     ray.experimental.set_resource(head_node_resource, 1)
+
     @ray.remote(num_cpus=0, resources={head_node_resource: 1})
     class ParentActor(object):
         def __init__(self, ping_ids):
