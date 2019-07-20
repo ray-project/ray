@@ -288,7 +288,10 @@ class Trial(object):
         Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
-        self.config = config or {}
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
+        config = config or {}
+        config.update(trial_id=self.trial_id)
+        self.config = config
         self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
@@ -334,7 +337,6 @@ class Trial(object):
         self.runner = None
         self.result_logger = None
         self.last_debug = 0
-        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
         self.custom_trial_name = None

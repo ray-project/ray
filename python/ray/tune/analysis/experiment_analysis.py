@@ -56,16 +56,20 @@ class Analysis(object):
                 fail_count += 1
 
         if fail_count:
-            logger.warning(
+            logger.debug(
                 "Couldn't read results from {} paths".format(fail_count))
         return self._trial_dataframes
 
-    def get_all_configs(self):
+    def get_all_configs(self, prefix=False):
         fail_count = 0
         for path in self._get_trial_paths():
             try:
                 with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
-                    self._configs[path] = json.load(f)
+                    config = json.load(f)
+                    if prefix:
+                        for k in list(config):
+                            config["config:" + k] = config.pop(k)
+                    self._configs[path] = config
             except Exception:
                 fail_count += 1
 
@@ -84,7 +88,7 @@ class Analysis(object):
 
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
-        all_configs = self.get_all_configs()
+        all_configs = self.get_all_configs(prefix=True)
         for path, config in all_configs.items():
             if path in rows:
                 rows[path].update(config)
@@ -127,7 +131,7 @@ class Analysis(object):
 
         if not _trial_paths:
             raise TuneError("No trials found in {}.".format(
-                self.experiment_dir))
+                self._experiment_dir))
         return _trial_paths
 
     def get_best_logdir(self, metric, mode="max"):

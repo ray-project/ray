@@ -12,8 +12,8 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.result import TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS
-from ray.tune.trial import Trial
+from ray.tune.result import (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS,
+                             TIME_TOTAL_S)
 from ray.tune.analysis import Analysis
 from ray.tune import TuneError
 try:
@@ -28,8 +28,8 @@ EDITOR = os.getenv("EDITOR", "vim")
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
 DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag", "trial_id",
-                                "status", "last_update_time",
-                                TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS)
+                                TRAINING_ITERATION, TIME_TOTAL_S,
+                                MEAN_ACCURACY, MEAN_LOSS)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -142,11 +142,14 @@ def list_trials(experiment_path,
         checkpoints_df = Analysis(experiment_path).dataframe()
     except TuneError:
         print("No experiment state found!")
-        sys.exit(0)
+        sys.exit(1)
 
     if not info_keys:
         info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
-    col_keys = [k for k in list(info_keys) if k in checkpoints_df]
+    col_keys = [
+        k for k in checkpoints_df.columns
+        if k in info_keys or k.startswith("config:")
+    ]
     checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:
@@ -228,37 +231,11 @@ def list_experiments(project_path,
     experiment_data_collection = []
 
     for experiment_dir in experiment_folders:
-        analysis_obj, checkpoints_df = None, None
-        try:
-            analysis_obj = Analysis(os.path.join(project_path, experiment_dir))
-            checkpoints_df = analysis_obj.dataframe()
-        except TuneError:
-            logger.debug("No experiment state found in %s", experiment_dir)
-            continue
+        num_trials = sum(
+            "result.json" in files
+            for _, _, files in os.walk(os.path.join(base, experiment_dir)))
 
-        # Format time-based values.
-        stats = analysis_obj.stats()
-        time_values = {
-            "start_time": stats.get("_start_time"),
-            "last_updated": stats.get("timestamp"),
-        }
-
-        formatted_time_values = {
-            key: datetime.fromtimestamp(val).strftime(TIMESTAMP_FORMAT)
-            if val else None
-            for key, val in time_values.items()
-        }
-
-        experiment_data = {
-            "name": experiment_dir,
-            "total_trials": checkpoints_df.shape[0],
-            "running_trials": (
-                checkpoints_df["status"] == Trial.RUNNING).sum(),
-            "terminated_trials": (
-                checkpoints_df["status"] == Trial.TERMINATED).sum(),
-            "error_trials": (checkpoints_df["status"] == Trial.ERROR).sum(),
-        }
-        experiment_data.update(formatted_time_values)
+        experiment_data = {"name": experiment_dir, "total_trials": num_trials}
         experiment_data_collection.append(experiment_data)
 
     if not experiment_data_collection:
