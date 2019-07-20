@@ -67,9 +67,7 @@ COMMON_CONFIG = {
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
-    # Execute TF loss functions in eager mode. This is currently experimental
-    # and only really works with the basic PG algorithm.
-    "use_eager": False,
+    # Log system resource metrics to results.
     "log_sys_usage": True,
 
     # === Policy ===
