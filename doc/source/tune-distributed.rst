@@ -3,17 +3,16 @@ Distributed Experiments
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. Tune provides many utilities that enable an effective workflow for interacting with a cluster.
 
-In this guide, we will use Ray's cluster launcher/autoscaler utility to start a cluster of machines on AWS. Then, we will modify an existing hyperparameter tuning script to connect to the Ray cluster, and launch the script. Finally, we will analyze the results.
+To launch a large hyperparameter search, you can download this ``configuration file <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml>``__ and ``an example Tune script <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/async_hyperband_example.py>``__ and then run ``ray submit [config_file.yaml] [tune_script.py] --args="--ray-redis-address=localhost:``.
 
 Connecting to a cluster
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
-Modifying an existing Tune Experiment to ray. One common approach is to
+One common approach to modifying an existing Tune Experiment to go distributed is to set an argparse variable so that toggling between distributed and single-node is seamless. This allows Tune to utilize all the resources available to the Ray cluster.
 
 .. code-block:: python
 
     import ray
-    from ray import tune
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -26,47 +25,17 @@ Modifying an existing Tune Experiment to ray. One common approach is to
     # Single-node execution
     python script.py
 
-    # Ray multi-node execution
+    # Connect to an existing ray cluster
     python script.py --redis-address=localhost:1234
 
 
-Using a local cluster
-~~~~~~~~~~~~~~~~~~~~~
-
-
-If you have a list of nodes, you can follow the private cluster setup `instructions here <autoscaling.html>`__ to setup a Ray cluster.
-
-.. code-block:: yaml
-
-    cluster_name: default
-    max_workers: 0
-    provider:
-        type: local
-        head_ip: YOUR_HEAD_NODE_HOSTNAME
-        worker_ips: []  # TODO: Put other nodes here
-    auth:
-        ssh_user: YOUR_USERNAME
-        ssh_private_key: ~/.ssh/id_rsa
-    file_mounts: {}
-    setup_commands:
-        - pip install -U ray
-    head_start_ray_commands:
-        - ray stop
-        - >-
-            ulimit -c unlimited &&
-            ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
-    worker_start_ray_commands:
-        - ray stop
-        - ray start --redis-address=$RAY_HEAD_IP:6379
-
-Alternatively, if you run into issues (or want to add nodes manually), you can use the manual cluster setup `instructions here <using-ray-on-a-cluster.html>`__
-
-
 Launching a cloud cluster
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use this YAML configuration file to kick off your cluster. The following instructions are for AWS and wil require you to run ``aws configure``.
-Ray currently supports AWS and GCP.
+If you have already have a list of nodes, skip down to the Local Cluster Usage section.
+
+You can use this YAML configuration file to kick off your cluster. The following instructions are for AWS and will require you to run ``aws configure``.
+Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`__.
 
 .. code-block:: yaml
 
@@ -96,6 +65,50 @@ This code starts a cluster as specified by the given cluster configuration YAML 
     # Analyze your results on TensorBoard. This starts TensorBoard on the remote machine.
     # Go to `http://localhost:6006` to access TensorBoard.
     ray exec $CLUSTER 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
+
+
+Local Cluster Usage
+~~~~~~~~~~~~~~~~~~~
+
+If you run into issues (or want to add nodes manually), you can use the manual cluster setup `documentation here <using-ray-on-a-cluster.html>`__. At a glance, On the head node, run the following.
+
+.. code-block:: bash
+
+    # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
+    ray start --head --redis-port=6379
+
+The command will print out the address of the Redis server that was started (and some other address information).
+
+**Then on all of the other nodes**, run the following. Make sure to replace ``<redis-address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
+
+.. code-block:: bash
+
+  ray start --redis-address=<redis-address>
+
+If you have already have a list of nodes, you can follow the private autoscaling cluster setup `instructions here <autoscaling.html>`__ - below is a configuration file for a private autoscaling cluster.
+
+.. code-block:: yaml
+
+    cluster_name: default
+    max_workers: 0  # TODO: specify the number of workers here.
+    provider:
+        type: local
+        head_ip: YOUR_HEAD_NODE_HOSTNAME
+        worker_ips: []  # TODO: Put other nodes here
+    auth:
+        ssh_user: YOUR_USERNAME
+        ssh_private_key: ~/.ssh/id_rsa
+    file_mounts: {}
+    setup_commands:
+        - pip install -U ray
+    head_start_ray_commands:
+        - ray stop
+        - >-
+            ulimit -c unlimited &&
+            ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    worker_start_ray_commands:
+        - ray stop
+        - ray start --redis-address=$RAY_HEAD_IP:6379
 
 
 Pre-emptible Instances (Cloud)
@@ -135,7 +148,9 @@ In GCP, you can use the following configuration modification:
         scheduling:
           - preemptible: true
 
-Spot instances may be removed suddenly while trials are still running. You can easily mitigate the effects of this by preserving the progress of your model training through checkpointing - The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. See the `Checkpointing <tune-checkpointing.html>`__ page for more details.
+Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through checkpointing. The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. See the `Checkpointing <tune-checkpointing.html>`__ page for more details.
+
+You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, persisting results in case you want to start and stop your cluster automatically.
 
 Common Commands
 ---------------

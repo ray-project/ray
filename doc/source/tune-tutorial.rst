@@ -1,5 +1,5 @@
-Tune Walkthrough
-================
+Tune Example Walkthrough
+========================
 
 This tutorial will walk you through the following process:
 
@@ -9,8 +9,7 @@ This tutorial will walk you through the following process:
   4. Adding a SearchAlgorithm
   3. Getting the best model and analyzing results
 
-Specifically, we'll leverage ASHA and Bayesian Optimization (via
-HyperOpt) without modifying your underlying code.
+Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) without modifying your underlying code.
 
 
 .. code:: ipython3
@@ -309,6 +308,6 @@ With Tune you can combine powerful Hyperparameter Search libraries such as Hyper
         **experiment_config)
 
 Feedback
-========
+--------
 
 Please: fill out this form to provide feedback on this tutorial! https://goo.gl/forms/NVTFjUKFz4TH8kgK2
