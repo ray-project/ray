@@ -35,6 +35,10 @@ class ExplorationStateMixin(object):
         if self.config["parameter_noise"]:
             self.sess.run(self.add_noise_op)
 
+    def sample_head(self):
+        if self.config["num_heads"] > 1:
+            self.sess.run(self.sample_head_op)
+
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 

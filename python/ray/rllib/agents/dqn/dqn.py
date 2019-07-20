@@ -62,6 +62,9 @@ DEFAULT_CONFIG = with_common_config({
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
+    # If this value > 1, use multi-head ensemble for exploration
+    # See https://arxiv.org/abs/1602.04621
+    "num_heads": 1,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "exploration_fraction": 0,
@@ -152,45 +155,67 @@ def check_config_and_setup_param_noise(config):
                               config.get("n_step", 1))
     config["sample_batch_size"] = adjusted_batch_size
 
-    if config.get("parameter_noise", False):
+    if config.get("parameter_noise", False) or config.get("num_heads", 1) > 1:
+        # deep exploration behaves consistently within one episode
+        if config.get("parameter_noise", False) and config.get("num_heads", 1) > 1:
+            raise ValueError("Deep exploration doesn't allow using "
+                             "parameter space noise and multi-head "
+                             "ensemble at the same time.")
         if config["batch_mode"] != "complete_episodes":
-            raise ValueError("Exploration with parameter space noise requires "
+            raise ValueError("Deep exploration requires "
                              "batch_mode to be complete_episodes.")
         if config.get("noisy", False):
             raise ValueError(
-                "Exploration with parameter space noise and noisy network "
+                "Deep exploration and noisy network "
                 "cannot be used at the same time.")
-        if config["callbacks"]["on_episode_start"]:
-            start_callback = config["callbacks"]["on_episode_start"]
-        else:
-            start_callback = None
 
-        def on_episode_start(info):
-            # as a callback function to sample and pose parameter space
-            # noise on the parameters of network
-            policies = info["policy"]
-            for pi in policies.values():
-                pi.add_parameter_noise()
-            if start_callback:
-                start_callback(info)
+        if config["callbacks"]["on_episode_start"]:
+                start_callback = config["callbacks"]["on_episode_start"]
+            else:
+                start_callback = None
+        if config["callbacks"]["on_episode_end"]:
+                end_callback = config["callbacks"]["on_episode_end"]
+            else:
+                end_callback = None
+
+        if config.get("parameter_noise", False):
+            def on_episode_start(info):
+                # as a callback function to sample and pose parameter space
+                # noise on the parameters of network
+                policies = info["policy"]
+                for pi in policies.values():
+                    pi.add_parameter_noise()
+                if start_callback:
+                    start_callback(info)
+            def on_episode_end(info):
+                # as a callback function to monitor the distance
+                # between noisy policy and original policy
+                policies = info["policy"]
+                episode = info["episode"]
+                episode.custom_metrics["policy_distance"] = policies[
+                    DEFAULT_POLICY_ID].pi_distance
+                if end_callback:
+                    end_callback(info)
+
+        if config.get("num_heads", 1) > 1:
+            def on_episode_start(info):
+                # as a callback function to sample a head
+                policies = info["policy"]
+                for pi in policies.values():
+                    pi.sample_head()
+                if start_callback:
+                    start_callback(info)
+            def on_episode_end(info):
+                # as a callback function to monitor the head index
+                policies = info["policy"]
+                episode = info["episode"]
+                episode.custom_metrics["head_index"] = policies[
+                    DEFAULT_POLICY_ID].head_index_val
+                if end_callback:
+                    end_callback(info)
 
         config["callbacks"]["on_episode_start"] = tune.function(
-            on_episode_start)
-        if config["callbacks"]["on_episode_end"]:
-            end_callback = config["callbacks"]["on_episode_end"]
-        else:
-            end_callback = None
-
-        def on_episode_end(info):
-            # as a callback function to monitor the distance
-            # between noisy policy and original policy
-            policies = info["policy"]
-            episode = info["episode"]
-            episode.custom_metrics["policy_distance"] = policies[
-                DEFAULT_POLICY_ID].pi_distance
-            if end_callback:
-                end_callback(info)
-
+                on_episode_start)
         config["callbacks"]["on_episode_end"] = tune.function(on_episode_end)
 
 

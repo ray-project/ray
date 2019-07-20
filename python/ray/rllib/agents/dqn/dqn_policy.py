@@ -180,6 +180,8 @@ def postprocess_trajectory(policy,
             policy.parameter_noise_sigma_val /= 1.01
         policy.parameter_noise_sigma.load(
             policy.parameter_noise_sigma_val, session=policy.get_session())
+    elif policy.config["num_heads"] > 1:
+        policy.head_index_val = policy.get_session().run(policy.head_index)
 
     return _postprocess_dqn(policy, sample_batch)
 
