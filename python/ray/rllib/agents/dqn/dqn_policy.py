@@ -199,6 +199,14 @@ def build_q_model(policy, obs_space, action_space, config):
     else:
         num_outputs = action_space.n
 
+    if config["num_heads"] > 1:
+        policy.head_index = tf.get_variable(
+            name="head_index",
+            shape=(),
+            dtype=tf.int32,
+            initializer=tf.constant_initializer(0, dtype=tf.int32),
+            trainable=False)
+        
     policy.q_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
@@ -214,7 +222,9 @@ def build_q_model(policy, obs_space, action_space, config):
         v_min=config["v_min"],
         v_max=config["v_max"],
         sigma0=config["sigma0"],
-        parameter_noise=config["parameter_noise"])
+        parameter_noise=config["parameter_noise"],
+        num_heads=config["num_heads"],
+        head_index=policy.head_index if config["num_heads"] > 1 else None)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -231,7 +241,9 @@ def build_q_model(policy, obs_space, action_space, config):
         v_min=config["v_min"],
         v_max=config["v_max"],
         sigma0=config["sigma0"],
-        parameter_noise=config["parameter_noise"])
+        parameter_noise=config["parameter_noise"],
+        num_heads=config["num_heads"],
+        head_index=policy.head_index if config["num_heads"] > 1 else None)
 
     return policy.q_model
 
@@ -252,6 +264,8 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
             policy,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
+    elif config["num_heads"] > 1:
+        policy.sample_head_op = tf.assign(policy.head_index, tf.random_uniform(shape=(), minval=0, maxval=config["num_heads"], dtype=tf.int32))
 
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],

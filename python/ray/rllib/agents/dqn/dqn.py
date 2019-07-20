@@ -170,13 +170,13 @@ def check_config_and_setup_param_noise(config):
                 "cannot be used at the same time.")
 
         if config["callbacks"]["on_episode_start"]:
-                start_callback = config["callbacks"]["on_episode_start"]
-            else:
-                start_callback = None
+            start_callback = config["callbacks"]["on_episode_start"]
+        else:
+            start_callback = None
         if config["callbacks"]["on_episode_end"]:
-                end_callback = config["callbacks"]["on_episode_end"]
-            else:
-                end_callback = None
+            end_callback = config["callbacks"]["on_episode_end"]
+        else:
+            end_callback = None
 
         if config.get("parameter_noise", False):
             def on_episode_start(info):

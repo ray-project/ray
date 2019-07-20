@@ -33,11 +33,20 @@ class ExplorationStateMixin(object):
 
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
+            self.get_session().run(self.add_noise_op)
 
     def sample_head(self):
         if self.config["num_heads"] > 1:
-            self.sess.run(self.sample_head_op)
+            self.get_session().run(self.sample_head_op)
+
+    @override(TFPolicy)
+    def build_apply_op(self, optimizer, grads_and_vars):
+        apply_op = TFPolicy.build_apply_op(self, optimizer, grads_and_vars)
+        if self.config.get("num_heads", 1) > 1:
+            with tf.control_dependencies([apply_op]):
+                return tf.assign(self.head_index, tf.random_uniform(shape=(), minval=0, maxval=self.config["num_heads"], dtype=tf.int32))
+        else:
+            return apply_op
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon

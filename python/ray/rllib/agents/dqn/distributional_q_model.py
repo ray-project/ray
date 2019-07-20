@@ -31,7 +31,9 @@ class DistributionalQModel(TFModelV2):
                  v_min=-10.0,
                  v_max=10.0,
                  sigma0=0.5,
-                 parameter_noise=False):
+                 parameter_noise=False,
+                 num_heads=1,
+                 head_index=None):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -45,6 +47,9 @@ class DistributionalQModel(TFModelV2):
             v_max (float): max value support for distributional DQN
             sigma0 (float): initial value of noisy nets
             parameter_noise (bool): enable layer norm for param noise
+            num_heads (int): if >1, enable multi-head ensemble
+            head_index (obj): if num_heads>1, this is a tensor indicates head
+                index; Otherwise, this is None and can be ignored.
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the Q head. Those layers for forward()
@@ -90,10 +95,15 @@ class DistributionalQModel(TFModelV2):
                     sigma0,
                     non_linear=False)
             elif q_hiddens:
-                action_scores = tf.layers.dense(
-                    action_out,
-                    units=self.action_space.n * num_atoms,
-                    activation=None)
+                all_action_scores = list()
+                for _ in range(num_heads):
+                    action_scores = tf.layers.dense(
+                        action_out,
+                        units=self.action_space.n * num_atoms,
+                        activation=None)
+                    all_action_scores.append(action_scores)
+                all_action_scores = tf.stack(all_action_scores)
+                action_score = tf.gather(all_action_scores, head_index or 0)
             else:
                 action_scores = model_out
             if num_atoms > 1:
@@ -142,8 +152,13 @@ class DistributionalQModel(TFModelV2):
                     sigma0,
                     non_linear=False)
             else:
-                state_score = tf.layers.dense(
-                    state_out, units=num_atoms, activation=None)
+                all_state_score = list()
+                for _ in range(num_heads):
+                    state_score = tf.layers.dense(
+                        state_out, units=num_atoms, activation=None)
+                    all_state_score.append(state_score)
+                all_state_score = tf.stack(all_state_score)
+                state_score = tf.gather(all_state_score, head_index or 0)
             return state_score
 
         def build_action_value_in_scope(model_out):
