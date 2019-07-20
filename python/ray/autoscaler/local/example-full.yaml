@@ -11,14 +11,13 @@ idle_timeout_minutes: 5
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
-    worker_ips: []
+    worker_ips: []  # TODO: Put other nodes here
 auth:
     ssh_user: YOUR_USERNAME
     ssh_private_key: ~/.ssh/id_rsa
-head_node: {}
-worker_nodes: {}
+head_node: {}  # Leave these blank
+worker_nodes: {}  # Leave these blank
 file_mounts: {}
-setup_commands: []
 head_setup_commands: []
 worker_setup_commands: []
 initialization_commands: []

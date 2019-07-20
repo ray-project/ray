@@ -1,13 +1,13 @@
-import ray
-from ray import tune
-import argparse
+# To connect to a cluster, uncomment below:
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--redis-address", default=None)
-args = parser.parse_args()
-ray.init(redis_address=args.redis_address)
+# import argparse
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--redis-address", default=None)
+# args = parser.parse_args()
+# ray.init(redis_address=args.redis_address)
 
 # __quick_start_begin__
+import ray
 import torch
 import torch.optim as optim
 from ray import tune

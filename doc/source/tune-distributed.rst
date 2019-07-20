@@ -5,10 +5,6 @@ Tune is commonly used for large-scale distributed hyperparameter optimization. T
 
 In this guide, we will use Ray's cluster launcher/autoscaler utility to start a cluster of machines on AWS. Then, we will modify an existing hyperparameter tuning script to connect to the Ray cluster, and launch the script. Finally, we will analyze the results.
 
-
-Walkthrough
------------
-
 Connecting to a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -27,29 +23,74 @@ Modifying an existing Tune Experiment to ray. One common approach is to
 
 .. code-block:: bash
 
-    python script --redis-address localhost:1234
+    # Single-node execution
+    python script.py
+
+    # Ray multi-node execution
+    python script.py --redis-address=localhost:1234
 
 
 Using a local cluster
 ~~~~~~~~~~~~~~~~~~~~~
 
-TODOXXX: Mention SLURM, a local set of nodes.
+
+If you have a list of nodes, you can follow the private cluster setup `instructions here <autoscaling.html>`__ to setup a Ray cluster.
+
+.. code-block:: yaml
+
+    cluster_name: default
+    max_workers: 0
+    provider:
+        type: local
+        head_ip: YOUR_HEAD_NODE_HOSTNAME
+        worker_ips: []  # TODO: Put other nodes here
+    auth:
+        ssh_user: YOUR_USERNAME
+        ssh_private_key: ~/.ssh/id_rsa
+    file_mounts: {}
+    setup_commands:
+        - pip install -U ray
+    head_start_ray_commands:
+        - ray stop
+        - >-
+            ulimit -c unlimited &&
+            ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    worker_start_ray_commands:
+        - ray stop
+        - ray start --redis-address=$RAY_HEAD_IP:6379
+
+Alternatively, if you run into issues (or want to add nodes manually), you can use the manual cluster setup `instructions here <using-ray-on-a-cluster.html>`__
 
 
 Launching a cloud cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use this YAML configuration file to kick off your cluster.
+You can use this YAML configuration file to kick off your cluster. The following instructions are for AWS and wil require you to run ``aws configure``.
+Ray currently supports AWS and GCP.
 
 .. code-block:: yaml
 
-    TODO
+    cluster_name: minimal
+
+    # The maximum number of workers nodes to launch in addition to the head node.
+    max_workers: 1
+
+    # Cloud-provider specific configuration.
+    provider:
+        type: aws
+        region: us-west-2
+        availability_zone: us-west-2a
+
+    # How Ray will authenticate with newly launched nodes.
+    auth:
+        ssh_user: ubuntu
+
 
 This code starts a cluster as specified by the given cluster configuration YAML file.
 
 .. code-block:: bash
 
-    export CLUSTER=[path/to/cluster/yaml]
+    export CLUSTER=path_to_cluster_yaml
     ray submit $CLUSTER tune_mnist_large.py --start
 
     # Analyze your results on TensorBoard. This starts TensorBoard on the remote machine.
