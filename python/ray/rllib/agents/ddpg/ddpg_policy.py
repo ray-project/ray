@@ -364,7 +364,7 @@ class ExplorationStateMixin(object):
 
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
-            self.sess.run(self.model.add_noise_op)
+            self.get_session().run(self.model.add_noise_op)
 
     def adjust_param_noise_sigma(self, sample_batch):
         # adjust the sigma of parameter space noise

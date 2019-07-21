@@ -85,9 +85,11 @@ class DDPGModel(TFModelV2):
                 activation=None,
                 name="action_out")
 
+        action_scope = name + "/action_net"
+
         # TODO(ekl) use keras layers instead of variable scopes
         def build_action_net_scope(model_out):
-            with tf.variable_scope(name + "/action_net", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
                 return build_action_net(model_out)
 
         pi_out = tf.keras.layers.Lambda(build_action_net_scope)(self.model_out)
@@ -96,10 +98,11 @@ class DDPGModel(TFModelV2):
 
         # Noise vars for P network except for layer normalization vars
         if parameter_noise:
-            self._build_parameter_noise([
-                var for var in self.action_net.variables
-                if "LayerNorm" not in var.name
-            ])
+            with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
+                self._build_parameter_noise([
+                    var for var in self.action_net.variables
+                    if "LayerNorm" not in var.name
+                ])
 
         def build_q_net(name, model_out, actions):
             q_out = tf.keras.layers.Concatenate(axis=1)([model_out, actions])
@@ -189,6 +192,7 @@ class DDPGModel(TFModelV2):
                                        if self.twin_q_net else [])
 
     def _build_parameter_noise(self, pnet_params):
+        assert pnet_params
         self.parameter_noise_sigma_val = self.exploration_ou_sigma
         self.parameter_noise_sigma = tf.get_variable(
             initializer=tf.constant_initializer(

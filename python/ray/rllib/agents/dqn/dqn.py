@@ -187,7 +187,7 @@ def check_config_and_setup_param_noise(config):
             policies = info["policy"]
             episode = info["episode"]
             episode.custom_metrics["policy_distance"] = policies[
-                DEFAULT_POLICY_ID].pi_distance
+                DEFAULT_POLICY_ID].model.pi_distance
             if end_callback:
                 end_callback(info)
 
