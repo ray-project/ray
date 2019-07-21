@@ -1044,16 +1044,10 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
                                                      &rpc::WaitReply::add_remaining);
 
         // Send reply to finish this wait request.
-        send_reply_callback(
-            Status::OK(),
-            /* success callback */
-            [this, client_blocked, worker_id, current_task_id]() {
-              if (client_blocked) {
-                HandleTaskUnblocked(worker_id, current_task_id);
-              }
-            },
-            /* failure callback */
-            [this, worker_id]() { ProcessDisconnectClientMessage(worker_id); });
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+        if (client_blocked) {
+          HandleTaskUnblocked(worker_id, current_task_id);
+        }
       });
   RAY_CHECK_OK(status);
 }
