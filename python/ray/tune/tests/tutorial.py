@@ -21,10 +21,8 @@ datasets.MNIST("~/data", train=True, download=True)
 def train_mnist(config):
     model = Net(config)
     train_loader, test_loader = get_data_loaders()
-
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
-
     for i in range(20):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
@@ -32,8 +30,6 @@ def train_mnist(config):
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
-
-
 # __train_func_end__
 
 # __eval_func_begin__

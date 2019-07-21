@@ -45,7 +45,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                  metric="episode_reward_mean",
                  mode="max",
                  max_t=100,
-                 grace_period=10,
+                 grace_period=1,
                  reduction_factor=4,
                  brackets=1):
         assert max_t > 0, "Max (time_attr) not valid!"
