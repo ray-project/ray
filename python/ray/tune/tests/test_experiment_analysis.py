@@ -51,10 +51,9 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertEquals(df.shape[0], self.num_samples)
 
     def testTrialDataframe(self):
-        cs = self.ea._checkpoints
-        idx = random.randint(0, len(cs) - 1)
-        trial_df = self.ea.trial_dataframe(
-            cs[idx]["trial_id"])  # random trial df
+        checkpoints = self.ea._checkpoints
+        idx = random.randint(0, len(checkpoints) - 1)
+        trial_df = self.ea.trial_dataframes[checkpoints[idx]["logdir"]]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)

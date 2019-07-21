@@ -44,13 +44,14 @@ class Analysis(object):
                 "{} is not a valid directory.".format(experiment_dir))
         self._experiment_dir = experiment_dir
         self._configs = {}
-        self._trial_dataframes = {}
+        self.trial_dataframes = {}
+        self.get_all_trial_dataframes()
 
     def get_all_trial_dataframes(self):
         fail_count = 0
         for path in self._get_trial_paths():
             try:
-                self._trial_dataframes[path] = pd.read_csv(
+                self.trial_dataframes[path] = pd.read_csv(
                     os.path.join(path, EXPR_PROGRESS_FILE))
             except Exception:
                 fail_count += 1
@@ -58,7 +59,7 @@ class Analysis(object):
         if fail_count:
             logger.debug(
                 "Couldn't read results from {} paths".format(fail_count))
-        return self._trial_dataframes
+        return self.trial_dataframes
 
     def get_all_configs(self, prefix=False):
         fail_count = 0
@@ -111,9 +112,8 @@ class Analysis(object):
 
     def _retrieve_rows(self, metric=None, mode=None):
         assert mode is None or mode in ["max", "min"]
-        all_dfs = self.get_all_trial_dataframes()
         rows = {}
-        for path, df in all_dfs.items():
+        for path, df in self.trial_dataframes.items():
             if mode == "max":
                 idx = df[metric].idxmax()
             elif mode == "min":
