@@ -1,5 +1,7 @@
+# flake8: noqa
+
 # __tutorial_imports_begin__
-# Original Code here: https://github.com/pytorch/examples/blob/master/mnist/main.py
+# Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 import numpy as np
 import torch
 import torch.optim as optim

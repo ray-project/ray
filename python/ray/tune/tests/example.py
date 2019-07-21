@@ -1,3 +1,6 @@
+# flake8: noqa
+
+# This is an example quickstart for Tune.
 # To connect to a cluster, uncomment below:
 
 # import ray
