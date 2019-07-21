@@ -29,9 +29,7 @@ def train_mnist(config):
         track.log(mean_accuracy=acc)
         if i % 5 == 0:
             # This saves the model to the trial directory
-            torch.save(
-                model,
-                "./model.pth")
+            torch.save(model, "./model.pth")
 
 
 # __train_func_end__
@@ -73,5 +71,8 @@ hyperopt_search = HyperOptSearch(
     space, max_concurrent=2, reward_attr="mean_accuracy")
 
 analysis = tune.run(
-    train_mnist, num_samples=10, search_alg=hyperopt_search, **experiment_config)
+    train_mnist,
+    num_samples=10,
+    search_alg=hyperopt_search,
+    **experiment_config)
 # __run_searchalg_end__
