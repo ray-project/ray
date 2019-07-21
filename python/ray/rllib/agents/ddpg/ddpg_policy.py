@@ -9,10 +9,11 @@ import logging
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
+from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models import ModelCatalog, Model
+from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
@@ -22,16 +23,6 @@ from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
-
-
-class NoopModel(Model):
-    """Trivial model that just returns the obs flattened.
-
-    This is the model used if use_state_preprocessor=False."""
-
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        out = tf.reshape(input_dict["obs"], [-1, num_outputs])
-        return out, out
 
 
 def build_ddpg_model(policy, obs_space, action_space, config):
@@ -99,14 +90,11 @@ def postprocess_trajectory(policy,
     return _postprocess_dqn(policy, sample_batch)
 
 
-def stats(policy, batch_tensors):
+def exploration_setting_inputs(policy):
     return {
-        "td_error": tf.reduce_mean(policy.td_error),
-        "actor_loss": tf.reduce_mean(policy.actor_loss),
-        "critic_loss": tf.reduce_mean(policy.critic_loss),
-        "mean_q": tf.reduce_mean(policy.q_t),
-        "max_q": tf.reduce_max(policy.q_t),
-        "min_q": tf.reduce_min(policy.q_t),
+        policy.stochastic: True,
+        policy.noise_scale: policy.cur_noise_scale,
+        policy.pure_exploration_phase: policy.cur_pure_exploration_phase,
     }
 
 
@@ -305,6 +293,66 @@ def actor_critic_loss(policy, batch_tensors):
     return actor_loss + critic_loss
 
 
+def gradients(policy, optimizer, loss):
+    if policy.config["grad_norm_clipping"] is not None:
+        actor_grads_and_vars = minimize_and_clip(
+            policy._actor_optimizer,
+            policy.actor_loss,
+            var_list=policy.model.policy_variables(),
+            clip_val=policy.config["grad_norm_clipping"])
+        critic_grads_and_vars = minimize_and_clip(
+            policy._critic_optimizer,
+            policy.critic_loss,
+            var_list=policy.model.q_variables(),
+            clip_val=policy.config["grad_norm_clipping"])
+    else:
+        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
+            policy.actor_loss, var_list=policy.model.policy_variables())
+        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
+            policy.critic_loss, var_list=policy.model.q_variables())
+    # save these for later use in build_apply_op
+    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                    if g is not None]
+    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
+                                     if g is not None]
+    grads_and_vars = (
+        policy._actor_grads_and_vars + policy._critic_grads_and_vars)
+    return grads_and_vars
+
+
+def apply_gradients(policy, optimizer, grads_and_vars):
+    # for policy gradient, update policy net one time v.s.
+    # update critic net `policy_delay` time(s)
+    should_apply_actor_opt = tf.equal(
+        tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
+
+    def make_apply_op():
+        return policy._actor_optimizer.apply_gradients(
+            policy._actor_grads_and_vars)
+
+    actor_op = tf.cond(
+        should_apply_actor_opt,
+        true_fn=make_apply_op,
+        false_fn=lambda: tf.no_op())
+    critic_op = policy._critic_optimizer.apply_gradients(
+        policy._critic_grads_and_vars)
+
+    # increment global step & apply ops
+    with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
+        return tf.group(actor_op, critic_op)
+
+
+def stats(policy, batch_tensors):
+    return {
+        "td_error": tf.reduce_mean(policy.td_error),
+        "actor_loss": tf.reduce_mean(policy.actor_loss),
+        "critic_loss": tf.reduce_mean(policy.critic_loss),
+        "mean_q": tf.reduce_mean(policy.q_t),
+        "max_q": tf.reduce_max(policy.q_t),
+        "min_q": tf.reduce_min(policy.q_t),
+    }
+
+
 class ExplorationStateMixin(object):
     def __init__(self, obs_space, action_space, config):
         self.cur_noise_scale = 1.0
@@ -428,63 +476,6 @@ def setup_early_mixins(policy, obs_space, action_space, config):
 
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, config)
-
-
-def exploration_setting_inputs(policy):
-    return {
-        policy.stochastic: True,
-        policy.noise_scale: policy.cur_noise_scale,
-        policy.pure_exploration_phase: policy.cur_pure_exploration_phase,
-    }
-
-
-def gradients(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
-        actor_grads_and_vars = minimize_and_clip(
-            policy._actor_optimizer,
-            policy.actor_loss,
-            var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
-        critic_grads_and_vars = minimize_and_clip(
-            policy._critic_optimizer,
-            policy.critic_loss,
-            var_list=policy.model.q_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
-    else:
-        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
-            policy.actor_loss, var_list=policy.model.policy_variables())
-        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
-            policy.critic_loss, var_list=policy.model.q_variables())
-    # save these for later use in build_apply_op
-    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                    if g is not None]
-    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                     if g is not None]
-    grads_and_vars = (
-        policy._actor_grads_and_vars + policy._critic_grads_and_vars)
-    return grads_and_vars
-
-
-def apply_gradients(policy, optimizer, grads_and_vars):
-    # for policy gradient, update policy net one time v.s.
-    # update critic net `policy_delay` time(s)
-    should_apply_actor_opt = tf.equal(
-        tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
-
-    def make_apply_op():
-        return policy._actor_optimizer.apply_gradients(
-            policy._actor_grads_and_vars)
-
-    actor_op = tf.cond(
-        should_apply_actor_opt,
-        true_fn=make_apply_op,
-        false_fn=lambda: tf.no_op())
-    critic_op = policy._critic_optimizer.apply_gradients(
-        policy._critic_grads_and_vars)
-
-    # increment global step & apply ops
-    with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
-        return tf.group(actor_op, critic_op)
 
 
 DDPGTFPolicy = build_tf_policy(
