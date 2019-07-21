@@ -170,6 +170,7 @@ ray::Status NodeManager::RegisterGcs() {
     if (!data.empty()) {
       // We only need the last entry, because it represents the latest state of
       // this actor.
+      RAY_LOG(DEBUG) << " RegisterGcs: "<<actor_id;
       HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
     }
   };
@@ -618,6 +619,7 @@ void NodeManager::PublishActorStateTransition(
       RAY_CHECK_OK(redis_context->RunArgvAsync(args));
     }
   };
+  RAY_LOG(DEBUG)<< actor_notification->state() << " : " << actor_id << ", log_length "<<log_length;
   RAY_CHECK_OK(gcs_client_->actor_table().AppendAt(JobID::Nil(), actor_id,
                                                    actor_notification, success_callback,
                                                    failure_callback, log_length));
@@ -655,16 +657,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
-    // Kill actor if parent actor is dead.
-    auto parent_actor_entry = actor_registry_.find(actor_registration.GetParentActorID());
-    if (parent_actor_entry != actor_registry_.end() &&
-        parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
-      RAY_LOG(DEBUG) << "Killing newly created actor " << actor_id << " as parent actor "
-                     << actor_registration.GetParentActorID() << " is dead.";
-      auto worker = worker_pool_.GetActorWorker(actor_id);
-      ProcessDisconnectClientMessage(worker->Connection());
-      return;
-    }
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -707,6 +699,8 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId() && 
           actor_entry.second.GetParentActorID() == actor_id) {
         auto worker = worker_pool_.GetActorWorker(actor_entry.first);
+        RAY_LOG(INFO) << "Killing child actor "<< actor_entry.first<<" as parent actor "
+          << actor_id << "is dead";
         ProcessDisconnectClientMessage(worker->Connection());
       }
     }
@@ -1585,6 +1579,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           if (!data.empty()) {
             // The actor has been created. We only need the last entry, because
             // it represents the latest state of this actor.
+            RAY_LOG(DEBUG) << " SubmitTask: "<<actor_id;
             HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
           }
         };
@@ -2006,6 +2001,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   // Notify the other node managers that the actor has been created.
   auto new_actor_data = CreateActorTableDataFromCreationTask(task_spec);
   new_actor_data.set_parent_actor_id(parent_actor_id.Binary());
+
   if (resumed_from_checkpoint) {
     // This actor was resumed from a checkpoint. In this case, we first look
     // up the checkpoint in GCS and use it to restore the actor registration
@@ -2044,6 +2040,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   } else {
     // The actor did not resume from a checkpoint. Immediately notify the
     // other node managers that the actor has been created.
+    RAY_LOG(DEBUG)<<" FinishAssignedActorCreationTask: "<<actor_id;
     HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
     PublishActorStateTransition(
         actor_id, new_actor_data,
@@ -2052,6 +2049,17 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
           // Only one node at a time should succeed at creating the actor.
           RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << id;
         });
+    RAY_LOG(DEBUG)<<" FinishAssignedActorCreationTask: Completed"<<actor_id;
+  }
+  // Kill newly created actor if parent actor is dead.
+  auto parent_actor_entry = actor_registry_.find(parent_actor_id);
+  if (parent_actor_entry != actor_registry_.end() &&
+      parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
+    RAY_LOG(INFO) << "Killing newly created " << actor_id << " as parent actor "
+      << parent_actor_id << " is dead.";
+    auto worker = worker_pool_.GetActorWorker(actor_id);
+    ProcessDisconnectClientMessage(worker->Connection());
+    return;
   }
   if (!resumed_from_checkpoint) {
     // The actor was not resumed from a checkpoint. We extend the actor's
