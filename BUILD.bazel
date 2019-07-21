@@ -351,7 +351,6 @@ cc_library(
         exclude = [
             "src/ray/core_worker/*_test.cc",
             "src/ray/core_worker/mock_worker.cc",
-            "src/ray/core_worker/store_provider/memory_store_provider.cc",
         ],
     ),
     hdrs = glob([
@@ -645,17 +644,6 @@ cc_binary(
     name = "actor_state_accessor_test",
     testonly = 1,
     srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":gcs",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "new_gcs_client_test",
-    testonly = 1,
-    srcs = ["src/ray/gcs/gcs_client_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",

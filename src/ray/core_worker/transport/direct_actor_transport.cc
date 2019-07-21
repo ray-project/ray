@@ -42,7 +42,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpecification &t
 
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->set_task_id(task_spec.TaskId().Binary());
-  request->set_task_spec(task_spec.Serialize());
+  request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto entry = rpc_clients_.find(actor_id);
@@ -147,15 +147,24 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
       return;  
     }
 
-    // TODO(zhijunfu): if return id count doesn't match, write an exception into store.
     RAY_CHECK(reply.return_object_ids_size() == reply.return_objects_size());
     for (int i = 0; i < reply.return_object_ids_size(); i++) {
       ObjectID object_id = ObjectID::FromBinary(reply.return_object_ids(i));
-      const std::string &return_object = reply.return_objects(i);
-      auto data = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(
-          return_object.data()));
-      auto buffer = std::make_shared<LocalMemoryBuffer>(data, return_object.size());
-      store_provider_->Put(RayObject(buffer, nullptr), object_id);     
+      const auto &return_object = reply.return_objects(i);
+
+      std::shared_ptr<LocalMemoryBuffer> data_buffer;
+      if (return_object.data().size() > 0) {
+        data_buffer = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(return_object.data().data())),
+          return_object.data().size());
+      }
+      std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+      if (return_object.metadata().size() > 0) {
+        metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(return_object.metadata().data())),
+            return_object.metadata().size());
+      }
+      store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id);     
     }});
   return status;
 }
@@ -190,10 +199,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
 
-  const std::string &task_message = request.task_spec();
-  const TaskSpecification spec(task_message);
-
-
+  const TaskSpecification spec(request.task_spec());
   if (HasByReferenceArgs(spec)) {
     send_reply_callback(Status::Invalid("direct actor call only supports by value arguments"), nullptr, nullptr);
     return;
@@ -209,9 +215,15 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 
   // TODO(zhijunfu): this doesn't include metadata!!! Need a fix.
   for (int i = 0; i < results.size(); i++) {
-    std::string data(reinterpret_cast<const char*>(
-        const_cast<const uint8_t*>(results[i]->GetData()->Data())), results[i]->GetData()->Size());
-    (*reply).add_return_objects(data);
+    auto return_object = (*reply).add_return_objects();
+    if (results[i]->GetData() != nullptr) {
+      return_object->set_data(reinterpret_cast<const char*>(
+          const_cast<const uint8_t*>(results[i]->GetData()->Data())), results[i]->GetData()->Size());
+    }
+    if (results[i]->GetMetadata() != nullptr) {
+      return_object->set_metadata(reinterpret_cast<const char*>(
+          const_cast<const uint8_t*>(results[i]->GetMetadata()->Data())), results[i]->GetMetadata()->Size());
+    }
   }
 
   send_reply_callback(status, nullptr, nullptr);

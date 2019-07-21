@@ -34,7 +34,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
+  Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
   /// Subscribe to actor table.

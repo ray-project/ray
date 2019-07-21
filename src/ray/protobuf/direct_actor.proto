@@ -2,22 +2,27 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
+message ReturnObject {
+  // Data of the object.
+  bytes data = 1;
+  // Metaata of the object.
+  bytes metadata = 2;
+}
+
 message PushTaskRequest {
   // The ID of the task to be pushed.
   bytes task_id = 1;
-  // The task to be pushed. This should include task_id.
-  // TODO(hchen): Currently, `task_spec` are represented as
-  // flatbutters-serialized bytes. This is because the flatbuffers-defined Task data
-  // structure is being used in many places. We should move Task and all related data
-  // strucutres to protobuf.
-  bytes task_spec = 2;
+  // The task to be pushed.
+  TaskSpec task_spec = 2;
 }
 
 message PushTaskReply {
   // The IDs for the returned objects.
   repeated bytes return_object_ids = 1;
   // The content for returned objects.
-  repeated bytes return_objects = 2;
+  repeated ReturnObject return_objects = 2;
 }
 
 // Service for direct actor.

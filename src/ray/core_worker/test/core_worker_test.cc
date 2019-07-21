@@ -99,7 +99,7 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
-        .append(" --num_initial_workers=2")
+        .append(" --num_initial_workers=1")
         .append(" --maximum_startup_concurrency=10")
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +

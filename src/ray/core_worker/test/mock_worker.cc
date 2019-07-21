@@ -35,7 +35,7 @@ class MockWorker {
   Status ExecuteTask(const RayFunction &ray_function,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const TaskInfo &task_info, int num_returns,
-                     std::vector<std::shared_ptr<RayObject>>* results) {
+                     std::vector<std::shared_ptr<RayObject>>* results) {                 
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
 
@@ -43,7 +43,6 @@ class MockWorker {
         ray_function.function_descriptor[0] == c_actor_creation_function_str) {
       // This is an actor creation task.
       RAY_CHECK(args.size() > 0);
-
       for (const auto &arg : args) {
         std::string object_id_str(reinterpret_cast<char*>(arg->GetData()->Data()),
             arg->GetData()->Size());
@@ -76,6 +75,7 @@ class MockWorker {
     for (int i = 0; i < num_returns; i++) {
       results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
     }
+
     return Status::OK();
   }
 
