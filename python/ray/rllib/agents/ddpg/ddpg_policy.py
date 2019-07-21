@@ -39,6 +39,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
     if config["use_state_preprocessor"]:
         default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
+        config["model"]["no_final_linear"] = True
     else:
         default_model = NoopModel
         num_outputs = int(np.product(obs_space.shape))
