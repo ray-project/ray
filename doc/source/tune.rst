@@ -31,7 +31,7 @@ If TensorBoard is installed, you can also automatically visualize all trial resu
     tensorboard --logdir ~/ray_results
 
 
-For massive parallelism, you can import and initialize Ray, and then run `ray submit`:
+For massive parallelism, you can import and initialize Ray and then run `ray submit`:
 
 .. code-block:: python
 
