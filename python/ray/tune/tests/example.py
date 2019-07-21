@@ -17,7 +17,7 @@ def train_mnist(config):
     train_loader, test_loader = get_data_loaders()
     model = Net(config)
     optimizer = optim.SGD(model.parameters(), lr=config["lr"])
-    while True:
+    for i in range(10):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
         tune.track.log(mean_accuracy=acc)

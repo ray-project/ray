@@ -102,18 +102,6 @@ This function will report status on the command line until all Trials stop:
 
 All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
 
-Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
-
-.. code-block:: python
-
-    from ray.tune.analysis import ExperimentAnalysis
-
-    ea = ExperimentAnalysis("~/ray_results/my_experiment")
-    trials_dataframe = ea.dataframe()
-
-You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
-
-
 
 Custom Trial Names
 ~~~~~~~~~~~~~~~~~~
@@ -366,6 +354,21 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
         sync_to_cloud=tune.function(custom_sync_func),
     )
 
+Analyzing Results
+-----------------
+
+Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
+
+.. code-block:: python
+
+    from ray.tune.analysis import ExperimentAnalysis
+
+    ea = ExperimentAnalysis("~/ray_results/my_experiment")
+    trials_dataframe = ea.dataframe()
+
+You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
+
+
 Tune Client API
 ---------------
 
@@ -394,14 +397,25 @@ The API also supports curl. Here are the examples for getting trials (``GET /tri
 
 .. code-block:: bash
 
-    curl http://<address>:<port>/trials
-    curl http://<address>:<port>/trials/<trial_id>
+    $ curl http://<address>:<port>/trials
+    $ curl http://<address>:<port>/trials/<trial_id>
 
 And stopping a trial (``PUT /trials/:id``):
 
 .. code-block:: bash
 
-    curl -X PUT http://<address>:<port>/trials/<trial_id>
+    $ curl -X PUT http://<address>:<port>/trials/<trial_id>
+
+Debugging
+---------
+
+By default, Tune will run hyperparameter evaluations on multiple processes. However, if you need to debug your training process, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following before ``tune.run``.
+
+.. code-block:: python
+
+    ray.init(local_mode=True)
+
+Note that some behavior such as writing to files by depending on the current working directory in a Trainable and setting global process variables may not work as expected. Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
 
 Tune CLI (Experimental)
