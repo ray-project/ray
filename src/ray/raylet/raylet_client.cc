@@ -14,8 +14,8 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task_spec.h"
 #include "ray/util/logging.h"
 
 using MessageType = ray::protocol::MessageType;
@@ -223,18 +223,15 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
-ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::raylet::TaskSpecification &task_spec) {
+ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
+      fbb, fbb.CreateString(task_spec.Serialize()));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(
-    std::unique_ptr<ray::raylet::TaskSpecification> *task_spec) {
+ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the raylet
   // gives this client a task.
@@ -267,8 +264,8 @@ ray::Status RayletClient::GetTask(
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(new ray::raylet::TaskSpecification(
-      string_from_flatbuf(*reply_message->task_spec())));
+  task_spec->reset(
+      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 
@@ -335,9 +332,9 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-ray::Status RayletClient::PushProfileEvents(const ProfileTableDataT &profile_events) {
+ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateProfileTableData(fbb, &profile_events);
+  auto message = fbb.CreateString(profile_events.SerializeAsString());
   fbb.Finish(message);
 
   auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);

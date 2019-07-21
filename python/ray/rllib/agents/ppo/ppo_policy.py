@@ -8,7 +8,8 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
@@ -106,9 +107,8 @@ class PPOLoss(object):
 
 def ppo_surrogate_loss(policy, batch_tensors):
     if policy.state_in:
-        max_seq_len = tf.reduce_max(policy.convert_to_eager(policy.seq_lens))
-        mask = tf.sequence_mask(
-            policy.convert_to_eager(policy.seq_lens), max_seq_len)
+        max_seq_len = tf.reduce_max(policy.seq_lens)
+        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
@@ -122,10 +122,10 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[BEHAVIOUR_LOGITS],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
-        policy.convert_to_eager(policy.value_function),
-        policy.convert_to_eager(policy.kl_coeff),
+        policy.value_function,
+        policy.kl_coeff,
         mask,
-        entropy_coeff=policy.config["entropy_coeff"],
+        entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
@@ -136,17 +136,17 @@ def ppo_surrogate_loss(policy, batch_tensors):
 
 def kl_and_loss_stats(policy, batch_tensors):
     return {
-        "cur_kl_coeff": tf.cast(
-            policy.convert_to_eager(policy.kl_coeff), tf.float64),
-        "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
+        "cur_kl_coeff": tf.cast(policy.kl_coeff, tf.float64),
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "total_loss": policy.loss_obj.loss,
         "policy_loss": policy.loss_obj.mean_policy_loss,
         "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             batch_tensors[Postprocessing.VALUE_TARGETS],
-            policy.convert_to_eager(policy.value_function)),
+            policy.value_function),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
 
@@ -249,6 +249,8 @@ def setup_config(policy, obs_space, action_space, config):
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
@@ -262,4 +264,7 @@ PPOTFPolicy = build_tf_policy(
     gradients_fn=clip_gradients,
     before_init=setup_config,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin])
+    mixins=[
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        ValueNetworkMixin
+    ])

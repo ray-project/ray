@@ -85,7 +85,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   }
 
   void Add(const JobID &job_id, const TaskID &task_id,
-           std::shared_ptr<TaskLeaseData> &task_lease_data) {
+           const std::shared_ptr<TaskLeaseData> &task_lease_data) {
     task_lease_table_[task_id] = task_lease_data;
     if (subscribed_tasks_.count(task_id) == 1) {
       notification_callback_(nullptr, task_id, *task_lease_data);
@@ -112,7 +112,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
 
   Status AppendAt(
       const JobID &job_id, const TaskID &task_id,
-      std::shared_ptr<TaskReconstructionData> &task_data,
+      const std::shared_ptr<TaskReconstructionData> &task_data,
       const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
           &success_callback,
       const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
@@ -134,7 +134,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   MOCK_METHOD4(
       Append,
       ray::Status(
-          const JobID &, const TaskID &, std::shared_ptr<TaskReconstructionData> &,
+          const JobID &, const TaskID &, const std::shared_ptr<TaskReconstructionData> &,
           const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
 
  private:
@@ -160,12 +160,12 @@ class ReconstructionPolicyTest : public ::testing::Test {
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {
     mock_gcs_.Subscribe(
-        [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+        [this](gcs::RedisGcsClient *client, const TaskID &task_id,
                const TaskLeaseData &task_lease) {
           reconstruction_policy_->HandleTaskLeaseNotification(task_id,
                                                               task_lease.timeout());
         },
-        [this](gcs::AsyncGcsClient *client, const TaskID &task_id) {
+        [this](gcs::RedisGcsClient *client, const TaskID &task_id) {
           reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
         });
   }
@@ -401,7 +401,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   RAY_CHECK_OK(
       mock_gcs_.AppendAt(JobID::Nil(), task_id, task_reconstruction_data, nullptr,
                          /*failure_callback=*/
-                         [](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                         [](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
                             const TaskReconstructionData &data) { ASSERT_TRUE(false); },
                          /*log_index=*/0));
 

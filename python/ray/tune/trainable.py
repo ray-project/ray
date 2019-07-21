@@ -26,6 +26,8 @@ from ray.tune.util import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
+SETUP_TIME_THRESHOLD = 10
+
 
 class Trainable(object):
     """Abstract class for trainable models, functions, etc.
@@ -46,6 +48,11 @@ class Trainable(object):
     just a ``my_train(config, reporter)`` function to the config.
     The function will be automatically converted to this interface
     (sans checkpoint functionality).
+
+    When using Tune, Tune will convert this class into a Ray actor, which
+    runs on a separate process. Tune will also change the current working
+    directory of this process to `self.logdir`.
+
     """
 
     def __init__(self, config=None, logger_creator=None):
@@ -70,14 +77,15 @@ class Trainable(object):
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
-            self.logdir = self._result_logger.logdir
+            self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
-            self.logdir = tempfile.mkdtemp(
+            self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(self.config, self.logdir, None)
+            self._result_logger = UnifiedLogger(self.config, self._logdir,
+                                                None)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -87,7 +95,14 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+        start_time = time.time()
         self._setup(copy.deepcopy(self.config))
+        setup_time = time.time() - start_time
+        if setup_time > SETUP_TIME_THRESHOLD:
+            logger.info("_setup took {:.3f} seconds. If your trainable is "
+                        "slow to initialize, consider setting "
+                        "reuse_actors=True to reduce actor creation "
+                        "overheads.".format(setup_time))
         self._local_ip = ray.services.get_node_ip_address()
         self._monitor = UtilMonitor(start=log_sys_usage)
 
@@ -108,6 +123,7 @@ class Trainable(object):
         return ""
 
     def current_ip(self):
+        logger.warning("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -131,7 +147,8 @@ class Trainable(object):
             across checkpoint / restore calls.
 
             `training_iteration` (int): The index of this
-            training iteration, e.g. call to train().
+            training iteration, e.g. call to train(). This is incremented
+            after `_train()` is called.
 
             `pid` (str): The pid of the training process.
 
@@ -219,8 +236,8 @@ class Trainable(object):
 
     def delete_checkpoint(self, checkpoint_dir):
         """Removes subdirectory within checkpoint_folder
-        Parameters
-        ----------
+
+        Args:
             checkpoint_dir : path to checkpoint
         """
         if os.path.isfile(checkpoint_dir):
@@ -238,7 +255,7 @@ class Trainable(object):
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint path that may be passed to restore().
+            Checkpoint path or prefix that may be passed to restore().
         """
 
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
@@ -248,16 +265,11 @@ class Trainable(object):
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
-            if (not checkpoint.startswith(checkpoint_dir)
-                    or checkpoint == checkpoint_dir):
+            if not checkpoint.startswith(checkpoint_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
-            if not os.path.exists(checkpoint):
-                raise ValueError(
-                    "The returned checkpoint path does not exist: {}".format(
-                        checkpoint))
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
@@ -265,9 +277,9 @@ class Trainable(object):
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
-            raise ValueError(
-                "`_save` must return a dict or string type: {}".format(
-                    str(type(checkpoint))))
+            raise ValueError("Returned unexpected type {}. "
+                             "Expected str or dict.".format(type(checkpoint)))
+
         with open(checkpoint_path + ".tune_metadata", "wb") as f:
             pickle.dump({
                 "experiment_id": self._experiment_id,
@@ -280,33 +292,34 @@ class Trainable(object):
         return checkpoint_path
 
     def save_to_object(self):
-        """Saves the current model state to a Python object. It also
-        saves to disk but does not return the checkpoint path.
+        """Saves the current model state to a Python object.
+
+        It also saves to disk but does not return the checkpoint path.
 
         Returns:
             Object holding checkpoint data.
         """
 
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_prefix = self.save(tmpdir)
+        checkpoint_path = self.save(tmpdir)
 
+        # Save all files in subtree.
         data = {}
-        base_dir = os.path.dirname(checkpoint_prefix)
-        for path in os.listdir(base_dir):
-            path = os.path.join(base_dir, path)
-            if path.startswith(checkpoint_prefix):
+        for basedir, _, file_names in os.walk(tmpdir):
+            for file_name in file_names:
+                path = os.path.join(basedir, file_name)
+
                 with open(path, "rb") as f:
-                    data[os.path.basename(path)] = f.read()
+                    data[os.path.relpath(path, tmpdir)] = f.read()
 
         out = io.BytesIO()
         data_dict = pickle.dumps({
-            "checkpoint_name": os.path.basename(checkpoint_prefix),
+            "checkpoint_name": os.path.relpath(checkpoint_path, tmpdir),
             "data": data,
         })
         if len(data_dict) > 10e6:  # getting pretty large
             logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
         out.write(data_dict)
-
         shutil.rmtree(tmpdir)
         return out.getvalue()
 
@@ -318,7 +331,6 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
@@ -330,6 +342,7 @@ class Trainable(object):
         if saved_as_dict:
             with open(checkpoint_path, "rb") as loaded_state:
                 checkpoint_dict = pickle.load(loaded_state)
+            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
             self._restore(checkpoint_dict)
         else:
             self._restore(checkpoint_path)
@@ -343,14 +356,18 @@ class Trainable(object):
 
         These checkpoints are returned from calls to save_to_object().
         """
-
         info = pickle.loads(obj)
         data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
 
-        for file_name, file_contents in data.items():
-            with open(os.path.join(tmpdir, file_name), "wb") as f:
+        for relpath_name, file_contents in data.items():
+            path = os.path.join(tmpdir, relpath_name)
+
+            # This may be a subdirectory, hence not just using tmpdir
+            if not os.path.exists(os.path.dirname(path)):
+                os.makedirs(os.path.dirname(path))
+            with open(path, "wb") as f:
                 f.write(file_contents)
 
         self.restore(checkpoint_path)
@@ -395,11 +412,45 @@ class Trainable(object):
         self._result_logger.close()
         self._stop()
 
+    @property
+    def logdir(self):
+        """Directory of the results and checkpoints for this Trainable.
+
+        Tune will automatically sync this folder with the driver if execution
+        is distributed.
+
+        Note that the current working directory will also be changed to this.
+
+        """
+        return self._logdir
+
+    @property
+    def iteration(self):
+        """Current training iteration.
+
+        This value is automatically incremented every time `train()` is called
+        and is automatically inserted into the training result dict.
+
+        """
+        return self._iteration
+
+    def get_config(self):
+        """Returns configuration passed in by Tune."""
+        return self.config
+
     def _train(self):
         """Subclasses should override this to implement train().
 
+        The return value will be automatically passed to the loggers. Users
+        can also return `tune.result.DONE` or `tune.result.SHOULD_CHECKPOINT`
+        to manually trigger termination of this trial or checkpointing of this
+        trial. Note that manual checkpointing only works when subclassing
+        Trainables.
+
         Returns:
-            A dict that describes training progress."""
+            A dict that describes training progress.
+
+        """
 
         raise NotImplementedError
 
@@ -412,7 +463,7 @@ class Trainable(object):
 
         Returns:
             checkpoint (str | dict): If string, the return value is
-                expected to be the checkpoint path that will be passed to
+                expected to be the checkpoint path or prefix to be passed to
                 `_restore()`. If dict, the return value will be automatically
                 serialized by Tune and passed to `_restore()`.
 

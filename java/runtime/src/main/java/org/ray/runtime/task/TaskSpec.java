@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -19,7 +20,7 @@ import org.ray.runtime.util.IdUtil;
 public class TaskSpec {
 
   // ID of the job that created this task.
-  public final UniqueId jobId;
+  public final JobId jobId;
 
   // Task ID of the task.
   public final TaskId taskId;
@@ -45,6 +46,9 @@ public class TaskSpec {
   // Number of tasks that have been submitted to this actor so far.
   public final int actorCounter;
 
+  // Object id returned by the previous task submitted to the same actor.
+  public final ObjectId previousActorTaskDummyObjectId;
+
   // Task arguments.
   public final UniqueId[] newActorHandles;
 
@@ -54,7 +58,7 @@ public class TaskSpec {
   // number of return objects.
   public final int numReturns;
 
-  // returns ids.
+  // Return ids.
   public final ObjectId[] returnIds;
 
   // The task's resource demands.
@@ -70,8 +74,6 @@ public class TaskSpec {
   // is Python, the type is PyFunctionDescriptor.
   private final FunctionDescriptor functionDescriptor;
 
-  private List<ObjectId> executionDependencies;
-
   public boolean isActorTask() {
     return !actorId.isNil();
   }
@@ -81,7 +83,7 @@ public class TaskSpec {
   }
 
   public TaskSpec(
-      UniqueId jobId,
+      JobId jobId,
       TaskId taskId,
       TaskId parentTaskId,
       int parentCounter,
@@ -90,6 +92,7 @@ public class TaskSpec {
       UniqueId actorId,
       UniqueId actorHandleId,
       int actorCounter,
+      ObjectId previousActorTaskDummyObjectId,
       UniqueId[] newActorHandles,
       FunctionArg[] args,
       int numReturns,
@@ -106,6 +109,7 @@ public class TaskSpec {
     this.actorId = actorId;
     this.actorHandleId = actorHandleId;
     this.actorCounter = actorCounter;
+    this.previousActorTaskDummyObjectId = previousActorTaskDummyObjectId;
     this.newActorHandles = newActorHandles;
     this.args = args;
     this.numReturns = numReturns;
@@ -127,7 +131,6 @@ public class TaskSpec {
       Preconditions.checkArgument(false, "Unknown task language: {}.", language);
     }
     this.functionDescriptor = functionDescriptor;
-    this.executionDependencies = new ArrayList<>();
   }
 
   public JavaFunctionDescriptor getJavaFunctionDescriptor() {
@@ -138,10 +141,6 @@ public class TaskSpec {
   public PyFunctionDescriptor getPyFunctionDescriptor() {
     Preconditions.checkState(language == TaskLanguage.PYTHON);
     return (PyFunctionDescriptor) functionDescriptor;
-  }
-
-  public List<ObjectId> getExecutionDependencies() {
-    return executionDependencies;
   }
 
   @Override
@@ -156,14 +155,14 @@ public class TaskSpec {
         ", actorId=" + actorId +
         ", actorHandleId=" + actorHandleId +
         ", actorCounter=" + actorCounter +
+        ", previousActorTaskDummyObjectId=" + previousActorTaskDummyObjectId +
         ", newActorHandles=" + Arrays.toString(newActorHandles) +
         ", args=" + Arrays.toString(args) +
         ", numReturns=" + numReturns +
         ", resources=" + resources +
         ", language=" + language +
         ", functionDescriptor=" + functionDescriptor +
-        ", dynamicWorkerOptions=" + dynamicWorkerOptions +
-        ", executionDependencies=" + executionDependencies +
+	", dynamicWorkerOptions=" + dynamicWorkerOptions +
         '}';
   }
 }

@@ -94,3 +94,25 @@ def wait_for_errors(error_type, num_errors, timeout=10):
             return
         time.sleep(0.1)
     raise Exception("Timing out of wait.")
+
+
+def wait_for_condition(condition_predictor,
+                       timeout_ms=1000,
+                       retry_interval_ms=100):
+    """A helper function that waits until a condition is met.
+
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout_ms: Maximum timeout in milliseconds.
+        retry_interval_ms: Retry interval in milliseconds.
+
+    Return:
+        Whether the condition is met within the timeout.
+    """
+    time_elapsed = 0
+    while time_elapsed <= timeout_ms:
+        if condition_predictor():
+            return True
+        time_elapsed += retry_interval_ms
+        time.sleep(retry_interval_ms / 1000.0)
+    return False

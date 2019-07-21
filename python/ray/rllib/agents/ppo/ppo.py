@@ -41,6 +41,8 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
+    # Decay schedule for the entropy regularizer
+    "entropy_coeff_schedule": None,
     # PPO clip parameter
     "clip_param": 0.3,
     # Clip param for the value function. Note that this is sensitive to the
@@ -140,11 +142,11 @@ def validate_config(config):
         raise ValueError(
             "Minibatch size {} must be <= train batch size {}.".format(
                 config["sgd_minibatch_size"], config["train_batch_size"]))
-    if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
+    if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "
             "function. Consider setting batch_mode=complete_episodes.")
-    if (config["multiagent"]["policies"] and not config["simple_optimizer"]):
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "

@@ -2,14 +2,9 @@ syntax = "proto3";
 
 package ray.rpc;
 
-option java_package = "org.ray.runtime.generated";
+import "src/ray/protobuf/common.proto";
 
-// Language of a worker or task.
-enum Language {
-  PYTHON = 0;
-  CPP = 1;
-  JAVA = 2;
-}
+option java_package = "org.ray.runtime.generated";
 
 // These indexes are mapped to strings in ray_redis_module.cc.
 enum TablePrefix {
@@ -77,12 +72,8 @@ message TaskReconstructionData {
   bytes node_manager_id = 2;
 }
 
-// TODO(hchen): Task table currently still uses flatbuffers-defined data structure
-// (`Task` in `node_manager.fbs`), because a lot of code depends on that. This should
-// be migrated to protobuf very soon.
 message TaskTableData {
-  // Flatbuffers-serialized content of the task, see `src/ray/raylet/task.h`.
-  bytes task = 1;
+  Task task = 1;
 }
 
 message ActorTableData {
@@ -98,20 +89,22 @@ message ActorTableData {
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
+  // The ID of the actor that created it, null if created by non-actor task.
+  bytes parent_actor_id = 2;
   // The dummy object ID returned by the actor creation task. If the actor
   // dies, then this is the object that should be reconstructed for the actor
   // to be recreated.
-  bytes actor_creation_dummy_object_id = 2;
+  bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
-  bytes job_id = 3;
+  bytes job_id = 4;
   // The ID of the node manager that created the actor.
-  bytes node_manager_id = 4;
+  bytes node_manager_id = 5;
   // Current state of this actor.
-  ActorState state = 5;
+  ActorState state = 6;
   // Max number of times this actor should be reconstructed.
-  uint64 max_reconstructions = 6;
+  uint64 max_reconstructions = 7;
   // Remaining number of reconstructions.
-  uint64 remaining_reconstructions = 7;
+  uint64 remaining_reconstructions = 8;
 }
 
 message ErrorTableData {
@@ -153,22 +146,12 @@ message ProfileTableData {
   repeated ProfileEvent profile_events = 4;
 }
 
-message RayResource {
-  // The type of the resource.
-  string resource_name = 1;
+message ResourceTableData {
   // The total capacity of this resource type.
-  double resource_capacity = 2;
+  double resource_capacity = 1;
 }
 
 message ClientTableData {
-  // Enum for the entry type in the ClientTable
-  enum EntryType {
-    INSERTION = 0;
-    DELETION = 1;
-    RES_CREATEUPDATE = 2;
-    RES_DELETE = 3;
-  }
-
   // The client ID of the client that the message is about.
   bytes client_id = 1;
   // The IP address of the client's node manager.
@@ -183,8 +166,9 @@ message ClientTableData {
   // The port at which the client's object manager is listening for TCP
   // connections from other object managers.
   int32 object_manager_port = 6;
-  // Enum to store the entry type in the log
-  EntryType entry_type = 7;
+  // True if the message is about the addition of a client and false if it is
+  // about the deletion of a client.
+  bool is_insertion = 7;
 
   // TODO(hchen): Define the following resources in map format.
   repeated string resources_total_label = 8;
@@ -283,4 +267,6 @@ enum ErrorType {
   // 2) The object's creating task is already cleaned up from GCS (this currently
   //    crashes raylet).
   OBJECT_UNRECONSTRUCTABLE = 2;
+  // Indicates that a task failed due to user code failure.
+  TASK_EXECUTION_EXCEPTION = 3;
 }

@@ -1,5 +1,5 @@
-#ifndef RAY_RAYLET_SCHEDULING_RESOURCES_H
-#define RAY_RAYLET_SCHEDULING_RESOURCES_H
+#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
 
 #include <string>
 #include <unordered_map>
@@ -9,8 +9,6 @@
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// Conversion factor that is the amount in internal units is equivalent to
 /// one actual resource. Multiply to convert from actual to interal and
@@ -157,18 +155,6 @@ class ResourceSet {
   /// \param other: The resource set to subtract from the current resource set.
   /// \return Void.
   void SubtractResourcesStrict(const ResourceSet &other);
-
-  /// \brief Finds new resources created or updated in a new set.
-  ///
-  /// \param new_resource_set: The new resource set to compare with.
-  /// \return The ResourceSet of updated values
-  ResourceSet FindUpdatedResources(const ResourceSet &new_resource_set) const;
-
-  /// \brief Finds resources deleted in a set.
-  ///
-  /// \param new_resource_set: The new resource set to compare with.
-  /// \return The ResourceSet of deleted resources with old capacities
-  ResourceSet FindDeletedResources(const ResourceSet &new_resource_set) const;
 
   /// Return the capacity value associated with the specified resource.
   ///
@@ -443,6 +429,12 @@ class ResourceIdSet {
   std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
       flatbuffers::FlatBufferBuilder &fbb) const;
 
+  /// \brief Serialize this object as a string.
+  ///
+  /// \return A serialized string of this object.
+  /// TODO(zhijunfu): this can be removed after raylet client is migrated to grpc.
+  const std::string Serialize() const;
+
  private:
   /// A mapping from reosurce name to a set of resource IDs for that resource.
   std::unordered_map<std::string, ResourceIds> available_resources_;
@@ -531,14 +523,12 @@ class SchedulingResources {
   ResourceSet resources_load_;
 };
 
-}  // namespace raylet
-
 }  // namespace ray
 
 namespace std {
 template <>
-struct hash<ray::raylet::ResourceSet> {
-  size_t operator()(ray::raylet::ResourceSet const &k) const {
+struct hash<ray::ResourceSet> {
+  size_t operator()(ray::ResourceSet const &k) const {
     size_t seed = k.GetResourceMap().size();
     for (auto &elem : k.GetResourceMap()) {
       seed ^= std::hash<std::string>()(elem.first);
@@ -549,4 +539,4 @@ struct hash<ray::raylet::ResourceSet> {
 };
 }  // namespace std
 
-#endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H
+#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

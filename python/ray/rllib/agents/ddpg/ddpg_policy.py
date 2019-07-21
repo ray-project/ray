@@ -58,7 +58,10 @@ class DDPGPostprocessing(object):
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
             self.pi_distance = distance_in_action_space
-            if distance_in_action_space < self.config["exploration_ou_sigma"]:
+            if distance_in_action_space < \
+                    self.config["exploration_ou_sigma"] * self.cur_noise_scale:
+                # multiplying the sampled OU noise by noise scale is
+                # equivalent to multiplying the sigma of OU by noise scale
                 self.parameter_noise_sigma_val *= 1.01
             else:
                 self.parameter_noise_sigma_val /= 1.01
@@ -228,17 +231,15 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         if config["l2_reg"] is not None:
             for var in self.policy_vars:
                 if "bias" not in var.name:
-                    self.actor_loss += (
-                        config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
+                    self.actor_loss += (config["l2_reg"] * tf.nn.l2_loss(var))
             for var in self.q_func_vars:
                 if "bias" not in var.name:
-                    self.critic_loss += (
-                        config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
+                    self.critic_loss += (config["l2_reg"] * tf.nn.l2_loss(var))
             if self.config["twin_q"]:
                 for var in self.twin_q_func_vars:
                     if "bias" not in var.name:
                         self.critic_loss += (
-                            config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
+                            config["l2_reg"] * tf.nn.l2_loss(var))
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network

@@ -41,9 +41,8 @@ def actor_critic_loss(policy, batch_tensors):
     policy.loss = A3CLoss(
         policy.action_dist, batch_tensors[SampleBatch.ACTIONS],
         batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        policy.convert_to_eager(policy.vf), policy.config["vf_loss_coeff"],
-        policy.config["entropy_coeff"])
+        batch_tensors[Postprocessing.VALUE_TARGETS], policy.vf,
+        policy.config["vf_loss_coeff"], policy.config["entropy_coeff"])
     return policy.loss.total_loss
 
 
@@ -91,11 +90,10 @@ class ValueNetworkMixin(object):
 
 def stats(policy, batch_tensors):
     return {
-        "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(
-            [policy.convert_to_eager(x) for x in policy.var_list]),
+        "var_gnorm": tf.global_norm([x for x in policy.var_list]),
         "vf_loss": policy.loss.vf_loss,
     }
 

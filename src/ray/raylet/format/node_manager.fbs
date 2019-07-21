@@ -1,8 +1,5 @@
 // raylet protocol specification
 
-include "gcs.fbs";
-
-
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
 // avoid conflicts with legacy Ray types.
 namespace ray.protocol;
@@ -97,7 +94,6 @@ table Task {
 }
 
 table SubmitTaskRequest {
-  execution_dependencies: [string];
   task_spec: string;
 }
 
@@ -137,7 +133,8 @@ table RegisterClientRequest {
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
   // Language of this worker.
-  language: Language;
+  // TODO(hchen): Use `Language` in `common.proto`.
+  language: int;
   // Port that this worker is listening on.
   // If port > 0, then worker will listen to this port and wait for
   // raylet to push tasks, instead of invoking GetTask().

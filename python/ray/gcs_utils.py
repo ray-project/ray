@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.core.generated.ray.protocol.Task import Task
-
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
     ClientTableData,
@@ -18,6 +16,7 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceTableData,
 )
 
 __all__ = [
@@ -33,8 +32,8 @@ __all__ = [
     "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
-    "Task",
     "TaskTableData",
+    "ResourceTableData",
     "construct_error_message",
 ]
 
