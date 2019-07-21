@@ -1,4 +1,3 @@
-
 # __tutorial_imports_begin__
 # Original Code here: https://github.com/pytorch/examples/blob/master/mnist/main.py
 import numpy as np
@@ -12,7 +11,9 @@ from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import get_data_loaders, Net, train, test
 
 datasets.MNIST("~/data", train=True, download=True)
+
 # __tutorial_imports_end__
+
 
 # __train_func_begin__
 def train_mnist(config):
@@ -27,14 +28,16 @@ def train_mnist(config):
         acc = test(model, test_loader)
         track.log(mean_accuracy=acc)
         if i % 5 == 0:
-            torch.save(model, "./model.pth") # This saves the model to the trial directory
+            # This saves the model to the trial directory
+            torch.save(
+                model,
+                "./model.pth")
+
+
 # __train_func_end__
 
 # __eval_func_begin__
-experiment_config = dict(
-    name="train_mnist",
-    stop={"mean_accuracy": 0.98}
-)
+experiment_config = dict(name="train_mnist", stop={"mean_accuracy": 0.98})
 
 search_space = {
     "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
@@ -66,11 +69,9 @@ space = {
     "momentum": hp.uniform("momentum", 0.1, 0.9),
 }
 
-hyperopt_search = HyperOptSearch(space, max_concurrent=2, reward_attr="mean_accuracy")
+hyperopt_search = HyperOptSearch(
+    space, max_concurrent=2, reward_attr="mean_accuracy")
 
 analysis = tune.run(
-    train_mnist,
-    num_samples=10,
-    search_alg=hyperopt_search
-    **experiment_config)
+    train_mnist, num_samples=10, search_alg=hyperopt_search, **experiment_config)
 # __run_searchalg_end__
