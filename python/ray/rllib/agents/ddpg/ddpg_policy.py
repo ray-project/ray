@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from gym.spaces import Box
 import numpy as np
+import logging
 
 import ray
 import ray.experimental.tf_utils
@@ -11,8 +12,8 @@ from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf import TFModelV2
+from ray.rllib.models import ModelCatalog, Model
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
@@ -21,15 +22,17 @@ from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip
 
 tf = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
-class NoopModel(TFModelV2):
+class NoopModel(Model):
     """Trivial model that just returns the obs flattened.
 
     This is the model used if use_state_preprocessor=False."""
 
-    def forward(self, input_dict, state, seq_lens):
-        return tf.reshape(input_dict["obs"], [-1])
+    def _build_layers_v2(self, input_dict, num_outputs, options):
+        out = tf.reshape(input_dict["obs"], [-1, num_outputs])
+        return out, out
 
 
 def build_ddpg_model(policy, obs_space, action_space, config):
@@ -48,7 +51,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         num_outputs = 256  # arbitrary
     else:
         default_model = NoopModel
-        num_outputs = np.product(obs_space.shape)
+        num_outputs = int(np.product(obs_space.shape))
 
     prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy.model = ModelCatalog.get_model_v2(
@@ -59,7 +62,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         framework="tf",
         model_interface=DDPGModel,
         default_model=default_model,
-        name="actor_critic",
+        name="ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
         actor_hiddens=config["actor_hiddens"],
         critic_hidden_activation=config["critic_hidden_activation"],
@@ -77,7 +80,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         framework="tf",
         model_interface=DDPGModel,
         default_model=default_model,
-        name="actor_critic",
+        name="target_ddpg_model",
         actor_hidden_activation=config["actor_hidden_activation"],
         actor_hiddens=config["actor_hiddens"],
         critic_hidden_activation=config["critic_hidden_activation"],
@@ -197,7 +200,7 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     actions = tf.cond(enable_stochastic, compute_stochastic_actions,
                       lambda: deterministic_actions)
     policy.output_actions = actions
-    return actions
+    return actions, None
 
 
 def actor_critic_loss(policy, batch_tensors):
@@ -255,7 +258,8 @@ def actor_critic_loss(policy, batch_tensors):
         q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
     q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
-    q_tp1_best_masked = (1.0 - batch_tensors[SampleBatch.DONES]) * q_tp1_best
+    q_tp1_best_masked = (1.0 - tf.cast(batch_tensors[SampleBatch.DONES],
+                                       tf.float32)) * q_tp1_best
 
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
@@ -367,14 +371,15 @@ class TargetNetworkMixin(object):
         self.tau_value = config.get("tau")
         self.tau = tf.placeholder(tf.float32, (), name="tau")
         update_target_expr = []
-        for var, var_target in zip(
-                sorted(self.model.trainable_variables(), key=lambda v: v.name),
-                sorted(
-                    self.target_model.trainable_variables,
-                    key=lambda v: v.name)):
+        model_vars = self.model.trainable_variables()
+        target_model_vars = self.target_model.trainable_variables()
+        assert len(model_vars) == len(target_model_vars), \
+            (model_vars, target_model_vars)
+        for var, var_target in zip(model_vars, target_model_vars):
             update_target_expr.append(
                 var_target.assign(self.tau * var +
                                   (1.0 - self.tau) * var_target))
+            logger.debug("Update target op {}".format(var_target))
         self.update_target_expr = tf.group(*update_target_expr)
 
         # Hard initial update
@@ -383,11 +388,11 @@ class TargetNetworkMixin(object):
     # support both hard and soft sync
     def update_target(self, tau=None):
         tau = tau or self.tau_value
-        return self.sess.run(
+        return self.get_session().run(
             self.update_target_expr, feed_dict={self.tau: tau})
 
 
-class OptimizationMixin(object):
+class CustomOptimizerMixin(object):
     def __init__(self, config):
         # create global step for counting the number of update operations
         self.global_step = tf.train.get_or_create_global_step()
@@ -419,18 +424,18 @@ class OptimizationMixin(object):
 
 def setup_early_mixins(policy, obs_space, action_space, config):
     ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
-    OptimizationMixin.__init__(config)
+    CustomOptimizerMixin.__init__(policy, config)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
-    TargetNetworkMixin.__init__(config)
+    TargetNetworkMixin.__init__(policy, config)
 
 
-def exploration_setting_inputs(self):
+def exploration_setting_inputs(policy):
     return {
-        self.stochastic: True,
-        self.noise_scale: self.cur_noise_scale,
-        self.pure_exploration_phase: self.cur_pure_exploration_phase,
+        policy.stochastic: True,
+        policy.noise_scale: policy.cur_noise_scale,
+        policy.pure_exploration_phase: policy.cur_pure_exploration_phase,
     }
 
 
@@ -443,11 +448,12 @@ DDPGTFPolicy = build_tf_policy(
     action_sampler_fn=build_action_output,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
-    optimizer_fn=lambda policy, config: None,
+    #    optimizer_fn=lambda policy, config: None,
     update_ops_fn=lambda policy: policy.batchnorm_update_ops,
-    mixins=[ExplorationStateMixin, OptimizationMixin],
+    mixins=[TargetNetworkMixin, ExplorationStateMixin, CustomOptimizerMixin],
     before_init=setup_early_mixins,
-    after_init=setup_late_mixins)
+    after_init=setup_late_mixins,
+    obs_include_prev_action_reward=False)
 
 #@override(TFPolicy)
 #def build_apply_op(self, optimizer, grads_and_vars):

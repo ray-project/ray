@@ -63,6 +63,7 @@ class DDPGModel(TFModelV2):
 
         def build_action_net(action_out):
             activation = getattr(tf.nn, actor_hidden_activation)
+            i = 0
             for hidden in actor_hiddens:
                 if parameter_noise:
                     import tensorflow.contrib.layers as layers
@@ -73,12 +74,23 @@ class DDPGModel(TFModelV2):
                         normalizer_fn=layers.layer_norm)
                 else:
                     action_out = tf.layers.dense(
-                        action_out, units=hidden, activation=activation)
-            action_out = tf.layers.dense(
-                action_out, units=self.action_dim, activation=None)
-            return tf.reshape(self.action_space.shape, action_out)
+                        action_out,
+                        units=hidden,
+                        activation=activation,
+                        name="action_hidden_{}".format(i))
+                i += 1
+            return tf.layers.dense(
+                action_out,
+                units=self.action_dim,
+                activation=None,
+                name="action_out")
 
-        pi_out = tf.keras.layers.Lambda(build_action_net)(self.model_out)
+        # TODO(ekl) use keras layers instead of variable scopes
+        def build_action_net_scope(model_out):
+            with tf.variable_scope(name + "/action_net", reuse=tf.AUTO_REUSE):
+                return build_action_net(model_out)
+
+        pi_out = tf.keras.layers.Lambda(build_action_net_scope)(self.model_out)
         self.action_net = tf.keras.Model(self.model_out, pi_out)
         self.register_variables(self.action_net.variables)
 
@@ -89,21 +101,38 @@ class DDPGModel(TFModelV2):
                 if "LayerNorm" not in var.name
             ])
 
-        def build_q_net(model_out, actions):
+        def build_q_net(inputs):
+            model_out, actions = inputs
             q_out = tf.concat([model_out, actions], axis=1)
             activation = getattr(tf.nn, critic_hidden_activation)
+            i = 0
             for hidden in critic_hiddens:
                 q_out = tf.layers.dense(
-                    q_out, units=hidden, activation=activation)
-            return tf.layers.dense(q_out, units=1, activation=None)
+                    q_out,
+                    units=hidden,
+                    activation=activation,
+                    name="q_hidden{}".format(i))
+                i += 1
+            return tf.layers.dense(
+                q_out, units=1, activation=None, name="q_out")
 
-        q_out = tf.keras.layers.Lambda(build_q_net)(
+        # TODO(ekl) use keras layers instead of variable scopes
+        def build_q_net_scope(inputs):
+            with tf.variable_scope(name + "/q_net", reuse=tf.AUTO_REUSE):
+                return build_q_net(inputs)
+
+        # TODO(ekl) use keras layers instead of variable scopes
+        def build_twin_q_net_scope(inputs):
+            with tf.variable_scope(name + "/twin_q_net", reuse=tf.AUTO_REUSE):
+                return build_q_net(inputs)
+
+        q_out = tf.keras.layers.Lambda(build_q_net_scope)(
             [self.model_out, self.actions])
         self.q_net = tf.keras.Model([self.model_out, self.actions], q_out)
         self.register_variables(self.q_net.variables)
 
         if twin_q:
-            twin_q_out = tf.keras.layers.Lambda(build_q_net)(
+            twin_q_out = tf.keras.layers.Lambda(build_twin_q_net_scope)(
                 [self.model_out, self.actions])
             self.twin_q_net = tf.keras.Model([self.model_out, self.actions],
                                              twin_q_out)
@@ -146,7 +175,7 @@ class DDPGModel(TFModelV2):
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.q_net(model_out, actions)
+        return self.q_net([model_out, actions])
 
     def get_twin_q_values(self, model_out, actions):
         """Same as get_q_values but using the twin Q net.
@@ -163,7 +192,7 @@ class DDPGModel(TFModelV2):
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.twin_q_net(model_out, actions)
+        return self.twin_q_net([model_out, actions])
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
