@@ -41,20 +41,15 @@ A custom Trainable can manually trigger checkpointing by returning ``should_chec
 
     def _train(self):
         # training code
-        # training code
-
         result = {"mean_accuracy": accuracy}
-
         if detect_instance_preemption():
             result.update(should_checkpoint=True)
-
         return result
 
 
 Additionally, periodic checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 
 .. code-block:: python
-   :emphasize-lines: 4,5
 
     tune.run(
         my_trainable,
@@ -73,6 +68,19 @@ of a trial, you can additionally set the ``checkpoint_at_end=True``:
         checkpoint_freq=10,
         checkpoint_at_end=True,
         max_failures=5,
+    )
+
+The checkpoint will be saved at file whose path looks like ``local_dir/exp_name/trial_name/checkpoint_x/checkpoint-x``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
+
+.. code-block:: python
+
+    # Restored previous trial from the given checkpoint
+    tune.run(
+        "PG",
+        name="RestoredExp", # The name can be different.
+        stop={"training_iteration": 10}, # train 5 more iterations than previous
+        restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
+        config={"env": "CartPole-v0"},
     )
 
 Fault Tolerance
@@ -104,6 +112,7 @@ E.g.:
     )
 
 
-Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored.
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization.
+If you want to change the configuration, such as training more iterations, you can restore the checkpoint by setting ``restore=<path-to-checkpoint>``.
 
 This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
