@@ -92,6 +92,7 @@ class Analysis(object):
         for path, config in all_configs.items():
             if path in rows:
                 rows[path].update(config)
+                rows[path].update(logdir=path)
         return pd.DataFrame(list(rows.values()))
 
     def get_best_config(self, metric, mode="max"):
@@ -170,6 +171,8 @@ class ExperimentAnalysis(Analysis):
             raise TuneError("Experiment state invalid; no checkpoints found.")
         self._checkpoints = _experiment_state["checkpoints"]
         self.trials = trials
+        super(ExperimentAnalysis, self).__init__(
+            os.path.dirname(experiment_checkpoint_path))
 
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""

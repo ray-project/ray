@@ -261,11 +261,11 @@ class TrialRunner(object):
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
-        os.rename(tmp_file_name, self.checkpoint_file)
-
         self.checkpoint_file = os.path.join(
             self._local_checkpoint_dir,
             TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+        os.rename(tmp_file_name, self.checkpoint_file)
         self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 

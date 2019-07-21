@@ -265,7 +265,7 @@ def run(run_or_experiment,
 
     if return_trials:
         return runner.get_trials()
-    return ExperimentAnalysis(experiment.checkpoint_file)
+    return ExperimentAnalysis(runner.checkpoint_file)
 
 
 def run_experiments(experiments,
@@ -319,5 +319,6 @@ def run_experiments(experiments,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial)
+            raise_on_failed_trial=raise_on_failed_trial,
+            return_trials=True)
     return trials

@@ -66,31 +66,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue("width" in best_config)
         self.assertTrue("height" in best_config)
 
-    def testBestTrial(self):
-        best_trial = self.ea.get_best_info(self.metric, flatten=False)
-
-        self.assertTrue(isinstance(best_trial, dict))
-        self.assertTrue("local_dir" in best_trial)
-        self.assertEqual(best_trial["local_dir"],
-                         os.path.expanduser(self.test_path))
-        self.assertTrue("config" in best_trial)
-        self.assertTrue("width" in best_trial["config"])
-        self.assertTrue("height" in best_trial["config"])
-        self.assertTrue("last_result" in best_trial)
-        self.assertTrue(self.metric in best_trial["last_result"])
-
-        min_trial = self.ea.get_best_info(
-            self.metric, mode="min", flatten=False)
-
-        self.assertTrue(isinstance(min_trial, dict))
-        self.assertLess(min_trial["last_result"][self.metric],
-                        best_trial["last_result"][self.metric])
-
-        flat_trial = self.ea.get_best_info(self.metric, flatten=True)
-
-        self.assertTrue(isinstance(min_trial, dict))
-        self.assertTrue(self.metric in flat_trial)
-
     def testBestLogdir(self):
         logdir = self.ea.get_best_logdir(self.metric)
         self.assertTrue(logdir.startswith(self.test_path))
