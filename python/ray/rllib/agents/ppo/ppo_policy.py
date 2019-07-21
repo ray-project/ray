@@ -107,9 +107,8 @@ class PPOLoss(object):
 
 def ppo_surrogate_loss(policy, batch_tensors):
     if policy.state_in:
-        max_seq_len = tf.reduce_max(policy.convert_to_eager(policy.seq_lens))
-        mask = tf.sequence_mask(
-            policy.convert_to_eager(policy.seq_lens), max_seq_len)
+        max_seq_len = tf.reduce_max(policy.seq_lens)
+        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
@@ -123,10 +122,10 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[BEHAVIOUR_LOGITS],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
-        policy.convert_to_eager(policy.value_function),
-        policy.convert_to_eager(policy.kl_coeff),
+        policy.value_function,
+        policy.kl_coeff,
         mask,
-        entropy_coeff=policy.convert_to_eager(policy.entropy_coeff),
+        entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
@@ -137,19 +136,17 @@ def ppo_surrogate_loss(policy, batch_tensors):
 
 def kl_and_loss_stats(policy, batch_tensors):
     return {
-        "cur_kl_coeff": tf.cast(
-            policy.convert_to_eager(policy.kl_coeff), tf.float64),
-        "cur_lr": tf.cast(policy.convert_to_eager(policy.cur_lr), tf.float64),
+        "cur_kl_coeff": tf.cast(policy.kl_coeff, tf.float64),
+        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "total_loss": policy.loss_obj.loss,
         "policy_loss": policy.loss_obj.mean_policy_loss,
         "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             batch_tensors[Postprocessing.VALUE_TARGETS],
-            policy.convert_to_eager(policy.value_function)),
+            policy.value_function),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
-        "entropy_coeff": tf.cast(
-            policy.convert_to_eager(policy.entropy_coeff), tf.float64),
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
 
