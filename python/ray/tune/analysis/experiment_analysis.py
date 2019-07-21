@@ -147,7 +147,6 @@ class Analysis(object):
         return self._trial_dataframes
 
 
-
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 

@@ -138,5 +138,6 @@ class AnalysisSuite(unittest.TestCase):
         self.assertTrue(logdir2.startswith(self.test_dir))
         self.assertNotEquals(logdir, logdir2)
 
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
