@@ -94,7 +94,7 @@ class GrpcServer {
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
-  /// The polling thread used to check the completion queue
+  /// The polling thread used to check the completion queue.
   std::thread polling_thread_;
 };
 

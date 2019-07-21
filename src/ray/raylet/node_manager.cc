@@ -1193,7 +1193,7 @@ void NodeManager::HandlePushProfileEventsRequest(
     const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received a PushProfileEventsRequest.";
-  auto profile_table_data = request.profile_table_data();
+  const auto &profile_table_data = request.profile_table_data();
   RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
