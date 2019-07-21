@@ -17,6 +17,7 @@ class DDPGModel(TFModelV2):
         obs -> forward() -> model_out
         model_out -> get_policy_output() -> pi(s)
         model_out, actions -> get_q_values() -> Q(s, a)
+        model_out, actions -> get_twin_q_values() -> Q_twin(s, a)
 
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
@@ -99,14 +100,16 @@ class DDPGModel(TFModelV2):
         q_out = tf.keras.layers.Lambda(build_q_net)(
             [self.model_out, self.actions])
         self.q_net = tf.keras.Model([self.model_out, self.actions], q_out)
-        self.register_variables(self.q_out.variables)
+        self.register_variables(self.q_net.variables)
 
         if twin_q:
             twin_q_out = tf.keras.layers.Lambda(build_q_net)(
                 [self.model_out, self.actions])
             self.twin_q_net = tf.keras.Model([self.model_out, self.actions],
                                              twin_q_out)
-            self.register_variables(self.twin_q_out.variables)
+            self.register_variables(self.twin_q_net.variables)
+        else:
+            self.twin_q_net = None
 
     def forward(self, input_dict, state, seq_lens):
         """This generates the model_out tensor input.
@@ -145,6 +148,34 @@ class DDPGModel(TFModelV2):
         """
         return self.q_net(model_out, actions)
 
+    def get_twin_q_values(self, model_out, actions):
+        """Same as get_q_values but using the twin Q net.
+
+        This implements the twin Q(s, a).
+
+        Arguments:
+            model_out (Tensor): obs embeddings from the model layers, of shape
+                [BATCH_SIZE, num_outputs].
+            actions (Tensor): action values that correspond with the most
+                recent batch of observations passed through forward(), of shape
+                [BATCH_SIZE, action_dim].
+
+        Returns:
+            tensor of shape [BATCH_SIZE].
+        """
+        return self.twin_q_net(model_out, actions)
+
+    def policy_variables(self):
+        """Return the list of variables for the policy net."""
+
+        return list(self.action_net.variables)
+
+    def q_variables(self):
+        """Return the list of variables for Q / twin Q nets."""
+
+        return self.q_net.variables + (self.twin_q_net.variables
+                                       if self.twin_q_net else [])
+
     def _build_parameter_noise(self, pnet_params):
         self.parameter_noise_sigma_val = self.exploration_ou_sigma
         self.parameter_noise_sigma = tf.get_variable(
@@ -182,14 +213,14 @@ class DDPGModel(TFModelV2):
             self.add_noise_op = tf.group(*tuple(add_noise_ops))
         self.pi_distance = None
 
-    def update_action_noise(self, distance_in_action_space, session):
+    def update_action_noise(self, session, distance_in_action_space,
+                            exploration_ou_sigma, cur_noise_scale):
         """Update the model action noise settings.
 
         This is called internally by the DDPG policy."""
 
         self.pi_distance = distance_in_action_space
-        if (distance_in_action_space <
-                    policy.config["exploration_ou_sigma"] * policy.cur_noise_scale):
+        if (distance_in_action_space < exploration_ou_sigma * cur_noise_scale):
             # multiplying the sampled OU noise by noise scale is
             # equivalent to multiplying the sigma of OU by noise scale
             self.parameter_noise_sigma_val *= 1.01

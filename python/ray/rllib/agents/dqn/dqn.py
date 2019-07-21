@@ -207,6 +207,7 @@ def make_exploration_schedule(config, worker_index):
         assert config["num_workers"] > 1, \
             "This requires multiple workers"
         if worker_index >= 0:
+            # Exploration constants from the Ape-X paper
             exponent = (
                 1 + worker_index / float(config["num_workers"] - 1) * 7)
             return ConstantSchedule(0.4**exponent)

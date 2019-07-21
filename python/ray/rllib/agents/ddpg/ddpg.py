@@ -173,7 +173,7 @@ def make_exploration_schedule(config, worker_index):
     if config["per_worker_exploration"]:
         assert config["num_workers"] > 1, "This requires multiple workers"
         if worker_index >= 0:
-            # FIXME: what do magic constants mean? (0.4, 7)
+            # Exploration constants from the Ape-X paper
             max_index = float(config["num_workers"] - 1)
             exponent = 1 + worker_index / max_index * 7
             return ConstantSchedule(0.4**exponent)

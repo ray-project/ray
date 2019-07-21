@@ -10,21 +10,26 @@ import ray.experimental.tf_utils
 from ray.rllib.agents.ddpg.ddpg_model import DDPGModel
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, scope_vars
+from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip
 
 tf = try_import_tf()
 
 
 class NoopModel(TFModelV2):
+    """Trivial model that just returns the obs flattened.
+
+    This is the model used if use_state_preprocessor=False."""
+
     def forward(self, input_dict, state, seq_lens):
-        return input_dict["obs"]
+        return tf.reshape(input_dict["obs"], [-1])
 
 
 def build_ddpg_model(policy, obs_space, action_space, config):
@@ -43,7 +48,7 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         num_outputs = 256  # arbitrary
     else:
         default_model = NoopModel
-        num_outputs = np.product(observation_space.shape)
+        num_outputs = np.product(obs_space.shape)
 
     prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy.model = ModelCatalog.get_model_v2(
@@ -94,7 +99,12 @@ def postprocess_trajectory(policy,
 
 def stats(policy, batch_tensors):
     return {
-        "td_error": policy.td_error,
+        "td_error": tf.reduce_mean(policy.td_error),
+        "actor_loss": tf.reduce_mean(policy.actor_loss),
+        "critic_loss": tf.reduce_mean(policy.critic_loss),
+        "mean_q": tf.reduce_mean(policy.q_t),
+        "max_q": tf.reduce_max(policy.q_t),
+        "min_q": tf.reduce_min(policy.q_t),
     }
 
 
@@ -176,7 +186,8 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
             # noise_scale is how a worker signals no noise should be used
             # (this is ugly and should be fixed by adding an "eval_mode"
             # config flag or something)
-            tf.logical_and(policy.pure_exploration_phase, noise_scale > 0),
+            tf.logical_and(policy.pure_exploration_phase,
+                           policy.noise_scale > 0),
             true_fn=make_uniform_random_actions,
             false_fn=make_noisy_actions)
         return stochastic_actions
@@ -185,8 +196,110 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
                                        not config["parameter_noise"])
     actions = tf.cond(enable_stochastic, compute_stochastic_actions,
                       lambda: deterministic_actions)
-    self.output_actions = actions
+    policy.output_actions = actions
     return actions
+
+
+def actor_critic_loss(policy, batch_tensors):
+    model_out_t, _ = policy.model({
+        "obs": batch_tensors[SampleBatch.CUR_OBS],
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
+
+    model_out_tp1, _ = policy.model({
+        "obs": batch_tensors[SampleBatch.NEXT_OBS],
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
+
+    target_model_out_tp1, _ = policy.target_model({
+        "obs": batch_tensors[SampleBatch.NEXT_OBS],
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
+
+    policy_t = policy.model.get_policy_output(model_out_t)
+    policy_tp1 = policy.model.get_policy_output(model_out_tp1)
+
+    if policy.config["smooth_target_policy"]:
+        target_noise_clip = policy.config["target_noise_clip"]
+        clipped_normal_sample = tf.clip_by_value(
+            tf.random_normal(
+                tf.shape(policy_tp1), stddev=policy.config["target_noise"]),
+            -target_noise_clip, target_noise_clip)
+        policy_tp1_smoothed = tf.clip_by_value(
+            policy_tp1 + clipped_normal_sample,
+            policy.action_space.low * tf.ones_like(policy_tp1),
+            policy.action_space.high * tf.ones_like(policy_tp1))
+    else:
+        policy_tp1_smoothed = policy_tp1
+
+    # q network evaluation
+    q_t = policy.model.get_q_values(model_out_t,
+                                    batch_tensors[SampleBatch.ACTIONS])
+    if policy.config["twin_q"]:
+        twin_q_t = policy.model.get_twin_q_values(
+            model_out_t, batch_tensors[SampleBatch.ACTIONS])
+
+    # Q-values for current policy (no noise) in given current state
+    q_t_det_policy = policy.model.get_q_values(model_out_t, policy_t)
+
+    # target q network evaluation
+    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
+                                             policy_tp1_smoothed)
+    if policy.config["twin_q"]:
+        twin_q_tp1 = policy.target_model.get_twin_q_values(
+            target_model_out_tp1, policy_tp1_smoothed)
+
+    q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
+    if policy.config["twin_q"]:
+        twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
+        q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
+
+    q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
+    q_tp1_best_masked = (1.0 - batch_tensors[SampleBatch.DONES]) * q_tp1_best
+
+    # compute RHS of bellman equation
+    q_t_selected_target = tf.stop_gradient(
+        batch_tensors[SampleBatch.REWARDS] +
+        policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
+
+    # compute the error (potentially clipped)
+    if policy.config["twin_q"]:
+        td_error = q_t_selected - q_t_selected_target
+        twin_td_error = twin_q_t_selected - q_t_selected_target
+        td_error = td_error + twin_td_error
+        if policy.config["use_huber"]:
+            errors = huber_loss(td_error, policy.config["huber_threshold"]) \
+                + huber_loss(twin_td_error, policy.config["huber_threshold"])
+        else:
+            errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(twin_td_error)
+    else:
+        td_error = q_t_selected - q_t_selected_target
+        if policy.config["use_huber"]:
+            errors = huber_loss(td_error, policy.config["huber_threshold"])
+        else:
+            errors = 0.5 * tf.square(td_error)
+
+    critic_loss = policy.model.custom_loss(
+        tf.reduce_mean(batch_tensors[PRIO_WEIGHTS] * errors), batch_tensors)
+    actor_loss = -tf.reduce_mean(q_t_det_policy)
+
+    if policy.config["l2_reg"] is not None:
+        for var in policy.model.policy_variables():
+            if "bias" not in var.name:
+                actor_loss += policy.config["l2_reg"] * tf.nn.l2_loss(var)
+        for var in policy.model.q_variables():
+            if "bias" not in var.name:
+                critic_loss += policy.config["l2_reg"] * tf.nn.l2_loss(var)
+
+    # save for stats function
+    policy.q_t = q_t
+    policy.td_error = td_error
+    policy.actor_loss = actor_loss
+    policy.critic_loss = critic_loss
+
+    # in a custom apply op we handle the losses separately, but return them
+    # combined in one loss for now
+    return actor_loss + critic_loss
 
 
 class ExplorationStateMixin(object):
@@ -208,19 +321,20 @@ class ExplorationStateMixin(object):
             list(x) for x in sample_batch.columns(
                 [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
         ]
-        policy.get_session().run(policy.model.remove_noise_op)
-        clean_actions = policy.get_session().run(
-            policy.output_actions,
+        self.get_session().run(self.model.remove_noise_op)
+        clean_actions = self.get_session().run(
+            self.output_actions,
             feed_dict={
-                policy.get_placeholder(SampleBatch.CUR_OBS): states,
-                policy.stochastic: False,
-                policy.noise_scale: .0,
-                policy.pure_exploration_phase: False,
+                self.get_placeholder(SampleBatch.CUR_OBS): states,
+                self.stochastic: False,
+                self.noise_scale: .0,
+                self.pure_exploration_phase: False,
             })
         distance_in_action_space = np.sqrt(
             np.mean(np.square(clean_actions - noisy_actions)))
-        policy.model.update_action_noise(distance_in_action_space,
-                                         policy.get_session())
+        self.model.update_action_noise(
+            self.get_session(), distance_in_action_space,
+            self.config["exploration_ou_sigma"], self.cur_noise_scale)
 
     def set_epsilon(self, epsilon):
         # set_epsilon is called by optimizer to anneal exploration as
@@ -254,25 +368,17 @@ class TargetNetworkMixin(object):
         self.tau = tf.placeholder(tf.float32, (), name="tau")
         update_target_expr = []
         for var, var_target in zip(
-                sorted(self.q_func_vars, key=lambda v: v.name),
-                sorted(target_q_func_vars, key=lambda v: v.name)):
-            update_target_expr.append(
-                var_target.assign(self.tau * var +
-                                  (1.0 - self.tau) * var_target))
-        if config["twin_q"]:
-            for var, var_target in zip(
-                    sorted(self.twin_q_func_vars, key=lambda v: v.name),
-                    sorted(twin_target_q_func_vars, key=lambda v: v.name)):
-                update_target_expr.append(
-                    var_target.assign(self.tau * var +
-                                      (1.0 - self.tau) * var_target))
-        for var, var_target in zip(
-                sorted(self.policy_vars, key=lambda v: v.name),
-                sorted(target_policy_vars, key=lambda v: v.name)):
+                sorted(self.model.trainable_variables(), key=lambda v: v.name),
+                sorted(
+                    self.target_model.trainable_variables,
+                    key=lambda v: v.name)):
             update_target_expr.append(
                 var_target.assign(self.tau * var +
                                   (1.0 - self.tau) * var_target))
         self.update_target_expr = tf.group(*update_target_expr)
+
+        # Hard initial update
+        self.update_target(tau=1.0)
 
     # support both hard and soft sync
     def update_target(self, tau=None):
@@ -322,7 +428,6 @@ def setup_late_mixins(policy, obs_space, action_space, config):
 
 def exploration_setting_inputs(self):
     return {
-        # FIXME: what about turning off exploration? Isn't that a good idea?
         self.stochastic: True,
         self.noise_scale: self.cur_noise_scale,
         self.pure_exploration_phase: self.cur_pure_exploration_phase,
@@ -336,6 +441,7 @@ DDPGTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     extra_action_feed_fn=exploration_setting_inputs,
     action_sampler_fn=build_action_output,
+    loss_fn=actor_critic_loss,
     stats_fn=stats,
     optimizer_fn=lambda policy, config: None,
     update_ops_fn=lambda policy: policy.batchnorm_update_ops,
@@ -343,229 +449,56 @@ DDPGTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     after_init=setup_late_mixins)
 
-
-class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
-    def __init__(self, observation_space, action_space, config):
-
-        # target policy network evaluation
-        with tf.variable_scope(POLICY_TARGET_SCOPE) as scope:
-            policy_tp1, _ = self._build_policy_network(
-                self.obs_tp1, observation_space, action_space)
-            target_policy_vars = scope_vars(scope.name)
-
-        # Action outputs
-        with tf.variable_scope(ACTION_SCOPE, reuse=True):
-            if config["smooth_target_policy"]:
-                target_noise_clip = self.config["target_noise_clip"]
-                clipped_normal_sample = tf.clip_by_value(
-                    tf.random_normal(
-                        tf.shape(policy_tp1),
-                        stddev=self.config["target_noise"]),
-                    -target_noise_clip, target_noise_clip)
-                policy_tp1_smoothed = tf.clip_by_value(
-                    policy_tp1 + clipped_normal_sample,
-                    action_space.low * tf.ones_like(policy_tp1),
-                    action_space.high * tf.ones_like(policy_tp1))
-            else:
-                # no smoothing, just use deterministic actions
-                policy_tp1_smoothed = policy_tp1
-
-        # q network evaluation
-        prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
-        with tf.variable_scope(Q_SCOPE) as scope:
-            # Q-values for given actions & observations in given current
-            q_t, self.q_model = self._build_q_network(
-                self.obs_t, observation_space, action_space, self.act_t)
-            self.q_func_vars = scope_vars(scope.name)
-        self.stats = {
-            "mean_q": tf.reduce_mean(q_t),
-            "max_q": tf.reduce_max(q_t),
-            "min_q": tf.reduce_min(q_t),
-        }
-        with tf.variable_scope(Q_SCOPE, reuse=True):
-            # Q-values for current policy (no noise) in given current state
-            q_t_det_policy, _ = self._build_q_network(
-                self.obs_t, observation_space, action_space, self.policy_t)
-        if self.config["twin_q"]:
-            with tf.variable_scope(TWIN_Q_SCOPE) as scope:
-                twin_q_t, self.twin_q_model = self._build_q_network(
-                    self.obs_t, observation_space, action_space, self.act_t)
-                self.twin_q_func_vars = scope_vars(scope.name)
-        q_batchnorm_update_ops = list(
-            set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
-
-        # target q network evaluation
-        with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
-                                             action_space, policy_tp1_smoothed)
-            target_q_func_vars = scope_vars(scope.name)
-        if self.config["twin_q"]:
-            with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
-                twin_q_tp1, _ = self._build_q_network(
-                    self.obs_tp1, observation_space, action_space,
-                    policy_tp1_smoothed)
-                twin_target_q_func_vars = scope_vars(scope.name)
-
-        if self.config["twin_q"]:
-            self.critic_loss, self.actor_loss, self.td_error \
-                = self._build_actor_critic_loss(
-                    q_t, q_tp1, q_t_det_policy, twin_q_t=twin_q_t,
-                    twin_q_tp1=twin_q_tp1)
-        else:
-            self.critic_loss, self.actor_loss, self.td_error \
-                = self._build_actor_critic_loss(
-                    q_t, q_tp1, q_t_det_policy)
-
-        if config["l2_reg"] is not None:
-            for var in self.policy_vars:
-                if "bias" not in var.name:
-                    self.actor_loss += (config["l2_reg"] * tf.nn.l2_loss(var))
-            for var in self.q_func_vars:
-                if "bias" not in var.name:
-                    self.critic_loss += (config["l2_reg"] * tf.nn.l2_loss(var))
-            if self.config["twin_q"]:
-                for var in self.twin_q_func_vars:
-                    if "bias" not in var.name:
-                        self.critic_loss += (
-                            config["l2_reg"] * tf.nn.l2_loss(var))
-
-        self.sess = tf.get_default_session()
-        self.loss_inputs = [
-            (SampleBatch.CUR_OBS, self.obs_t),
-            (SampleBatch.ACTIONS, self.act_t),
-            (SampleBatch.REWARDS, self.rew_t),
-            (SampleBatch.NEXT_OBS, self.obs_tp1),
-            (SampleBatch.DONES, self.done_mask),
-            (PRIO_WEIGHTS, self.importance_weights),
-        ]
-        input_dict = dict(self.loss_inputs)
-
-        if self.config["use_state_preprocessor"]:
-            # Model self-supervised losses
-            self.actor_loss = self.policy_model.custom_loss(
-                self.actor_loss, input_dict)
-            self.critic_loss = self.q_model.custom_loss(
-                self.critic_loss, input_dict)
-            if self.config["twin_q"]:
-                self.critic_loss = self.twin_q_model.custom_loss(
-                    self.critic_loss, input_dict)
-
-        TFPolicy.__init__(
-            self,
-            observation_space,
-            action_space,
-            self.sess,
-            obs_input=self.cur_observations,
-            action_sampler=self.output_actions,
-            loss=self.actor_loss + self.critic_loss,
-            loss_inputs=self.loss_inputs,
-            update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops)
-        self.sess.run(tf.global_variables_initializer())
-
-        # Note that this encompasses both the policy and Q-value networks and
-        # their corresponding target networks
-        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-            tf.group(q_t_det_policy, q_tp1), self.sess)
-
-        # Hard initial update
-        self.update_target(tau=1.0)
-
-    @override(TFPolicy)
-    def build_apply_op(self, optimizer, grads_and_vars):
-        # for policy gradient, update policy net one time v.s.
-        # update critic net `policy_delay` time(s)
-        should_apply_actor_opt = tf.equal(
-            tf.mod(self.global_step, self.config["policy_delay"]), 0)
-
-        def make_apply_op():
-            return self._actor_optimizer.apply_gradients(
-                self._actor_grads_and_vars)
-
-        actor_op = tf.cond(
-            should_apply_actor_opt,
-            true_fn=make_apply_op,
-            false_fn=lambda: tf.no_op())
-        critic_op = self._critic_optimizer.apply_gradients(
-            self._critic_grads_and_vars)
-        # increment global step & apply ops
-        with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
-            return tf.group(actor_op, critic_op)
-
-    @override(TFPolicy)
-    def gradients(self, optimizer, loss):
-        if self.config["grad_norm_clipping"] is not None:
-            actor_grads_and_vars = minimize_and_clip(
-                self._actor_optimizer,
-                self.actor_loss,
-                var_list=self.policy_vars,
-                clip_val=self.config["grad_norm_clipping"])
-            critic_grads_and_vars = minimize_and_clip(
-                self._critic_optimizer,
-                self.critic_loss,
-                var_list=self.q_func_vars + self.twin_q_func_vars
-                if self.config["twin_q"] else self.q_func_vars,
-                clip_val=self.config["grad_norm_clipping"])
-        else:
-            actor_grads_and_vars = self._actor_optimizer.compute_gradients(
-                self.actor_loss, var_list=self.policy_vars)
-            if self.config["twin_q"]:
-                critic_vars = self.q_func_vars + self.twin_q_func_vars
-            else:
-                critic_vars = self.q_func_vars
-            critic_grads_and_vars = self._critic_optimizer.compute_gradients(
-                self.critic_loss, var_list=critic_vars)
-        # save these for later use in build_apply_op
-        self._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                      if g is not None]
-        self._critic_grads_and_vars = [(g, v)
-                                       for (g, v) in critic_grads_and_vars
-                                       if g is not None]
-        grads_and_vars = self._actor_grads_and_vars \
-            + self._critic_grads_and_vars
-        return grads_and_vars
-
-    def _build_actor_critic_loss(self,
-                                 q_t,
-                                 q_tp1,
-                                 q_t_det_policy,
-                                 twin_q_t=None,
-                                 twin_q_tp1=None):
-        twin_q = self.config["twin_q"]
-        gamma = self.config["gamma"]
-        n_step = self.config["n_step"]
-        use_huber = self.config["use_huber"]
-        huber_threshold = self.config["huber_threshold"]
-
-        q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
-        if twin_q:
-            twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
-            q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
-
-        q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
-        q_tp1_best_masked = (1.0 - self.done_mask) * q_tp1_best
-
-        # compute RHS of bellman equation
-        q_t_selected_target = tf.stop_gradient(
-            self.rew_t + gamma**n_step * q_tp1_best_masked)
-
-        # compute the error (potentially clipped)
-        if twin_q:
-            td_error = q_t_selected - q_t_selected_target
-            twin_td_error = twin_q_t_selected - q_t_selected_target
-            td_error = td_error + twin_td_error
-            if use_huber:
-                errors = huber_loss(td_error, huber_threshold) \
-                    + huber_loss(twin_td_error, huber_threshold)
-            else:
-                errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(
-                    twin_td_error)
-        else:
-            td_error = q_t_selected - q_t_selected_target
-            if use_huber:
-                errors = huber_loss(td_error, huber_threshold)
-            else:
-                errors = 0.5 * tf.square(td_error)
-
-        critic_loss = tf.reduce_mean(self.importance_weights * errors)
-        actor_loss = -tf.reduce_mean(q_t_det_policy)
-        return critic_loss, actor_loss, td_error
+#@override(TFPolicy)
+#def build_apply_op(self, optimizer, grads_and_vars):
+#    # for policy gradient, update policy net one time v.s.
+#    # update critic net `policy_delay` time(s)
+#    should_apply_actor_opt = tf.equal(
+#        tf.mod(self.global_step, self.config["policy_delay"]), 0)
+#
+#    def make_apply_op():
+#        return self._actor_optimizer.apply_gradients(
+#            self._actor_grads_and_vars)
+#
+#    actor_op = tf.cond(
+#        should_apply_actor_opt,
+#        true_fn=make_apply_op,
+#        false_fn=lambda: tf.no_op())
+#    critic_op = self._critic_optimizer.apply_gradients(
+#        self._critic_grads_and_vars)
+#    # increment global step & apply ops
+#    with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
+#        return tf.group(actor_op, critic_op)
+#
+#@override(TFPolicy)
+#def gradients(self, optimizer, loss):
+#    if self.config["grad_norm_clipping"] is not None:
+#        actor_grads_and_vars = minimize_and_clip(
+#            self._actor_optimizer,
+#            self.actor_loss,
+#            var_list=self.policy_vars,
+#            clip_val=self.config["grad_norm_clipping"])
+#        critic_grads_and_vars = minimize_and_clip(
+#            self._critic_optimizer,
+#            self.critic_loss,
+#            var_list=self.q_func_vars + self.twin_q_func_vars
+#            if self.config["twin_q"] else self.q_func_vars,
+#            clip_val=self.config["grad_norm_clipping"])
+#    else:
+#        actor_grads_and_vars = self._actor_optimizer.compute_gradients(
+#            self.actor_loss, var_list=self.policy_vars)
+#        if self.config["twin_q"]:
+#            critic_vars = self.q_func_vars + self.twin_q_func_vars
+#        else:
+#            critic_vars = self.q_func_vars
+#        critic_grads_and_vars = self._critic_optimizer.compute_gradients(
+#            self.critic_loss, var_list=critic_vars)
+#    # save these for later use in build_apply_op
+#    self._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+#                                  if g is not None]
+#    self._critic_grads_and_vars = [(g, v)
+#                                   for (g, v) in critic_grads_and_vars
+#                                   if g is not None]
+#    grads_and_vars = self._actor_grads_and_vars \
+#        + self._critic_grads_and_vars
+#    return grads_and_vars
