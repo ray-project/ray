@@ -219,6 +219,125 @@ If your trainable function / class creates further Ray actors or tasks that also
         }
     )
 
+Saving and Recovery
+-------------------
+
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
+
+ * saving a model at the end of training
+ * modifying a model in the middle of training
+ * fault-tolerance in experiments with pre-emptible machines.
+ * enables certain Trial Schedulers such as HyperBand and PBT.
+
+To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
+
+For TensorFlow model training, this would look something like this `tensorflow example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
+
+.. code-block:: python
+
+    class MyClass(Trainable):
+        def _setup(self, config):
+            self.saver = tf.train.Saver()
+            self.sess = ...
+
+        def _train(self):
+            return {"mean_accuracy: self.sess.run(...)}
+
+        def _save(self, checkpoint_dir):
+            return self.saver.save(self.sess, os.path.join(checkpoint_dir, save))
+
+        def _restore(self, checkpoint_prefix):
+            self.saver.restore(self.sess, checkpoint_prefix)
+
+Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
+
+
+Trainable (Trial) Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. You can checkpoint with three different mechanisms: manually, periodically, and at termination.
+
+**Manual Checkpointing**: A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True`` (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `_train`. This can be especially helpful in spot instances:
+
+.. code-block:: python
+
+    def _train(self):
+        # training code
+        result = {"mean_accuracy": accuracy}
+        if detect_instance_preemption():
+            result.update(should_checkpoint=True)
+        return result
+
+
+**Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        max_failures=5,
+    )
+
+**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
+of a trial, you can additionally set the ``checkpoint_at_end=True``:
+
+.. code-block:: python
+   :emphasize-lines: 5
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        checkpoint_at_end=True,
+        max_failures=5,
+    )
+
+The checkpoint will be saved at file whose path looks like ``local_dir/exp_name/trial_name/checkpoint_x/checkpoint-x``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
+
+.. code-block:: python
+
+    # Restored previous trial from the given checkpoint
+    tune.run(
+        "PG",
+        name="RestoredExp", # The name can be different.
+        stop={"training_iteration": 10}, # train 5 more iterations than previous
+        restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
+        config={"env": "CartPole-v0"},
+    )
+
+Fault Tolerance
+~~~~~~~~~~~~~~~
+
+Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
+
+In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again. If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
+
+
+Recovering From Failures
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune automatically persists the progress of your entire experiment (a ``tune.run`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. Note that this only works if trial checkpoints are detected, whether it be by manual or periodic checkpointing.
+
+The default setting of ``resume=False`` creates a new experiment. ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``. ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``. ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+
+Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
+
+E.g.:
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        local_dir="~/path/to/results",
+        resume=True
+    )
+
+
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
+
+This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+
 
 Handling Large Datasets
 -----------------------

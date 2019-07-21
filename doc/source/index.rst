@@ -82,7 +82,6 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    tune.rst
    tune-tutorial.rst
    tune-usage.rst
-   tune-checkpointing.rst
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
