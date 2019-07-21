@@ -10,14 +10,13 @@ import os
 import pandas as pd
 
 import ray
-from ray.tune import run, sample_from
+from ray.tune import run, sample_from, Analysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
     def setUp(self):
         ray.init(local_mode=True)
-
         self.test_dir = tempfile.mkdtemp()
         self.test_name = "analysis_exp"
         self.num_samples = 10
@@ -73,13 +72,71 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertNotEquals(logdir, logdir2)
 
     def testAllDataframes(self):
-        dataframes = self.ea.get_all_trial_dataframes()
+        dataframes = self.ea.trial_dataframes
         self.assertTrue(len(dataframes) == self.num_samples)
 
         self.assertTrue(isinstance(dataframes, dict))
         for df in dataframes.values():
             self.assertEqual(df.training_iteration.max(), 1)
 
+    def testIgnoreOtherExperiment(self):
+        analysis = run(
+            MyTrainableClass,
+            global_checkpoint_period=0,
+            name="test_example",
+            local_dir=self.test_dir,
+            return_trials=False,
+            stop={"training_iteration": 1},
+            num_samples=1,
+            config={
+                "width": sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": sample_from(lambda spec: int(100 * random.random())),
+            })
+        df = analysis.dataframe()
+        self.assertEquals(df.shape[0], 1)
+
+
+class AnalysisSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init(local_mode=True)
+        self.test_dir = tempfile.mkdtemp()
+        self.num_samples = 10
+        self.metric = "episode_reward_mean"
+        self.run_test_exp(test_name="analysis_exp1")
+        self.run_test_exp(test_name="analysis_exp2")
+
+    def run_test_exp(self, test_name=None):
+        run(MyTrainableClass,
+            global_checkpoint_period=0,
+            name=test_name,
+            local_dir=self.test_dir,
+            return_trials=False,
+            stop={"training_iteration": 1},
+            num_samples=self.num_samples,
+            config={
+                "width": sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": sample_from(lambda spec: int(100 * random.random())),
+            })
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        ray.shutdown()
+
+    def testDataframe(self):
+        analysis = Analysis(self.test_dir)
+        df = analysis.dataframe()
+        self.assertTrue(isinstance(df, pd.DataFrame))
+        self.assertEquals(df.shape[0], self.num_samples * 2)
+
+    def testBestLogdir(self):
+        analysis = Analysis(self.test_dir)
+        logdir = analysis.get_best_logdir(self.metric)
+        self.assertTrue(logdir.startswith(self.test_dir))
+        logdir2 = analysis.get_best_logdir(self.metric, mode="min")
+        self.assertTrue(logdir2.startswith(self.test_dir))
+        self.assertNotEquals(logdir, logdir2)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

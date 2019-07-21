@@ -35,19 +35,19 @@ def unnest_checkpoints(checkpoints):
 
 
 class Analysis(object):
-    """Analyze results from directory of experiments."""
+    """Analyze all results from a directory of experiments."""
 
     def __init__(self, experiment_dir):
         experiment_dir = os.path.expanduser(experiment_dir)
         if not os.path.isdir(experiment_dir):
-            raise TuneError(
+            raise ValueError(
                 "{} is not a valid directory.".format(experiment_dir))
         self._experiment_dir = experiment_dir
         self._configs = {}
-        self.trial_dataframes = {}
-        self.get_all_trial_dataframes()
+        self._trial_dataframes = {}
+        self.fetch_trial_dataframes()
 
-    def get_all_trial_dataframes(self):
+    def fetch_trial_dataframes(self):
         fail_count = 0
         for path in self._get_trial_paths():
             try:
@@ -142,18 +142,24 @@ class Analysis(object):
         elif mode == "min":
             return df.iloc[df[metric].idxmin()].logdir
 
+    @property
+    def trial_dataframes(self):
+        return self._trial_dataframes
+
+
 
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 
     Parameters:
-        experiment_path (str): Path to where experiment is located.
-            Corresponds to Experiment.local_dir/Experiment.name
+        experiment_checkpoint_path (str): Path to a json file
+            representing an experiment state. Corresponds to
+            Experiment.local_dir/Experiment.name/experiment_state.json
 
     Example:
         >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
         >>> analysis = ExperimentAnalysis(
-        >>>     experiment_path="~/tune_results/my_exp")
+        >>>     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
     def __init__(self, experiment_checkpoint_path, trials=None):
@@ -183,6 +189,7 @@ class ExperimentAnalysis(Analysis):
         return self._experiment_state.get("runner_data")
 
     def _get_trial_paths(self):
+        """Overwrites Analysis to only have trials of one experiment."""
         _trial_paths = [
             checkpoint["logdir"] for checkpoint in self._checkpoints
         ]
