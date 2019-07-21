@@ -10,7 +10,7 @@
 # __quick_start_begin__
 import torch.optim as optim
 from ray import tune
-from ray.tune.examples.mnist import get_data_loaders, Net, train, test
+from ray.tune.examples.mnist_pytorch import get_data_loaders, Net, train, test
 
 
 def train_mnist(config):
