@@ -3,7 +3,11 @@ Distributed Experiments
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. Tune provides many utilities that enable an effective workflow for interacting with a cluster.
 
-To launch a large hyperparameter search, you can download this ``configuration file <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml>``__ and ``an example Tune script <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/async_hyperband_example.py>``__ and then run ``ray submit [config_file.yaml] [tune_script.py] --args="--ray-redis-address=localhost:``.
+To launch a large hyperparameter search, you can download this `configuration file <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml>`__ and `an example Tune script <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/async_hyperband_example.py>`__ and then run:
+
+.. code-block:: bash
+
+    $ ray submit [config_file.yaml] [tune_script.py] --args="--ray-redis-address=localhost:6379"``.
 
 Connecting to a cluster
 -----------------------
@@ -23,16 +27,16 @@ One common approach to modifying an existing Tune Experiment to go distributed i
 .. code-block:: bash
 
     # Single-node execution
-    python script.py
+    $ python script.py
 
     # Connect to an existing ray cluster
-    python script.py --redis-address=localhost:1234
+    $ python script.py --redis-address=localhost:1234
 
 
 Launching a cloud cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you have already have a list of nodes, skip down to the Local Cluster Usage section.
+If you have already have a list of nodes, skip down to the `Local Cluster Usage <tune-distributed.html#local-cluster-usage>`_- section.
 
 You can use this YAML configuration file to kick off your cluster. The following instructions are for AWS and will require you to run ``aws configure``.
 Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`__.
@@ -60,7 +64,7 @@ This code starts a cluster as specified by the given cluster configuration YAML 
 .. code-block:: bash
 
     export CLUSTER=path_to_cluster_yaml
-    ray submit $CLUSTER tune_mnist_large.py --start
+    $ ray submit $CLUSTER tune_mnist_large.py --start
 
     # Analyze your results on TensorBoard. This starts TensorBoard on the remote machine.
     # Go to `http://localhost:6006` to access TensorBoard.
@@ -75,7 +79,7 @@ If you run into issues (or want to add nodes manually), you can use the manual c
 .. code-block:: bash
 
     # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
-    ray start --head --redis-port=6379
+    $ ray start --head --redis-port=6379
 
 The command will print out the address of the Redis server that was started (and some other address information).
 
@@ -83,7 +87,7 @@ The command will print out the address of the Redis server that was started (and
 
 .. code-block:: bash
 
-  ray start --redis-address=<redis-address>
+    $ ray start --redis-address=<redis-address>
 
 If you have already have a list of nodes, you can follow the private autoscaling cluster setup `instructions here <autoscaling.html>`__ - below is a configuration file for a private autoscaling cluster.
 

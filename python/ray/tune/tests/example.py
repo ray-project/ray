@@ -29,4 +29,7 @@ analysis = tune.run(
     config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
 
 print("Best config: ", analysis.get_best_config())
+
+# Get a dataframe for analyzing trial results.
+df = analysis.dataframe()
 # __quick_start_end__

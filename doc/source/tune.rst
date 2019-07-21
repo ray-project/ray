@@ -24,12 +24,6 @@ This example runs a small grid search over a neural network training function us
    :start-after: __quick_start_begin__
    :end-before: __quick_start_end__
 
-Then, get a dataframe for analyzing trial results.
-
-.. code-block:: python
-
-    df = analysis.dataframe()
-
 If TensorBoard is installed, you can also automatically visualize all trial results:
 
 .. code-block:: bash

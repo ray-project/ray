@@ -51,6 +51,7 @@ class TrackSession(object):
             self.trial_id = trial_name + "_" + self.trial_id
         if self.is_tune_session:
             self._logger = _ReporterHook(_tune_reporter)
+            self._logdir = _tune_reporter.logdir
         else:
             self._initialize_logging(trial_name, experiment_dir, upload_dir,
                                      trial_config)

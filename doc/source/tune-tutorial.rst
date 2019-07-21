@@ -7,7 +7,8 @@ This tutorial will walk you through the following process:
   2. Setting a stopping criteria
   3. Specifying a TrialScheduler
   4. Adding a SearchAlgorithm
-  3. Getting the best model and analyzing results
+  5. Getting the best model and analyzing results
+  6. Running the script with multiple nodes on the cloud.
 
 Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) without modifying your underlying code.
 
@@ -120,16 +121,14 @@ Evaluate best trained model
 Use Tensorboard for results
 ---------------------------
 
-.. code:: ipython3
+.. code:: python
 
-    ! ls {logdir}
+    $ ls {logdir}
 
-.. code:: ipython3
+.. code:: python
 
-    ! tensorboard --logdir {logdir}
+    $ tensorboard --logdir {logdir}
 
-In this tutorial, we'll show you how to use state-of-the-art hyperparameter tuning with Tune and PyTorch.
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Exercise 1: PyTorch Boilerplate Code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
