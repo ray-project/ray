@@ -41,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Apply a state preprocessor with spec given by the "model" config option
     # (like other RL algorithms). This is mostly useful if you have a weird
-    # observation shape, like an image. Disabled by default.
+    # observation shape, like an image. Auto-enabled if a custom model is set.
     "use_state_preprocessor": False,
     # Postprocess the policy network model output with these hidden layers. If
     # use_state_preprocessor is False, then these will be the *only* hidden

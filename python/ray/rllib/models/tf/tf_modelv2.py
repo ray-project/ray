@@ -21,3 +21,9 @@ class TFModelV2(ModelV2):
             model_config,
             name,
             framework="tf")
+
+    def update_ops(self):
+        """Return the list of update ops for this model.
+
+        For example, this should include any BatchNorm update ops."""
+        return []

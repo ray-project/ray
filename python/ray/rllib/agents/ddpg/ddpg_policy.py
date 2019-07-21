@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 def build_ddpg_model(policy, obs_space, action_space, config):
+    if config["model"]["custom_model"]:
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DDPG.".format(action_space))
@@ -44,7 +49,6 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         default_model = NoopModel
         num_outputs = int(np.product(obs_space.shape))
 
-    prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy.model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
@@ -60,8 +64,6 @@ def build_ddpg_model(policy, obs_space, action_space, config):
         critic_hiddens=config["critic_hiddens"],
         parameter_noise=config["parameter_noise"],
         twin_q=config["twin_q"])
-    policy.batchnorm_update_ops = list(
-        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -490,8 +492,7 @@ DDPGTFPolicy = build_tf_policy(
     stats_fn=stats,
     gradients_fn=gradients,
     apply_gradients_fn=apply_gradients,
-    optimizer_fn=lambda policy, config: None,
-    update_ops_fn=lambda policy: policy.batchnorm_update_ops,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[TargetNetworkMixin, ExplorationStateMixin, CustomOptimizerMixin],
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,

@@ -50,6 +50,9 @@ def make_v1_wrapper(legacy_model_cls):
             # Tracks branches created so far
             self.branches_created = set()
 
+            # Tracks update ops
+            self._update_ops = None
+
             with tf.variable_scope(self.name) as scope:
                 self.variable_scope = scope
 
@@ -68,9 +71,14 @@ def make_v1_wrapper(legacy_model_cls):
             else:
                 # create a new model instance
                 with tf.variable_scope(self.name):
+                    prev_update_ops = set(
+                        tf.get_collection(tf.GraphKeys.UPDATE_OPS))
                     new_instance = self.legacy_model_cls(
                         input_dict, self.obs_space, self.action_space,
                         self.num_outputs, self.model_config, state, seq_lens)
+                    self._update_ops = list(
+                        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                        prev_update_ops)
             if len(new_instance.state_init) != len(self.get_initial_state()):
                 raise ValueError(
                     "When using a custom recurrent ModelV1 model, you should "
@@ -82,6 +90,13 @@ def make_v1_wrapper(legacy_model_cls):
             self.cur_instance = new_instance
             self.variable_scope = new_instance.scope
             return new_instance.outputs, new_instance.state_out
+
+        @override(TFModelV2)
+        def update_ops(self):
+            if self._update_ops is None:
+                raise ValueError(
+                    "Cannot get update ops before wrapped v1 model init")
+            return list(self._update_ops)
 
         @override(ModelV2)
         def variables(self):
