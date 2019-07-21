@@ -51,14 +51,14 @@ void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {
   store_providers_.emplace(type, CreateStoreProvider(type));
 }
 
-std::unique_ptr<CoreWorkerStoreProvider>
-CoreWorkerObjectInterface::CreateStoreProvider(StoreProviderType type) const {
+std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreProvider(
+    StoreProviderType type) const {
   switch (type) {
-  case StoreProviderType::LOCAL_PLASMA :
+  case StoreProviderType::LOCAL_PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerLocalPlasmaStoreProvider(store_socket_));
-    break;    
-  case StoreProviderType::PLASMA :
+    break;
+  case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
     break;

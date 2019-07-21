@@ -3,12 +3,12 @@
 
 #include <list>
 
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
-#include  "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
-#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
@@ -22,13 +22,11 @@ struct PendingTaskRequest {
   std::unique_ptr<rpc::PushTaskRequest> request;
 };
 
-
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(
-      boost::asio::io_service &io_service,
-      gcs::RedisGcsClient &gcs_client,
-      CoreWorkerObjectInterface &object_interface);
+  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
+                                     gcs::RedisGcsClient &gcs_client,
+                                     CoreWorkerObjectInterface &object_interface);
 
   /// Submit a task for execution to raylet.
   ///
@@ -43,7 +41,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   Status PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request,
                   const TaskID &task_id, int num_returns);
 
-  void TreatTaskAsFailed(const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type);
+  void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
+                         const rpc::ErrorType &error_type);
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
@@ -64,9 +63,10 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unordered_map<ActorID, gcs::ActorTableData::ActorState> actor_state_;
 
   /// Pending requests to send out on a per-actor basis.
-  //std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>> pending_requests_;
-  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>> pending_requests_;
-
+  // std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
+  // pending_requests_;
+  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>>
+      pending_requests_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
@@ -74,14 +74,13 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   int counter_;
 };
 
-class CoreWorkerDirectActorTaskReceiver
-    : public CoreWorkerTaskReceiver,
-      public rpc::DirectActorHandler {
+class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
+                                          public rpc::DirectActorHandler {
  public:
-  CoreWorkerDirectActorTaskReceiver(
-    CoreWorkerObjectInterface &object_interface,
-    boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler);
+  CoreWorkerDirectActorTaskReceiver(CoreWorkerObjectInterface &object_interface,
+                                    boost::asio::io_service &io_service,
+                                    rpc::GrpcServer &server,
+                                    const TaskHandler &task_handler);
 
   /// Handle a `PushTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -90,10 +89,8 @@ class CoreWorkerDirectActorTaskReceiver
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] done_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request,
-                      rpc::PushTaskReply *reply,
+  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
-
 
  private:
   // Object interface.
@@ -101,7 +98,7 @@ class CoreWorkerDirectActorTaskReceiver
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
-  TaskHandler task_handler_;  
+  TaskHandler task_handler_;
 };
 
 }  // namespace ray

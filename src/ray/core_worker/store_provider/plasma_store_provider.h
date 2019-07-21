@@ -9,7 +9,6 @@
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 
 namespace ray {
 

@@ -1,8 +1,8 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
@@ -20,15 +20,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
                         std::placeholders::_1, std::placeholders::_2);
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-          new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_,
-          main_service_, worker_server_, func)));
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+          raylet_client, object_interface_, main_service_, worker_server_, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(
-          object_interface_, main_service_, worker_server_, func)));
+          new CoreWorkerDirectActorTaskReceiver(object_interface_, main_service_,
+                                                worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -56,15 +54,15 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   TaskInfo task_info{task_spec.TaskId(), task_spec.JobId(), task_type};
 
   auto num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorCreationTask() || (task_spec.IsActorTask() &&
-      !task_spec.ActorCreationDummyObjectId().IsNil())) {
+  if (task_spec.IsActorCreationTask() ||
+      (task_spec.IsActorTask() && !task_spec.ActorCreationDummyObjectId().IsNil())) {
     // Note for direct actor call doesn't use dummy object id,
     // and in that case it's set to nil in task spec.
     RAY_CHECK(num_returns > 0);
     // Decrease to account for the dummy object id, this logic only
     // applies to task submitted via raylet.
     num_returns--;
-  }  
+  }
 
   auto status = execution_callback_(func, args, task_info, num_returns, results);
   // TODO(zhijunfu):

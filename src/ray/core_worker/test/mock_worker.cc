@@ -35,7 +35,7 @@ class MockWorker {
   Status ExecuteTask(const RayFunction &ray_function,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const TaskInfo &task_info, int num_returns,
-                     std::vector<std::shared_ptr<RayObject>>* results) {                 
+                     std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
 
@@ -44,14 +44,14 @@ class MockWorker {
       // This is an actor creation task.
       RAY_CHECK(args.size() > 0);
       for (const auto &arg : args) {
-        std::string object_id_str(reinterpret_cast<char*>(arg->GetData()->Data()),
-            arg->GetData()->Size());
+        std::string object_id_str(reinterpret_cast<char *>(arg->GetData()->Data()),
+                                  arg->GetData()->Size());
         auto object_id = ObjectID::FromBinary(object_id_str);
 
-        std::vector<std::shared_ptr<ray::RayObject>> results;    
-        RAY_CHECK_OK(worker_.Objects().Get({ object_id }, 0, &results));
-             /* << "  " << results[0]->GetData()->Data()
-              << "  " << results[0]->GetData()->Size(); */
+        std::vector<std::shared_ptr<ray::RayObject>> results;
+        RAY_CHECK_OK(worker_.Objects().Get({object_id}, 0, &results));
+        /* << "  " << results[0]->GetData()->Data()
+         << "  " << results[0]->GetData()->Size(); */
 
         if (results.empty() || results[0] == nullptr) {
           uint8_t array[] = {1};

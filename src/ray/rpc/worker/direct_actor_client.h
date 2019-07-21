@@ -36,11 +36,11 @@ class DirectActorClient {
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   ray::Status PushTask(const PushTaskRequest &request,
-                   const ClientCallback<PushTaskReply> &callback) {
+                       const ClientCallback<PushTaskReply> &callback) {
     auto call = client_call_manager_
-        .CreateCall<DirectActorService, PushTaskRequest, PushTaskReply>(
-            *stub_, &DirectActorService::Stub::PrepareAsyncPushTask, request,
-            callback);
+                    .CreateCall<DirectActorService, PushTaskRequest, PushTaskReply>(
+                        *stub_, &DirectActorService::Stub::PrepareAsyncPushTask, request,
+                        callback);
     return call->GetStatus();
   }
 

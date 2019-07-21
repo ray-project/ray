@@ -13,17 +13,15 @@ CoreWorker::CoreWorker(
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
       io_work_(io_service_) {
-
   // Initialize gcs client
-  gcs_client_ = std::unique_ptr<gcs::RedisGcsClient>(
-      new gcs::RedisGcsClient(gcs_options));
+  gcs_client_ =
+      std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
       new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket));
-  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(
-      new CoreWorkerTaskInterface(worker_context_, raylet_client_,
-      *object_interface_, io_service_, *gcs_client_));      
+  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
+      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
 
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
@@ -39,8 +37,8 @@ CoreWorker::CoreWorker(
   // instead of crashing.
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       raylet_socket_, ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
-      (worker_type_ == WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, rpc_server_port));
+      (worker_type_ == WorkerType::WORKER), worker_context_.GetCurrentJobID(), language_,
+      rpc_server_port));
 
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 }
@@ -48,7 +46,7 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() {
   gcs_client_->Disconnect();
   io_service_.stop();
-  io_thread_.join();  
+  io_thread_.join();
 }
 
 void CoreWorker::RunIOService() { io_service_.run(); }

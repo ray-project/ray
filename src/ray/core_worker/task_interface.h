@@ -10,10 +10,10 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/transport/transport.h"
-#include "ray/protobuf/core_worker.pb.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/transport/transport.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 
@@ -45,7 +45,7 @@ struct ActorCreationOptions {
   const uint64_t max_reconstructions = 0;
   /// Whether to use direct actor call. If this is set to true, callers will submit
   /// tasks directly to the created actor without going through raylet.
-  const bool direct_call = false;  
+  const bool direct_call = false;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
 };

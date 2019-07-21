@@ -7,7 +7,6 @@
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
-#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
