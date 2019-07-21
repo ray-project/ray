@@ -4,6 +4,8 @@
 #include <boost/system/error_code.hpp>
 #include <chrono>
 #include <unordered_map>
+#include <iterator>
+#include <sstream>
 
 #include "ray/common/status.h"
 
@@ -49,6 +51,18 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   default:
     return ray::Status::IOError(strerror(error.value()));
   }
+}
+
+/// A helper function to split a string by whitespaces.
+///
+/// \param str The string with whitespaces.
+///
+/// \return A vector that contains strings split by whitespaces.
+inline std::vector<std::string> SplitStrByWhitespaces(const std::string &str) {
+std::istringstream iss(str);
+std::vector<std::string> result(std::istream_iterator<std::string>{iss},
+std::istream_iterator<std::string>());
+return result;
 }
 
 class InitShutdownRAII {
