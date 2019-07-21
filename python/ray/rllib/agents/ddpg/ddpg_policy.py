@@ -13,7 +13,6 @@ from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog, Model
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
@@ -439,6 +438,55 @@ def exploration_setting_inputs(policy):
     }
 
 
+def gradients(policy, optimizer, loss):
+    if policy.config["grad_norm_clipping"] is not None:
+        actor_grads_and_vars = minimize_and_clip(
+            policy._actor_optimizer,
+            policy.actor_loss,
+            var_list=policy.model.policy_variables(),
+            clip_val=policy.config["grad_norm_clipping"])
+        critic_grads_and_vars = minimize_and_clip(
+            policy._critic_optimizer,
+            policy.critic_loss,
+            var_list=policy.model.q_variables(),
+            clip_val=policy.config["grad_norm_clipping"])
+    else:
+        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
+            policy.actor_loss, var_list=policy.model.policy_variables())
+        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
+            policy.critic_loss, var_list=policy.model.q_variables())
+    # save these for later use in build_apply_op
+    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                    if g is not None]
+    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
+                                     if g is not None]
+    grads_and_vars = (
+        policy._actor_grads_and_vars + policy._critic_grads_and_vars)
+    return grads_and_vars
+
+
+def apply_gradients(policy, optimizer, grads_and_vars):
+    # for policy gradient, update policy net one time v.s.
+    # update critic net `policy_delay` time(s)
+    should_apply_actor_opt = tf.equal(
+        tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
+
+    def make_apply_op():
+        return policy._actor_optimizer.apply_gradients(
+            policy._actor_grads_and_vars)
+
+    actor_op = tf.cond(
+        should_apply_actor_opt,
+        true_fn=make_apply_op,
+        false_fn=lambda: tf.no_op())
+    critic_op = policy._critic_optimizer.apply_gradients(
+        policy._critic_grads_and_vars)
+
+    # increment global step & apply ops
+    with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
+        return tf.group(actor_op, critic_op)
+
+
 DDPGTFPolicy = build_tf_policy(
     name="DDPGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
@@ -448,63 +496,11 @@ DDPGTFPolicy = build_tf_policy(
     action_sampler_fn=build_action_output,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
-    #    optimizer_fn=lambda policy, config: None,
+    gradients_fn=gradients,
+    apply_gradients_fn=apply_gradients,
+    optimizer_fn=lambda policy, config: None,
     update_ops_fn=lambda policy: policy.batchnorm_update_ops,
     mixins=[TargetNetworkMixin, ExplorationStateMixin, CustomOptimizerMixin],
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False)
-
-#@override(TFPolicy)
-#def build_apply_op(self, optimizer, grads_and_vars):
-#    # for policy gradient, update policy net one time v.s.
-#    # update critic net `policy_delay` time(s)
-#    should_apply_actor_opt = tf.equal(
-#        tf.mod(self.global_step, self.config["policy_delay"]), 0)
-#
-#    def make_apply_op():
-#        return self._actor_optimizer.apply_gradients(
-#            self._actor_grads_and_vars)
-#
-#    actor_op = tf.cond(
-#        should_apply_actor_opt,
-#        true_fn=make_apply_op,
-#        false_fn=lambda: tf.no_op())
-#    critic_op = self._critic_optimizer.apply_gradients(
-#        self._critic_grads_and_vars)
-#    # increment global step & apply ops
-#    with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
-#        return tf.group(actor_op, critic_op)
-#
-#@override(TFPolicy)
-#def gradients(self, optimizer, loss):
-#    if self.config["grad_norm_clipping"] is not None:
-#        actor_grads_and_vars = minimize_and_clip(
-#            self._actor_optimizer,
-#            self.actor_loss,
-#            var_list=self.policy_vars,
-#            clip_val=self.config["grad_norm_clipping"])
-#        critic_grads_and_vars = minimize_and_clip(
-#            self._critic_optimizer,
-#            self.critic_loss,
-#            var_list=self.q_func_vars + self.twin_q_func_vars
-#            if self.config["twin_q"] else self.q_func_vars,
-#            clip_val=self.config["grad_norm_clipping"])
-#    else:
-#        actor_grads_and_vars = self._actor_optimizer.compute_gradients(
-#            self.actor_loss, var_list=self.policy_vars)
-#        if self.config["twin_q"]:
-#            critic_vars = self.q_func_vars + self.twin_q_func_vars
-#        else:
-#            critic_vars = self.q_func_vars
-#        critic_grads_and_vars = self._critic_optimizer.compute_gradients(
-#            self.critic_loss, var_list=critic_vars)
-#    # save these for later use in build_apply_op
-#    self._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-#                                  if g is not None]
-#    self._critic_grads_and_vars = [(g, v)
-#                                   for (g, v) in critic_grads_and_vars
-#                                   if g is not None]
-#    grads_and_vars = self._actor_grads_and_vars \
-#        + self._critic_grads_and_vars
-#    return grads_and_vars
