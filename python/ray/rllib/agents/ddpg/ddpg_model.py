@@ -101,41 +101,24 @@ class DDPGModel(TFModelV2):
                 if "LayerNorm" not in var.name
             ])
 
-        def build_q_net(inputs):
-            model_out, actions = inputs
-            q_out = tf.concat([model_out, actions], axis=1)
+        def build_q_net(name, model_out, actions):
+            q_out = tf.keras.layers.Concatenate(axis=1)([model_out, actions])
             activation = getattr(tf.nn, critic_hidden_activation)
-            i = 0
-            for hidden in critic_hiddens:
-                q_out = tf.layers.dense(
-                    q_out,
-                    units=hidden,
-                    activation=activation,
-                    name="q_hidden{}".format(i))
-                i += 1
-            return tf.layers.dense(
-                q_out, units=1, activation=None, name="q_out")
+            for i, n in enumerate(critic_hiddens):
+                q_out = tf.keras.layers.Dense(
+                    n,
+                    name="{}_hidden_{}".format(name, i),
+                    activation=activation)(q_out)
+            q_out = tf.keras.layers.Dense(
+                1, activation=None, name="{}_out".format(name))(q_out)
+            return tf.keras.Model([model_out, actions], q_out)
 
-        # TODO(ekl) use keras layers instead of variable scopes
-        def build_q_net_scope(inputs):
-            with tf.variable_scope(name + "/q_net", reuse=tf.AUTO_REUSE):
-                return build_q_net(inputs)
-
-        # TODO(ekl) use keras layers instead of variable scopes
-        def build_twin_q_net_scope(inputs):
-            with tf.variable_scope(name + "/twin_q_net", reuse=tf.AUTO_REUSE):
-                return build_q_net(inputs)
-
-        q_out = tf.keras.layers.Lambda(build_q_net_scope)(
-            [self.model_out, self.actions])
-        self.q_net = tf.keras.Model([self.model_out, self.actions], q_out)
+        self.q_net = build_q_net("q", self.model_out, self.actions)
         self.register_variables(self.q_net.variables)
 
         if twin_q:
-            twin_q_out = tf.keras.layers.Lambda(build_twin_q_net_scope)(
-                [self.model_out, self.actions])
-            self.twin_q_net = tf.keras.Model([self.model_out, self.actions],
-                                             twin_q_out)
+            self.twin_q_net = build_q_net("twin_q", self.model_out,
+                                          self.actions)
             self.register_variables(self.twin_q_net.variables)
         else:
             self.twin_q_net = None
