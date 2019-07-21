@@ -112,12 +112,12 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
       JobID::Nil(), task_id, reconstruction_entry,
       /*success_callback=*/
-      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+      [this](gcs::RedisGcsClient *client, const TaskID &task_id,
              const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, /*success=*/true);
       },
       /*failure_callback=*/
-      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+      [this](gcs::RedisGcsClient *client, const TaskID &task_id,
              const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, /*success=*/false);
       },

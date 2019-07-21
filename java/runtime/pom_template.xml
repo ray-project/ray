@@ -22,10 +22,6 @@
       <artifactId>ray-api</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.apache.arrow</groupId>
-      <artifactId>arrow-plasma</artifactId>
-    </dependency>
 {generated_bzl_deps}
   </dependencies>
 

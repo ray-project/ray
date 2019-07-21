@@ -36,6 +36,7 @@ class PolicyOptimizer(object):
         """
         self.workers = workers
         self.episode_history = []
+        self.to_be_collected = []
 
         # Counters that should be updated by sub-classes
         self.num_steps_trained = 0
@@ -100,9 +101,10 @@ class PolicyOptimizer(object):
             res (dict): A training result dict from worker metrics with
                 `info` replaced with stats from self.
         """
-        episodes, num_dropped = collect_episodes(
+        episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             selected_workers or self.workers.remote_workers(),
+            self.to_be_collected,
             timeout_seconds=timeout_seconds)
         orig_episodes = list(episodes)
         missing = min_history - len(episodes)
@@ -111,7 +113,7 @@ class PolicyOptimizer(object):
             assert len(episodes) <= min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-min_history:]
-        res = summarize_episodes(episodes, orig_episodes, num_dropped)
+        res = summarize_episodes(episodes, orig_episodes)
         res.update(info=self.stats())
         return res
 
