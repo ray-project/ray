@@ -30,6 +30,8 @@ def train_mnist(config):
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
+
+
 # __train_func_end__
 
 # __eval_func_begin__
