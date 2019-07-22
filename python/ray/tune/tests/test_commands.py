@@ -75,7 +75,7 @@ def test_ls(start_ray, tmpdir):
         local_dir=str(tmpdir),
         global_checkpoint_period=0)
 
-    columns = ["status", "episode_reward_mean", "training_iteration"]
+    columns = ["episode_reward_mean", "training_iteration"]
     limit = 2
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=columns, limit=limit)
