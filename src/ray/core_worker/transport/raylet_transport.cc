@@ -14,9 +14,11 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) 
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client, boost::asio::io_service &io_service,
+    std::unique_ptr<RayletClient> &raylet_client,
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)
     : raylet_client_(raylet_client),
+      object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
   server.RegisterService(task_service_);
@@ -27,7 +29,22 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
-  auto status = task_handler_(task_spec);
+  std::vector<std::shared_ptr<RayObject>> results;
+  auto status = task_handler_(task_spec, &results);
+
+  auto num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+    RAY_CHECK(num_returns > 0);
+    // Decrease to account for the dummy object id.
+    num_returns--;
+  }
+
+  RAY_CHECK(results.size() == num_returns);
+  for (int i = 0; i < num_returns; i++) {
+    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
+    object_interface_.Put(*results[i], id);
+  }
+
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous
   // raylet client calls are completed. For example, if the worker sends a

@@ -269,7 +269,7 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   RAY_CHECK(entry->GetStatus() < GcsStatus::COMMITTING);
 
   gcs::raylet::TaskTable::WriteCallback task_callback =
-      [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
+      [this](ray::gcs::RedisGcsClient *client, const TaskID &id,
              const TaskTableData &data) { HandleEntryCommitted(id); };
   auto task = lineage_.GetEntry(task_id);
   auto task_data = std::make_shared<TaskTableData>();
