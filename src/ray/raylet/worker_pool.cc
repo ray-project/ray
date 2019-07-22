@@ -43,7 +43,7 @@ namespace raylet {
 /// (num_worker_processes * num_workers_per_process) workers for each language.
 WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
                        int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+                       std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : num_workers_per_process_(num_workers_per_process),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
@@ -244,7 +244,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
 
 std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
-  const auto &actor_id = task_spec.ActorId();
 
   std::shared_ptr<Worker> worker = nullptr;
   int pid = -1;
@@ -281,6 +280,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     }
   } else {
     // Code path of actor task.
+    const auto &actor_id = task_spec.ActorId();
     auto actor_entry = state.idle_actor.find(actor_id);
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);

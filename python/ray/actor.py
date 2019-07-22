@@ -185,11 +185,11 @@ class ActorClass(object):
             task.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _last_job_id_exported_for: The ID of the job of the last Ray
-            session during which this actor class definition was exported. This
-            is an imperfect mechanism used to determine if we need to export
-            the remote function again. It is imperfect in the sense that the
-            actor class definition could be exported multiple times by
+        _last_export_session_and_job: A pair of the last exported session
+            and job to help us to know whether this function was exported.
+            This is an imperfect mechanism used to determine if we need to
+            export the remote function again. It is imperfect in the sense that
+            the actor class definition could be exported multiple times by
             different workers.
         _actor_methods: The actor methods.
         _method_decorators: Optional decorators that should be applied to the
@@ -211,7 +211,7 @@ class ActorClass(object):
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
         self._resources = resources
-        self._last_job_id_exported_for = None
+        self._last_export_session_and_job = None
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, ray.utils.is_function_or_method)
@@ -344,12 +344,13 @@ class ActorClass(object):
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if (self._last_job_id_exported_for is None or
-                    self._last_job_id_exported_for != worker.current_job_id):
-                # If this actor class was exported in a previous session, we
-                # need to export this function again, because current GCS
+            if (self._last_export_session_and_job !=
+                    worker.current_session_and_job):
+                # If this actor class was not exported in this session and job,
+                # we need to export this function again, because current GCS
                 # doesn't have it.
-                self._last_job_id_exported_for = worker.current_job_id
+                self._last_export_session_and_job = (
+                    worker.current_session_and_job)
                 worker.function_actor_manager.export_actor_class(
                     self._modified_class, self._actor_method_names)
 
@@ -387,7 +388,8 @@ class ActorClass(object):
             actor_id, self._modified_class.__module__, self._class_name,
             actor_cursor, self._actor_method_names, self._method_decorators,
             self._method_signatures, self._actor_method_num_return_vals,
-            actor_cursor, actor_method_cpu, worker.current_job_id)
+            actor_cursor, actor_method_cpu, worker.current_job_id,
+            worker.current_session_and_job)
         # We increment the actor counter by 1 to account for the actor creation
         # task.
         actor_handle._ray_actor_counter += 1
@@ -465,6 +467,7 @@ class ActorHandle(object):
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
                  actor_job_id,
+                 session_and_job,
                  actor_handle_id=None):
         assert isinstance(actor_id, ActorID)
         assert isinstance(actor_job_id, ray.JobID)
@@ -490,6 +493,7 @@ class ActorHandle(object):
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_job_id = actor_job_id
+        self._ray_session_and_job = session_and_job
         self._ray_new_actor_handles = []
         self._ray_actor_lock = threading.Lock()
 
@@ -543,7 +547,7 @@ class ActorHandle(object):
                     actor_counter=self._ray_actor_counter,
                     actor_creation_dummy_object_id=(
                         self._ray_actor_creation_dummy_object_id),
-                    execution_dependencies=[self._ray_actor_cursor],
+                    previous_actor_task_dummy_object_id=self._ray_actor_cursor,
                     new_actor_handles=self._ray_new_actor_handles,
                     # We add one for the dummy return ID.
                     num_return_vals=num_return_vals + 1,
@@ -610,8 +614,10 @@ class ActorHandle(object):
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
         worker = ray.worker.get_global_worker()
+        exported_in_current_session_and_job = (
+            self._ray_session_and_job == worker.current_session_and_job)
         if (worker.mode == ray.worker.SCRIPT_MODE
-                and self._ray_actor_job_id.binary() != worker.worker_id):
+                and not exported_in_current_session_and_job):
             # If the worker is a driver and driver id has changed because
             # Ray was shut down re-initialized, the actor is already cleaned up
             # and we don't need to send `__ray_terminate__` again.
@@ -729,6 +735,7 @@ class ActorHandle(object):
             # This is the ID of the job that owns the actor, not
             # necessarily the job that owns this actor handle.
             state["actor_job_id"],
+            worker.current_session_and_job,
             actor_handle_id=actor_handle_id)
 
     def __getstate__(self):

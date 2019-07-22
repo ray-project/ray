@@ -1,8 +1,8 @@
+#include <sstream>
+
 #include "task.h"
 
 namespace ray {
-
-namespace raylet {
 
 const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
@@ -22,18 +22,20 @@ void Task::ComputeDependencies() {
       dependencies_.push_back(task_spec_.ArgId(i, j));
     }
   }
-  // TODO(atumanov): why not just return a const reference to ExecutionDependencies() and
-  // avoid a copy.
-  auto execution_dependencies = task_execution_spec_.ExecutionDependencies();
-  dependencies_.insert(dependencies_.end(), execution_dependencies.begin(),
-                       execution_dependencies.end());
+  if (task_spec_.IsActorTask()) {
+    dependencies_.push_back(task_spec_.PreviousActorTaskDummyObjectId());
+  }
 }
 
 void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_ = task.task_execution_spec_;
-  ComputeDependencies();
 }
 
-}  // namespace raylet
+std::string Task::DebugString() const {
+  std::ostringstream stream;
+  stream << "task_spec={" << task_spec_.DebugString() << "}, task_execution_spec={"
+         << task_execution_spec_.DebugString() << "}";
+  return stream.str();
+}
 
 }  // namespace ray

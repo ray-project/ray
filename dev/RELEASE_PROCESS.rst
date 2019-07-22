@@ -37,6 +37,7 @@ This document describes the process for creating new releases.
 
    and make sure they pass. If they pass, it will be obvious that they passed.
    This will use the autoscaler to start a bunch of machines and run some tests.
+   **Caution!**: By default, the stress tests will require expensive GPU instances.
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
@@ -63,13 +64,7 @@ This document describes the process for creating new releases.
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_6_intel.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
-7. **Final Testing:** Send a link to the wheels to the other contributors and
-   core members of the Ray project. Make sure the wheels are tested on Ubuntu
-   and MacOS (ideally multiple versions of Ubuntu and MacOS). This testing
-   should verify that the wheels are correct and that all release blockers have
-   been resolved. Should a new release blocker be found, repeat steps 5-7.
-
-8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
    ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
    need to run a command like
 
@@ -95,7 +90,7 @@ This document describes the process for creating new releases.
    Do this at least for MacOS and for Linux, as well as for Python 2 and Python
    3.
 
-9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+8. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
    mistake will require a new release. You can upload the wheels with a command
@@ -114,7 +109,7 @@ This document describes the process for creating new releases.
    finds the correct Ray version, and successfully runs some simple scripts on
    both MacOS and Linux as well as Python 2 and Python 3.
 
-10. **Create a GitHub release:** Create a GitHub release through the
+9. **Create a GitHub release:** Create a GitHub release through the
     `GitHub website`_. The release should be created at the commit from the
     previous step. This should include **release notes**. Copy the style and
     formatting used by previous releases. Create a draft of the release notes
@@ -127,7 +122,20 @@ This document describes the process for creating new releases.
       git pull origin master --tags
       git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
 
-11. **Update version numbers throughout codebase:** Suppose we just released
+
+    At the end of the release note, you can add a list of contributors that help
+    creating this release. Use the ``dev/get_contributors.py`` to generate this
+    list. You will need to create a GitHub token for this task. Example usage:
+
+    .. code-block:: bash
+      python get_contributors.py --help
+      python get_contributors.py \
+        --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+        --ray-path=$HOME/ray/ray \
+        --prev-branch="ray-0.7.1" \
+        --curr-branch="ray-0.7.2"
+
+10. **Update version numbers throughout codebase:** Suppose we just released
     0.7.1. The previous release version number (in this case 0.7.0) and the
     previous dev version number (in this case 0.8.0.dev0) appear in many places
     throughout the code base including the installation documentation, the
@@ -137,7 +145,7 @@ This document describes the process for creating new releases.
     should be replaced. For example, ``0.7.0`` appears in this file but should
     not be updated.
 
-12. **Improve the release process:** Find some way to improve the release
+11. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
 
 .. _`this example`: https://github.com/ray-project/ray/pull/4226

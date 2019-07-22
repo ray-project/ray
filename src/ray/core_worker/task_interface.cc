@@ -33,7 +33,7 @@ ray::ActorHandleID ActorHandle::ActorHandleID() const {
 Language ActorHandle::ActorLanguage() const { return inner_.actor_language(); };
 
 std::vector<std::string> ActorHandle::ActorCreationTaskFunctionDescriptor() const {
-  return ray::rpc::VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
+  return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
 };
 
 ObjectID ActorHandle::ActorCursor() const {
@@ -93,17 +93,17 @@ void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client)
     : worker_context_(worker_context) {
-  task_submitters_.emplace(static_cast<int>(TaskTransportType::RAYLET),
+  task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
 }
 
-raylet::TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
+TaskSpecBuilder CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
-  raylet::TaskSpecBuilder builder;
+  TaskSpecBuilder builder;
   auto next_task_index = worker_context_.GetNextTaskIndex();
   // Build common task spec.
   builder.SetCommonTaskSpec(
@@ -134,8 +134,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            std::vector<ObjectID> *return_ids) {
   auto builder = BuildCommonTaskSpec(function, args, task_options.num_returns,
                                      task_options.resources, {}, return_ids);
-  TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -155,8 +154,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
-  const TaskSpec task(builder.Build(), {});
-  return task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -175,12 +173,11 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   // Build actor task spec.
   const auto actor_creation_dummy_object_id =
       ObjectID::FromBinary(actor_handle.ActorID().Binary());
-  builder.SetActorTaskSpec(actor_handle.ActorID(), actor_handle.ActorHandleID(),
-                           actor_creation_dummy_object_id,
-                           actor_handle.IncreaseTaskCounter(),
-                           actor_handle.NewActorHandles());
-
-  const TaskSpec task(builder.Build(), {actor_handle.ActorCursor()});
+  builder.SetActorTaskSpec(
+      actor_handle.ActorID(), actor_handle.ActorHandleID(),
+      actor_creation_dummy_object_id,
+      /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
+      actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();
@@ -189,8 +186,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   guard.unlock();
 
   // Submit task.
-  auto status =
-      task_submitters_[static_cast<int>(TaskTransportType::RAYLET)]->SubmitTask(task);
+  auto status = task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 
   // Remove cursor from return ids.
   (*return_ids).pop_back();

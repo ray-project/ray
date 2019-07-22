@@ -1,17 +1,13 @@
-#ifndef RAY_RAYLET_TASK_H
-#define RAY_RAYLET_TASK_H
+#ifndef RAY_COMMON_TASK_TASK_H
+#define RAY_COMMON_TASK_TASK_H
 
 #include <inttypes.h>
 
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/rpc/message_wrapper.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// \class Task
 ///
@@ -21,6 +17,10 @@ namespace raylet {
 /// time.
 class Task {
  public:
+  /// Construct an empty task. This should only be used to pass a task
+  /// as an out parameter to a function or method.
+  Task() {}
+
   /// Construct a `Task` object from a protobuf message.
   ///
   /// \param message The protobuf message.
@@ -62,6 +62,8 @@ class Task {
   /// \param task Task structure with updated dynamic information.
   void CopyTaskExecutionSpec(const Task &task);
 
+  std::string DebugString() const;
+
  private:
   void ComputeDependencies();
 
@@ -70,7 +72,7 @@ class Task {
   /// dependencies, etc.
   TaskSpecification task_spec_;
   /// Task execution specification, consisting of all dynamic/mutable
-  /// information about this task determined at execution time..
+  /// information about this task determined at execution time.
   TaskExecutionSpecification task_execution_spec_;
   /// A cached copy of the task's object dependencies, including arguments from
   /// the TaskSpecification and execution dependencies from the
@@ -78,8 +80,6 @@ class Task {
   std::vector<ObjectID> dependencies_;
 };
 
-}  // namespace raylet
-
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_H
+#endif  // RAY_COMMON_TASK_TASK_H

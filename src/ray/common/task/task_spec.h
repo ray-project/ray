@@ -1,15 +1,15 @@
-#ifndef RAY_RAYLET_TASK_SPECIFICATION_H
-#define RAY_RAYLET_TASK_SPECIFICATION_H
+#ifndef RAY_COMMON_TASK_TASK_SPEC_H
+#define RAY_COMMON_TASK_TASK_SPEC_H
 
 #include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/scheduling_resources.h"
-#include "ray/rpc/message_wrapper.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/task/task_common.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -17,15 +17,12 @@ extern "C" {
 
 namespace ray {
 
-namespace raylet {
-
-using rpc::Language;
-using rpc::MessageWrapper;
-using rpc::TaskType;
-
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
+  /// Construct an empty task specification. This should not be used directly.
+  TaskSpecification() {}
+
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
@@ -52,9 +49,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   size_t ParentCounter() const;
 
   std::vector<std::string> FunctionDescriptor() const;
-
-  // Output the function descriptor as a string for log purpose.
-  std::string FunctionDescriptorString() const;
 
   size_t NumArgs() const;
 
@@ -94,16 +88,24 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   Language GetLanguage() const;
 
-  // Methods specific to actor tasks.
+  /// Whether this task is a normal task.
+  bool IsNormalTask() const;
+
+  /// Whether this task is an actor creation task.
   bool IsActorCreationTask() const;
 
+  /// Whether this task is an actor task.
   bool IsActorTask() const;
+
+  // Methods specific to actor creation tasks.
 
   ActorID ActorCreationId() const;
 
-  ObjectID ActorCreationDummyObjectId() const;
-
   uint64_t MaxActorReconstructions() const;
+
+  std::vector<std::string> DynamicWorkerOptions() const;
+
+  // Methods specific to actor tasks.
 
   ActorID ActorId() const;
 
@@ -111,11 +113,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   uint64_t ActorCounter() const;
 
-  ObjectID ActorDummyObject() const;
+  ObjectID ActorCreationDummyObjectId() const;
+
+  ObjectID PreviousActorTaskDummyObjectId() const;
 
   std::vector<ActorHandleID> NewActorHandles() const;
 
-  std::vector<std::string> DynamicWorkerOptions() const;
+  ObjectID ActorDummyObject() const;
+
+  std::string DebugString() const;
 
  private:
   void ComputeResources();
@@ -125,8 +131,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ResourceSet required_placement_resources_;
 };
 
-}  // namespace raylet
-
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_SPECIFICATION_H
+#endif  // RAY_COMMON_TASK_TASK_SPEC_H

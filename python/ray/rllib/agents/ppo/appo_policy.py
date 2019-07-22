@@ -272,9 +272,9 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             old_policy_actions_logp=make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
             action_kl=make_time_major(
-                old_policy_action_dist.kl(action_dist), drop_last=True),
+                old_policy_action_dist.multi_kl(action_dist), drop_last=True),
             actions_entropy=make_time_major(
-                action_dist.entropy(), drop_last=True),
+                action_dist.multi_entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
             behaviour_logits=make_time_major(
                 unpacked_behaviour_logits, drop_last=True),
@@ -300,8 +300,8 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
             actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=make_time_major(prev_action_dist.kl(action_dist)),
-            actions_entropy=make_time_major(action_dist.entropy()),
+            action_kl=make_time_major(prev_action_dist.multi_kl(action_dist)),
+            actions_entropy=make_time_major(action_dist.multi_entropy()),
             values=make_time_major(values),
             valid_mask=make_time_major(mask),
             advantages=make_time_major(

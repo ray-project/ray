@@ -1,9 +1,9 @@
 #include "ray/gcs/tables.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/client.h"
-#include "ray/rpc/util.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -110,7 +110,7 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
-  auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
+  auto subscribe_wrapper = [subscribe](RedisGcsClient *client, const ID &id,
                                        const GcsChangeMode change_mode,
                                        const std::vector<Data> &data) {
     RAY_CHECK(change_mode != GcsChangeMode::REMOVE);
@@ -247,7 +247,7 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
                                const FailureCallback &failure) {
   num_lookups_++;
   return Log<ID, Data>::Lookup(job_id, id,
-                               [lookup, failure](AsyncGcsClient *client, const ID &id,
+                               [lookup, failure](RedisGcsClient *client, const ID &id,
                                                  const std::vector<Data> &data) {
                                  if (data.empty()) {
                                    if (failure != nullptr) {
@@ -269,7 +269,7 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
       job_id, client_id,
-      [subscribe, failure](AsyncGcsClient *client, const ID &id,
+      [subscribe, failure](RedisGcsClient *client, const ID &id,
                            const std::vector<Data> &data) {
         RAY_CHECK(data.empty() || data.size() == 1);
         if (data.size() == 1) {
@@ -495,8 +495,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() &&
-        (entry.second.entry_type() == ClientTableData::INSERTION)) {
+    if (!entry.first.IsNil() && (entry.second.is_insertion())) {
       client_added_callback_(client_, entry.first, entry.second);
     }
   }
@@ -506,36 +505,13 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() && entry.second.entry_type() == ClientTableData::DELETION) {
+    if (!entry.first.IsNil() && !entry.second.is_insertion()) {
       client_removed_callback_(client_, entry.first, entry.second);
     }
   }
 }
 
-void ClientTable::RegisterResourceCreateUpdatedCallback(
-    const ClientTableCallback &callback) {
-  resource_createupdated_callback_ = callback;
-  // Call the callback for any clients that are cached.
-  for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() &&
-        (entry.second.entry_type() == ClientTableData::RES_CREATEUPDATE)) {
-      resource_createupdated_callback_(client_, entry.first, entry.second);
-    }
-  }
-}
-
-void ClientTable::RegisterResourceDeletedCallback(const ClientTableCallback &callback) {
-  resource_deleted_callback_ = callback;
-  // Call the callback for any clients that are cached.
-  for (const auto &entry : client_cache_) {
-    if (!entry.first.IsNil() &&
-        entry.second.entry_type() == ClientTableData::RES_DELETE) {
-      resource_deleted_callback_(client_, entry.first, entry.second);
-    }
-  }
-}
-
-void ClientTable::HandleNotification(AsyncGcsClient *client,
+void ClientTable::HandleNotification(RedisGcsClient *client,
                                      const ClientTableData &data) {
   ClientID client_id = ClientID::FromBinary(data.client_id());
   // It's possible to get duplicate notifications from the client table, so
@@ -548,81 +524,35 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   } else {
     // If the entry is in the cache, then the notification is new if the client
     // was alive and is now dead or resources have been updated.
-    bool was_not_deleted = (entry->second.entry_type() != ClientTableData::DELETION);
-    bool is_deleted = (data.entry_type() == ClientTableData::DELETION);
-    bool is_res_modified = ((data.entry_type() == ClientTableData::RES_CREATEUPDATE) ||
-                            (data.entry_type() == ClientTableData::RES_DELETE));
-    is_notif_new = (was_not_deleted && (is_deleted || is_res_modified));
+    bool was_not_deleted = entry->second.is_insertion();
+    bool is_deleted = !data.is_insertion();
+    is_notif_new = was_not_deleted && is_deleted;
     // Once a client with a given ID has been removed, it should never be added
     // again. If the entry was in the cache and the client was deleted, check
     // that this new notification is not an insertion.
-    if (entry->second.entry_type() == ClientTableData::DELETION) {
-      RAY_CHECK((data.entry_type() == ClientTableData::DELETION))
+    if (!entry->second.is_insertion()) {
+      RAY_CHECK(!data.is_insertion())
           << "Notification for addition of a client that was already removed:"
           << client_id;
     }
   }
 
   // Add the notification to our cache. Notifications are idempotent.
-  // If it is a new client or a client removal, add as is
-  if ((data.entry_type() == ClientTableData::INSERTION) ||
-      (data.entry_type() == ClientTableData::DELETION)) {
-    RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
-                      "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type())
-                   << ". Setting the client cache to data.";
-    client_cache_[client_id] = data;
-  } else if ((data.entry_type() == ClientTableData::RES_CREATEUPDATE) ||
-             (data.entry_type() == ClientTableData::RES_DELETE)) {
-    RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable RES_CREATEUPDATE "
-                      "notification for client id "
-                   << client_id << ". EntryType: " << int(data.entry_type())
-                   << ". Updating the client cache with the delta from the log.";
-
-    ClientTableData &cache_data = client_cache_[client_id];
-    // Iterate over all resources in the new create/update notification
-    for (std::vector<int>::size_type i = 0; i != data.resources_total_label_size(); i++) {
-      auto const &resource_name = data.resources_total_label(i);
-      auto const &capacity = data.resources_total_capacity(i);
-
-      // If resource exists in the ClientTableData, update it, else create it
-      auto existing_resource_label =
-          std::find(cache_data.resources_total_label().begin(),
-                    cache_data.resources_total_label().end(), resource_name);
-      if (existing_resource_label != cache_data.resources_total_label().end()) {
-        auto index = std::distance(cache_data.resources_total_label().begin(),
-                                   existing_resource_label);
-        // Resource already exists, set capacity if updation call..
-        if (data.entry_type() == ClientTableData::RES_CREATEUPDATE) {
-          cache_data.set_resources_total_capacity(index, capacity);
-        }
-        // .. delete if deletion call.
-        else if (data.entry_type() == ClientTableData::RES_DELETE) {
-          cache_data.mutable_resources_total_label()->erase(
-              cache_data.resources_total_label().begin() + index);
-          cache_data.mutable_resources_total_capacity()->erase(
-              cache_data.resources_total_capacity().begin() + index);
-        }
-      } else {
-        // Resource does not exist, create resource and add capacity if it was a resource
-        // create call.
-        if (data.entry_type() == ClientTableData::RES_CREATEUPDATE) {
-          cache_data.add_resources_total_label(resource_name);
-          cache_data.add_resources_total_capacity(capacity);
-        }
-      }
-    }
-  }
+  RAY_LOG(DEBUG) << "[ClientTableNotification] ClientTable Insertion/Deletion "
+                    "notification for client id "
+                 << client_id << ". IsInsertion: " << data.is_insertion()
+                 << ". Setting the client cache to data.";
+  client_cache_[client_id] = data;
 
   // If the notification is new, call any registered callbacks.
   ClientTableData &cache_data = client_cache_[client_id];
   if (is_notif_new) {
-    if (data.entry_type() == ClientTableData::INSERTION) {
+    if (data.is_insertion()) {
       if (client_added_callback_ != nullptr) {
         client_added_callback_(client, client_id, cache_data);
       }
       RAY_CHECK(removed_clients_.find(client_id) == removed_clients_.end());
-    } else if (data.entry_type() == ClientTableData::DELETION) {
+    } else {
       // NOTE(swang): The client should be added to this data structure before
       // the callback gets called, in case the callback depends on the data
       // structure getting updated.
@@ -630,19 +560,11 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
       if (client_removed_callback_ != nullptr) {
         client_removed_callback_(client, client_id, cache_data);
       }
-    } else if (data.entry_type() == ClientTableData::RES_CREATEUPDATE) {
-      if (resource_createupdated_callback_ != nullptr) {
-        resource_createupdated_callback_(client, client_id, cache_data);
-      }
-    } else if (data.entry_type() == ClientTableData::RES_DELETE) {
-      if (resource_deleted_callback_ != nullptr) {
-        resource_deleted_callback_(client, client_id, cache_data);
-      }
     }
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableData &data) {
+void ClientTable::HandleConnected(RedisGcsClient *client, const ClientTableData &data) {
   auto connected_client_id = ClientID::FromBinary(data.client_id());
   RAY_CHECK(client_id_ == connected_client_id)
       << connected_client_id << " " << client_id_;
@@ -664,17 +586,17 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
 
   // Construct the data to add to the client table.
   auto data = std::make_shared<ClientTableData>(local_client_);
-  data->set_entry_type(ClientTableData::INSERTION);
+  data->set_is_insertion(true);
   // Callback to handle our own successful connection once we've added
   // ourselves.
-  auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
+  auto add_callback = [this](RedisGcsClient *client, const UniqueID &log_key,
                              const ClientTableData &data) {
     RAY_CHECK(log_key == client_log_key_);
     HandleConnected(client, data);
 
     // Callback for a notification from the client table.
     auto notification_callback = [this](
-                                     AsyncGcsClient *client, const UniqueID &log_key,
+                                     RedisGcsClient *client, const UniqueID &log_key,
                                      const std::vector<ClientTableData> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       std::unordered_map<std::string, ClientTableData> connected_nodes;
@@ -682,7 +604,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
       for (auto &notification : notifications) {
         // This is temporary fix for Issue 4140 to avoid connect to dead nodes.
         // TODO(yuhguo): remove this temporary fix after GCS entry is removable.
-        if (notification.entry_type() != ClientTableData::DELETION) {
+        if (notification.is_insertion()) {
           connected_nodes.emplace(notification.client_id(), notification);
         } else {
           auto iter = connected_nodes.find(notification.client_id());
@@ -701,7 +623,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
     };
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
-    auto subscription_callback = [this](AsyncGcsClient *c) {
+    auto subscription_callback = [this](RedisGcsClient *c) {
       RAY_CHECK_OK(RequestNotifications(JobID::Nil(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
@@ -713,8 +635,8 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableData>(local_client_);
-  data->set_entry_type(ClientTableData::DELETION);
-  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+  data->set_is_insertion(false);
+  auto add_callback = [this, callback](RedisGcsClient *client, const ClientID &id,
                                        const ClientTableData &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(JobID::Nil(), client_log_key_, id));
@@ -731,7 +653,7 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
   auto data = std::make_shared<ClientTableData>();
   data->set_client_id(dead_client_id.Binary());
-  data->set_entry_type(ClientTableData::DELETION);
+  data->set_is_insertion(false);
   return Append(JobID::Nil(), client_log_key_, data, nullptr);
 }
 
@@ -767,7 +689,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
-                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+                             ray::gcs::RedisGcsClient *client, const UniqueID &id,
                              const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
         std::make_shared<ActorCheckpointIdData>(data);
@@ -785,7 +707,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, job_id, actor_id](
-                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+                              ray::gcs::RedisGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());
@@ -812,8 +734,8 @@ template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
 
-template class Log<ClientID, RayResource>;
-template class Hash<ClientID, RayResource>;
+template class Log<ClientID, ResourceTableData>;
+template class Hash<ClientID, ResourceTableData>;
 
 }  // namespace gcs
 

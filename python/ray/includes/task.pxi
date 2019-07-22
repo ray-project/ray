@@ -15,7 +15,7 @@ from ray.includes.task cimport (
 
 
 cdef class TaskSpec:
-    """Cython wrapper class of C++ `ray::raylet::TaskSpecification`."""
+    """Cython wrapper class of C++ `ray::TaskSpecification`."""
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
@@ -23,6 +23,7 @@ cdef class TaskSpec:
                  int num_returns, TaskID parent_task_id, int parent_counter,
                  ActorID actor_creation_id,
                  ObjectID actor_creation_dummy_object_id,
+                 ObjectID previous_actor_task_dummy_object_id,
                  int32_t max_actor_reconstructions, ActorID actor_id,
                  ActorHandleID actor_handle_id, int actor_counter,
                  new_actor_handles, resource_map, placement_resource_map):
@@ -85,6 +86,7 @@ cdef class TaskSpec:
                 actor_id.native(),
                 actor_handle_id.native(),
                 actor_creation_dummy_object_id.native(),
+                previous_actor_task_dummy_object_id.native(),
                 actor_counter,
                 c_new_actor_handles,
             )
@@ -120,6 +122,18 @@ cdef class TaskSpec:
             String representing the task specification.
         """
         return self.task_spec.get().Serialize()
+
+    def is_normal_task(self):
+        """Whether this task is a normal task."""
+        return self.task_spec.get().IsNormalTask()
+
+    def is_actor_task(self):
+        """Whether this task is an actor task."""
+        return self.task_spec.get().IsActorTask()
+
+    def is_actor_creation_task(self):
+        """Whether this task is an actor creation task."""
+        return self.task_spec.get().IsActorCreationTask()
 
     def job_id(self):
         """Return the job ID for this task."""
@@ -206,34 +220,46 @@ cdef class TaskSpec:
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
+        if not self.is_actor_creation_task():
+            return ActorID.nil()
         return ActorID(self.task_spec.get().ActorCreationId().Binary())
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
         return ObjectID(
             self.task_spec.get().ActorCreationDummyObjectId().Binary())
 
+    def previous_actor_task_dummy_object_id(self):
+        """Return the object ID of the previously executed actor task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
+        return ObjectID(
+            self.task_spec.get().PreviousActorTaskDummyObjectId().Binary())
+
     def actor_id(self):
         """Return the actor ID for this task."""
+        if not self.is_actor_task():
+            return ActorID.nil()
         return ActorID(self.task_spec.get().ActorId().Binary())
 
     def actor_counter(self):
         """Return the actor counter for this task."""
+        if not self.is_actor_task():
+            return 0
         return self.task_spec.get().ActorCounter()
 
 
 cdef class TaskExecutionSpec:
-    """Cython wrapper class of C++ `ray::raylet::TaskExecutionSpecification`."""
+    """Cython wrapper class of C++ `ray::TaskExecutionSpecification`."""
     cdef:
         unique_ptr[CTaskExecutionSpec] c_spec
 
-    def __init__(self, execution_dependencies):
+    def __init__(self):
         cdef:
             RpcTaskExecutionSpec message;
 
-        for dependency in execution_dependencies:
-            message.add_dependencies(
-                (<ObjectID?>dependency).binary())
         self.c_spec.reset(new CTaskExecutionSpec(message))
 
     @staticmethod
@@ -244,22 +270,12 @@ cdef class TaskExecutionSpec:
         self.c_spec.reset(new CTaskExecutionSpec(string))
         return self
 
-    def dependencies(self):
-        cdef:
-            CObjectID c_id
-            c_vector[CObjectID] dependencies = (
-                self.c_spec.get().ExecutionDependencies())
-        ret = []
-        for c_id in dependencies:
-            ret.append(ObjectID(c_id.Binary()))
-        return ret
-
     def num_forwards(self):
         return self.c_spec.get().NumForwards()
 
 
 cdef class Task:
-    """Cython wrapper class of C++ `ray::raylet::Task`."""
+    """Cython wrapper class of C++ `ray::Task`."""
     cdef:
         unique_ptr[CTask] c_task
 

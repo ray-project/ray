@@ -1,12 +1,10 @@
-#ifndef RAY_RAYLET_TASK_UTIL_H
-#define RAY_RAYLET_TASK_UTIL_H
+#ifndef RAY_COMMON_TASK_TASK_UTIL_H
+#define RAY_COMMON_TASK_TASK_UTIL_H
 
+#include "ray/common/task/task_spec.h"
 #include "ray/protobuf/common.pb.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
-
-namespace raylet {
 
 /// Helper class for building a `TaskSpecification` object.
 class TaskSpecBuilder {
@@ -27,7 +25,7 @@ class TaskSpecBuilder {
       uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
-    message_.set_type(rpc::TaskType::NORMAL_TASK);
+    message_.set_type(TaskType::NORMAL_TASK);
     message_.set_language(language);
     for (const auto &fd : function_descriptor) {
       message_.add_function_descriptor(fd);
@@ -95,7 +93,8 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorTaskSpec(
       const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-      const ObjectID &actor_creation_dummy_object_id, uint64_t actor_counter,
+      const ObjectID &actor_creation_dummy_object_id,
+      const ObjectID &previous_actor_task_dummy_object_id, uint64_t actor_counter,
       const std::vector<ActorHandleID> &new_handle_ids = {}) {
     message_.set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_.mutable_actor_task_spec();
@@ -103,6 +102,8 @@ class TaskSpecBuilder {
     actor_spec->set_actor_handle_id(actor_handle_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
+    actor_spec->set_previous_actor_task_dummy_object_id(
+        previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
     for (const auto &id : new_handle_ids) {
       actor_spec->add_new_actor_handles(id.Binary());
@@ -114,7 +115,6 @@ class TaskSpecBuilder {
   rpc::TaskSpec message_;
 };
 
-}  // namespace raylet
 }  // namespace ray
 
-#endif  // RAY_RAYLET_TASK_UTIL_H
+#endif  // RAY_COMMON_TASK_TASK_UTIL_H

@@ -81,6 +81,7 @@ public class MultiThreadingTest extends BaseTest {
       Assert.assertEquals(arg, (int) Ray.get(obj.getId()));
     }, LOOP_COUNTER);
 
+    TestUtils.warmUpCluster();
     // Test wait for one object in multi threads.
     RayObject<Integer> obj = Ray.call(MultiThreadingTest::echo, 100);
     runTestCaseInMultipleThreads(() -> {
