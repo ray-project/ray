@@ -432,7 +432,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 reporter(test={"test1": {"test2": i}})
 
-        [trial] = tune.run(train, stop={"test": {"test1": {"test2": 6}}})
+        [trial] = tune.run(
+            train, stop={
+                "test": {
+                    "test1": {
+                        "test2": 6
+                    }
+                }
+            }).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
     def testEarlyReturn(self):
@@ -938,7 +945,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_cloud": "echo {source} {target}"
-                })
+                }).trials
 
     @patch("ray.tune.syncer.S3_PREFIX", "test")
     def testCloudProperString(self):
@@ -953,7 +960,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     },
                     "upload_dir": "test",
                     "sync_to_cloud": "ls {target}"
-                })
+                }).trials
 
         with self.assertRaises(ValueError):
             [trial] = tune.run(
@@ -966,7 +973,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     },
                     "upload_dir": "test",
                     "sync_to_cloud": "ls {source}"
-                })
+                }).trials
 
         tmpdir = tempfile.mkdtemp()
         logfile = os.path.join(tmpdir, "test.log")
@@ -981,7 +988,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 "upload_dir": "test",
                 "sync_to_cloud": "echo {source} {target} > " + logfile
-            })
+            }).trials
         with open(logfile) as f:
             lines = f.read()
             self.assertTrue("test" in lines)
@@ -1000,7 +1007,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_driver": "ls {target}"
-                })
+                }).trials
 
         with self.assertRaises(TuneError):
             # This raises TuneError because logger is init in safe zone.
@@ -1013,7 +1020,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_driver": "ls {source}"
-                })
+                }).trials
 
         with patch("ray.tune.syncer.CommandSyncer.sync_function"
                    ) as mock_fn, patch(
@@ -1028,7 +1035,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_driver": "echo {source} {target}"
-                })
+                }).trials
             self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
@@ -1045,9 +1052,11 @@ class TestSyncFunctionality(unittest.TestCase):
             name="foo",
             max_failures=0,
             local_dir=tmpdir,
-            stop={"training_iteration": 1},
+            stop={
+                "training_iteration": 1
+            },
             upload_dir=tmpdir2,
-            sync_to_cloud=tune.function(sync_func))
+            sync_to_cloud=tune.function(sync_func)).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
@@ -1065,8 +1074,10 @@ class TestSyncFunctionality(unittest.TestCase):
             "__fake",
             name="foo",
             max_failures=0,
-            stop={"training_iteration": 1},
-            sync_to_driver=tune.function(sync_func_driver))
+            stop={
+                "training_iteration": 1
+            },
+            sync_to_driver=tune.function(sync_func_driver)).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -1076,8 +1087,10 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={"training_iteration": 1},
-                sync_to_driver=tune.function(sync_func_driver))
+                stop={
+                    "training_iteration": 1
+                },
+                sync_to_driver=tune.function(sync_func_driver)).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -1098,7 +1111,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "upload_dir": "test",
                     "sync_to_driver": tune.function(sync_func),
                     "sync_to_cloud": tune.function(sync_func)
-                })
+                }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
 
