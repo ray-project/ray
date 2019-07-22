@@ -36,6 +36,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+from ray.exceptions import RayletError
 from ray.utils import decode
 
 cimport cpython
@@ -57,7 +58,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        raise Exception(message)
+        raise RayletError(message)
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
