@@ -516,10 +516,7 @@ class Trial(object):
                      or self.max_failures < 0))
 
     def update_last_result(self, result, terminate=False):
-        result.update(
-            trial_id=self.trial_id,
-            done=terminate
-        )
+        result.update(trial_id=self.trial_id, done=terminate)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
