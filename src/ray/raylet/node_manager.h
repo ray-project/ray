@@ -323,11 +323,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
-  /// \param ray_get Whether the task was blocked in a `ray.get` call, as
-  /// opposed to a `ray.wait` call.
   /// \return Void.
   void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const TaskID &current_task_id, bool ray_get);
+                           const TaskID &current_task_id);
 
   /// Kill a worker.
   ///

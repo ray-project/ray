@@ -776,8 +776,7 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    HandleTaskUnblocked(client, from_flatbuf<TaskID>(*message->task_id()),
-                        /*ray_get=*/true);
+    HandleTaskUnblocked(client, from_flatbuf<TaskID>(*message->task_id()));
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -948,7 +947,7 @@ void NodeManager::ProcessDisconnectClientMessage(
         // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        HandleTaskUnblocked(client, task_id, /*ray_get=*/true);
+        HandleTaskUnblocked(client, task_id);
       }
       // Clean up any open ray.wait calls that the worker made.
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
@@ -1122,7 +1121,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (client_blocked) {
-            HandleTaskUnblocked(client, current_task_id, /*ray_get=*/false);
+            HandleTaskUnblocked(client, current_task_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1627,8 +1626,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
 }
 
 void NodeManager::HandleTaskUnblocked(
-    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id,
-    bool ray_get) {
+    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
   // TODO(swang): Because the object dependencies are tracked in the task
@@ -1676,18 +1674,14 @@ void NodeManager::HandleTaskUnblocked(
     worker = worker_pool_.GetRegisteredDriver(client);
   }
 
+  // Unsubscribe from any `ray.get` objects that the task was blocked on.  Any
+  // fetch or reconstruction operations to make the objects local are canceled.
+  // `ray.wait` calls will stay active until the objects become local, or the
+  // task/actor that called `ray.wait` exits.
+  task_dependency_manager_.UnsubscribeGetDependencies(current_task_id);
+  // Mark the task as unblocked.
   RAY_CHECK(worker);
-  // If the task was previously blocked, then stop waiting for its dependencies
-  // and mark the task as unblocked.
   worker->RemoveBlockedTaskId(current_task_id);
-  if (ray_get) {
-    // Unsubscribe to the objects if this was a `ray.get` since the task is no
-    // longer blocked on the objects. Any fetch or reconstruction operations to
-    // make the objects local are canceled. `ray.wait` calls will stay active
-    // until the objects become local, or the task/actor that called `ray.wait`
-    // exits.
-    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(current_task_id));
-  }
   local_queues_.RemoveBlockedTaskId(current_task_id);
 }
 
