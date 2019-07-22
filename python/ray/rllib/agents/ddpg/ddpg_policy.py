@@ -457,6 +457,9 @@ class ActorCriticOptimizerMixin(object):
 class ComputeTDErrorMixin(object):
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
+        if not self.loss_initialized():
+            return np.zeros_like(rew_t)
+
         td_err = self.get_session().run(
             self.td_error,
             feed_dict={
