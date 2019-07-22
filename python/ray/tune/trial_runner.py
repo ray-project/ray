@@ -180,9 +180,11 @@ class TrialRunner(object):
         self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
-        self.checkpoint_file = os.path.join(
-            self._local_checkpoint_dir,
-            TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+        self.checkpoint_file = None
+        if self._local_checkpoint_dir:
+            self.checkpoint_file = os.path.join(
+                self._local_checkpoint_dir,
+                TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
