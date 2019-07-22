@@ -289,9 +289,7 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
-        config = config or {}
-        config.update(trial_id=self.trial_id)
-        self.config = config
+        self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
@@ -389,8 +387,10 @@ class Trial(object):
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
+            config = config.copy()
+            config.update(trial_id=trial_id)
             self.result_logger = UnifiedLogger(
-                self.config,
+                config,
                 self.logdir,
                 loggers=self.loggers,
                 sync_function=self.sync_to_driver_fn)
