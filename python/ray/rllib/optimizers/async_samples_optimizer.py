@@ -9,7 +9,6 @@ from __future__ import print_function
 import logging
 import time
 
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.optimizers.aso_aggregator import SimpleAggregator
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.optimizers.aso_learner import LearnerThread
@@ -42,7 +41,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                  broadcast_interval=1,
                  num_sgd_iter=1,
                  minibatch_buffer_size=1,
-                 use_kl_loss=False,
                  learner_queue_size=16,
                  num_aggregation_workers=0,
                  _fake_gpus=False):
@@ -62,7 +60,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     "parallel data loader buffers as minibatch buffers: "
                     "{} vs {}".format(num_data_loader_buffers,
                                       minibatch_buffer_size))
-
             self.learner = TFMultiGPULearner(
                 self.workers.local_worker(),
                 lr=lr,

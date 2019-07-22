@@ -60,39 +60,6 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # yapf: enable
 
 
-def make_aggregators_and_optimizer(workers, config):
-    if config["num_aggregation_workers"] > 0:
-        # Create co-located aggregator actors first for placement pref
-        aggregators = TreeAggregator.precreate_aggregators(
-            config["num_aggregation_workers"])
-    else:
-        aggregators = None
-    workers.add_workers(config["num_workers"])
-
-    optimizer = AsyncSamplesOptimizer(
-        workers,
-        lr=config["lr"],
-        num_envs_per_worker=config["num_envs_per_worker"],
-        num_gpus=config["num_gpus"],
-        sample_batch_size=config["sample_batch_size"],
-        train_batch_size=config["train_batch_size"],
-        replay_buffer_num_slots=config["replay_buffer_num_slots"],
-        replay_proportion=config["replay_proportion"],
-        num_data_loader_buffers=config["num_data_loader_buffers"],
-        max_sample_requests_in_flight_per_worker=config[
-            "max_sample_requests_in_flight_per_worker"],
-        broadcast_interval=config["broadcast_interval"],
-        num_sgd_iter=config["num_sgd_iter"],
-        minibatch_buffer_size=config["minibatch_buffer_size"],
-        num_aggregation_workers=config["num_aggregation_workers"],
-        **config["optimizer"])
-
-    if aggregators:
-        # Assign the pre-created aggregators to the optimizer
-        optimizer.aggregator.init(aggregators)
-    return optimizer
-
-
 def update_target_and_kl(trainer, fetches):
     # Update the KL coeff depending on how many steps LearnerThread has stepped through
     learner_steps = trainer.optimizer.learner.num_steps
@@ -119,5 +86,4 @@ APPOTrainer = impala.ImpalaTrainer.with_updates(
     default_policy=AsyncPPOTFPolicy,
     get_policy_class=lambda _: AsyncPPOTFPolicy,
     after_init=initalize_target,
-    make_policy_optimizer=make_aggregators_and_optimizer,
     after_optimizer_step=update_target_and_kl)
