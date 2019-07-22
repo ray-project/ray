@@ -664,7 +664,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId() && 
           actor_entry.second.GetParentActorID() == actor_id) {
         auto worker = worker_pool_.GetActorWorker(actor_entry.first);
-        RAY_CHECK (worker) << "Worker not found for local & alive actor "<<actor_entry.first;
+        RAY_CHECK(worker) << "Worker not found for local & alive actor "<<actor_entry.first;
         RAY_LOG(INFO) << "Killing child actor "<< actor_entry.first<<" as parent actor "
           << actor_id << "is dead";
         ProcessDisconnectClientMessage(worker->Connection());
