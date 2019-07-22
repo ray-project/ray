@@ -90,7 +90,7 @@ cc_proto_library(
 proto_library(
     name = "direct_actor_proto",
     srcs = ["src/ray/protobuf/direct_actor.proto"],
-    deps = [":common_proto"],    
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -192,10 +192,10 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "direct_actor_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
         ":worker_cc_grpc",
-        "direct_actor_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -371,13 +371,12 @@ cc_library(
     ],
 )
 
-
 cc_library(
     name = "mock_worker_lib",
     srcs = ["src/ray/core_worker/test/mock_worker.cc"],
     hdrs = glob([
-        "src/ray/core_worker/test/*.h"
-    ]),    
+        "src/ray/core_worker/test/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":core_worker_lib",
@@ -385,7 +384,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "mock_worker",   
+    name = "mock_worker",
     copts = COPTS,
     deps = [
         ":mock_worker_lib",
@@ -396,8 +395,8 @@ cc_library(
     name = "core_worker_test_lib",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
     hdrs = glob([
-        "src/ray/core_worker/test/*.h"
-    ]),  
+        "src/ray/core_worker/test/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":core_worker_lib",
@@ -407,7 +406,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "core_worker_test",   
+    name = "core_worker_test",
     copts = COPTS,
     deps = [
         ":core_worker_test_lib",
