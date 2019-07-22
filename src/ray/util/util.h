@@ -61,7 +61,7 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
 inline std::vector<std::string> SplitStrByWhitespaces(const std::string &str) {
   std::istringstream iss(str);
   std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-  std::istream_iterator<std::string>());
+                                  std::istream_iterator<std::string>());
   return result;
 }
 
