@@ -650,7 +650,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     }
   } else if (actor_registration.GetState() == ActorTableData::DEAD) {
     // When an actor dies, loop over all of the queued tasks for that actor
-    // and treat them as failed
+    // and treat them as failed.
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
@@ -1544,7 +1544,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           if (!data.empty()) {
             // The actor has been created. We only need the last entry, because
             // it represents the latest state of this actor.
-            RAY_LOG(DEBUG) << " SubmitTask: "<<actor_id;
             HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
           }
         };
@@ -2006,7 +2005,6 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   } else {
     // The actor did not resume from a checkpoint. Immediately notify the
     // other node managers that the actor has been created.
-    RAY_LOG(DEBUG)<<" FinishAssignedActorCreationTask: "<<actor_id;
     HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
     auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
     if (actor_registry_.find(actor_id) != actor_registry_.end()) {
