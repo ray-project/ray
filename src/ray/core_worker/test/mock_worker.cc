@@ -50,8 +50,6 @@ class MockWorker {
 
         std::vector<std::shared_ptr<ray::RayObject>> results;
         RAY_CHECK_OK(worker_.Objects().Get({object_id}, 0, &results));
-        /* << "  " << results[0]->GetData()->Data()
-         << "  " << results[0]->GetData()->Size(); */
 
         if (results.empty() || results[0] == nullptr) {
           uint8_t array[] = {1};

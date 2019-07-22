@@ -87,6 +87,7 @@ class CoreWorkerObjectInterface {
 
   friend class CoreWorkerTaskInterface;
 
+  /// TODO(zhijunfu): remove this.
   friend class CoreWorkerDirectActorTaskSubmitter;
 };
 
