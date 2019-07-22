@@ -30,7 +30,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
     def __init__(self,
                  workers,
-                 use_importance_sampling=False,
                  train_batch_size=500,
                  sample_batch_size=50,
                  num_envs_per_worker=1,
@@ -52,9 +51,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         self._stats_start_time = time.time()
         self._last_stats_time = {}
         self._last_stats_sum = {}
-        self.old_worker = workers._make_worker(
-            RolloutWorker, workers._env_creator, workers._policy, 0,
-            workers._local_config) if use_importance_sampling else None
 
         if num_gpus > 1 or num_data_loader_buffers > 1:
             logger.info(
@@ -66,9 +62,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                     "parallel data loader buffers as minibatch buffers: "
                     "{} vs {}".format(num_data_loader_buffers,
                                       minibatch_buffer_size))
-            if old_worker:
-                raise ValueError(
-                    "APPO has not been implemented for multi-GPU mode")
 
             self.learner = TFMultiGPULearner(
                 self.workers.local_worker(),
@@ -81,13 +74,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 learner_queue_size=learner_queue_size,
                 _fake_gpus=_fake_gpus)
         else:
-            self.learner = LearnerThread(
-                self.workers.local_worker(),
-                minibatch_buffer_size,
-                num_sgd_iter,
-                learner_queue_size,
-                old_worker=self.old_worker,
-                use_kl_loss=use_kl_loss)
+            self.learner = LearnerThread(self.workers.local_worker(),
+                                         minibatch_buffer_size, num_sgd_iter,
+                                         learner_queue_size)
         self.learner.start()
 
         # Stats

@@ -22,8 +22,13 @@ from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin
+from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.explained_variance import explained_variance
 
 tf = try_import_tf()
+
+POLICY_SCOPE = "func"
+TARGET_POLICY_SCOPE = "target_func"
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +191,26 @@ class VTraceSurrogateLoss(object):
             self.total_loss += cur_kl_coeff * self.mean_kl
 
 
+def build_appo_model(policy, obs_space, action_space, config):
+    policy.model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        policy.logit_dim,
+        config["model"],
+        name=POLICY_SCOPE,
+        framework="tf")
+
+    policy.target_model = ModelCatalog.get_model_v2(
+        obs_space,
+        action_space,
+        policy.logit_dim,
+        config["model"],
+        name=TARGET_POLICY_SCOPE,
+        framework="tf")
+
+    return policy.model
+
+
 def build_appo_surrogate_loss(policy, batch_tensors):
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
@@ -206,7 +231,10 @@ def build_appo_surrogate_loss(policy, batch_tensors):
     rewards = batch_tensors[SampleBatch.REWARDS]
 
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
-    old_policy_behaviour_logits = batch_tensors["old_policy_behaviour_logits"]
+
+    policy.target_model_out, _ = policy.target_model(
+        policy.input_dict, policy.state_in, policy.seq_lens)
+    old_policy_behaviour_logits = tf.stop_gradient(policy.target_model_out)
 
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
@@ -217,6 +245,9 @@ def build_appo_surrogate_loss(policy, batch_tensors):
     old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits)
     prev_action_dist = policy.dist_class(behaviour_logits)
     values = policy.value_function
+
+    policy.model_vars = policy.model.variables()
+    policy.target_model_vars = policy.target_model.variables()
 
     if policy.state_in:
         max_seq_len = tf.reduce_max(policy.seq_lens) - 1
@@ -307,7 +338,7 @@ def stats(policy, batch_tensors):
         stats_dict.update({"var_IS": is_stat_var})
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"KL": policy.loss.mean_kl})
+        stats_dict.update({"kl": policy.loss.mean_kl})
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict
@@ -345,13 +376,16 @@ def add_values_and_logits(policy):
     return out
 
 
-def add_old_policy_placeholder(policy):
-    return {
-        "old_policy_behaviour_logits": tf.placeholder(
-            tf.float32,
-            shape=[None] + [policy.logit_dim],
-            name="old_policy_behaviour_logits")
-    }
+class TargetNetworkMixin(object):
+    def __init__(self, obs_space, action_space, config):
+        assign_ops = []
+        assert len(self.model_vars) == len(self.target_model_vars)
+        for var, var_target in zip(self.model_vars, self.target_model_vars):
+            assign_ops.append(var_target.assign(var))
+        self.update_target_network = tf.group(*assign_ops)
+
+    def update_target(self):
+        return self.get_session().run(self.update_target_network)
 
 
 def setup_mixins(policy, obs_space, action_space, config):
@@ -360,15 +394,24 @@ def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy)
 
 
+def setup_late_mixins(policy, obs_space, action_space, config):
+    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+
+
 AsyncPPOTFPolicy = build_tf_policy(
     name="AsyncPPOTFPolicy",
+    make_model=build_appo_model,
     loss_fn=build_appo_surrogate_loss,
+    stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
     extra_action_fetches_fn=add_values_and_logits,
-    extra_learn_feed_fn=add_old_policy_placeholder,
     before_init=validate_config,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, KLCoeffMixin, ValueNetworkMixin],
+    after_init=setup_late_mixins,
+    mixins=[
+        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
+        ValueNetworkMixin
+    ],
     get_batch_divisibility_req=lambda p: p.config["sample_batch_size"])

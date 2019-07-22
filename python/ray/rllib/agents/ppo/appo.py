@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
+from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
 from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -70,7 +71,6 @@ def make_aggregators_and_optimizer(workers, config):
 
     optimizer = AsyncSamplesOptimizer(
         workers,
-        use_importance_sampling=True,
         lr=config["lr"],
         num_envs_per_worker=config["num_envs_per_worker"],
         num_gpus=config["num_gpus"],
@@ -93,9 +93,31 @@ def make_aggregators_and_optimizer(workers, config):
     return optimizer
 
 
+def update_target_and_kl(trainer, fetches):
+    # Update the KL coeff depending on how many steps LearnerThread has stepped through
+    learner_steps = trainer.optimizer.learner.num_steps
+    if learner_steps >= trainer.target_update_frequency:
+        # Update Target Network
+        trainer.optimizer.learner.num_steps = 0
+        trainer.workers.local_worker().foreach_trainable_policy(
+            lambda p, _: p.update_target())
+
+        # Also update KL Coeff
+        if trainer.config["use_kl_loss"]:
+            update_kl(trainer, trainer.optimizer.learner.stats)
+
+
+def initalize_target(trainer):
+    trainer.workers.local_worker().foreach_trainable_policy(
+        lambda p, _: p.update_target())
+    trainer.target_update_frequency = trainer.config["num_sgd_iter"] * trainer.config["minibatch_buffer_size"]
+
+
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
     default_policy=AsyncPPOTFPolicy,
     get_policy_class=lambda _: AsyncPPOTFPolicy,
-    make_policy_optimizer=make_aggregators_and_optimizer)
+    after_init=initalize_target,
+    make_policy_optimizer=make_aggregators_and_optimizer,
+    after_optimizer_step=update_target_and_kl)
