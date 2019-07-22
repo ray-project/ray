@@ -15,6 +15,9 @@ SHOULD_CHECKPOINT = "should_checkpoint"
 # (Auto-filled) The hostname of the machine hosting the training process.
 HOSTNAME = "hostname"
 
+# (Auto-filled) The auto-assigned id of the trial.
+TRIAL_ID = "trial_id"
+
 # (Auto-filled) The node ip of the machine hosting the training process.
 NODE_IP = "node_ip"
 
