@@ -33,7 +33,6 @@ TARGET_POLICY_SCOPE = "target_func"
 logger = logging.getLogger(__name__)
 
 
-# Classic PPO Loss, no changes made to loss function
 class PPOSurrogateLoss(object):
     """Loss used when V-trace is disabled.
 
@@ -46,6 +45,11 @@ class PPOSurrogateLoss(object):
         valid_mask: A bool tensor of valid RNN input elements (#2992).
         advantages: A float32 tensor of shape [T, B].
         value_targets: A float32 tensor of shape [T, B].
+        vf_loss_coeff (float): Coefficient of the value function loss.
+        entropy_coeff (float): Coefficient of the entropy regularizer.
+        clip_param (float): Clip parameter.
+        cur_kl_coeff (float): Coefficient for KL loss.
+        use_kl_loss (bool): If true, use KL loss.
     """
 
     def __init__(self,
@@ -92,7 +96,6 @@ class PPOSurrogateLoss(object):
             self.total_loss += cur_kl_coeff * self.mean_kl
 
 
-# APPO Loss, with IS modifications and V-trace for Advantage Estimation
 class VTraceSurrogateLoss(object):
     def __init__(self,
                  actions,
@@ -118,7 +121,7 @@ class VTraceSurrogateLoss(object):
                  clip_param=0.3,
                  cur_kl_coeff=None,
                  use_kl_loss=False):
-        """PPO surrogate loss with Vtrace importance weighting.
+        """APPO Loss, with IS modifications and V-trace for Advantage Estimation
 
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
         batch_size. The reason we need to know `B` is for V-trace to properly
@@ -142,6 +145,11 @@ class VTraceSurrogateLoss(object):
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
+            vf_loss_coeff (float): Coefficient of the value function loss.
+            entropy_coeff (float): Coefficient of the entropy regularizer.
+            clip_param (float): Clip parameter.
+            cur_kl_coeff (float): Coefficient for KL loss.
+            use_kl_loss (bool): If true, use KL loss.
         """
 
         def reduce_mean_valid(t):
