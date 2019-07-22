@@ -108,7 +108,6 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :caption: Other Libraries
 
    distributed_training.rst
-   distributed_sgd.rst
    pandas_on_ray.rst
 
 .. toctree::
