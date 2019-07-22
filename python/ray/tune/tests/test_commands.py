@@ -87,11 +87,10 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
-            sort=["status"],
-            info_keys=("status", ),
-            filter_op="status == TERMINATED")
+            sort=["config:trial_id"],
+            info_keys=("config:trial_id", ),
+            filter_op="training_iteration == 1")
     lines = output.captured
-    assert sum("TERMINATED" in line for line in lines) == num_samples
     assert len(lines) == 3 + num_samples + 1
 
 
