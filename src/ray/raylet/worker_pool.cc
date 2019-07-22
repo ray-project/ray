@@ -135,7 +135,7 @@ int WorkerPool::StartWorkerProcess(const Language &language,
         ++dynamic_option_index;
       }
     } else {
-      worker_command_args.emplace_back(token.c_str());
+      worker_command_args.push_back(token);
     }
   }
 
