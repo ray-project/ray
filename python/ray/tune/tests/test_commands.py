@@ -87,8 +87,8 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
-            sort=["config:trial_id"],
-            info_keys=("config:trial_id", "training_iteration"),
+            sort=["trial_id"],
+            info_keys=("trial_id", "training_iteration"),
             filter_op="training_iteration == 1")
     lines = output.captured
     assert len(lines) == 3 + num_samples + 1
