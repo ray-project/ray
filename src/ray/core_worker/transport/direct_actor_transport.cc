@@ -44,8 +44,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto iter = actor_states_.find(actor_id);
-  if (iter == actor_states_.end() ||
-      iter->second == ActorTableData::RECONSTRUCTING) {
+  if (iter == actor_states_.end() || iter->second == ActorTableData::RECONSTRUCTING) {
     // Actor is not yet created, or is being reconstructing, cache the request
     // and submit after actor is alive.
     auto pending_request = std::unique_ptr<PendingTaskRequest>(
@@ -81,12 +80,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
       // Create a rpc client to the actor.
       std::unique_ptr<rpc::DirectActorClient> grpc_client(new rpc::DirectActorClient(
           actor_data.ip_address(), actor_data.port(), client_call_manager_));
-      
+
       std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
       actor_states_[actor_id] = actor_data.state();
       // replace old rpc client if it exists.
       rpc_clients_[actor_id] = std::move(grpc_client);
-  
+
       // Submit all pending requests.
       auto &client = rpc_clients_[actor_id];
       auto &requests = pending_requests_[actor_id];

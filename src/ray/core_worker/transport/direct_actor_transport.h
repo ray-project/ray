@@ -17,13 +17,9 @@ namespace ray {
 /// then a worker on that node gets this task and starts executing it.
 
 struct PendingTaskRequest {
-  PendingTaskRequest(
-    const TaskID &task_id,
-    int num_returns, 
-    std::unique_ptr<rpc::PushTaskRequest> request)
-    : task_id_(task_id),
-      num_returns_(num_returns),
-      request_(std::move(request)) {}
+  PendingTaskRequest(const TaskID &task_id, int num_returns,
+                     std::unique_ptr<rpc::PushTaskRequest> request)
+      : task_id_(task_id), num_returns_(num_returns), request_(std::move(request)) {}
 
   TaskID task_id_;
   int num_returns_;
