@@ -23,9 +23,6 @@ logger = logging.getLogger(__name__)
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
-    This class also supports eager execution if config["use_eager"] is True.
-    Eager execution is implemented using a py_function op inside graph mode.
-
     Initialization of this class occurs in two phases.
       * Phase 1: the model is created and model variables are initialized.
       * Phase 2: a fake batch of data is created, sent to the trajectory
@@ -33,9 +30,7 @@ class DynamicTFPolicy(TFPolicy):
         function. The loss and stats functions are initialized with these
         placeholders.
 
-    Initialization defines the static graph. When using eager execution, a
-    corresponding imperative py_function is also generated as an embedded op
-    inside the static graph.
+    Initialization defines the static graph.
     """
 
     def __init__(self,
@@ -198,8 +193,6 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req=batch_divisibility_req)
 
         # Phase 2 init
-        self._needs_eager_conversion = set()
-        self._eager_tensors = {}
         before_loss_init(self, obs_space, action_space, config)
         if not existing_inputs:
             self._initialize_loss()
@@ -210,17 +203,6 @@ class DynamicTFPolicy(TFPolicy):
         This dict includes the obs, prev actions, prev rewards, etc. tensors.
         """
         return self.input_dict
-
-    def convert_to_eager(self, tensor):
-        """Convert a graph tensor accessed in the loss to an eager tensor.
-
-        Experimental.
-        """
-        if tf.executing_eagerly():
-            return self._eager_tensors[tensor]
-        else:
-            self._needs_eager_conversion.add(tensor)
-            return tensor
 
     @override(TFPolicy)
     def copy(self, existing_inputs):
@@ -259,10 +241,6 @@ class DynamicTFPolicy(TFPolicy):
         loss = instance._do_loss_init(input_dict)
         loss_inputs = [(k, existing_inputs[i])
                        for i, (k, _) in enumerate(self._loss_inputs)]
-
-        if self.config["use_eager"]:
-            loss, new_stats = instance._gen_eager_loss_op(loss_inputs)
-            instance._stats_fetches = new_stats
 
         TFPolicy._initialize_loss(instance, loss, loss_inputs)
         if instance._grad_stats_fn:
@@ -348,14 +326,6 @@ class DynamicTFPolicy(TFPolicy):
         for k in sorted(batch_tensors.accessed_keys):
             loss_inputs.append((k, batch_tensors[k]))
 
-        # XXX experimental support for automatically eagerifying the loss.
-        # The main limitation right now is that TF doesn't support mixing eager
-        # and non-eager tensors, so losses that read non-eager tensors through
-        # `policy` need to use `policy.convert_to_eager(tensor)`.
-        if self.config["use_eager"]:
-            loss, new_stats = self._gen_eager_loss_op(loss_inputs)
-            self._stats_fetches = new_stats
-
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
             self._stats_fetches.update(self._grad_stats_fn(self, self._grads))
@@ -368,36 +338,3 @@ class DynamicTFPolicy(TFPolicy):
         if self._update_ops_fn:
             self._update_ops = self._update_ops_fn(self)
         return loss
-
-    def _gen_eager_loss_op(self, loss_inputs):
-        graph_tensors = list(self._needs_eager_conversion)
-        stat_items = list(self._stats_fetches.items())
-
-        def gen_loss(model_outputs, *args):
-            # fill in the batch tensor dict with eager ensors
-            eager_inputs = dict(
-                zip([k for (k, v) in loss_inputs], args[:len(loss_inputs)]))
-            # fill in the eager versions of all accessed graph tensors
-            self._eager_tensors = dict(
-                zip(graph_tensors, args[len(loss_inputs):]))
-            # patch the action dist to use eager mode tensors
-            self.action_dist.inputs = model_outputs
-            loss = self._loss_fn(self, eager_inputs)
-            if self._stats_fn:
-                stats = self._stats_fn(self, eager_inputs)
-            return [loss] + [stats[k] for (k, v) in stat_items]
-
-        eager_out = tf.py_function(
-            gen_loss,
-            # cast works around TypeError: Cannot convert provided value
-            # to EagerTensor. Provided value: 0.0 Requested dtype: int64
-            [self.model_out] + [
-                tf.cast(v, tf.float32) for (k, v) in loss_inputs
-            ] + [tf.cast(t, tf.float32) for t in graph_tensors],
-            Tout=[tf.float32] + [v.dtype for (k, v) in stat_items])
-        stats = {
-            k: stat_tensor
-            for (stat_tensor, (k, v)) in zip(eager_out[1:], stat_items)
-        }
-
-        return eager_out[0], stats

@@ -3,7 +3,7 @@
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
-                                 std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
+                                 std::shared_ptr<gcs::RedisGcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
@@ -44,7 +44,7 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
 
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback =
-      [this](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+      [this](gcs::RedisGcsClient *client, const ObjectID &object_id,
              const GcsChangeMode change_mode,
              const std::vector<ObjectTableData> &location_updates) {
         // Objects are added to this map in SubscribeObjectLocations.
@@ -211,7 +211,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
         JobID::Nil(), object_id,
-        [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+        [this, callback](gcs::RedisGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableData> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
