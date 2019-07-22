@@ -13,7 +13,7 @@ from datetime import datetime
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS,
-                             TIME_TOTAL_S)
+                             TIME_TOTAL_S, TRIAL_ID)
 from ray.tune.analysis import Analysis
 from ray.tune import TuneError
 try:
@@ -27,9 +27,9 @@ EDITOR = os.getenv("EDITOR", "vim")
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
-DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag", "trial_id",
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag",
                                 TRAINING_ITERATION, TIME_TOTAL_S,
-                                MEAN_ACCURACY, MEAN_LOSS)
+                                MEAN_ACCURACY, MEAN_LOSS, TRIAL_ID)
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
