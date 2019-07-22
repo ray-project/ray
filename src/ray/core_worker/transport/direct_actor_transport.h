@@ -17,9 +17,17 @@ namespace ray {
 /// then a worker on that node gets this task and starts executing it.
 
 struct PendingTaskRequest {
-  TaskID task_id;
-  int num_returns;
-  std::unique_ptr<rpc::PushTaskRequest> request;
+  PendingTaskRequest(
+    const TaskID &task_id,
+    int num_returns, 
+    std::unique_ptr<rpc::PushTaskRequest> request)
+    : task_id_(task_id),
+      num_returns_(num_returns),
+      request_(std::move(request)) {}
+
+  TaskID task_id_;
+  int num_returns_;
+  std::unique_ptr<rpc::PushTaskRequest> request_;
 };
 
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
@@ -59,19 +67,15 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Map from actor ids to direct actor call rpc clients.
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
-  /// Map from actor ids to actor's state.
-  std::unordered_map<ActorID, gcs::ActorTableData::ActorState> actor_state_;
+  /// Map from actor ids to actor's info.
+  std::unordered_map<ActorID, gcs::ActorTableData::ActorState> actor_states_;
 
   /// Pending requests to send out on a per-actor basis.
-  // std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
-  // pending_requests_;
   std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>>
       pending_requests_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
-
-  int counter_;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,

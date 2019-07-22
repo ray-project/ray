@@ -22,15 +22,14 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_(
-          object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)),
-      counter_(0) {
+          object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
   RAY_CHECK_OK(SubscribeActorTable());
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
   if (HasByReferenceArgs(task_spec)) {
-    return Status::Invalid("direct actor call only supports by value arguments");
+    return Status::Invalid("direct actor call only supports by-value arguments");
   }
 
   RAY_CHECK(task_spec.IsActorTask());
@@ -44,38 +43,28 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-  auto entry = rpc_clients_.find(actor_id);
-  if (entry == rpc_clients_.end()) {
-    // TODO: what if actor is not created yet?
-    // if (pending_requests_[actor_id].empty()) {
-    //   gcs_client_.Actors().RequestNotifications(JobID::Nil(), actor_id,
-    //      gcs_client_.GetLocalClientID());
-    // }
-
-    auto pending_request = std::unique_ptr<PendingTaskRequest>(new PendingTaskRequest);
-    pending_request->task_id = task_id;
-    pending_request->num_returns = num_returns;
-    pending_request->request = std::move(request);
-    // append the task to the pending list.
-
+  auto iter = actor_states_.find(actor_id);
+  if (iter == actor_states_.end() ||
+      iter->second == ActorTableData::RECONSTRUCTING) {
+    // Actor is not yet created, or is being reconstructing, cache the request
+    // and submit after actor is alive.
+    auto pending_request = std::unique_ptr<PendingTaskRequest>(
+        new PendingTaskRequest(task_id, num_returns, std::move(request)));
     pending_requests_[actor_id].emplace_back(std::move(pending_request));
-
     return Status::OK();
-  }
+  } else if (iter->second == ActorTableData::ALIVE) {
+    // Actor is alive, submit the request.
+    RAY_CHECK(rpc_clients_.count(actor_id) > 0);
 
-  auto iter = actor_state_.find(actor_id);
-  RAY_CHECK(iter != actor_state_.end());
-  if (iter->second != ActorTableData::ALIVE) {
+    // Submit request.
+    auto &client = rpc_clients_[actor_id];
+    return PushTask(*client, *request, task_id, num_returns);
+  } else {
+    // Actor is dead, treat the task as failure.
+    RAY_CHECK(iter->second == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
     return Status::IOError("actor is dead or being reconstructed");
   }
-
-  auto &client = entry->second;
-  RAY_LOG(DEBUG) << "push task "
-                 << "   " << task_id << "    " << client.get();
-  auto status = PushTask(*client, *request, task_id, num_returns);
-
-  return status;
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
@@ -87,50 +76,31 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
                     << ", ip address: " << actor_data.ip_address()
                     << ", port: " << actor_data.port();
 
+      // TODO(zhijunfu): later when the interface to subscribe for an individual actor
+      // is available, we'll only receive notifications for interested actors.
+      // Create a rpc client to the actor.
       std::unique_ptr<rpc::DirectActorClient> grpc_client(new rpc::DirectActorClient(
           actor_data.ip_address(), actor_data.port(), client_call_manager_));
-
+      
       std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-      actor_state_[actor_id] = actor_data.state();
+      actor_states_[actor_id] = actor_data.state();
       // replace old rpc client if it exists.
       rpc_clients_[actor_id] = std::move(grpc_client);
-
-      auto entry = rpc_clients_.find(actor_id);
-      RAY_CHECK(entry != rpc_clients_.end());
-
-      auto &client = entry->second;
+  
+      // Submit all pending requests.
+      auto &client = rpc_clients_[actor_id];
       auto &requests = pending_requests_[actor_id];
       while (!requests.empty()) {
         const auto &request = *requests.front();
-        RAY_LOG(DEBUG) << "push pending task "
-                       << "   " << request.task_id << "    " << client.get();
         auto status =
-            PushTask(*client, *request.request, request.task_id, request.num_returns);
+            PushTask(*client, *request.request_, request.task_id_, request.num_returns_);
         requests.pop_front();
       }
-
-    } else if (actor_data.state() == ActorTableData::DEAD) {
-      RAY_LOG(INFO) << "received notification on actor dead, actor_id: " << actor_id;
-
-      std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-      actor_state_[actor_id] = actor_data.state();
-
-      // There are a couple of cases for actor/objects:
-      // - dead
-      // - reconstruction
-      // - eviction
-      // For get, there are a few possibilities:
-      // - pending
-      // - future (but on old objects)
-
     } else {
-      //
-      RAY_CHECK(actor_data.state() == ActorTableData::RECONSTRUCTING);
-      RAY_LOG(INFO) << "received notification on actor reconstruction, actor_id: "
-                    << actor_id;
-
+      RAY_LOG(INFO) << "received notification on actor, state="
+                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id;
       std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-      actor_state_[actor_id] = actor_data.state();
+      actor_states_[actor_id] = actor_data.state();
     }
   };
 
@@ -214,7 +184,6 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     (*reply).add_return_object_ids(id.Binary());
   }
 
-  // TODO(zhijunfu): this doesn't include metadata!!! Need a fix.
   for (int i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
     if (results[i]->GetData() != nullptr) {
