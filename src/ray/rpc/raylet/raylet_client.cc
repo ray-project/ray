@@ -164,6 +164,7 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
   // Callback to deal with reply.
   auto callback = [this](const Status &status, const FetchOrReconstructReply &reply) {
     if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to send FetchOrReconstructRequest, msg: "
                     << status.message();
     }
@@ -250,8 +251,8 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_even
   PushProfileEventsRequest push_profile_events_request;
   push_profile_events_request.mutable_profile_table_data()->CopyFrom(profile_events);
 
-  auto callback = [](const Status &status, const PushProfileEventsReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const PushProfileEventsReply &reply) {
+    if (!status.ok() && is_connected_) {
       RAY_LOG(INFO) << "Failed to send PushProfileEventsRequest, msg: "
                     << status.message();
     }
