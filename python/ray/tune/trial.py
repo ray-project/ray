@@ -387,8 +387,8 @@ class Trial(object):
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
-            config = config.copy()
-            config.update(trial_id=trial_id)
+            config = self.config.copy()
+            config.update(trial_id=self.trial_id)
             self.result_logger = UnifiedLogger(
                 config,
                 self.logdir,
