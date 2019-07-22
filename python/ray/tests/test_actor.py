@@ -77,6 +77,7 @@ def test_zombie_actors(ray_start_cluster):
         except Exception:
             assert False
 
+
 @pytest.fixture
 def ray_checkpointable_actor_cls(request):
     checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
