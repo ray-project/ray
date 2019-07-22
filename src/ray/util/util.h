@@ -3,9 +3,9 @@
 
 #include <boost/system/error_code.hpp>
 #include <chrono>
-#include <unordered_map>
 #include <iterator>
 #include <sstream>
+#include <unordered_map>
 
 #include "ray/common/status.h"
 
@@ -59,10 +59,10 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
 ///
 /// \return A vector that contains strings split by whitespaces.
 inline std::vector<std::string> SplitStrByWhitespaces(const std::string &str) {
-std::istringstream iss(str);
-std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-std::istream_iterator<std::string>());
-return result;
+  std::istringstream iss(str);
+  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
+  std::istream_iterator<std::string>());
+  return result;
 }
 
 class InitShutdownRAII {
