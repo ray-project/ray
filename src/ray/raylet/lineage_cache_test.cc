@@ -31,7 +31,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
     // If we requested notifications for this task ID, send the notification as
     // part of the callback.
     if (subscribed_tasks_.count(task_id) == 1) {
-      callback = [this, done](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+      callback = [this, done](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
                               const TaskTableData &data) {
         done(client, task_id, data);
         // If we're subscribed to the task to be added, also send a
@@ -51,7 +51,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
     // Send a notification after the add if the lineage cache requested
     // notifications for this key.
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
-    auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
+    auto callback = [this, send_notification](ray::gcs::RedisGcsClient *client,
                                               const TaskID &task_id,
                                               const TaskTableData &data) {
       if (send_notification) {
@@ -111,7 +111,7 @@ class LineageCacheTest : public ::testing::Test {
         num_notifications_(0),
         mock_gcs_(),
         lineage_cache_(ClientID::FromRandom(), mock_gcs_, mock_gcs_, max_lineage_size_) {
-    mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+    mock_gcs_.Subscribe([this](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
                                const TaskTableData &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
       num_notifications_++;

@@ -30,7 +30,14 @@ class Buffer {
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
-  LocalMemoryBuffer(uint8_t *data, size_t size) : data_(data), size_(size) {}
+  LocalMemoryBuffer(uint8_t *data, size_t size, bool should_copy = false)
+      : data_(data), size_(size) {
+    if (should_copy) {
+      buffer_.insert(buffer_.end(), data, data + size);
+      data_ = buffer_.data();
+      size_ = buffer_.size();
+    }
+  }
 
   uint8_t *Data() const override { return data_; }
 
@@ -43,6 +50,8 @@ class LocalMemoryBuffer : public Buffer {
   uint8_t *data_;
   /// Size of the buffer.
   size_t size_;
+  /// This is only valid when `should_copy` is true.
+  std::vector<uint8_t> buffer_;
 };
 
 /// Represents a byte buffer for plasma object.

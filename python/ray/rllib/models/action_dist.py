@@ -69,6 +69,22 @@ class ActionDistribution(object):
         """Returns the log probability of the sampled action."""
         return tf.exp(self.logp(self.sample_op))
 
+    def multi_kl(self, other):
+        """The KL-divergence between two action distributions.
+
+        This differs from kl() in that it can return an array for
+        MultiDiscrete. TODO(ekl) consider removing this.
+        """
+        return self.kl(other)
+
+    def multi_entropy(self):
+        """The entropy of the action distribution.
+
+        This differs from entropy() in that it can return an array for
+        MultiDiscrete. TODO(ekl) consider removing this.
+        """
+        return self.entropy()
+
 
 class Categorical(ActionDistribution):
     """Categorical distribution for discrete action spaces."""
@@ -133,6 +149,7 @@ class MultiCategorical(ActionDistribution):
         ]
         self.sample_op = self._build_sample_op()
 
+    @override(ActionDistribution)
     def logp(self, actions):
         # If tensor is provided, unstack it into list
         if isinstance(actions, tf.Tensor):
@@ -141,12 +158,23 @@ class MultiCategorical(ActionDistribution):
             [cat.logp(act) for cat, act in zip(self.cats, actions)])
         return tf.reduce_sum(logps, axis=0)
 
-    def entropy(self):
+    @override(ActionDistribution)
+    def multi_entropy(self):
         return tf.stack([cat.entropy() for cat in self.cats], axis=1)
 
-    def kl(self, other):
+    @override(ActionDistribution)
+    def entropy(self):
+        return tf.reduce_sum(self.multi_entropy(), axis=1)
+
+    @override(ActionDistribution)
+    def multi_kl(self, other):
         return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
 
+    @override(ActionDistribution)
+    def kl(self, other):
+        return tf.reduce_sum(self.multi_kl(other), axis=1)
+
+    @override(ActionDistribution)
     def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
 

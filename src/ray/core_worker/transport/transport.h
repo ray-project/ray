@@ -8,6 +8,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
 
@@ -26,13 +27,15 @@ class CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpec &task) = 0;
+  virtual Status SubmitTask(const TaskSpecification &task_spec) = 0;
 };
 
 /// This class receives tasks for execution.
 class CoreWorkerTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(const TaskSpecification &task_spec)>;
+  using TaskHandler =
+      std::function<Status(const TaskSpecification &task_spec,
+                           std::vector<std::shared_ptr<RayObject>> *results)>;
 };
 
 }  // namespace ray
