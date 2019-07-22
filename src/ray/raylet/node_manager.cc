@@ -2034,11 +2034,6 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id) {
       [this](ray::gcs::RedisGcsClient *client, const TaskID &task_id) {
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
-        // TODO: this is a hack (zhijunfu)
-        if (!lineage_cache_.ContainsTask(task_id)) {
-          return;
-        }
-
         RAY_CHECK(lineage_cache_.ContainsTask(task_id))
             << "Metadata of task " << task_id
             << " not found in either GCS or lineage cache. It may have been evicted "
