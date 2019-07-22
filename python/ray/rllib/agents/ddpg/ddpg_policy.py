@@ -442,7 +442,7 @@ class TargetNetworkMixin(object):
             self.update_target_expr, feed_dict={self.tau: tau})
 
 
-class CustomOptimizerMixin(object):
+class ActorCriticOptimizerMixin(object):
     def __init__(self, config):
         # create global step for counting the number of update operations
         self.global_step = tf.train.get_or_create_global_step()
@@ -453,6 +453,8 @@ class CustomOptimizerMixin(object):
         self._critic_optimizer = tf.train.AdamOptimizer(
             learning_rate=config["critic_lr"])
 
+
+class ComputeTDErrorMixin(object):
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
         td_err = self.get_session().run(
@@ -474,7 +476,7 @@ class CustomOptimizerMixin(object):
 
 def setup_early_mixins(policy, obs_space, action_space, config):
     ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
-    CustomOptimizerMixin.__init__(policy, config)
+    ActorCriticOptimizerMixin.__init__(policy, config)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
@@ -493,7 +495,10 @@ DDPGTFPolicy = build_tf_policy(
     gradients_fn=gradients,
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-    mixins=[TargetNetworkMixin, ExplorationStateMixin, CustomOptimizerMixin],
+    mixins=[
+        TargetNetworkMixin, ExplorationStateMixin, ActorCriticOptimizerMixin,
+        ComputeTDErrorMixin
+    ],
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False)
