@@ -6,8 +6,6 @@ from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
-from ray.rllib.optimizers import AsyncSamplesOptimizer
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -61,9 +59,11 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 
 
 def update_target_and_kl(trainer, fetches):
-    # Update the KL coeff depending on how many steps LearnerThread has stepped through
+    # Update the KL coeff depending on how many steps LearnerThread has stepped
+    # through
     learner_steps = trainer.optimizer.learner.num_steps
     if learner_steps >= trainer.target_update_frequency:
+
         # Update Target Network
         trainer.optimizer.learner.num_steps = 0
         trainer.workers.local_worker().foreach_trainable_policy(
@@ -77,7 +77,8 @@ def update_target_and_kl(trainer, fetches):
 def initalize_target(trainer):
     trainer.workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.update_target())
-    trainer.target_update_frequency = trainer.config["num_sgd_iter"] * trainer.config["minibatch_buffer_size"]
+    trainer.target_update_frequency = trainer.config["num_sgd_iter"] \
+        * trainer.config["minibatch_buffer_size"]
 
 
 APPOTrainer = impala.ImpalaTrainer.with_updates(

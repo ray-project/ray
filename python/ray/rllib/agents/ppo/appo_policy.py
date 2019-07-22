@@ -87,7 +87,7 @@ class PPOSurrogateLoss(object):
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
-        # Optional additional KL Loss (helps with stability in continuous control environments)
+        # Optional additional KL Loss
         if use_kl_loss:
             self.total_loss += cur_kl_coeff * self.mean_kl
 
@@ -133,7 +133,8 @@ class VTraceSurrogateLoss(object):
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
             behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
-            old_policy_behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
+            old_policy_behaviour_logits: A float32 tensor of shape
+            [T, B, logit_dim].
             target_logits: A float32 tensor of shape [T, B, logit_dim].
             discount: A float32 scalar.
             rewards: A float32 tensor of shape [T, B].
@@ -186,7 +187,7 @@ class VTraceSurrogateLoss(object):
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
-        # Optional additional KL Loss (helps with stability in continuous control environments)
+        # Optional additional KL Loss
         if use_kl_loss:
             self.total_loss += cur_kl_coeff * self.mean_kl
 
