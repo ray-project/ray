@@ -12,8 +12,8 @@ import gym
 
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
-        BEHAVIOUR_LOGITS, VTraceTFPolicy, clip_gradients, \
-        validate_config, choose_optimizer, grad_stats, ValueNetworkMixin
+        BEHAVIOUR_LOGITS, clip_gradients, \
+        validate_config, choose_optimizer, ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
