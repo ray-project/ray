@@ -387,10 +387,8 @@ class Trial(object):
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
-            config = self.config.copy()
-            config.update(trial_id=self.trial_id)
             self.result_logger = UnifiedLogger(
-                config,
+                self.config,
                 self.logdir,
                 loggers=self.loggers,
                 sync_function=self.sync_to_driver_fn)
@@ -518,8 +516,10 @@ class Trial(object):
                      or self.max_failures < 0))
 
     def update_last_result(self, result, terminate=False):
-        if terminate:
-            result.update(done=True)
+        result.update(
+            trial_id=self.trial_id,
+            done=terminate
+        )
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
