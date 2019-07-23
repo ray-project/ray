@@ -211,6 +211,7 @@ class ModelCatalog(object):
                      framework="tf",
                      name=None,
                      model_interface=None,
+                     default_model=None,
                      **model_kwargs):
         """Returns a suitable model compatible with given spaces and output.
 
@@ -223,6 +224,8 @@ class ModelCatalog(object):
             framework (str): Either "tf" or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
+            default_model (cls): Override the default class for the model. This
+                only has an effect when not using a custom model
             model_kwargs (dict): args to pass to the ModelV2 constructor
 
         Returns:
@@ -263,7 +266,7 @@ class ModelCatalog(object):
                 return instance
 
         if framework == "tf":
-            legacy_model_cls = ModelCatalog.get_model
+            legacy_model_cls = default_model or ModelCatalog.get_model
             wrapper = ModelCatalog._wrap_if_needed(
                 make_v1_wrapper(legacy_model_cls), model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
