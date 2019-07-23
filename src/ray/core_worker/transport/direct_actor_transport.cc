@@ -57,7 +57,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     if (rpc_clients_.count(actor_id) == 0) {
       RAY_CHECK(actor_locations_.count(actor_id) > 0);
-      const auto &actor_location = actor_locations_[actor_id]; 
+      const auto &actor_location = actor_locations_[actor_id];
       HandleActorAlive(actor_id, actor_location.first, actor_location.second);
     }
 
@@ -83,15 +83,13 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
 
       std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
       actor_states_[actor_id] = actor_data.state();
-      actor_locations_[actor_id] = std::make_pair(
-          actor_data.ip_address(), actor_data.port());
+      actor_locations_[actor_id] =
+          std::make_pair(actor_data.ip_address(), actor_data.port());
 
       // Check if this actor is the one that we're interested, if we already have
       // a connection to the actor, or have pending requests for it, we should
-      // create a new connection. 
-      if (rpc_clients_.count(actor_id) > 0 ||
-          pending_requests_.count(actor_id) > 0) {
-
+      // create a new connection.
+      if (rpc_clients_.count(actor_id) > 0 || pending_requests_.count(actor_id) > 0) {
         HandleActorAlive(actor_id, actor_data.ip_address(), actor_data.port());
       }
     } else {
@@ -105,13 +103,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::HandleActorAlive(
-    const ActorID &actor_id, std::string ip_address, int port) {
-  std::unique_ptr<rpc::DirectActorClient> grpc_client(new rpc::DirectActorClient(
-      ip_address, port, client_call_manager_));          
+void CoreWorkerDirectActorTaskSubmitter::HandleActorAlive(const ActorID &actor_id,
+                                                          std::string ip_address,
+                                                          int port) {
+  std::unique_ptr<rpc::DirectActorClient> grpc_client(
+      new rpc::DirectActorClient(ip_address, port, client_call_manager_));
   // replace old rpc client if it exists.
   rpc_clients_[actor_id] = std::move(grpc_client);
-  
+
   // Submit all pending requests.
   auto &client = rpc_clients_[actor_id];
   auto &requests = pending_requests_[actor_id];
