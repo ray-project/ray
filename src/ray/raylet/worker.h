@@ -20,7 +20,7 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const Language &language, int port,
+  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
          std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
@@ -30,6 +30,8 @@ class Worker {
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
+  /// Return the worker's ID.
+  WorkerID WorkerId() const;
   /// Return the worker's PID.
   pid_t Pid() const;
   Language GetLanguage() const;
@@ -61,6 +63,8 @@ class Worker {
                   const std::function<void(Status)> finish_assign_callback);
 
  private:
+  /// The worker's ID.
+  WorkerID worker_id_;
   /// The worker's PID.
   pid_t pid_;
   /// The language type of this worker.
