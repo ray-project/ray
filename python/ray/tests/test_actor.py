@@ -1995,7 +1995,7 @@ def test_lifetime_and_transient_resources(ray_start_regular):
     actor2s = [Actor2.remote() for _ in range(2)]
     results = [a.method.remote() for a in actor2s]
     ready_ids, remaining_ids = ray.wait(
-        results, num_returns=len(results), timeout=1.0)
+        results, num_returns=len(results), timeout=5.0)
     assert len(ready_ids) == 1
 
 
