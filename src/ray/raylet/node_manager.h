@@ -72,7 +72,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_manager A reference to the local object manager.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
-              std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
@@ -308,10 +308,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
+  /// \param ray_get Whether the task is blocked in a `ray.get` call, as
+  /// opposed to a `ray.wait` call.
   /// \return Void.
   void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                          const std::vector<ObjectID> &required_object_ids,
-                         const TaskID &current_task_id);
+                         const TaskID &current_task_id, bool ray_get);
 
   /// Handle a task that is unblocked. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
@@ -342,16 +344,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id,
                                   ActorRegistration &&actor_registration);
-
-  /// Publish an actor's state transition to all other nodes.
-  ///
-  /// \param actor_id The actor ID of the actor whose state was updated.
-  /// \param data Data to publish.
-  /// \param failure_callback An optional callback to call if the publish is
-  /// unsuccessful.
-  void PublishActorStateTransition(
-      const ActorID &actor_id, const ActorTableData &data,
-      const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -501,7 +493,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// because the actor died).
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The timer used to send heartbeats.

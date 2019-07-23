@@ -180,11 +180,8 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Reusing actor for {}".format(trial.runner))
                     self._cached_actor = trial.runner
                 else:
-                    logger.info(
-                        "Destroying actor for trial {}. If your trainable is "
-                        "slow to initialize, consider setting "
-                        "reuse_actors=True to reduce actor creation "
-                        "overheads.".format(trial))
+                    logger.debug(
+                        "Destroying actor for trial {}.".format(trial))
                     trial.runner.stop.remote()
                     trial.runner.__ray_terminate__.remote()
         except Exception:

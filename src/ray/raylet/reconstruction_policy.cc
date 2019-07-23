@@ -112,12 +112,12 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
       JobID::Nil(), task_id, reconstruction_entry,
       /*success_callback=*/
-      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+      [this](gcs::RedisGcsClient *client, const TaskID &task_id,
              const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, /*success=*/true);
       },
       /*failure_callback=*/
-      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+      [this](gcs::RedisGcsClient *client, const TaskID &task_id,
              const TaskReconstructionData &data) {
         HandleReconstructionLogAppend(task_id, /*success=*/false);
       },
@@ -171,6 +171,7 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
 }
 
 void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
   // Add this object to the list of objects created by the same task.
@@ -185,6 +186,7 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Reconstruction for object " << object_id << " canceled";
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {

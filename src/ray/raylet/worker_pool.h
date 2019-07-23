@@ -9,7 +9,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -41,7 +41,7 @@ class WorkerPool {
   /// language.
   WorkerPool(int num_worker_processes, int num_workers_per_process,
              int maximum_startup_concurrency,
-             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+             std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -148,7 +148,7 @@ class WorkerPool {
   ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return The process ID of started worker process.
-  virtual pid_t StartProcess(const std::vector<const char *> &worker_command_args);
+  virtual pid_t StartProcess(const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -198,7 +198,7 @@ class WorkerPool {
   /// was generated.
   int64_t last_warning_multiple_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 };
 
 }  // namespace raylet
