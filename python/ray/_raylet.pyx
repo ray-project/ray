@@ -214,6 +214,18 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
         out[key.encode("ascii")] = float(value)
     return out
 
+cdef unordered_map[c_string, c_string] resource_map_from_dict2(resource_map):
+    cdef:
+        unordered_map[c_string, c_string] out
+        c_string resource_name
+    if not isinstance(resource_map, dict):
+        raise TypeError("resource_map must be a dictionary")
+    for key, value in resource_map.items():
+        out[key.encode("ascii")] = value.encode("ascii")
+    return out
+
+def update_config(new_config):
+    RayConfig.instance().initialize(resource_map_from_dict2(new_config))
 
 cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client

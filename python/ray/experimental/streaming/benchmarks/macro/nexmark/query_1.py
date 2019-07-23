@@ -31,6 +31,10 @@ parser.add_argument(
     default=10**9,
     help="amount of memory to start plasma with")
 parser.add_argument(
+    "--inline-limit",
+    default=-1,  # Default limit: 10K bytes
+    help="size limit in bytes to serialize data along with the task.")
+parser.add_argument(
     "--queue-size", default=10, help="the queue size in number of batches")
 # The batch size is estimated based on the Bid's size, so that
 # each batch corresponds to a buffer of around 32K bytes
@@ -131,6 +135,7 @@ if __name__ == "__main__":
     num_redis_shards = int(args.redis_shards)
     redis_max_memory = int(args.redis_max_memory)
     plasma_memory = int(args.plasma_memory)
+    size_limit = int(args.inline_limit)
     max_queue_size = int(args.queue_size)
     max_batch_size = int(args.batch_size)
     batch_timeout = float(args.flush_timeout)
@@ -160,6 +165,8 @@ if __name__ == "__main__":
     logger.info("Number of Redis shards: {}".format(num_redis_shards))
     logger.info("Max memory per Redis shard: {}".format(redis_max_memory))
     logger.info("Plasma memory: {}".format(plasma_memory))
+    limit = size_limit if size_limit > 0 else 10000
+    logger.info("Inline limit: {}".format(limit))
     logger.info("Max queue size: {}".format(max_queue_size))
     logger.info("Max batch size: {}".format(max_batch_size))
     logger.info("Batch timeout: {}".format(batch_timeout))
@@ -191,6 +198,11 @@ if __name__ == "__main__":
         s3 = boto3.resource('s3')
         s3.meta.client.download_file('nexmark', "bids", "bids.data")
 
+    # Generate JSON config object
+    key_value_pairs = [("size_limit", size_limit)]
+    ray_config = utils.generate_configuration(
+                                key_value_pairs) if size_limit > 0 else None
+
     # Number of actors per dataflow stage
     stage_parallelism = [map_instances,
                          map_instances]  # One sink per map instance
@@ -200,7 +212,8 @@ if __name__ == "__main__":
         # Simulate a cluster with the given configuration in a single node
         utils.start_virtual_cluster(num_nodes, num_redis_shards, plasma_memory,
                                     redis_max_memory, stage_parallelism,
-                                    num_sources, pin_processes)
+                                    num_sources, pin_processes,
+                                    ray_config=ray_config)
         # Set actor placement for the virtual cluster
         num_stages = 2  # We have a source and a map stage (sinks omitted)
         stages_per_node = math.trunc(math.ceil(num_stages / num_nodes))
@@ -213,7 +226,8 @@ if __name__ == "__main__":
     else:  # Connect to an existing cluster
         if pin_processes:
             utils.pin_processes()
-        ray.init(redis_address="localhost:6379")
+        # NOTE: ray_config must be None when connecting to existing cluster
+        ray.init(redis_address="localhost:6379", _internal_config=ray_config)
         if not placement_file:
             raise Exception("No actor placement specified.")
         node_ids = utils.get_cluster_node_ids()

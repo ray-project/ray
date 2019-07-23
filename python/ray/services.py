@@ -1139,6 +1139,7 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
+        # TODO (john): Add internal configuration to java worker command
         java_worker_options = (java_worker_options
                                or DEFAULT_JAVA_WORKER_OPTIONS)
         java_worker_command = build_java_worker_command(
@@ -1162,6 +1163,8 @@ def start_raylet(redis_address,
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address,
                                 temp_dir))
+    if config_str:
+        start_worker_command += " --internal-config={}".format(config_str)
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 

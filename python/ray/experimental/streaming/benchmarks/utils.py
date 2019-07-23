@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import logging
 import math
 import multiprocessing
@@ -53,6 +54,14 @@ def get_cluster_node_ids():
                 node_ids.append(node_id)
     return node_ids
 
+# Generates Ray configuration object in JSON format
+def generate_configuration(kv_pairs):
+    config = {}
+    for (key, value) in kv_pairs:
+        config[key] = value
+    json_config = json.dumps(config)
+    logger.info("Generated configuration object: {}".format(json_config))
+    return json_config
 
 # Simulates a Ray cluster with the given number of nodes in a single node.
 # Actor placement is done based on a N:1 mapping from dataflow stages to
@@ -60,7 +69,7 @@ def get_cluster_node_ids():
 # instances of a particular stage will run at the same virtual node
 def start_virtual_cluster(num_nodes, num_redis_shards, plasma_memory,
                           redis_max_memory, stage_parallelism, num_sources,
-                          pin):
+                          pin, ray_config=None):
 
     cluster = Cluster()  # Simulate a cluster on a single machine
     num_actors = num_sources + 1  # +1 for the progress monitor
@@ -102,7 +111,9 @@ def start_virtual_cluster(num_nodes, num_redis_shards, plasma_memory,
             # Specify a custom resource to allow explicit actor placement
             resources={CLUSTER_NODE_PREFIX + str(i): 100},
             object_store_memory=plasma_memory,
-            redis_max_memory=redis_max_memory)
+            redis_max_memory=redis_max_memory,
+            # Overwrite internal configuration if ray_config is not None
+            _internal_config=ray_config)
         assigned_actors += node_actors
         logger.info("Added node {} with {} CPUs".format(i, node_actors))
         node_actors = 0

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import json
 import traceback
 
 import ray
@@ -62,11 +63,27 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if code is loaded from local files, as opposed to the GCS.")
+parser.add_argument(
+    "--internal-config",
+    required=False,
+    type=str,
+    default=None,
+    help="User-defined configuration to overwrite RayConfig defaults.")
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    # Parse internal configuration
+    config = {}
+    if args.internal_config is not None:
+        internal_config = args.internal_config.split(",")
+        for key, value in zip(*(iter(internal_config),) * 2):
+            config[key] = value
+    # Node expects Ray configuration in JSON format
+    config_str = json.dumps(config) if config else None
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
@@ -75,7 +92,8 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
-        load_code_from_local=args.load_code_from_local)
+        load_code_from_local=args.load_code_from_local,
+        _internal_config=config_str)
 
     node = ray.node.Node(
         ray_params, head=False, shutdown_at_exit=False, connect_only=True)
