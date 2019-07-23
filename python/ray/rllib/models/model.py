@@ -14,7 +14,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-@PublicAPI
+# Deprecated: use TFModelV2 instead
 class Model(object):
     """Defines an abstract network model for use with RLlib.
 

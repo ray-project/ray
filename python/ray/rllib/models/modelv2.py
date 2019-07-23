@@ -3,8 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.utils.annotations import PublicAPI
 
 
+@PublicAPI
 class ModelV2(object):
     """Defines a Keras-style abstract network model for use with RLlib.
 
