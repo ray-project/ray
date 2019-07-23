@@ -187,12 +187,11 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     auto return_object = (*reply).add_return_objects();
     const auto &result = results[i];
     if (result->GetData() != nullptr) {
-      return_object->set_data(result->GetData()->Data(),
-                              result->GetData()->Size());
+      return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
     }
     if (result->GetMetadata() != nullptr) {
       return_object->set_metadata(result->GetMetadata()->Data(),
-          result->GetMetadata()->Size());
+                                  result->GetMetadata()->Size());
     }
   }
 
