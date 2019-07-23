@@ -11,6 +11,7 @@ import pytest
 import signal
 import sys
 import time
+from pyarrow import plasma
 
 import ray
 import ray.ray_constants as ray_constants
@@ -19,6 +20,7 @@ import ray.tests.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (
     relevant_errors,
+    wait_for_condition,
     wait_for_errors,
 )
 
@@ -2160,6 +2162,39 @@ def test_actor_reconstruction(ray_start_regular):
     # Check that the actor won't be reconstructed.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
+
+
+def test_actor_reconstruction_without_task(ray_start_regular):
+    """Test a dead actor can be reconstructed without sending task to it."""
+
+    def object_exists(obj_id):
+        """Check wether an object exists in plasma store."""
+        plasma_client = ray.worker.global_worker.plasma_client
+        plasma_id = plasma.ObjectID(obj_id.binary())
+        return plasma_client.get(
+            plasma_id, timeout_ms=0) != plasma.ObjectNotAvailable
+
+    @ray.remote(max_reconstructions=1)
+    class ReconstructableActor(object):
+        def __init__(self, obj_ids):
+            for obj_id in obj_ids:
+                # Every time the actor gets constructed,
+                # put a new object in plasma store.
+                if not object_exists(obj_id):
+                    ray.worker.global_worker.put_object(obj_id, 1)
+                    break
+
+        def get_pid(self):
+            return os.getpid()
+
+    obj_ids = [ray.ObjectID.from_random() for _ in range(2)]
+    actor = ReconstructableActor.remote(obj_ids)
+    # Kill the actor.
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    # Wait until the actor is reconstructed.
+    assert wait_for_condition(
+        lambda: object_exists(obj_ids[1]), timeout_ms=5000)
 
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):

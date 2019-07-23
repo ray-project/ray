@@ -437,8 +437,6 @@ While RLlib runs all TF operations in graph mode, you can still leverage TensorF
 
 You can find a runnable file for the above eager execution example `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
 
-There is also experimental support for running the entire loss function in eager mode. This can be enabled with ``use_eager: True``, e.g., ``rllib train --env=CartPole-v0 --run=PPO --config='{"use_eager": true}'``. However this currently only works for PG, A2C, and PPO.
-
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -539,7 +537,19 @@ In summary, the main differences between the PyTorch and TensorFlow policy build
 Extending Existing Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-(todo)
+You can use the ``with_updates`` method on Trainers and Policy objects built with ``make_*`` to create a copy of the object with some changes, for example:
+
+.. code-block:: python
+
+    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+
+    CustomPolicy = PPOTFPolicy.with_updates(
+        name="MyCustomPPOTFPolicy",
+        loss_fn=some_custom_loss_fn)
+
+    CustomTrainer = PPOTrainer.with_updates(
+        default_policy=CustomPolicy)
 
 Policy Evaluation
 -----------------

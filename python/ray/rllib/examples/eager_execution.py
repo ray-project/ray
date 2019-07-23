@@ -51,11 +51,6 @@ def policy_gradient_loss(policy, batch_tensors):
 
     Here `compute_penalty` prints the actions and rewards for debugging, and
     also computes a (dummy) penalty term to add to the loss.
-
-    Alternatively, you can set config["use_eager"] = True, which will try to
-    automatically eagerify the entire loss function. However, this only works
-    if your loss doesn't reference any non-eager tensors. It also won't work
-    with the multi-GPU optimizer used by PPO.
     """
 
     def compute_penalty(actions, rewards):
