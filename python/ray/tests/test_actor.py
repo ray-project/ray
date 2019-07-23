@@ -1306,7 +1306,7 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
 
 
 def test_blocking_actor_task(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1)
+    ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(10**8))
 
     @ray.remote(num_gpus=1)
     def f():

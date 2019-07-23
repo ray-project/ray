@@ -30,8 +30,8 @@ class TestUnreconstructableErrors(unittest.TestCase):
 
         x_id = f.remote(None)
         ray.get(x_id)
-        for _ in range(200):
-            ray.get([f.remote(np.zeros(10000)) for _ in range(100)])
+        for _ in range(400):
+            ray.get([f.remote(np.zeros(10000)) for _ in range(50)])
         self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))
 
