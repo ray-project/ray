@@ -166,10 +166,7 @@ class RayletClient {
 
   bool IsWorker() const { return is_worker_; }
 
-  const ResourceMappingType &GetResourceIDs() const {
-    //std::lock_guard<std::mutex> lock(resource_ids_lock_);
-    return resource_ids_;
-  }
+  const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
   /// Try to register client in raylet, we would retry serveral time to
@@ -213,9 +210,6 @@ class RayletClient {
 
   /// Heartbeat timer.
   boost::asio::deadline_timer heartbeat_timer_;
-
-  /// Mutex for to protect resource_ids_.
-  mutable std::mutex resource_ids_lock_;
 
   /// Indicates whether the connection has been closed.
   bool is_connected_;

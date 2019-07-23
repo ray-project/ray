@@ -94,8 +94,6 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   auto status = stub_->GetTask(&context, get_task_request, &reply);
 
   if (status.ok()) {
-    // Protect the global variable resource_ids_.
-    // std::lock_guard<std::mutex> lock(resource_ids_lock_);
     resource_ids_.clear();
     // Parse resources that would be used by this assigned task.
     for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
