@@ -618,6 +618,19 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
+    // Kill actor if local and parent actor is dead.
+    auto node_manager_id = actor_registration.GetNodeManagerId();
+    auto parent_actor_entry = actor_registry_.find(actor_registration.GetParentActorID());
+    if (node_manager_id == gcs_client_->client_table().GetLocalClientId() && 
+        parent_actor_entry != actor_registry_.end() &&
+        parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
+      RAY_LOG(INFO) << "Killing newly created actor " << actor_id << " as parent actor "
+                     << actor_registration.GetParentActorID() << " is dead.";
+      auto worker = worker_pool_.GetActorWorker(actor_id);
+      RAY_CHECK(worker) << "Worker not found for local & alive actor "<<actor_entry.first;
+      ProcessDisconnectClientMessage(worker->Connection());
+      return;
+    }
     // The actor is now alive (created for the first time or reconstructed). We can
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
@@ -1993,11 +2006,11 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
           for (const auto &entry : actor_registration.GetDummyObjects()) {
             HandleObjectLocal(entry.first);
           }
-          HandleActorStateTransition(actor_id, std::move(actor_registration));
           auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
           // The actor was created before.
           RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification,
                                                          update_callback));
+          HandleActorStateTransition(actor_id, std::move(actor_registration));
         },
         [actor_id](ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id) {
           RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id << " for actor "
@@ -2006,7 +2019,6 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   } else {
     // The actor did not resume from a checkpoint. Immediately notify the
     // other node managers that the actor has been created.
-    HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
     auto actor_notification = std::make_shared<ActorTableData>(new_actor_data);
     if (actor_registry_.find(actor_id) != actor_registry_.end()) {
       // The actor was created before.
@@ -2017,16 +2029,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
       RAY_CHECK_OK(
           gcs_client_->Actors().AsyncRegister(actor_notification, update_callback));
     }
-  }
-  // Kill newly created actor if parent actor is dead.
-  auto parent_actor_entry = actor_registry_.find(parent_actor_id);
-  if (parent_actor_entry != actor_registry_.end() &&
-      parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
-    RAY_LOG(INFO) << "Killing newly created " << actor_id << " as parent actor "
-      << parent_actor_id << " is dead.";
-    auto worker = worker_pool_.GetActorWorker(actor_id);
-    ProcessDisconnectClientMessage(worker->Connection());
-    return;
+    HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
   }
   if (!resumed_from_checkpoint) {
     // The actor was not resumed from a checkpoint. We extend the actor's
