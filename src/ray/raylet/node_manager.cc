@@ -1393,13 +1393,6 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
-  task_dependency_manager_.TaskCanceled(spec.TaskId());
-  // Notify the task dependency manager that we no longer need this task's
-  // object dependencies. TODO(swang): Ideally, we would check the return value
-  // here. However, we don't know at this point if the task was in the WAITING
-  // or READY queue before, in which case we would not have been subscribed to
-  // its dependencies.
-  task_dependency_manager_.UnsubscribeDependencies(spec.TaskId());
 }
 
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
