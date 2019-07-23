@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import argparse
 import errno
+import glob
 import json
 import logging
 import os
@@ -78,14 +79,6 @@ class LogMonitor(object):
         self.closed_file_infos = []
         self.can_open_more_files = True
 
-    def file_should_monitor(filename):
-        """Check whether the file should be monitored.
-
-        Currently, we only monitor worker log file.
-        """
-        return (filename.startswith("worker")
-                and (filename.endswith("out") or filename.endswith("err")))
-
     def close_all_files(self):
         """Close all open files (so that we can open more)."""
         while len(self.open_file_infos) > 0:
@@ -97,20 +90,20 @@ class LogMonitor(object):
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
-        log_filenames = os.listdir(self.logs_dir)
-
-        for log_filename in log_filenames:
-            full_path = os.path.join(self.logs_dir, log_filename)
-            filename = full_path.split("/")[-1]
-            if (file_should_monitor(filename)
-                    and full_path not in self.log_filenames):
-                self.log_filenames.add(full_path)
+        # we only monior worker log files
+        log_file_paths = glob.glob("{}/worker*[.out|.err]".format(
+            self.logs_dir))
+        for file_path in log_file_paths:
+            if os.path.isfile(
+                    file_path) and file_path not in self.log_filenames:
+                self.log_filenames.add(file_path)
                 self.closed_file_infos.append(
                     LogFileInfo(
-                        filename=full_path,
+                        filename=file_path,
                         size_when_last_opened=0,
                         file_position=0,
                         file_handle=None))
+                log_filename = os.path.basename(file_path)
                 logger.info("Beginning to track file {}".format(log_filename))
 
     def open_closed_files(self):
@@ -189,7 +182,7 @@ class LogMonitor(object):
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
                     lines_to_publish.append(next_line)
-                except:
+                except Exception:
                     logger.error("Error: Reading file: {}, position: {} "
                                  "failed.".format(
                                      file_info.full_path,
