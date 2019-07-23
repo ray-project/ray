@@ -53,7 +53,8 @@ class TrainMNIST(Trainable):
             momentum=config.get("momentum", 0.9))
 
     def _train(self):
-        train(self.model, self.optimizer, self.train_loader, device=self.device)
+        train(
+            self.model, self.optimizer, self.train_loader, device=self.device)
         acc = test(self.model, self.test_loader, self.device)
         return {"mean_accuracy": acc}
 
