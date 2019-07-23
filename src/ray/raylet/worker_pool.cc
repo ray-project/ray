@@ -120,7 +120,7 @@ int WorkerPool::StartWorkerProcess(const Language &language,
                  << " non-actor workers";
 
   // Extract pointers from the worker command to pass into execvp.
-  std::vector<const char *> worker_command_args;
+  std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
   for (auto const &token : state.worker_command) {
     const auto option_placeholder =
@@ -129,14 +129,15 @@ int WorkerPool::StartWorkerProcess(const Language &language,
     if (token == option_placeholder) {
       if (!dynamic_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_options.size());
-        worker_command_args.push_back(dynamic_options[dynamic_option_index].c_str());
+        auto options = SplitStrByWhitespaces(dynamic_options[dynamic_option_index]);
+        worker_command_args.insert(worker_command_args.end(), options.begin(),
+                                   options.end());
         ++dynamic_option_index;
       }
     } else {
-      worker_command_args.push_back(token.c_str());
+      worker_command_args.push_back(token);
     }
   }
-  worker_command_args.push_back(nullptr);
 
   pid_t pid = StartProcess(worker_command_args);
   if (pid < 0) {
@@ -152,7 +153,16 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   return -1;
 }
 
-pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_args) {
+pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    std::stringstream stream;
+    stream << "Starting worker process with command:";
+    for (const auto &arg : worker_command_args) {
+      stream << " " << arg;
+    }
+    RAY_LOG(DEBUG) << stream.str();
+  }
+
   // Launch the process to create the worker.
   pid_t pid = fork();
 
@@ -165,8 +175,14 @@ pid_t WorkerPool::StartProcess(const std::vector<const char *> &worker_command_a
   signal(SIGCHLD, SIG_DFL);
 
   // Try to execute the worker command.
-  int rv = execvp(worker_command_args[0],
-                  const_cast<char *const *>(worker_command_args.data()));
+  std::vector<const char *> worker_command_args_str;
+  for (const auto &arg : worker_command_args) {
+    worker_command_args_str.push_back(arg.c_str());
+  }
+  worker_command_args_str.push_back(nullptr);
+  int rv = execvp(worker_command_args_str[0],
+                  const_cast<char *const *>(worker_command_args_str.data()));
+
   // The worker failed to start. This is a fatal error.
   RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
                  << strerror(errno);

@@ -32,14 +32,6 @@ DEFINE_bool(enable_stdout_exporter, false,
 
 #ifndef RAYLET_TEST
 
-/// A helper function that parse the worker command string into a vector of arguments.
-static std::vector<std::string> parse_worker_command(std::string worker_command) {
-  std::istringstream iss(worker_command);
-  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-                                  std::istream_iterator<std::string>());
-  return result;
-}
-
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
@@ -118,11 +110,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::PYTHON, parse_worker_command(python_worker_command)));
+        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::JAVA, parse_worker_command(java_worker_command)));
+        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
