@@ -214,18 +214,6 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-class Resources(
-        namedtuple("Resources", ["num_cpus", "num_gpus", "resources"])):
-    __slots__ = ()
-
-    def __new__(cls, num_cpus=1, num_gpus=0, resources=None):
-        if resources is None:
-            resources = {}
-
-        return super(Resources, cls).__new__(cls, num_cpus, num_gpus,
-                                             resources)
-
-
 def sgd_mse_optimizer(model, config):
     """Returns the mean squared error criterion and SGD optimizer.
 

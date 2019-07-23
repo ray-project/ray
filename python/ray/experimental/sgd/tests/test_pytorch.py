@@ -9,10 +9,12 @@ import torch
 import torch.distributed as dist
 
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.experimental.sgd.pytorch import PyTorchTrainer, Resources
+from ray.experimental.sgd.pytorch import PyTorchTrainer
 
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
+
+from ray.tune.trial import Resources
 
 
 @pytest.mark.parametrize(  # noqa: F811
@@ -23,7 +25,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         optimizer_creator,
         num_replicas=num_replicas,
-        resources_per_replica=Resources(num_cpus=1))
+        resources_per_replica=Resources(cpu=1, gpu=0))
     train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["validation_loss"]
 
@@ -45,7 +47,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         optimizer_creator,
         num_replicas=num_replicas,
-        resources_per_replica=Resources(num_cpus=1))
+        resources_per_replica=Resources(cpu=1, gpu=0))
     trainer1.train()
 
     filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
@@ -60,7 +62,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         optimizer_creator,
         num_replicas=num_replicas,
-        resources_per_replica=Resources(num_cpus=1))
+        resources_per_replica=Resources(cpu=1, gpu=0))
     trainer2.restore(filename)
 
     os.remove(filename)

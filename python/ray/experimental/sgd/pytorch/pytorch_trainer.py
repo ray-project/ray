@@ -13,6 +13,7 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
 from ray.experimental.sgd.pytorch import utils
+from ray.tune.trial import Resources
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,7 @@ class PyTorchTrainer(object):
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if resources_per_replica is None:
-            resources_per_replica = utils.Resources(
-                num_cpus=1, num_gpus=0, resources={})
+            resources_per_replica = Resources(cpu=1, gpu=0)
 
         if backend == "auto":
             backend = "nccl" if resources_per_replica.num_gpus > 0 else "gloo"
