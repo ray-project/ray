@@ -908,11 +908,11 @@ def test_actor_load_balancing(ray_start_cluster):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(10)
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
-    num_nodes = 4
+    num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
     ray.init(redis_address=cluster.redis_address)
