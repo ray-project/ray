@@ -115,7 +115,7 @@ class ModelV2(object):
         """
         return {}
 
-    def __call__(self, input_dict, state, seq_lens):
+    def __call__(self, input_dict, state=None, seq_lens=None):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -141,7 +141,7 @@ class ModelV2(object):
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         restored["obs_flat"] = input_dict["obs"]
-        outputs, state = self.forward(restored, state, seq_lens)
+        outputs, state = self.forward(restored, state or [], seq_lens)
 
         try:
             shape = outputs.shape

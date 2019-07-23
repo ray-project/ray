@@ -16,7 +16,7 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 def actor_critic_loss(policy, batch_tensors):
     logits, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-    }, [], None)  # TODO(ekl) seq lens shouldn't be None
+    })  # TODO(ekl) seq lens shouldn't be None
     values = policy.model.value_function()
     dist = policy.dist_class(logits)
     log_probs = dist.logp(batch_tensors[SampleBatch.ACTIONS])
