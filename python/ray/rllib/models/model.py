@@ -18,6 +18,8 @@ tf = try_import_tf()
 class Model(object):
     """Defines an abstract network model for use with RLlib.
 
+    This class is deprecated: please use TFModelV2 instead.
+
     Models convert input tensors to a number of output features. These features
     can then be interpreted by ActionDistribution classes to determine
     e.g. agent action values.
