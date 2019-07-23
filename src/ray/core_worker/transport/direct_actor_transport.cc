@@ -185,16 +185,14 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 
   for (int i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
-    if (results[i]->GetData() != nullptr) {
-      return_object->set_data(reinterpret_cast<const char *>(const_cast<const uint8_t *>(
-                                  results[i]->GetData()->Data())),
-                              results[i]->GetData()->Size());
+    const auto &result = results[i];
+    if (result->GetData() != nullptr) {
+      return_object->set_data(result->GetData()->Data(),
+                              result->GetData()->Size());
     }
-    if (results[i]->GetMetadata() != nullptr) {
-      return_object->set_metadata(
-          reinterpret_cast<const char *>(
-              const_cast<const uint8_t *>(results[i]->GetMetadata()->Data())),
-          results[i]->GetMetadata()->Size());
+    if (result->GetMetadata() != nullptr) {
+      return_object->set_metadata(result->GetMetadata()->Data(),
+          result->GetMetadata()->Size());
     }
   }
 
