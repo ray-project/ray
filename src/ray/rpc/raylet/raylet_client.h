@@ -33,13 +33,6 @@ using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 namespace ray {
 namespace rpc {
 
-#define RETURN_IF_DISCONNECTED(connected)         \
-  do {                                            \
-    if (!(connected)) {                           \
-      return Status::Invalid("ConnectionClosed"); \
-    }                                             \
-  } while (0)
-
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
@@ -174,7 +167,7 @@ class RayletClient {
   bool IsWorker() const { return is_worker_; }
 
   const ResourceMappingType &GetResourceIDs() const {
-    std::lock_guard<std::mutex> lock(resource_ids_lock_);
+    //std::lock_guard<std::mutex> lock(resource_ids_lock_);
     return resource_ids_;
   }
 

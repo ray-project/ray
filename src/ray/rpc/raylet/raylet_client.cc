@@ -4,6 +4,13 @@
 namespace ray {
 namespace rpc {
 
+#define RETURN_IF_DISCONNECTED(connected)                     \
+  do {                                                        \
+    if (!(connected)) {                                       \
+      return Status::Invalid("Raylet connection is closed."); \
+    }                                                         \
+  } while (0)
+
 RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
                            int port)
@@ -88,7 +95,7 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
 
   if (status.ok()) {
     // Protect the global variable resource_ids_.
-    std::lock_guard<std::mutex> lock(resource_ids_lock_);
+    // std::lock_guard<std::mutex> lock(resource_ids_lock_);
     resource_ids_.clear();
     // Parse resources that would be used by this assigned task.
     for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
@@ -125,8 +132,9 @@ ray::Status RayletClient::TaskDone() {
   TaskDoneRequest task_done_request;
   task_done_request.set_worker_id(worker_id_.Binary());
 
-  auto callback = [](const Status &status, const TaskDoneReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const TaskDoneReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to send TaskDoneRequest, msg: " << status.message();
     }
   };
@@ -173,8 +181,9 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   notify_unblocked_request.set_worker_id(worker_id_.Binary());
   notify_unblocked_request.set_task_id(current_task_id.Binary());
 
-  auto callback = [](const Status &status, const NotifyUnblockedReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const NotifyUnblockedReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to send NotifyUnblockedRequest, msg: " << status.message();
     }
   };
@@ -223,8 +232,9 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   push_error_request.set_error_message(error_message);
   push_error_request.set_timestamp(timestamp);
 
-  auto callback = [](const Status &status, const PushErrorReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const PushErrorReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to send PushErrorRequest, msg: " << status.message();
     }
   };
@@ -243,7 +253,7 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_even
 
   auto callback = [this](const Status &status, const PushProfileEventsReply &reply) {
     if (!status.ok() && is_connected_) {
-      is_connected_ = true;
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to send PushProfileEventsRequest, msg: "
                     << status.message();
     }
@@ -266,8 +276,9 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
   IdVectorToProtobuf<ray::ObjectID, FreeObjectsInStoreRequest>(
       object_ids, free_objects_request, &FreeObjectsInStoreRequest::add_object_ids);
 
-  auto callback = [](const Status &status, const FreeObjectsInStoreReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const FreeObjectsInStoreReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "Failed to send FreeObjectsInStoreRequest, msg: "
                     << status.message();
     }
@@ -310,9 +321,10 @@ ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
   notify_actor_resumed_from_checkpoint_request.set_actor_id(actor_id.Binary());
   notify_actor_resumed_from_checkpoint_request.set_checkpoint_id(checkpoint_id.Binary());
 
-  auto callback = [](const Status &status,
-                     const NotifyActorResumedFromCheckpointReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status,
+                         const NotifyActorResumedFromCheckpointReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "NotifyActorResumedFromCheckpoint failed, msg: "
                     << status.message();
     }
@@ -336,8 +348,9 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
   set_resource_request.set_capacity(capacity);
   set_resource_request.set_client_id(client_id.Binary());
 
-  auto callback = [](const Status &status, const SetResourceReply &reply) {
-    if (!status.ok()) {
+  auto callback = [this](const Status &status, const SetResourceReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
       RAY_LOG(INFO) << "SetResource failed, msg: " << status.message();
     }
   };
