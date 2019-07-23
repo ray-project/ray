@@ -23,7 +23,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       client_call_manager_(io_service),
       store_provider_(
           object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
-  RAY_CHECK_OK(SubscribeActorTable());
+  RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
@@ -53,7 +53,13 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     return Status::OK();
   } else if (iter->second == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
-    RAY_CHECK(rpc_clients_.count(actor_id) > 0);
+    // RAY_CHECK(rpc_clients_.count(actor_id) > 0);
+
+    if (rpc_clients_.count(actor_id) == 0) {
+      RAY_CHECK(actor_locations_.count(actor_id) > 0);
+      const auto &actor_location = actor_locations_[actor_id]; 
+      HandleActorAlive(actor_id, actor_location.first, actor_location.second);
+    }
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
@@ -66,7 +72,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   }
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
+Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &actor_data) {
@@ -75,25 +81,18 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
                     << ", ip address: " << actor_data.ip_address()
                     << ", port: " << actor_data.port();
 
-      // TODO(zhijunfu): later when the interface to subscribe for an individual actor
-      // is available, we'll only receive notifications for interested actors.
-      // Create a rpc client to the actor.
-      std::unique_ptr<rpc::DirectActorClient> grpc_client(new rpc::DirectActorClient(
-          actor_data.ip_address(), actor_data.port(), client_call_manager_));
-
       std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
       actor_states_[actor_id] = actor_data.state();
-      // replace old rpc client if it exists.
-      rpc_clients_[actor_id] = std::move(grpc_client);
+      actor_locations_[actor_id] = std::make_pair(
+          actor_data.ip_address(), actor_data.port());
 
-      // Submit all pending requests.
-      auto &client = rpc_clients_[actor_id];
-      auto &requests = pending_requests_[actor_id];
-      while (!requests.empty()) {
-        const auto &request = *requests.front();
-        auto status =
-            PushTask(*client, *request.request_, request.task_id_, request.num_returns_);
-        requests.pop_front();
+      // Check if this actor is the one that we're interested, if we already have
+      // a connection to the actor, or have pending requests for it, we should
+      // create a new connection. 
+      if (rpc_clients_.count(actor_id) > 0 ||
+          pending_requests_.count(actor_id) > 0) {
+
+        HandleActorAlive(actor_id, actor_data.ip_address(), actor_data.port());
       }
     } else {
       RAY_LOG(INFO) << "received notification on actor, state="
@@ -104,6 +103,24 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorTable() {
   };
 
   return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
+}
+
+void CoreWorkerDirectActorTaskSubmitter::HandleActorAlive(
+    const ActorID &actor_id, std::string ip_address, int port) {
+  std::unique_ptr<rpc::DirectActorClient> grpc_client(new rpc::DirectActorClient(
+      ip_address, port, client_call_manager_));          
+  // replace old rpc client if it exists.
+  rpc_clients_[actor_id] = std::move(grpc_client);
+  
+  // Submit all pending requests.
+  auto &client = rpc_clients_[actor_id];
+  auto &requests = pending_requests_[actor_id];
+  while (!requests.empty()) {
+    const auto &request = *requests.front();
+    auto status =
+        PushTask(*client, *request.request_, request.task_id_, request.num_returns_);
+    requests.pop_front();
+  }
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,

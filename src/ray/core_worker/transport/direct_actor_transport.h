@@ -12,9 +12,8 @@
 
 namespace ray {
 
-/// In raylet task submitter and receiver, a task is submitted to raylet, and possibly
-/// gets forwarded to another raylet on which node the task should be executed, and
-/// then a worker on that node gets this task and starts executing it.
+/// In direct actor call task submitter and receiver, a task is directly submitted
+/// to the actor that will execute it.
 
 struct PendingTaskRequest {
   PendingTaskRequest(const TaskID &task_id, int num_returns,
@@ -32,21 +31,44 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
                                      gcs::RedisGcsClient &gcs_client,
                                      CoreWorkerObjectInterface &object_interface);
 
-  /// Submit a task for execution to raylet.
+  /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
-  /// Subscribe to actor table.
-  Status SubscribeActorTable();
+  /// Subscribe for all actor updates.
+  Status SubscribeActorUpdates();
 
+  /// Helper function to push a task to an actor.
+  ///
+  /// \param[in] client The RPC client to send tasks to an actor.
+  /// \param[in] request The request to send.
+  /// \param[in] task_id The ID of a task.
+  /// \param[in] num_returns Number of return objects.
+  /// \return Status.
   Status PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request,
                   const TaskID &task_id, int num_returns);
 
+  /// Treat a task as failed.
+  ///
+  /// \param[in] task_id The ID of a task.
+  /// \param[in] num_returns Number of return objects.
+  /// \param[in] error_type The type of the specific error.
+  /// \return Void.
   void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                          const rpc::ErrorType &error_type);
+
+  /// Handle the case that an actor becomes alive.
+  /// Note that this function doesn't take lock, the caller is expected to hold
+  /// `rpc_clients_mutex_` before calling this function.
+  ///
+  /// \param[in] actor_id Actor ID.
+  /// \param[in] ip_address The ip address of the node that the actor is running on.
+  /// \param[in] port The port that the actor is listening on.
+  /// \return Void.
+  void HandleActorAlive(const ActorID &actor_id, std::string ip_address, int port);
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
@@ -63,8 +85,11 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Map from actor ids to direct actor call rpc clients.
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
-  /// Map from actor ids to actor's info.
+  /// Map from actor ids to actor's state.
   std::unordered_map<ActorID, gcs::ActorTableData::ActorState> actor_states_;
+
+  /// Map from actor ids to actor's location.
+  std::unordered_map<ActorID, std::pair<std::string, int>> actor_locations_;
 
   /// Pending requests to send out on a per-actor basis.
   std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>>
