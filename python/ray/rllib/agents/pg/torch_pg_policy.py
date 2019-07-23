@@ -12,7 +12,7 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 def pg_torch_loss(policy, batch_tensors):
     logits, _, values, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-    }, [])
+    }, [], None)
     action_dist = policy.dist_class(logits)
     log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
     # save the error in the policy object
