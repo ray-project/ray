@@ -64,6 +64,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    tutorial.rst
    api.rst
    actors.rst
+   memory-management.rst
    using-ray-with-gpus.rst
    signals.rst
    async_api.rst
