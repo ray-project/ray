@@ -33,6 +33,13 @@ using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 namespace ray {
 namespace rpc {
 
+#define RETURN_IF_DISCONNECTED(connected)         \
+  do {                                            \
+    if (!(connected)) {                           \
+      return Status::Invalid("ConnectionClosed"); \
+    }                                             \
+  } while (0)
+
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 

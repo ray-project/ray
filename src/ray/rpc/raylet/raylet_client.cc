@@ -66,9 +66,7 @@ ray::Status RayletClient::Disconnect() {
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  if (!is_connected_) {
-    return Status::Invalid("ConnectionClosed");
-  }
+  RETURN_IF_DISCONNECTED(is_connected_);
   SubmitTaskRequest submit_task_request;
   submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
@@ -88,6 +86,7 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   GetTaskRequest get_task_request;
   get_task_request.set_worker_id(worker_id_.Binary());
 
@@ -131,6 +130,7 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
 }
 
 ray::Status RayletClient::TaskDone() {
+  RETURN_IF_DISCONNECTED(is_connected_);
   TaskDoneRequest task_done_request;
   task_done_request.set_worker_id(worker_id_.Binary());
 
@@ -150,9 +150,7 @@ ray::Status RayletClient::TaskDone() {
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                              bool fetch_only,
                                              const TaskID &current_task_id) {
-  if (!is_connected_) {
-    return Status::Invalid("ConnectionClosed");
-  }
+  RETURN_IF_DISCONNECTED(is_connected_);
   FetchOrReconstructRequest fetch_or_reconstruct_request;
   fetch_or_reconstruct_request.set_fetch_only(fetch_only);
   fetch_or_reconstruct_request.set_task_id(current_task_id.Binary());
@@ -179,6 +177,7 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
 }
 
 ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   NotifyUnblockedRequest notify_unblocked_request;
   notify_unblocked_request.set_worker_id(worker_id_.Binary());
   notify_unblocked_request.set_task_id(current_task_id.Binary());
@@ -200,6 +199,7 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
                                const TaskID &current_task_id, WaitResultPair *result) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   WaitRequest wait_request;
   wait_request.set_worker_id(worker_id_.Binary());
   wait_request.set_timeout(timeout_milliseconds);
@@ -225,6 +225,7 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
 
 ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   PushErrorRequest push_error_request;
   push_error_request.set_job_id(job_id.Binary());
   push_error_request.set_type(type);
@@ -245,14 +246,13 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
 }
 
 ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
-  if (!is_connected_) {
-    return Status::Invalid("ConnectionClosed");
-  }
+  RETURN_IF_DISCONNECTED(is_connected_);
   PushProfileEventsRequest push_profile_events_request;
   push_profile_events_request.mutable_profile_table_data()->CopyFrom(profile_events);
 
   auto callback = [this](const Status &status, const PushProfileEventsReply &reply) {
     if (!status.ok() && is_connected_) {
+      is_connected = true;
       RAY_LOG(INFO) << "Failed to send PushProfileEventsRequest, msg: "
                     << status.message();
     }
@@ -268,6 +268,7 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_even
 
 ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_ids,
                                       bool local_only, bool delete_creating_tasks) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   FreeObjectsInStoreRequest free_objects_request;
   free_objects_request.set_local_only(local_only);
   free_objects_request.set_delete_creating_tasks(delete_creating_tasks);
@@ -291,6 +292,7 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
 
 ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
                                                  ActorCheckpointID &checkpoint_id) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   PrepareActorCheckpointRequest prepare_actor_checkpoint_request;
   prepare_actor_checkpoint_request.set_actor_id(actor_id.Binary());
   prepare_actor_checkpoint_request.set_worker_id(worker_id_.Binary());
@@ -312,6 +314,7 @@ ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
 
 ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
     const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   NotifyActorResumedFromCheckpointRequest notify_actor_resumed_from_checkpoint_request;
   notify_actor_resumed_from_checkpoint_request.set_actor_id(actor_id.Binary());
   notify_actor_resumed_from_checkpoint_request.set_checkpoint_id(checkpoint_id.Binary());
@@ -336,6 +339,7 @@ ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
 ray::Status RayletClient::SetResource(const std::string &resource_name,
                                       const double capacity,
                                       const ray::ClientID &client_id) {
+  RETURN_IF_DISCONNECTED(is_connected_);
   SetResourceRequest set_resource_request;
   set_resource_request.set_resource_name(resource_name);
   set_resource_request.set_capacity(capacity);
@@ -393,7 +397,8 @@ void RayletClient::Heartbeat() {
           *stub_, &RayletService::Stub::PrepareAsyncHeartbeat, heartbeat_request,
           callback);
 
-  heartbeat_timer_.expires_from_now(boost::posix_time::milliseconds(300));
+  heartbeat_timer_.expires_from_now(boost::posix_time::milliseconds(
+      RayConfig::instance().heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     Heartbeat();
