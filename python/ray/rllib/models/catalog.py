@@ -208,7 +208,7 @@ class ModelCatalog(object):
                      action_space,
                      num_outputs,
                      model_config,
-                     framework="tf",
+                     framework,
                      name=None,
                      model_interface=None,
                      default_model=None,
@@ -240,29 +240,37 @@ class ModelCatalog(object):
                                                       model_interface):
                     raise ValueError("The given model must subclass",
                                      model_interface)
-                created = set()
 
-                # Track and warn if variables were created but no registered
-                def track_var_creation(next_creator, **kw):
-                    v = next_creator(**kw)
-                    created.add(v)
-                    return v
+                if framework == "tf":
+                    created = set()
 
-                with tf.variable_creator_scope(track_var_creation):
+                    # Track and warn if vars were created but not registered
+                    def track_var_creation(next_creator, **kw):
+                        v = next_creator(**kw)
+                        created.add(v)
+                        return v
+
+                    with tf.variable_creator_scope(track_var_creation):
+                        instance = model_cls(obs_space, action_space,
+                                             num_outputs, model_config, name,
+                                             **model_kwargs)
+                    registered = set(instance.variables())
+                    not_registered = set()
+                    for var in created:
+                        if var not in registered:
+                            not_registered.add(var)
+                    if not_registered:
+                        raise ValueError(
+                            "It looks like variables {} were created as part "
+                            "of {} but does not appear in model.variables() "
+                            "({}). Did you forget to call "
+                            "model.register_variables() on the variables in "
+                            "question?".format(not_registered, instance,
+                                               registered))
+                else:
+                    # no variable tracking
                     instance = model_cls(obs_space, action_space, num_outputs,
                                          model_config, name, **model_kwargs)
-                registered = set(instance.variables())
-                not_registered = set()
-                for var in created:
-                    if var not in registered:
-                        not_registered.add(var)
-                if not_registered:
-                    raise ValueError(
-                        "It looks like variables {} were created as part of "
-                        "{} but does not appear in model.variables() ({}). "
-                        "Did you forget to call model.register_variables() "
-                        "on the variables in question?".format(
-                            not_registered, instance, registered))
                 return instance
 
         if framework == "tf":
@@ -271,8 +279,15 @@ class ModelCatalog(object):
                 make_v1_wrapper(legacy_model_cls), model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
-
-        raise NotImplementedError("TODO: support {} models".format(framework))
+        elif framework == "torch":
+            if default_model:
+                return default_model(obs_space, action_space, num_outputs,
+                                     model_config, name)
+            return ModelCatalog._get_default_torch_model_v2(
+                obs_space, action_space, num_outputs, model_config, name)
+        else:
+            raise NotImplementedError(
+                "Framework must be 'tf' or 'torch': {}".format(framework))
 
     @staticmethod
     def _wrap_if_needed(model_cls, model_interface):
@@ -367,36 +382,20 @@ class ModelCatalog(object):
                         num_outputs,
                         options=None,
                         default_model_cls=None):
-        """Returns a custom model for PyTorch algorithms.
+        raise DeprecationWarning("Please use get_model_v2() instead.")
 
-        Args:
-            obs_space (Space): The input observation space.
-            num_outputs (int): The size of the output vector of the model.
-            options (dict): Optional args to pass to the model constructor.
-            default_model_cls (cls): Optional class to use if no custom model.
-
-        Returns:
-            model (models.Model): Neural network model.
-        """
+    def _get_default_torch_model_v2(obs_space, action_space, num_outputs,
+                                    model_config, name):
         from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                   PyTorchFCNet)
         from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                       PyTorchVisionNet)
 
-        options = options or MODEL_DEFAULTS
+        model_config = model_config or MODEL_DEFAULTS
 
-        if options.get("custom_model"):
-            model = options["custom_model"]
-            logger.debug("Using custom torch model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL,
-                                        model)(obs_space, num_outputs, options)
-
-        if options.get("use_lstm"):
+        if model_config.get("use_lstm"):
             raise NotImplementedError(
                 "LSTM auto-wrapping not implemented for torch")
-
-        if default_model_cls:
-            return default_model_cls(obs_space, num_outputs, options)
 
         if isinstance(obs_space, gym.spaces.Discrete):
             obs_rank = 1
@@ -404,9 +403,11 @@ class ModelCatalog(object):
             obs_rank = len(obs_space.shape)
 
         if obs_rank > 1:
-            return PyTorchVisionNet(obs_space, num_outputs, options)
+            return PyTorchVisionNet(obs_space, action_space, num_outputs,
+                                    model_config, name)
 
-        return PyTorchFCNet(obs_space, num_outputs, options)
+        return PyTorchFCNet(obs_space, action_space, num_outputs, model_config,
+                            name)
 
     @staticmethod
     @DeveloperAPI

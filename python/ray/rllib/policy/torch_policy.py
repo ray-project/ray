@@ -76,14 +76,14 @@ class TorchPolicy(Policy):
                     input_dict["prev_actions"] = prev_action_batch
                 if prev_reward_batch:
                     input_dict["prev_rewards"] = prev_reward_batch
-                model_out = self._model(input_dict, state_batches)
-                logits, _, vf, state = model_out
+                model_out = self._model(input_dict, state_batches, [1])
+                logits, state = model_out
                 action_dist = self._action_dist_cls(logits)
                 actions = action_dist.sample()
                 return (actions.cpu().numpy(),
                         [h.cpu().numpy() for h in state],
                         self.extra_action_out(input_dict, state_batches,
-                                              model_out))
+                                              self._model))
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
@@ -145,20 +145,20 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def get_initial_state(self):
-        return [s.numpy() for s in self._model.state_init()]
+        return [s.numpy() for s in self._model.get_initial_state()]
 
     def extra_grad_process(self):
         """Allow subclass to do extra processing on gradients and
            return processing info."""
         return {}
 
-    def extra_action_out(self, input_dict, state_batches, model_out):
+    def extra_action_out(self, input_dict, state_batches, model):
         """Returns dict of extra info to include in experience batch.
 
         Arguments:
             input_dict (dict): Dict of model input tensors.
             state_batches (list): List of state tensors.
-            model_out (list): Outputs of the policy model module."""
+            model (TorchModelV2): Reference to the model."""
         return {}
 
     def extra_grad_info(self, batch_tensors):

@@ -35,7 +35,6 @@ class ModelV2(object):
         self.model_config = model_config
         self.name = name or "default_model"
         self.framework = framework
-        self.var_list = []
 
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
@@ -113,18 +112,6 @@ class ModelV2(object):
             Dict of string keys to scalar tensors.
         """
         return {}
-
-    def register_variables(self, variables):
-        """Register the given list of variables with this model."""
-        self.var_list.extend(variables)
-
-    def variables(self):
-        """Returns the list of variables for this model."""
-        return list(self.var_list)
-
-    def trainable_variables(self):
-        """Returns the list of trainable variables for this model."""
-        return [v for v in self.variables() if v.trainable]
 
     def __call__(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.

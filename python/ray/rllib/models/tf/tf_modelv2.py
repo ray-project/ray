@@ -21,3 +21,22 @@ class TFModelV2(ModelV2):
             model_config,
             name,
             framework="tf")
+        self.var_list = []
+
+    def update_ops(self):
+        """Return the list of update ops for this model.
+
+        For example, this should include any BatchNorm update ops."""
+        return []
+
+    def register_variables(self, variables):
+        """Register the given list of variables with this model."""
+        self.var_list.extend(variables)
+
+    def variables(self):
+        """Returns the list of variables for this model."""
+        return list(self.var_list)
+
+    def trainable_variables(self):
+        """Returns the list of trainable variables for this model."""
+        return [v for v in self.variables() if v.trainable]
