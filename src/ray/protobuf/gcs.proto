@@ -152,10 +152,12 @@ message ResourceTableData {
 }
 
 message ResourceUsage {
-  // Total resource capacity configured for node.
+  // Total resource capacity configured for the node.
   double total_capacity = 1;
-  // Resource capacity currently available on node.
+  // Resource capacity currently available on the node.
   double available_capacity = 2;
+  // Aggregate outstanding resource load on the node.
+  double load_capacity = 3;
 }
 
 message GcsNodeInfo {
@@ -184,7 +186,7 @@ message GcsNodeInfo {
 
   // Current state of this node.
   GcsNodeState state = 7;
-  // Current resources usage of this node.
+  // Resources capacity configure for this node.
   // resource label -> resource usage
   map<string, ResourceUsage> resources = 8;
 }

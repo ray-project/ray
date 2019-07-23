@@ -27,8 +27,8 @@ namespace ray {
 namespace raylet {
 
 using rpc::ActorTableData;
-using rpc::ClientTableData;
 using rpc::ErrorType;
+using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
@@ -121,12 +121,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param data Data associated with the new client.
   /// \return Void.
-  void ClientAdded(const ClientTableData &data);
+  void ClientAdded(const GcsNodeInfo &data);
 
   /// Handler for the removal of a GCS client.
-  /// \param client_data Data associated with the removed client.
+  /// \param node_info Data associated with the removed client.
   /// \return Void.
-  void ClientRemoved(const ClientTableData &client_data);
+  void ClientRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param client_id ID of the node that created or updated resources.
