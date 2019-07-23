@@ -8,6 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
 # Stream partitioning schemes
 class PScheme(object):
     def __init__(self, strategy, partition_fn=None):
@@ -110,8 +111,8 @@ class Operator(object):
         op += "Partitioning_Scheme = {}\nPlacement = {}>\n"
         logger.info(
             op.format(self.id, self.name, self.type, self.logic,
-                       self.num_instances, self.partitioning_strategies,
-                       self.placement))
+                      self.num_instances, self.partitioning_strategies,
+                      self.placement))
 
 
 class CustomSourceOperator(Operator):
@@ -125,13 +126,7 @@ class CustomSourceOperator(Operator):
                  num_instances=1,
                  logging=False,
                  placement=None):
-        Operator.__init__(self,
-                          id,
-                          type,
-                          name,
-                          logic,
-                          num_instances,
-                          logging,
+        Operator.__init__(self, id, type, name, logic, num_instances, logging,
                           placement)
         # One source object for each instance of the source operator
         self.source = source_object
@@ -148,13 +143,7 @@ class CustomSinkOperator(Operator):
                  num_instances=1,
                  logging=False,
                  placement=None):
-        Operator.__init__(self,
-                          id,
-                          type,
-                          name,
-                          logic,
-                          num_instances,
-                          logging,
+        Operator.__init__(self, id, type, name, logic, num_instances, logging,
                           placement)
         self.sink = sink_object
 
@@ -169,13 +158,7 @@ class KeyByOperator(Operator):
                  num_instances=1,
                  logging=False,
                  placement=None):
-        Operator.__init__(self,
-                          id,
-                          type,
-                          name,
-                          logic,
-                          num_instances,
-                          logging,
+        Operator.__init__(self, id, type, name, logic, num_instances, logging,
                           placement)
         self.key_selector = key_selector
 
@@ -190,13 +173,7 @@ class SumOperator(Operator):
                  num_instances=1,
                  logging=False,
                  placement=None):
-        Operator.__init__(self,
-                          id,
-                          type,
-                          name,
-                          logic,
-                          num_instances,
-                          logging,
+        Operator.__init__(self, id, type, name, logic, num_instances, logging,
                           placement)
         self.attribute_selector = attribute_selector
 
@@ -211,13 +188,7 @@ class UnionOperator(Operator):
                  num_instances=1,
                  logging=False,
                  placement=None):
-        Operator.__init__(self,
-                          id,
-                          type,
-                          name,
-                          logic,
-                          num_instances,
-                          logging,
+        Operator.__init__(self, id, type, name, logic, num_instances, logging,
                           placement)
         self.other_inputs = other_inputs
 
@@ -233,14 +204,8 @@ class JoinOperator(Operator):
                  num_instances=1,
                  logging=False,
                  placement=None):
-        Operator.__init__(self,
-                          id,
-                          type,
-                          name,
-                          join_logic,
-                          num_instances,
-                          logging,
-                          placement)
+        Operator.__init__(self, id, type, name, join_logic, num_instances,
+                          logging, placement)
         # Used to distinguish left from right input
         self.left_input_operator_id = left_input_operator_id
         self.right_input_operator_id = right_input_operator_id

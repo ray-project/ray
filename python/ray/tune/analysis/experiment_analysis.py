@@ -66,7 +66,7 @@ class ExperimentAnalysis(object):
                 "No experiment state found in {}!".format(experiment_path))
         experiment_filename = max(
             list(experiment_state_paths))  # if more than one, pick latest
-        with open(os.path.join(experiment_path, experiment_filename)) as f:
+        with open(experiment_filename) as f:
             self._experiment_state = json.load(f)
 
         if "checkpoints" not in self._experiment_state:

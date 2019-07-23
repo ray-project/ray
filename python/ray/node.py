@@ -121,6 +121,10 @@ class Node(object):
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
                 self._raylet_socket_name = address_info["raylet_socket_name"]
+
+            # Update worker's RayConfig
+            if self._config is not None:
+                ray._raylet.update_config(self._config)
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(

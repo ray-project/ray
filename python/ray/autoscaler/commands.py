@@ -35,7 +35,7 @@ def create_or_update_cluster(config_file, override_min_workers,
                              override_max_workers, no_restart, restart_only,
                              yes, override_cluster_name):
     """Create or updates an autoscaling Ray cluster from a config json."""
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
@@ -73,7 +73,7 @@ def _bootstrap_config(config):
 def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     validate_config(config)
@@ -116,10 +116,10 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         provider.cleanup()
 
 
-def kill_node(config_file, yes, override_cluster_name):
+def kill_node(config_file, yes, hard, override_cluster_name):
     """Kills a random Raylet worker."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
@@ -131,19 +131,21 @@ def kill_node(config_file, yes, override_cluster_name):
         nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
         node = random.choice(nodes)
         logger.info("kill_node: Terminating worker {}".format(node))
+        if hard:
+            provider.terminate_node(node)
+        else:
+            updater = NodeUpdaterThread(
+                node_id=node,
+                provider_config=config["provider"],
+                provider=provider,
+                auth_config=config["auth"],
+                cluster_name=config["cluster_name"],
+                file_mounts=config["file_mounts"],
+                initialization_commands=[],
+                setup_commands=[],
+                runtime_hash="")
 
-        updater = NodeUpdaterThread(
-            node_id=node,
-            provider_config=config["provider"],
-            provider=provider,
-            auth_config=config["auth"],
-            cluster_name=config["cluster_name"],
-            file_mounts=config["file_mounts"],
-            initialization_commands=[],
-            setup_commands=[],
-            runtime_hash="")
-
-        _exec(updater, "ray stop", False, False)
+            _exec(updater, "ray stop", False, False)
 
         time.sleep(5)
 
@@ -155,6 +157,13 @@ def kill_node(config_file, yes, override_cluster_name):
         provider.cleanup()
 
     return node_ip
+
+
+def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
+    """Kills a random Raylet worker."""
+    cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
+    exec_cluster(cluster_config_file, cmd, False, False, False, False, False,
+                 override_cluster_name, None)
 
 
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
@@ -326,7 +335,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
@@ -426,7 +435,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
@@ -463,7 +472,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
 def get_head_node_ip(config_file, override_cluster_name):
     """Returns head node IP for given configuration file if exists."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
@@ -483,7 +492,7 @@ def get_head_node_ip(config_file, override_cluster_name):
 def get_worker_node_ips(config_file, override_cluster_name):
     """Returns worker node IPs for given configuration file."""
 
-    config = yaml.load(open(config_file).read())
+    config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 

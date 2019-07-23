@@ -1139,6 +1139,7 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
+        # TODO (john): Add internal configuration to java worker command
         java_worker_options = (java_worker_options
                                or DEFAULT_JAVA_WORKER_OPTIONS)
         java_worker_command = build_java_worker_command(
@@ -1162,6 +1163,8 @@ def start_raylet(redis_address,
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address,
                                 temp_dir))
+    if config_str:
+        start_worker_command += " --internal-config={}".format(config_str)
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 
@@ -1299,6 +1302,32 @@ def determine_plasma_store_config(object_store_memory=None,
                 "when calling ray.init() or ray start.")
             object_store_memory = (
                 ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+
+        # Other applications may also be using a lot of memory on the same
+        # node. Try to detect when this is happening and log a warning or
+        # error in more severe cases.
+        avail_memory = ray.utils.estimate_available_memory()
+        object_store_fraction = object_store_memory / avail_memory
+        # Escape hatch, undocumented for now.
+        no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
+        if object_store_fraction > 0.9 and not no_check:
+            raise ValueError(
+                "The default object store size of {} GB "
+                "will use more than 90% of the available memory on this node "
+                "({} GB). Please reduce the object store memory size "
+                "to avoid memory contention with other applications, or "
+                "shut down the applications using this memory.".format(
+                    round(object_store_memory / 1e9, 2),
+                    round(avail_memory / 1e9, 2)))
+        elif object_store_fraction > 0.5:
+            logger.warning(
+                "WARNING: The default object store size of {} GB "
+                "will use more than 50% of the available memory on this node "
+                "({} GB). Consider setting the object store memory manually "
+                "to a smaller size to avoid memory contention with other "
+                "applications.".format(
+                    round(object_store_memory / 1e9, 2),
+                    round(avail_memory / 1e9, 2)))
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,

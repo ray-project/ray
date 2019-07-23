@@ -4,9 +4,7 @@ from __future__ import print_function
 
 import logging
 import math
-import time
 import uuid
-from collections import defaultdict
 
 import networkx as nx
 
@@ -27,9 +25,11 @@ logger.setLevel("INFO")
 def _generate_uuid():
     return str(uuid.uuid4())
 
+
 # Rolling sum's logic
 def _sum(value_1, value_2):
     return value_1 + value_2
+
 
 # Partitioning strategies that require all-to-all connectivity
 all_to_all_strategies = [
@@ -70,6 +70,7 @@ class Config(object):
         self.logging = logging
         # ...
 
+
 # A handle to the physical dataflow that is being executed
 # It is returned by Environment.execute()
 class PhysicalDataflow(object):
@@ -100,7 +101,7 @@ class PhysicalDataflow(object):
     # Adds an actor handle to the dictionary
     def _register_handle(self, actor_id, handle):
         operator_id, instance_id = actor_id
-        entry = self.actor_handles.setdefault(operator_id, [None]*1)
+        entry = self.actor_handles.setdefault(operator_id, [None] * 1)
         # Expand list if needed
         slots_to_add = instance_id - len(entry) + 1
         if slots_to_add > 0:
@@ -196,6 +197,7 @@ class Environment(object):
         # A handle to the running dataflow
         self.physical_dataflow = PhysicalDataflow()
         self.checkpoint_dir = checkpoint_dir
+
     # Constructs and deploys an actor of a specific type
     def __generate_actor(self, instance_id, operator, input, output):
         """Generates an actor that will execute an instance of
@@ -219,21 +221,18 @@ class Environment(object):
         if operator.type == OpType.Source:
             node_id = operator.placement[instance_id]
             logger.info("Placing source {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.Source._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
+            actor_handle = operator_instance.Source._remote(
+                args=args, kwargs=None, resources={node_id: 1})
         elif operator.type == OpType.Map:
             node_id = operator.placement[instance_id]
             logger.info("Placing map {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.Map._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
+            actor_handle = operator_instance.Map._remote(
+                args=args, kwargs=None, resources={node_id: 1})
         elif operator.type == OpType.FlatMap:
             node_id = operator.placement[instance_id]
             logger.info("Placing flatmap {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.FlatMap._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
+            actor_handle = operator_instance.FlatMap._remote(
+                args=args, kwargs=None, resources={node_id: 1})
         elif operator.type == OpType.Union:
             # Other input streams are not needed any more.
             # Discard them to avoid serialization errors due to
@@ -241,28 +240,24 @@ class Environment(object):
             del operator.other_inputs[:]
             node_id = operator.placement[instance_id]
             logger.info("Placing union {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.Union._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
-        elif ((operator.type == OpType.Reduce) or
-              (operator.type ==  OpType.Sum)):
+            actor_handle = operator_instance.Union._remote(
+                args=args, kwargs=None, resources={node_id: 1})
+        elif ((operator.type == OpType.Reduce)
+              or (operator.type == OpType.Sum)):
             node_id = operator.placement[instance_id]
             logger.info("Placing reduce {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.Reduce._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
+            actor_handle = operator_instance.Reduce._remote(
+                args=args, kwargs=None, resources={node_id: 1})
         elif operator.type == OpType.KeyBy:
             node_id = operator.placement[instance_id]
             logger.info("Placing keyBy {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.KeyBy._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
+            actor_handle = operator_instance.KeyBy._remote(
+                args=args, kwargs=None, resources={node_id: 1})
         elif operator.type == OpType.Sink:
             node_id = operator.placement[instance_id]
             logger.info("Placing sink {} at {}.".format(actor_id, node_id))
-            actor_handle = operator_instance.Sink._remote(args=args,
-                                                    kwargs=None,
-                                                    resources={node_id: 1})
+            actor_handle = operator_instance.Sink._remote(
+                args=args, kwargs=None, resources={node_id: 1})
         else:  # TODO (john): Add support for other types of operators
             message = "Unrecognized or unsupported operator type: {}"
             raise Exception(message.format(operator.type))
@@ -272,12 +267,13 @@ class Environment(object):
         for channel in input.input_channels:
             operator_id, _ = channel.src_actor_id
             upstream_actor_handles = self.physical_dataflow.actor_handles[
-                                                                operator_id]
+                operator_id]
             for handle in upstream_actor_handles:
                 destination_handle = ray.put(actor_handle)
                 # Make sure the handle is registered before proceeding
-                ray.get(handle._register_destination_handle.remote(
-                                            destination_handle, channel.id))
+                ray.get(
+                    handle._register_destination_handle.remote(
+                        destination_handle, channel.id))
         # Register own handle (used by actor for scheduling itself)
         ray.get(actor_handle._register_handle.remote(actor_handle))
         # Register operator to the physical dataflow
@@ -318,8 +314,10 @@ class Environment(object):
             ]
             log = "Constructed {} input and {} output channels "
             log += "for the {}-th instance of the {} operator."
-            logger.debug(log.format(len(input_channels),
-                                    len(outout_channels), i, operator.type))
+            logger.debug(
+                log.format(
+                    len(input_channels), len(outout_channels), i,
+                    operator.type))
             input_gate = DataInput(input_channels)
             output_gate = DataOutput(outout_channels,
                                      operator.partitioning_strategies)
@@ -361,8 +359,8 @@ class Environment(object):
                                               dst_operator, i, j)
                         entry.append(channel)
             elif p_scheme.strategy == PStrategy.Rescale:
-                channels_per_instance = math.trunc(math.ceil(
-                                num_dest_instances / operator.num_instances))
+                channels_per_instance = math.trunc(
+                    math.ceil(num_dest_instances / operator.num_instances))
                 index = 0
                 for i in range(operator.num_instances):
                     for _ in range(channels_per_instance):
@@ -413,19 +411,22 @@ class Environment(object):
         self.config.logging = True
 
     # Creates and registers a user-defined data source
-    def source(self, source_object, watermark_interval=0,
-               name="Source_"+_generate_uuid(),
+    def source(self,
+               source_object,
+               watermark_interval=0,
+               name="Source_" + _generate_uuid(),
                placement=None):
         source_id = _generate_uuid()
         source_stream = DataStream(self, source_id)
-        self.operators[source_id] = operator.CustomSourceOperator(source_id,
-                                    OpType.Source,
-                                    source_object,
-                                    watermark_interval,
-                                    name,
-                                    num_instances=self.config.parallelism,
-                                    logging=self.config.logging,
-                                    placement=placement)
+        self.operators[source_id] = operator.CustomSourceOperator(
+            source_id,
+            OpType.Source,
+            source_object,
+            watermark_interval,
+            name,
+            num_instances=self.config.parallelism,
+            logging=self.config.logging,
+            placement=placement)
         return source_stream
 
     # Constructs and deploys the physical dataflow
@@ -438,7 +439,6 @@ class Environment(object):
         # the number of downstream instances is larger than the number of
         # upstream instances, some of the downstream instances will not be
         # used at all
-
 
         logger.debug("Deploying and executing the dataflow...")
         # # Step 1: Deploy actors. Each operator instance is implemented as a
@@ -457,19 +457,18 @@ class Environment(object):
             all_handles.extend(handles)
             # Update upstream channels
             for destination, channels in downstream_channels.items():
-                existing_channels = upstream_channels.setdefault(destination,
-                                                                 channels)
+                existing_channels = upstream_channels.setdefault(
+                    destination, channels)
                 # In case there are multi-input operators in the dataflow,
                 # some channels might exist already as we traverse the graph
                 if existing_channels != channels:
-                    value.extend(channels)
+                    existing_channels.extend(channels)
 
         # Step 2: Start and register monitoring actor to the physical dataflow
         first_node_id = utils.get_cluster_node_ids()[0]
         logger.info("Placing progress monitor at {}.".format(first_node_id))
         monitoring_actor = operator_instance.ProgressMonitor._remote(
-                                            args=[all_handles], kwargs=None,
-                                            resources={first_node_id: 1})
+            args=[all_handles], kwargs=None, resources={first_node_id: 1})
         self.physical_dataflow.monitoring_actor = monitoring_actor
 
         logger.info("Starting sources...")
@@ -612,33 +611,31 @@ class DataStream(object):
         # ...
         for input_stream in input_streams:
             input_stream.dst_operator_id = operator.id
-            logger.debug(
-                "Adding new dataflow edge ({},{}) --> ({},{})".format(
+            logger.debug("Adding new dataflow edge ({},{}) --> ({},{})".format(
                 input_stream.src_operator_id,
                 input_stream.env.operators[input_stream.src_operator_id].name,
                 input_stream.dst_operator_id,
-                input_stream.env.operators[input_stream.dst_operator_id].name)
-                )
+                input_stream.env.operators[input_stream.dst_operator_id].name))
             # Update logical dataflow graph
             input_stream.env._add_edge(input_stream.src_operator_id,
-                                                input_stream.dst_operator_id)
+                                       input_stream.dst_operator_id)
             # Keep track of the partitioning strategy and destination operator
             src_operator = input_stream.env.operators[
-                                                input_stream.src_operator_id]
+                input_stream.src_operator_id]
             if input_stream.is_partitioned is True:
                 partitioning, _ = src_operator._get_partition_strategy(
-                                                            input_stream.id)
+                    input_stream.id)
                 src_operator._set_partition_strategy(_generate_uuid(),
-                                                    partitioning, operator.id)
+                                                     partitioning, operator.id)
             elif src_operator.type == OpType.KeyBy:
                 # Set the output partitioning strategy to shuffle by key
                 partitioning = PScheme(PStrategy.ShuffleByKey)
                 src_operator._set_partition_strategy(_generate_uuid(),
-                                                    partitioning, operator.id)
+                                                     partitioning, operator.id)
             else:  # No partitioning strategy has been defined - set default
                 partitioning = PScheme(PStrategy.Rescale)
                 src_operator._set_partition_strategy(_generate_uuid(),
-                                                    partitioning, operator.id)
+                                                     partitioning, operator.id)
         return self.__expand()
 
     # Sets the level of parallelism for an operator, i.e. its total
@@ -694,8 +691,7 @@ class DataStream(object):
     # TODO (john): Expand set of supported operators.
 
     # Registers Map operator to the environment
-    def map(self, map_fn, name="Map_"+_generate_uuid(),
-            placement=None):
+    def map(self, map_fn, name="Map_" + _generate_uuid(), placement=None):
         """Applies a map operator to the stream.
 
         Attributes:
@@ -715,7 +711,9 @@ class DataStream(object):
         return self.__register(op)
 
     # Registers Flatmap operator to the environment
-    def flat_map(self, flatmap_logic, name="FlatMap_"+_generate_uuid(),
+    def flat_map(self,
+                 flatmap_logic,
+                 name="FlatMap_" + _generate_uuid(),
                  placement=None):
         """Applies a flatmap operator to the stream.
 
@@ -741,7 +739,9 @@ class DataStream(object):
     # A stream can be partitioned on a key either within the upstream operator
     # or by introducing a pipelined KeyBy operator. The latter transforms the
     # input stream of records to a new stream of tuples (key, record).
-    def key_by(self, key_selector, name="KeyBy_"+_generate_uuid(),
+    def key_by(self,
+               key_selector,
+               name="KeyBy_" + _generate_uuid(),
                placement=None):
         """Applies a key_by operator to the stream.
 
@@ -763,7 +763,9 @@ class DataStream(object):
         return self.__register(op)
 
     # Registers Reduce operator to the environment
-    def reduce(self, reduce_fn, name="Reduce_"+_generate_uuid(),
+    def reduce(self,
+               reduce_fn,
+               name="Reduce_" + _generate_uuid(),
                placement=None):
         """Applies a reduce operator to the stream.
 
@@ -784,7 +786,9 @@ class DataStream(object):
         return self.__register(op)
 
     # Registers Sum operator to the environment
-    def sum(self, attribute_selector, name="Sum_"+_generate_uuid(),
+    def sum(self,
+            attribute_selector,
+            name="Sum_" + _generate_uuid(),
             placement=None):
         """Applies a rolling sum operator to the stream.
 
@@ -807,7 +811,9 @@ class DataStream(object):
         return self.__register(op)
 
     # Registers union operator to the environment
-    def union(self, other_inputs, name="Union_"+_generate_uuid(),
+    def union(self,
+              other_inputs,
+              name="Union_" + _generate_uuid(),
               placement=None):
         """Unions the stream with one or more other streams.
 
@@ -828,9 +834,10 @@ class DataStream(object):
             placement=placement)
         return self.__register(op)
 
-
     # Registers a custom sink operator to the environment
-    def sink(self, sink_object, name="Sink_"+_generate_uuid(),
+    def sink(self,
+             sink_object,
+             name="Sink_" + _generate_uuid(),
              placement=None):
         """Closes the stream with a custom sink operator.
 

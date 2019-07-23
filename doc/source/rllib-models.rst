@@ -184,14 +184,14 @@ You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"
 Custom Models (PyTorch)
 -----------------------
 
-Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, PG, QMIX). See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/pytorch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
+Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, PG, QMIX). See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
 
 .. code-block:: python
 
     import ray
     from ray.rllib.agents import a3c
     from ray.rllib.models import ModelCatalog
-    from ray.rllib.models.pytorch.model import TorchModel
+    from ray.rllib.models.torch.model import TorchModel
 
     class CustomTorchModel(TorchModel):
 

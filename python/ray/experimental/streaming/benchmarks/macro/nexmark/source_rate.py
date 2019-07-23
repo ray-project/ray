@@ -12,10 +12,6 @@ import ray
 import ray.experimental.streaming.benchmarks.macro.nexmark.data_generator as dg
 import ray.experimental.streaming.benchmarks.utils as utils
 
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Auction
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Bid
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Person
-from ray.experimental.streaming.benchmarks.macro.nexmark.event import Record
 from ray.experimental.streaming.communication import QueueConfig
 from ray.experimental.streaming.streaming import Environment
 
@@ -24,47 +20,60 @@ logger.setLevel("INFO")
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--queue-size", default=10,
-                    help="the queue size in number of batches")
+parser.add_argument(
+    "--queue-size", default=10, help="the queue size in number of batches")
 # The batch size is estimated based on the Bid's size, so that
 # each batch corresponds to a buffer of around 32K bytes. For auctions,
 # the respective batch size is 42 whereas for persons is 210.
-parser.add_argument("--batch-size", default=120,
-                    help="the batch size in number of elements")
-parser.add_argument("--flush-timeout", default=0.1,
-                    help="the timeout to flush a batch")
+parser.add_argument(
+    "--batch-size", default=120, help="the batch size in number of elements")
+parser.add_argument(
+    "--flush-timeout", default=0.1, help="the timeout to flush a batch")
 
-parser.add_argument("--simulate-cluster", default=False,
-                    action='store_true',
-                    help="simulate a Ray cluster on a single machine")
-parser.add_argument("--pin-processes", default=False,
-                    action='store_true',
-                    help="whether to pin python processes to cores or not")
-parser.add_argument("--records", default=-1,
-                help="maximum number of records to replay from each source.")
+parser.add_argument(
+    "--simulate-cluster",
+    default=False,
+    action='store_true',
+    help="simulate a Ray cluster on a single machine")
+parser.add_argument(
+    "--pin-processes",
+    default=False,
+    action='store_true',
+    help="whether to pin python processes to cores or not")
+parser.add_argument(
+    "--records",
+    default=-1,
+    help="maximum number of records to replay from each source.")
 
-parser.add_argument("--fetch-data", default=False,
-                    action='store_true',
-                    help="fecth data from S3")
-parser.add_argument("--omit-extra", default=False,
-                    action='store_true',
-                    help="omit extra field from events")
-parser.add_argument("--source-type", default="auction",
-                    choices=["auctions","bids","persons"],
-                    help="source type")
-parser.add_argument("--sample-period", default=1000,
-                    help="every how many input records latency is measured.")
+parser.add_argument(
+    "--fetch-data",
+    default=False,
+    action='store_true',
+    help="fecth data from S3")
+parser.add_argument(
+    "--omit-extra",
+    default=False,
+    action='store_true',
+    help="omit extra field from events")
+parser.add_argument(
+    "--source-type",
+    default="auction",
+    choices=["auctions", "bids", "persons"],
+    help="source type")
+parser.add_argument(
+    "--sample-period",
+    default=1000,
+    help="every how many input records latency is measured.")
 
-parser.add_argument("--input-file", required=True,
-                    help="path to the event file")
-parser.add_argument("--dump-file", default="",
-                    help="a file to dump the chrome timeline")
+parser.add_argument(
+    "--input-file", required=True, help="path to the event file")
+parser.add_argument(
+    "--dump-file", default="", help="a file to dump the chrome timeline")
 
-parser.add_argument("--sink-instances", default=1,
-                    help="the number of sink instances after the source")
-
-
-
+parser.add_argument(
+    "--sink-instances",
+    default=1,
+    help="the number of sink instances after the source")
 
 if __name__ == "__main__":
 
@@ -121,8 +130,7 @@ if __name__ == "__main__":
     if simulate_cluster:
         stage_parallelism = [sink_instances]
         utils.start_virtual_cluster(1, 1, 1000000000, 1000000000,
-                                    stage_parallelism, 1,
-                                    pin_processes)
+                                    stage_parallelism, 1, pin_processes)
     else:  # Connect to existing ray cluster
         ray.init(redis_address="localhost:6379")
 
@@ -136,41 +144,46 @@ if __name__ == "__main__":
     source_stream = None
 
     if source_type == "auctions":  # Add the auction source
-        source_stream = env.source(dg.NexmarkEventGenerator(in_file,
-                                                "Auction",
-                                                -1,  # Unbounded rate
-                                                sample_period=sample_period,
-                                                max_records=max_records,
-                                                omit_extra=omit_extra),
-                            name="auctions",
-                            batch_size=max_batch_size,
-                            placement=["Node_0"])
-    elif source_type ==  "bids":  # Add the bid source
-        source_stream = env.source(dg.NexmarkEventGenerator(in_file, "Bid",
-                                                -1,  # Unbounded rate
-                                                sample_period=sample_period,
-                                                max_records=max_records,
-                                                omit_extra=omit_extra),
-                                    name="bids",
-                                    batch_size=max_batch_size,
-                                    placement=["Node_0"])
+        source_stream = env.source(
+            dg.NexmarkEventGenerator(
+                in_file,
+                "Auction",
+                -1,  # Unbounded rate
+                sample_period=sample_period,
+                max_records=max_records,
+                omit_extra=omit_extra),
+            name="auctions",
+            placement=["Node_0"])
+    elif source_type == "bids":  # Add the bid source
+        source_stream = env.source(
+            dg.NexmarkEventGenerator(
+                in_file,
+                "Bid",
+                -1,  # Unbounded rate
+                sample_period=sample_period,
+                max_records=max_records,
+                omit_extra=omit_extra),
+            name="bids",
+            placement=["Node_0"])
     else:  # Add the person source
         assert source_type == "persons"
-        source_stream = env.source(dg.NexmarkEventGenerator(in_file, "Person",
-                                                -1,  # Unbounded rate
-                                                sample_period=sample_period,
-                                                max_records=max_records,
-                                                omit_extra=omit_extra),
-                            name="persons",
-                            batch_size=max_batch_size,
-                            placement=["Node_0"])
+        source_stream = env.source(
+            dg.NexmarkEventGenerator(
+                in_file,
+                "Person",
+                -1,  # Unbounded rate
+                sample_period=sample_period,
+                max_records=max_records,
+                omit_extra=omit_extra),
+            name="persons",
+            placement=["Node_0"])
     assert source_stream is not None
 
     # Connect a dummy sink to measure latency as well
-    _ = source_stream.sink(dg.EventLatencySink(),
-                    name="sink",
-                    placement=["Node_0"] * sink_instances).set_parallelism(
-                                                            sink_instances)
+    _ = source_stream.sink(
+        dg.EventLatencySink(),
+        name="sink",
+        placement=["Node_0"] * sink_instances).set_parallelism(sink_instances)
 
     start = time.time()
     dataflow = env.execute()
@@ -191,8 +204,7 @@ if __name__ == "__main__":
         logger.info("Mean latency: {}".format(np.mean(latencies)))
     else:
         message = "Maybe the sample period is too large?"
-        logger.info(
-            "No latencies found. Is logging enabled? " + message)
+        logger.info("No latencies found. Is logging enabled? " + message)
 
     logger.info("Elapsed time: {}".format(time.time() - start))
 

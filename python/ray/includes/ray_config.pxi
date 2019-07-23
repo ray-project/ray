@@ -156,3 +156,7 @@ cdef class Config:
     @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
+
+    @staticmethod
+    def initialize(const unordered_map[c_string, c_string] &config_map):
+        RayConfig.instance().initialize(config_map)

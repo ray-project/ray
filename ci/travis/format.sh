@@ -5,6 +5,12 @@
 # Cause the script to exit if a single command fails
 set -eo pipefail
 
+ver=$(yapf --version)
+if ! echo $ver | grep -q 0.23.0; then
+    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver"
+    exit 1
+fi
+
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 
@@ -16,8 +22,32 @@ if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
     git remote add 'upstream' 'https://github.com/ray-project/ray.git'
 fi
 
+FLAKE8_VERSION=$(flake8 --version | awk '{print $1}')
+YAPF_VERSION=$(yapf --version | awk '{print $2}')
+
+# params: tool name, tool version, required version
+tool_version_check() {
+    if [[ $2 != $3 ]]; then
+        echo "WARNING: Ray uses $1 $3, You currently are using $2. This might generate different results."
+        read -p "Do you want to continue?[y/n]" answer
+        if ! [ $answer = 'y' ] && ! [ $answer = 'Y' ]; then
+            exit 1
+        fi
+    fi
+}
+
+tool_version_check "flake8" $FLAKE8_VERSION "3.7.7"
+tool_version_check "yapf" $YAPF_VERSION "0.23.0"
+
+if which clang-format >/dev/null; then
+  CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
+  tool_version_check "clang-format" $CLANG_FORMAT_VERSION "7.0.0"
+else
+    echo "WARNING: clang-format is not installed!"
+fi
+
 # Only fetch master since that's the branch we're diffing against.
-git fetch upstream master
+git fetch upstream master || true
 
 YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"

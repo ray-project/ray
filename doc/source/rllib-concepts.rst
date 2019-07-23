@@ -230,22 +230,22 @@ The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#polic
             standardize_fields=["advantages"],
             straggler_mitigation=config["straggler_mitigation"])
 
-Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could define a new function that returns ``AsyncGradientsOptimizer`` and pass in ``make_policy_optimizer=make_async_optimizer`` when building the trainer:
+Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could define a new function that returns ``AsyncGradientsOptimizer`` and override the ``make_policy_optimizer`` component of ``PPOTrainer``.
 
 .. code-block:: python
 
-    from ray.rllib.agents.ppo.ppo_policy import *
+    from ray.rllib.agents.ppo import PPOTrainer
     from ray.rllib.optimizers import AsyncGradientsOptimizer
-    from ray.rllib.policy.tf_policy_template import build_tf_policy
 
     def make_async_optimizer(workers, config):
         return AsyncGradientsOptimizer(workers, grads_per_step=100)
 
-    PPOTrainer = build_trainer(
-        ...,
+    CustomTrainer = PPOTrainer.with_updates(
         make_policy_optimizer=make_async_optimizer)
 
 
+The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
+ 
 Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are be multiple policies each with different KL coeffs):
 
 .. code-block:: python
@@ -342,7 +342,69 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-(todo)
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/dqn/simple_q_policy.py>`__:
+
+.. code-block:: python
+
+    SimpleQPolicy = build_tf_policy(
+        name="SimpleQPolicy",
+        get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+        make_model=build_q_models,
+        action_sampler_fn=build_action_sampler,
+        loss_fn=build_q_losses,
+        extra_action_feed_fn=exploration_setting_inputs,
+        extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+        extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
+        before_init=setup_early_mixins,
+        after_init=setup_late_mixins,
+        obs_include_prev_action_reward=False,
+        mixins=[
+            ExplorationStateMixin,
+            TargetNetworkMixin,
+        ])
+
+The biggest difference from the policy gradient policies you saw previously is that SimpleQPolicy defines its own ``make_model`` and ``action_sampler_fn``. This means that the policy builder will not internally create a model and action distribution, rather it will call ``build_q_models`` and ``build_action_sampler`` to get the output action tensors.
+
+The model creation function actually creates two different models for DQN: the base Q network, and also a target network. It requires each model to be of type ``SimpleQModel``, which implements a ``get_q_values()`` method. The model catalog will raise an error if you try to use a custom ModelV2 model that isn't a subclass of SimpleQModel. Similarly, the full DQN policy requires models to subclass ``DistributionalQModel``, which implements ``get_q_value_distributions()`` and ``get_state_value()``:
+
+.. code-block:: python
+
+    def build_q_models(policy, obs_space, action_space, config):
+        ...
+
+        policy.q_model = ModelCatalog.get_model_v2(
+            obs_space,
+            action_space,
+            num_outputs,
+            config["model"],
+            framework="tf",
+            name=Q_SCOPE,
+            model_interface=SimpleQModel,
+            q_hiddens=config["hiddens"])
+
+        policy.target_q_model = ModelCatalog.get_model_v2(
+            obs_space,
+            action_space,
+            num_outputs,
+            config["model"],
+            framework="tf",
+            name=Q_TARGET_SCOPE,
+            model_interface=SimpleQModel,
+            q_hiddens=config["hiddens"])
+
+        return policy.q_model
+
+The action sampler is straightforward, it just takes the q_model, runs a forward pass, and returns the argmax over the actions:
+
+.. code-block:: python
+
+    def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
+                             config):
+        # do max over Q values...
+        ...
+        return action, action_prob
+
+The remainder of DQN is similar to other algorithms. Target updates are handled by a ``after_optimizer_step`` callback that periodically copies the weights of the Q network to the target.
 
 Finally, note that you do not have to use ``build_tf_policy`` to define a TensorFlow policy. You can alternatively subclass ``Policy``, ``TFPolicy``, or ``DynamicTFPolicy`` as convenient.
 
@@ -375,7 +437,7 @@ While RLlib runs all TF operations in graph mode, you can still leverage TensorF
 
 You can find a runnable file for the above eager execution example `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
 
-There is also experimental support for running the entire loss function in eager mode. This can be enabled with ``use_eager: True``, e.g., ``rllib train --env=CartPole-v0 --run=PPO --config='{"use_eager": true, "simple_optimizer": true}'``. However this currently only works for a couple algorithms.
+There is also experimental support for running the entire loss function in eager mode. This can be enabled with ``use_eager: True``, e.g., ``rllib train --env=CartPole-v0 --run=PPO --config='{"use_eager": true}'``. However this currently only works for PG, A2C, and PPO.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 
 # An abstract record
 class Record(object):
@@ -14,7 +13,7 @@ class Record(object):
 # A watermark with a logical and a wall-clock timestamp
 class Watermark(object):
     def __init__(self, event_time, system_time):
-        self.event_time = event_time    # The watermak's logical time
+        self.event_time = event_time  # The watermak's logical time
         self.system_time = system_time  # The watermark's generation timestamp
         self.event_type = "Watermark"
 
@@ -22,8 +21,11 @@ class Watermark(object):
 # An event with an event and a wall-clock time. The latter denotes when the
 # event enters the system, i.e. when it exits the data source
 class Event(object):
-    def __init__(self, event_time, system_time=None, extra=None,
-                       event_type=None):
+    def __init__(self,
+                 event_time,
+                 system_time=None,
+                 extra=None,
+                 event_type=None):
         self.system_time = system_time
         self.dateTime = event_time
         self.extra = extra
@@ -32,10 +34,17 @@ class Event(object):
 
 # An Auction event log
 class Auction(Event):
-    def __init__(self, id=None, item_name=None, description=None,
-                       initial_bid=None, reserve=None,
-                       date_time=None, expires=None, seller=None,
-                       category=None, extra=None):
+    def __init__(self,
+                 id=None,
+                 item_name=None,
+                 description=None,
+                 initial_bid=None,
+                 reserve=None,
+                 date_time=None,
+                 expires=None,
+                 seller=None,
+                 category=None,
+                 extra=None):
         Event.__init__(self, date_time, extra=extra, event_type="Auction")
         self.id = id
         self.itemName = item_name
@@ -58,8 +67,12 @@ class Auction(Event):
 
 # An Bid event log
 class Bid(Event):
-    def __init__(self, auction=None, bidder=None,
-                       price=None, date_time=None, extra=None):
+    def __init__(self,
+                 auction=None,
+                 bidder=None,
+                 price=None,
+                 date_time=None,
+                 extra=None):
         Event.__init__(self, date_time, extra=extra, event_type="Bid")
         self.auction = auction
         self.bidder = bidder
@@ -74,8 +87,15 @@ class Bid(Event):
 
 # A Person log
 class Person(Event):
-    def __init__(self, id=None, name=None, email=None, credit_card=None,
-                       city=None, state=None, date_time=None, extra=None):
+    def __init__(self,
+                 id=None,
+                 name=None,
+                 email=None,
+                 credit_card=None,
+                 city=None,
+                 state=None,
+                 date_time=None,
+                 extra=None):
         Event.__init__(self, date_time, extra=extra, event_type="Person")
         self.id = id
         self.name = name

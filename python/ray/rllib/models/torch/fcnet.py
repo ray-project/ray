@@ -6,8 +6,8 @@ import logging
 import numpy as np
 import torch.nn as nn
 
-from ray.rllib.models.pytorch.model import TorchModel
-from ray.rllib.models.pytorch.misc import normc_initializer, SlimFC, \
+from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.torch.misc import normc_initializer, SlimFC, \
     _get_activation_fn
 from ray.rllib.utils.annotations import override
 

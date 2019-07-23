@@ -2,16 +2,14 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.
   bytes task_id = 1;
   // The tasks in the uncommitted lineage of the forwarded task. This
   // should include task_id.
-  // TODO(hchen): Currently, `uncommitted_tasks` are represented as
-  // flatbutters-serialized bytes. This is because the flatbuffers-defined Task data
-  // structure is being used in many places. We should move Task and all related data
-  // strucutres to protobuf.
-  repeated bytes uncommitted_tasks = 2;
+  repeated Task uncommitted_tasks = 2;
 }
 
 message ForwardTaskReply {

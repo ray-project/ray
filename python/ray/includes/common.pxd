@@ -87,17 +87,14 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
                                  int parent_task_counter)
 
 
-cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
-    cdef cppclass GCSArg "Arg":
-        pass
-
+cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
+cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
