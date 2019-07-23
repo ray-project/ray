@@ -191,35 +191,44 @@ Similarly, you can create and register custom PyTorch models for use with PyTorc
     import ray
     from ray.rllib.agents import a3c
     from ray.rllib.models import ModelCatalog
-    from ray.rllib.models.torch.model import TorchModel
+    from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
-    class CustomTorchModel(TorchModel):
+    class CustomTorchModel(TorchModelV2):
 
-        def __init__(self, obs_space, num_outputs, options):
-            TorchModel.__init__(self, obs_space, num_outputs, options)
+        def __init__(self, obs_space, action_space, num_outputs, model_config,
+                     name):
+            super(CustomTorchModel, self).__init__(
+                obs_space, action_space, num_outputs, model_config, name)
             ...  # setup hidden layers
 
-        def _forward(self, input_dict, hidden_state):
-            """Forward pass for the model.
+        def forward(self, input_dict, state, seq_lens):
+            """Call the model with the given input tensors and state.
 
-            Prefer implementing this instead of forward() directly for proper
-            handling of Dict and Tuple observations.
+            Any complex observations (dicts, tuples, etc.) will be unpacked by
+            __call__ before being passed to forward(). To access the flattened
+            observation tensor, refer to input_dict["obs_flat"].
+
+            This method can be called any number of times. In eager execution,
+            each call to forward() will eagerly evaluate the model. In symbolic
+            execution, each call to forward creates a computation graph that
+            operates over the variables of this model (i.e., shares weights).
+
+            Custom models should override this instead of __call__.
 
             Arguments:
-                input_dict (dict): Dictionary of tensor inputs, commonly
-                    including "obs", "prev_action", "prev_reward", each of shape
-                    [BATCH_SIZE, ...].
-                hidden_state (list): List of hidden state tensors, each of shape
-                    [BATCH_SIZE, h_size].
+                input_dict (dict): dictionary of input tensors, including "obs",
+                    "obs_flat", "prev_action", "prev_reward", "is_training"
+                state (list): list of state tensors with sizes matching those
+                    returned by get_initial_state + the batch dimension
+                seq_lens (Tensor): 1d tensor holding input sequence lengths
 
             Returns:
-                (outputs, feature_layer, values, state): Tensors of size
-                    [BATCH_SIZE, num_outputs], [BATCH_SIZE, desired_feature_size],
-                    [BATCH_SIZE], and [len(hidden_state), BATCH_SIZE, h_size].
+                (outputs, state): The model output tensor of size
+                    [BATCH, num_outputs]
             """
             obs = input_dict["obs"]
             ...
-            return logits, features, value, hidden_state
+            return logits, state
 
     ModelCatalog.register_custom_model("my_model", CustomTorchModel)
 
