@@ -5,10 +5,8 @@ from __future__ import print_function
 import argparse
 import os
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
+from torchvision import datasets
 
 from ray.tune import Trainable
 from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, Net
@@ -50,7 +48,9 @@ class TrainMNIST(Trainable):
         self.train_loader, self.test_loader = get_data_loaders()
         self.model = Net(config).to(self.device)
         self.optimizer = optim.SGD(
-            model.parameters(), lr=config["lr"], momentum=config["momentum"])
+            self.model.parameters(),
+            lr=config.get("lr", 0.01),
+            momentum=config.get("momentum", 0.9))
 
     def _train(self):
         train(self.model, self.optimizer, self.train_loader)
