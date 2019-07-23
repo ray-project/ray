@@ -70,19 +70,10 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   SubmitTaskRequest submit_task_request;
   submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
-  auto callback = [this](const Status &status, const SubmitTaskReply &reply) {
-    /// We check is_connnected_ here to avoid verbose fail logs.
-    if (!status.ok() && is_connected_) {
-      is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to submit task, msg: " << status.message();
-    }
-  };
-
-  auto call =
-      client_call_manager_.CreateCall<RayletService, SubmitTaskRequest, SubmitTaskReply>(
-          *stub_, &RayletService::Stub::PrepareAsyncSubmitTask, submit_task_request,
-          callback);
-  return call->GetStatus();
+  grpc::ClientContext context;
+  SubmitTaskReply reply;
+  auto status = stub_->SubmitTask(&context, submit_task_request, &reply);
+  return GrpcStatusToRayStatus(status);
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
@@ -252,7 +243,7 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_even
 
   auto callback = [this](const Status &status, const PushProfileEventsReply &reply) {
     if (!status.ok() && is_connected_) {
-      is_connected = true;
+      is_connected_ = true;
       RAY_LOG(INFO) << "Failed to send PushProfileEventsRequest, msg: "
                     << status.message();
     }
