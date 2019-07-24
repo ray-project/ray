@@ -34,6 +34,6 @@
 /bazel/ @ray-project/ray-core
 
 # CI scripts.
-.travis.yml @ray-project/ray-core
+/.travis.yml @ray-project/ray-core
 /ci/travis/ @ray-project/ray-core
 
