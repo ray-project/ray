@@ -204,7 +204,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   guard.unlock();
 
   // Submit task.
-  const auto trasnport_type =
+  const auto transport_type =
       direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
   auto status = task_submitters_[trasnport_type]->SubmitTask(builder.Build());
   if (!direct_call) {
