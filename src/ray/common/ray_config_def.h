@@ -157,7 +157,7 @@ RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20)
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
 /// Number of times for a raylet client to retry to register.
-RAY_CONFIG(int, num_raylet_client_retry_times, 20)
+RAY_CONFIG(int, num_raylet_client_retry_times, 50)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
