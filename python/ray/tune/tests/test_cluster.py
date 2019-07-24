@@ -234,9 +234,15 @@ def test_logger_restore(start_connected_emptyhead_cluster):
     cluster.wait_for_nodes()
 
     assert trial.last_result["training_iteration"] == 2
+    assert trial.last_result["iterations_since_restore"] == 2
+
+    assert trial.status == Trial.RUNNING
 
     for _ in range(3):
         runner.step()
+
+    assert trial.last_result["training_iteration"] == 4
+    assert trial.last_result['iterations_since_restore'] == 2
 
     assert trial.status == Trial.TERMINATED
 
