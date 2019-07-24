@@ -251,3 +251,72 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         if debug:
             parent.update(self._prio_change_stats.stats())
         return parent
+
+
+class CustomReplayBuffer(ReplayBuffer):
+    def __init__(self, size):
+        super().__init__(size)
+        self.buffer_initialized = False
+        self._storage = None
+        self._delimiter = dict()
+        self._split = list()
+        self._keys = list()
+
+    def __len__(self):
+        return min(self._num_added, self._maxsize)
+
+    def add(self, **kwargs):
+        if not self.buffer_initialized:
+            i = 0
+            for k, v in kwargs.items():
+                # NOTE: Assume single dimension for all values.
+                if len(v.shape) == 1:
+                    size = 1
+                elif len(v.shape) == 2:
+                    size = v.shape[1]
+                else:
+                    raise NotImplementedError
+                j = i + size
+                self._delimiter[k] = (i, j)
+                self._split.append(j)
+                self._keys.append(k)
+                i = j
+            shape = (self._maxsize, self._delimiter[k][1])
+            self._storage = np.empty(shape=shape, dtype=np.float64)
+            self._est_size_bytes = sys.getsizeof(self._storage)
+            self.buffer_initialized = True
+
+        for k, v in kwargs.items():
+            batch_size = v.shape[0]
+            idx = np.arange(self._next_idx, self._next_idx + batch_size) % self._maxsize
+            if len(v.shape) == 1:
+                self._storage[idx, self._delimiter[k][0]] = v
+            else:
+                self._storage[idx, self._delimiter[k][0]:self._delimiter[k][1]] = v
+
+        if self._next_idx + batch_size >= self._maxsize:
+            self._eviction_started = True
+
+        self._next_idx = (self._next_idx + batch_size) % self._maxsize
+        self._num_added += batch_size
+
+        if self._eviction_started:
+            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
+            self._hit_count[self._next_idx] = 0
+
+    def _encode_sample(self, idx):
+        for i in idx:
+            self._hit_count[i] += 1
+        batch_list = np.split(self._storage[idx], self._split, axis=1)[:-1]
+        return dict(zip(self._keys, batch_list))
+
+    def sample_idx(self, batch_size):
+        return np.random.randint(0, len(self), size=batch_size)
+
+    def sample_with_idx(self, idx):
+        self._num_sampled += len(idx)
+        return self._encode_sample(idx)
+
+    def sample(self, batch_size):
+        idx = self.sample_idx(batch_size)
+        return self.sample_with_idx(idx)
