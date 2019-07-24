@@ -9,6 +9,8 @@ import os
 import pytest
 import shutil
 
+import pandas as pd
+
 import ray
 from ray import tune
 from ray.rllib import _register_all
@@ -195,6 +197,51 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     cluster.wait_for_nodes()
     runner.step()  # Error handling step
     assert t3.status == Trial.ERROR
+
+    with pytest.raises(TuneError):
+        runner.step()
+
+
+def test_logger_restore(start_connected_emptyhead_cluster):
+    """Loggers should correctly resume appending results after restoring."""
+    cluster = start_connected_emptyhead_cluster
+    node1 = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    runner = TrialRunner(BasicVariantGenerator())
+    kwargs = {
+        "stopping_criterion": {
+            "training_iteration": 4
+        },
+        "checkpoint_freq": 1,
+        "max_failures": 2
+    }
+
+    # Test recovery of trial that has been checkpointed
+    trial = Trial("__fake", **kwargs)
+    runner.add_trial(trial)
+
+    for _ in range(3):
+        runner.step()
+
+    assert trial.has_checkpoint()
+
+    progress = pd.read_csv(os.path.join(trial.logdir, "progress.csv"))
+    assert progress.shape[0] == 2, progress.shape
+
+    node2 = cluster.add_node(num_cpus=1)
+    cluster.remove_node(node1)
+    cluster.wait_for_nodes()
+
+    assert trial.last_result["training_iteration"] == 2
+
+    for _ in range(3):
+        runner.step()
+
+    assert trial.status == Trial.TERMINATED
+
+    progress = pd.read_csv(os.path.join(trial.logdir, "progress.csv"))
+    assert progress.shape[0] == 4, progress.shape
 
     with pytest.raises(TuneError):
         runner.step()
