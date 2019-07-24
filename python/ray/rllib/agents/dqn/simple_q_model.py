@@ -13,6 +13,10 @@ tf = try_import_tf()
 class SimpleQModel(TFModelV2):
     """Extension of standard TFModel to provide Q values.
 
+    Data flow:
+        obs -> forward() -> model_out
+        model_out -> get_q_values() -> Q(s, a)
+
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
