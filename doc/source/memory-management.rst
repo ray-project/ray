@@ -34,16 +34,16 @@ Heap memory quota
 
 When Ray starts, it queries the available memory on a node / container not reserved for Redis and the object store or being used by other applications. This is considered "available memory" that actors and tasks can request memory out of. You can also set ``available_memory=<bytes>`` on Ray init to tell Ray explicitly how much memory is available.
 
-To tell the Ray scheduler a task or actor requires a certain amount of free memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
+To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
 .. code-block:: python
 
-  # reserve 500MB of free memory to place this task
+  # reserve 500MB of available memory to place this task
   @ray.remote(memory=500 * 1024 * 1024)
   def some_function(x):
       pass
 
-  # reserve 2.5GB of free memory to place this actor
+  # reserve 2.5GB of available memory to place this actor
   @ray.remote(memory=2500 * 1024 * 1024)
   class SomeActor(object):
       def __init__(self, a, b):
@@ -59,7 +59,7 @@ In the above example the memory quota is specified statically by the decorator, 
   # override the memory quota to 1GB when creating the actor
   SomeActor._remote(memory=1000 * 1024 * 1024, kwargs={"a": 1, "b": 2})
 
-For the driver, you can set its memory quota with ``driver_memory``, to tell Ray to deduct this amount of free memory for the driver (the driver does not need to be scheduled:
+For the driver, you can set its memory quota with ``driver_memory``, to tell Ray to deduct this amount of available memory for the driver (the driver does not need to be scheduled):
 
 .. code-block:: python
 
@@ -76,14 +76,10 @@ Ray takes this resource into account during scheduling, with the caveat that a n
 
 For the driver, this is ``driver_object_store_memory``. Setting object store quota is not supported for tasks.
 
-Object store shared memory quota
---------------------------------
+Object store shared memory
+--------------------------
 
-Use ``@ray.remote(object_store_shared_memory=<bytes>)`` to limit the amount of object store shared memory that can be mapped by this actor. The purpose of this limit is primarily to catch memory leaks involving shared memory, which can happen inadvertently if references to shared numpy arrays etc. are kept longer than necessary in the application.
-
-Ray does *not* take shared memory quota into account during scheduling, since by nature shared memory usage is difficult to attribute to any particular worker.
-
-For the driver, this is ``driver_object_store_shared_memory``. Setting object store shared quota is not supported for tasks.
+Object store memory is also used to map objects returned by ``ray.get`` calls in shared memory. While an object is mapped in this way, it is pinned and cannot be evicted from the object store. Ray does *not* provide quota management for shared memory, however it will track and report actors using the most shared memory in "object store full" errors. This helps catch memory leaks involving shared memory, which can happen inadvertently if references to shared numpy arrays etc. are kept longer than necessary in the application.
 
 Summary
 -------
@@ -94,5 +90,4 @@ You can set memory quotas to ensure your application runs predictably on any Ray
 
   @ray.remote(
       memory=2000 * 1024 * 1024,
-      object_store_memory=200 * 1024 * 1024,
-      object_store_shared_memory=200 * 1024 * 1024)
+      object_store_memory=200 * 1024 * 1024)
