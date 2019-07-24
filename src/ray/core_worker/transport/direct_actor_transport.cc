@@ -45,7 +45,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto iter = actor_states_.find(actor_id);
   if (iter == actor_states_.end() || iter->second == ActorTableData::RECONSTRUCTING) {
-    // Actor is not yet created, or is being reconstructing, cache the request
+    // Actor is not yet created, or is being reconstructed, cache the request
     // and submit after actor is alive.
     auto pending_request = std::unique_ptr<PendingTaskRequest>(
         new PendingTaskRequest(task_id, num_returns, std::move(request)));
