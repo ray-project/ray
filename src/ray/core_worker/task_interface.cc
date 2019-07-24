@@ -206,7 +206,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   // Submit task.
   const auto transport_type =
       direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
-  auto status = task_submitters_[trasnport_type]->SubmitTask(builder.Build());
+  auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());
   if (!direct_call) {
     // Remove cursor from return ids.
     (*return_ids).pop_back();
