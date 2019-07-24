@@ -32,6 +32,10 @@ void GrpcServer::Run() {
       entry.first->CreateCall();
     }
   }
+  // Create stream calls for all the stream call factories.
+  for (auto &entry : server_stream_call_factories_) {
+    entry->CreateCall();
+  }
   // Start a thread that polls incoming requests.
   polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
   // Set the server as running.
@@ -56,7 +60,9 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         // We've received a new incoming request. Now this call object is used to
         // track this request. So we need to create another call to handle next
         // incoming request.
-        server_call->GetFactory().CreateCall();
+        if (server_call->GetCallType() == ServerCallType::DEFAULT_ASYNC_CALL) {
+          server_call->GetFactory().CreateCall();
+        }
         server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;

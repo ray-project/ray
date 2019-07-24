@@ -16,7 +16,8 @@ class TestServiceHandler {
   /// Handle a `DebugEcho` request.
   virtual void DebugEcho(const DebugEchoRequest &request,
                                  DebugEchoReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0
+                                 SendReplyCallback send_reply_callback) = 0;
+  /// Handle `DebugStreamEcho` requests.
   virtual void DebugStreamEcho(const DebugEchoRequest &request) = 0;
 };
 

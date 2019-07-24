@@ -23,7 +23,7 @@ class DebugTestClient {
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   DebugTestClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
+                  ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
@@ -34,24 +34,28 @@ class DebugTestClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  void DebugEcho(const DebugEchoRequest &request,
+  Status DebugEcho(const DebugEchoRequest &request,
                    const ClientCallback<DebugEchoReply> &callback) {
-    client_call_manager_
-        .CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
-            *stub_, &DebugEchoService::Stub::PrepareAsyncDebugEcho, request,
-            callback);
+    auto call = client_call_manager_
+                    .CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+                        *stub_, &DebugEchoService::Stub::PrepareAsyncDebugEcho, request,
+                        callback);
+    return call->GetStatus();
+  }
+
+  void StartEchoStream(const ClientCallback<Reply> &callback) {
+    debug_stream_call_ =
+        client_call_manager_
+            .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+                *stub_, &DebugEchoService::Stub::AsyncDebugStreamEcho, callback);
   }
 
   /// Request for a stream message should be a synchronous call.
-  void DebugStreamEcho(const DebugEchoRequest &request,
-                   const ClientCallback<DebugEchoReply> &callback) {
-    if (!debug_stream_call_) {
-        debug_stream_call_ = client_call_manager_
-            .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
-                *stub_, &DebugEchoService::Stub::DebugStreamEcho, request, callback);
-    }
-    debug_stream_call_->SendStreamMessage();
+  void DebugStreamEcho(const DebugEchoRequest &request) {
+    debug_stream_call_->WriteStream(request);
   }
+
+  void CloseEchoStream() { debug_stream_call_->WritesDone(); }
 
  private:
   /// The gRPC-generated stub.
@@ -61,7 +65,8 @@ class DebugTestClient {
   ClientCallManager &client_call_manager_;
 
   /// The call for stream.
-  ClientCall * debug_stream_call_ = nullptr;
+  std::shared_ptr<ClientCall<DebugEchoRequest, DebugEchoReply>> debug_stream_call_ =
+      nullptr;
 };
 
 }  // namespace rpc

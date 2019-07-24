@@ -1,4 +1,6 @@
 #include "gtest/gtest.h"
+#include "src/ray/rpc/test/test_client.h"
+#include "src/ray/rpc/test/test_server.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -10,30 +12,71 @@
 
 using std::string;
 using std::vector;
-const string hdr = "RequestMessage";
+using std::unique_ptr;
+using std::shared_ptr;
+using ray::rpc;
 
-vector<string> GenerateMessages(int n) {
-  vector<string> result;
-  for (int i = 1; i <= n; i++) {
-    result.emplace_back(hdr + std::to_string(i));
-  }
-  return result;
+string GenerateMessage(const string &hdr, int idx) {
+ return hdr + "-idx-" + std::to_string(idx));
 }
 
-bool VerifyMessages(vector<string> &messages) {
-  for (size_t i = 1; i <= messages.size(); i++) {
-    if (messages[i] != (hdr + std::to_string(i))) {
-      return false;
-    }
+bool VerifyMessage(const string& msg, const string &hdr, int idx) {
+  if (msg == GenerateMessage(hdr, idx)) {
+    return true;
   }
-  return true;
+  return false;
+}
+
+int GetIndex(const string &str) {
+  int idx = -1;
+  int pos = str.find("-idx-");
+  if (pos != string::npos) {
+    idx = std::atoi(string(str.begin() + pos + 5));
+  }
+  return idx;
+}
+
+// Server handlers for test service.
+class ServiceHandlers : public TestServiceHandler {
+ public:
+  void DebugEcho(const DebugEchoRequest &request,
+                                 DebugEchoReply *reply,
+                                 SendReplyCallback send_reply_callback) {
+    cout << "Received request in DebugEcho, msg " << request.request_message() << endl;
+    reply->set_reply_message("Reply for DebugEcho.");
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+  void DebugStreamEcho(const DebugEchoRequest &request) {
+    auto string & str = request.request_message();
+    int idx = GetIndex(str);
+    cout << "Received request in DebugStreamEcho, msg " << request.request_message() << endl;
+  }
+ private:
+
 }
 
 class GrpcTest : public ::testing::Test {
  public:
-  GrpcTest() {}
+  GrpcTest() {
+  }
 
   ~GrpcTest() {}
+
+  void SetUp() {
+    server_.reset(new GrpcServer("DebugTestServer", 12345));
+    server_->RegisterService(service_handlers_);
+    server_->Run();
+  }
+
+  void TearDown() {
+    server_.reset();
+  }
+
+ private:
+  unique_ptr<GrpcServer> server_;
+  ClientCallManager client_call_manager_;
+  ServiceHandlers service_handlers_;
 };
 
 TEST_F(GrpcTest, MultiClientsTest) {}
@@ -44,6 +87,19 @@ TEST_F(GrpcTest, UnixDomainSocketTest) {
 
 TEST_F(GrpcTest, ThreadSafeClientTest) {}
 
-TEST_F(GrpcTest, StreamRequestTest) {}
+TEST_F(GrpcTest, StreamRequestTest) {
+  int num_messages = 10;
+  DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
+  client.StartEchoStream([](const Status &status,
+                            const rpc::DebugEchoReply &reply){
+    cout << "Received reply from server, reply: " << reply.reply_message();
+  });
+  for (int i = 0;i<num_messages;i++) {
+    DebugEchoRequest request;
+    request.set_request_message(GenerateMessage("StreamRequest", i + 1));
+    client.DebugStreamEcho(request);
+  }
+  client.CloseEchoStream();
+}
 
 int main() { return 0; }

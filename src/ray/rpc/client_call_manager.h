@@ -58,7 +58,7 @@ class ClientCallManager {
   ///
   /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
-  std::shared_ptr<ClientCall> CreateCall(
+  std::shared_ptr<ClientCall<Request, Reply>> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
@@ -80,13 +80,15 @@ class ClientCallManager {
   }
 
   template <class GrpcService, class Request, class Reply>
-  std::shared_ptr<ClientStreamCall> *CreateStreamCall(
-    typename GrpcService::Stub &stub,
-    const RpcFunction<GrpcService, Request, Reply> rpc_function,
-    grpc::CompletionQueue &cq) {
-    auto call = new ClientStreamCallImpl<Request, Reply>(callback);
+  std::shared_ptr<ClientCall> CreateStreamCall(
+      typename GrpcService::Stub &stub,
+      const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
+      const ClientCallback<Reply> &callback) {
+    auto call = std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
     // Setup connection with remote server.
-    call->Connect(stub, rpc_function, cq);
+    call->Connect(stub, async_rpc_function, &cq_);
+    auto tag = new ClientCallTag(call);
+    call->SetClientCallTag(tag);
     return call;
   }
 
@@ -101,12 +103,43 @@ class ClientCallManager {
     while (cq_.Next(&got_tag, &ok)) {
       auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
       if (ok) {
-        // Post the callback to the main event loop.
-        main_service_.post([tag]() {
-          tag->GetCall()->OnReplyReceived();
-          // The call is finished, and we can delete this tag now.
-          delete tag;
-        });
+        auto type = tag->GetCall()->GetCallType();
+        auto state = tag->GetCall()->GetCallState();
+        if (type == ClientCallType::DEFAULT_ASYNC_CALL) {
+          // Post the callback to the main event loop.
+          main_service_.post([tag]() {
+            tag->GetCall()->OnReplyReceived();
+            // The call is finished, and we can delete this tag now.
+            delete tag;
+          });
+        } else if (type == ClientCallType::STREAM_ASYNC_CALL) {
+          if (tag->GetCall()->IsReadingStream()) {
+            main_service_.post([tag]() { tag->GetCall()->OnReplyReceived(); });
+          } else {
+            switch
+              type {
+              case ClientCallType::CREATE:
+                cout << "Client call create.";
+                break;
+              case ClientCallType::CONNECT:
+                cout << "Client call connect.";
+                break;
+              case ClientCallType::WRITE:
+                cout << "Client call write.";
+                break;
+              case ClientCallType::WRITES_DONE:
+                cout << "Client call writes done.";
+                break;
+              case ClientCallType::FINISH:
+                cout << "Client call finish.";
+                delete tag;
+                break;
+              case default:
+                cout << "Should not reach here.";
+                break;
+              }
+          }
+        }
       } else {
         delete tag;
       }

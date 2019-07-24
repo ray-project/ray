@@ -79,6 +79,8 @@ class GrpcServer {
   /// gRPC server can accept.
   std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
       server_call_factories_and_concurrencies_;
+  /// The factory for server side stream call.
+  std::vector<std::unique_ptr<ServerCallFactory>> server_stream_call_factories_;
   /// The `ServerCompletionQueue` object used for polling events.
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.

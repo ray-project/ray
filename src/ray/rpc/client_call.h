@@ -10,20 +10,62 @@
 namespace ray {
 namespace rpc {
 
+enum class ClientCallType {
+  DEFAULT_ASYNC_CALL = 1,
+  STREAM_ASYNC_CALL = 2,
+};
+
+enum class ClientCallState {
+  CREATE = 1,
+  CONNECT = 2,
+  WRITE = 3,
+  READ = 4,
+  WRITES_DONE = 5,
+  FINISH = 6,
+};
+
+class ClientCallTag;
 /// Represents an outgoing gRPC request.
 ///
 /// NOTE(hchen): Compared to `ClientCallImpl`, this abstract interface doesn't use
 /// template. This allows the users (e.g., `ClientCallMangager`) not having to use
 /// template as well.
 class ClientCall {
+  /// Interfaces for default async call.
  public:
-  /// The callback to be called by `ClientCallManager` when the reply of this request is
-  /// received.
+  /// Callback which will be called once the client received the reply.
   virtual void OnReplyReceived() = 0;
+
   /// Return status.
   virtual ray::Status GetStatus() = 0;
 
+  /// Interfaces only for stream async call.
+ public:
+  template <class Request>
+  virtual void WriteStream(const Request &request) = 0;
+
+  virtual void WritesDone() = 0;
+
+  virtual bool IsReadingStream() = 0;
+
+  /// Common implementations for gRPC client call.
+ public:
+  ClientCall(ClientCallType type) : type_(type), state_(ClientCallState::CREATE) {}
+
+  const ClientCallType &GetCallType() { return type_; }
+
+  const ClientCallState &GetCallState() { return state_; }
+
   virtual ~ClientCall() = default;
+
+ protected:
+  // The type of this client call.
+  const ClientCallType type_;
+  // Current state of this client call.
+  ClientCallState state_;
+  /// Context for the client. It could be used to convey extra information to
+  /// the server and/or tweak certain RPC behaviors.
+  grpc::ClientContext context_;
 };
 
 class ClientCallManager;
@@ -44,10 +86,13 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
+  explicit ClientCallImpl(const ClientCallback<Reply> &callback)
+      : ClientCall(ClientCallType::DEFAULT_ASYNC_CALL), callback_(callback) {}
 
   Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
 
+  /// The callback to be called by `ClientCallManager` when the reply of this request is
+  /// received.
   void OnReplyReceived() override {
     if (callback_ != nullptr) {
       callback_(GrpcStatusToRayStatus(status_), reply_);
@@ -67,80 +112,66 @@ class ClientCallImpl : public ClientCall {
   /// gRPC status of this request.
   grpc::Status status_;
 
-  /// Context for the client. It could be used to convey extra information to
-  /// the server and/or tweak certain RPC behaviors.
-  grpc::ClientContext context_;
-
   friend class ClientCallManager;
 };
 
-/// Represents an outgoing streaming gRPC call.
-///
-/// NOTE(hchen): Compared to `ClientCallImpl`, this abstract interface doesn't use
-/// template. This allows the users (e.g., `ClientCallMangager`) not having to use
-/// template as well.
 template <class GrpcService, class Request, class Reply>
-class ClientStreamCall {
- public:
-  virtual void WriteStream(Request &request) = 0;
-  virtual void ReadStream(Reply *reply) = 0;
-  virtual void Connect() = 0;
-  virtual void Close() = 0;
-  virtual ~ClientStreamCall() = default;
-};
+using AsyncRpcFunction = std::unique_ptr<grpc::ClientAsyncReaderWriter<Request, Reply>> (
+    GrpcService::Stub::*)(grpc::ClientContext *, grpc::CompletionQueue, void *);
 
-template<class GrpcService, class Request, class Reply>
-using RpcFunction = std::unique_ptr<grpc::Client
-
-/// Implementation of the `ClientStreamCall`. It represents a `ClientStreamCall` for a asynchronous streaming client call.
+/// Implementation of the `ClientStreamCall`. It represents a `ClientStreamCall` for a
+/// asynchronous streaming client call.
 ///
 /// \tparam Reply Type of the Reply message.
 template <class GrpcService, class Request, class Reply>
-class ClientStreamCallImpl : public ClientStreamCall<GrpcService, Request, Reply>,
-                             public ClientCall {
-  enum class Type {
-    READ = 1,
-    WRITE = 2,
-    CONNECT = 3,
-    WRITES_DONE = 4,
-    FINISH = 5
-  };
+class ClientStreamCallImpl : public ClientCall {
  public:
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
+  explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback)
+      : callback_(callback), is_reading_(false) {}
 
   void Connect(typename GrpcService::Stub &stub,
-               const RpcFunction<GrpcService, Request, Reply> rpc_function,
+               const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
                grpc::CompletionQueue &cq) {
-    reader_writer_ = (stub.*rpc_function)(&context_, &cq, reinterpret_cast<void*>(Type::CONNECT));
+    state_ = ClientCallState::CONNECT;
+    client_stream_ = (stub.*async_rpc_function)(
+        &context_, &cq, reinterpret_cast<void *>(tag_));
+    /// Wait for an asynchronous reading.
+    AsyncReadNextMessage();
   }
 
-  void Close() {
-
+  void WritesDone() {
+    state_ = ClientCallState::WRITES_DONE;
+    client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
   }
 
-  void WriteStream() {
-
-  }
-
-  void ReadStream() {
-
+  void WriteStream(const Request &request) {
+    state_ = ClientCallState::WRITE;
+    client_stream_->Write(request, reinterpret_cast<void *>(tag_));
   }
 
   Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
 
+  bool IsReadingStream() { return reply_.IsInitialized(); }
+
+  void AsyncReadNextMessage() {
+    reply_.Clear();
+    client_stream_->Read(&reply_, reinterpret_cast<void *>(tag_));
+  }
+
+  void SetClientCallTag(ClientCallTag *tag) { tag_ = tag; }
+  ClientCallTag *GetClientCallTag() { return tag_; }
+
   void OnReplyReceived() override {
-    if (callback_ != nullptr) {
-      callback_(GrpcStatusToRayStatus(status_), reply_);
+    if (callback_) {
+      callback_(Status::OK(), reply_);
     }
+    AsyncReadNextMessage();
   }
 
  private:
-  /// gRPC client context.
-  grpc::ClientContext context_;
-
   /// The reply message.
   Reply reply_;
 
@@ -148,14 +179,12 @@ class ClientStreamCallImpl : public ClientStreamCall<GrpcService, Request, Reply
   ClientCallback<Reply> callback_;
 
   /// Async writer and reader.
-  std::unique_ptr<ClientAsyncReaderWriter<Request, Reply>> reader_writer_;
+  std::unique_ptr<grpc::ClientAsyncReaderWriter<Request, Reply>> client_stream_;
 
   /// gRPC status of this request.
   grpc::Status status_;
 
-  /// Context for the client. It could be used to convey extra information to
-  /// the server and/or tweak certain RPC behaviors.
-  grpc::ClientContext context_;
+  ClientCallTag *tag_;
 
   friend class ClientCallManager;
 };
