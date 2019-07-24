@@ -104,17 +104,6 @@ def update_kl(trainer, fetches):
         trainer.workers.local_worker().foreach_trainable_policy(update)
 
 
-def warn_about_obs_filter(trainer):
-    if "observation_filter" not in trainer.raw_user_config:
-        # TODO(ekl) remove this message after a few releases
-        logger.info(
-            "Important! Since 0.7.0, observation normalization is no "
-            "longer enabled by default. To enable running-mean "
-            "normalization, set 'observation_filter': 'MeanStdFilter'. "
-            "You can ignore this message if your environment doesn't "
-            "require observation normalization.")
-
-
 def warn_about_bad_reward_scales(trainer, result):
     # Warn about bad clipping configs
     if trainer.config["vf_clip_param"] <= 0:
@@ -164,5 +153,4 @@ PPOTrainer = build_trainer(
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,
-    before_train_step=warn_about_obs_filter,
     after_train_result=warn_about_bad_reward_scales)
