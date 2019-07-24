@@ -272,6 +272,10 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
             actions, axis=1)
 
+        # Prepare KL for Loss
+        mean_kl = make_time_major(
+            old_policy_action_dist.multi_kl(action_dist), drop_last=True)
+
         policy.loss = VTraceSurrogateLoss(
             actions=make_time_major(loss_actions, drop_last=True),
             prev_actions_logp=make_time_major(
@@ -280,8 +284,8 @@ def build_appo_surrogate_loss(policy, batch_tensors):
                 action_dist.logp(actions), drop_last=True),
             old_policy_actions_logp=make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=make_time_major(
-                old_policy_action_dist.multi_kl(action_dist), drop_last=True),
+            action_kl=tf.reduce_mean(mean_kl, axis=0)
+            if is_multidiscrete else mean_kl,
             actions_entropy=make_time_major(
                 action_dist.multi_entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
@@ -306,10 +310,15 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             use_kl_loss=policy.config["use_kl_loss"])
     else:
         logger.info("Using PPO surrogate loss (vtrace=False)")
+
+        # Prepare KL for Loss
+        mean_kl = make_time_major(prev_action_dist.multi_kl(action_dist))
+
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
             actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=make_time_major(prev_action_dist.multi_kl(action_dist)),
+            action_kl=tf.reduce_mean(mean_kl, axis=0)
+            if is_multidiscrete else mean_kl,
             actions_entropy=make_time_major(action_dist.multi_entropy()),
             values=make_time_major(values),
             valid_mask=make_time_major(mask),
