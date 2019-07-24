@@ -865,7 +865,7 @@ def request_cores(redis_address, cores, redis_password=None):
 
     This function is non blocking.
 
-    Arguments:
+    Args:
 
     redis_address: str      -- the redis address of the head ray node (required)
     cores: int              -- the number of CPU cores to request (required)
