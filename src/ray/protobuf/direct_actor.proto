@@ -5,10 +5,12 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 
 message ReturnObject {
+  // Object ID.
+  bytes object_id = 1;
   // Data of the object.
-  bytes data = 1;
+  bytes data = 2;
   // Metaata of the object.
-  bytes metadata = 2;
+  bytes metadata = 3;
 }
 
 message PushTaskRequest {
@@ -19,10 +21,8 @@ message PushTaskRequest {
 }
 
 message PushTaskReply {
-  // The IDs for the returned objects.
-  repeated bytes return_object_ids = 1;
-  // The content for returned objects.
-  repeated ReturnObject return_objects = 2;
+  // The returned objects.
+  repeated ReturnObject return_objects = 1;
 }
 
 // Service for direct actor.

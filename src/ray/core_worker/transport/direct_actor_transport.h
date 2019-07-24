@@ -15,6 +15,8 @@ namespace ray {
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
+/// Task request that is pending to submit because actor is not created yet,
+/// or is being reconstructed.
 struct PendingTaskRequest {
   PendingTaskRequest(const TaskID &task_id, int num_returns,
                      std::unique_ptr<rpc::PushTaskRequest> request)
@@ -23,6 +25,21 @@ struct PendingTaskRequest {
   TaskID task_id_;
   int num_returns_;
   std::unique_ptr<rpc::PushTaskRequest> request_;
+};
+
+/// The state data for an actor.
+struct ActorStateData {
+
+  ActorStateData(gcs::ActorTableData::ActorState state,
+      const std::string &ip, int port)
+    : state_(state),
+      location_(std::make_pair(ip, port)) {}
+
+  /// Actor's state (e.g. alive, dead, reconstrucing).
+  gcs::ActorTableData::ActorState state_;
+
+  /// IP address and port that the actor is listening on.
+  std::pair<std::string, int> location_;
 };
 
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
@@ -82,18 +99,22 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Mutex to proect `rpc_clients_` below.
   std::mutex rpc_clients_mutex_;
 
-  /// Map from actor ids to direct actor call rpc clients.
+  /// Map from actor id to actor state. This currently includes all actors in the system.
+  ///
+  /// TODO(zhijunfu): this map currently keeps track of all the actors in the system,
+  /// like `actor_registry_` in raylet. Later after new GCS client interface supports
+  /// subscribing updates for a specific actor, this will be updated to only include
+  /// entries for actors that the transport submits tasks to.
+  std::unordered_map<ActorID, ActorStateData> actor_states_;
+
+  /// Map from actor id to rpc client. This only includes actors that we send tasks to.
+  ///
+  /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
+  /// subscribe updates for a specific actor.
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
-  /// Map from actor ids to actor's state.
-  std::unordered_map<ActorID, gcs::ActorTableData::ActorState> actor_states_;
-
-  /// Map from actor ids to actor's location.
-  std::unordered_map<ActorID, std::pair<std::string, int>> actor_locations_;
-
-  /// Pending requests to send out on a per-actor basis.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>>
-      pending_requests_;
+  /// Map from actor id to the actor's pending requests.
+  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>> pending_requests_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;

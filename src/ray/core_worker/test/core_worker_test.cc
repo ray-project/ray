@@ -327,7 +327,6 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
       args.emplace_back(TaskArg::PassByValue(object_id_buffer));
     }
 
-    // ActorCreationOptions actor_options{100, direct_call, resources};
     ActorCreationOptions actor_options{1000, direct_call, resources};
 
     // Create an actor.

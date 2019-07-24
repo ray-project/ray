@@ -44,21 +44,22 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto iter = actor_states_.find(actor_id);
-  if (iter == actor_states_.end() || iter->second == ActorTableData::RECONSTRUCTING) {
+  if (iter == actor_states_.end() || iter->second.state_ == ActorTableData::RECONSTRUCTING) {
     // Actor is not yet created, or is being reconstructing, cache the request
     // and submit after actor is alive.
+    // TODO(zhijunfu): it might be possible for a user to specify an invalid
+    // actor handle (e.g. from unpickling), in that case it might be desirable
+    // to have a timeout to mark it as invalid if it doesn't show up in the
+    // specified time.
     auto pending_request = std::unique_ptr<PendingTaskRequest>(
         new PendingTaskRequest(task_id, num_returns, std::move(request)));
     pending_requests_[actor_id].emplace_back(std::move(pending_request));
     return Status::OK();
-  } else if (iter->second == ActorTableData::ALIVE) {
+  } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
-    // RAY_CHECK(rpc_clients_.count(actor_id) > 0);
-
     if (rpc_clients_.count(actor_id) == 0) {
-      RAY_CHECK(actor_locations_.count(actor_id) > 0);
-      const auto &actor_location = actor_locations_[actor_id];
-      HandleActorAlive(actor_id, actor_location.first, actor_location.second);
+      // If rpc client is not available, then create it.
+      HandleActorAlive(actor_id, iter->second.location_.first, iter->second.location_.second);
     }
 
     // Submit request.
@@ -66,7 +67,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     return PushTask(*client, *request, task_id, num_returns);
   } else {
     // Actor is dead, treat the task as failure.
-    RAY_CHECK(iter->second == ActorTableData::DEAD);
+    RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
     return Status::IOError("actor is dead or being reconstructed");
   }
@@ -76,28 +77,25 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &actor_data) {
+    
+    std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+    actor_states_.erase(actor_id);
+    actor_states_.emplace(actor_id, ActorStateData(
+        actor_data.state(), actor_data.ip_address(), actor_data.port()));
+
     if (actor_data.state() == ActorTableData::ALIVE) {
-      RAY_LOG(INFO) << "received notification on actor alive, actor_id: " << actor_id
-                    << ", ip address: " << actor_data.ip_address()
-                    << ", port: " << actor_data.port();
-
-      std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-      actor_states_[actor_id] = actor_data.state();
-      actor_locations_[actor_id] =
-          std::make_pair(actor_data.ip_address(), actor_data.port());
-
       // Check if this actor is the one that we're interested, if we already have
       // a connection to the actor, or have pending requests for it, we should
       // create a new connection.
       if (rpc_clients_.count(actor_id) > 0 || pending_requests_.count(actor_id) > 0) {
         HandleActorAlive(actor_id, actor_data.ip_address(), actor_data.port());
       }
-    } else {
-      RAY_LOG(INFO) << "received notification on actor, state="
-                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id;
-      std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
-      actor_states_[actor_id] = actor_data.state();
     }
+    
+    RAY_LOG(INFO) << "received notification on actor, state="
+                  << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                  << ", ip address: " << actor_data.ip_address()
+                  << ", port: " << actor_data.port();
   };
 
   return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
@@ -110,7 +108,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorAlive(const ActorID &actor_i
       new rpc::DirectActorClient(ip_address, port, client_call_manager_));
   // replace old rpc client if it exists.
   rpc_clients_[actor_id] = std::move(grpc_client);
-
+ 
   // Submit all pending requests.
   auto &client = rpc_clients_[actor_id];
   auto &requests = pending_requests_[actor_id];
@@ -133,12 +131,9 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
-
-        RAY_CHECK(reply.return_object_ids_size() == reply.return_objects_size());
-        for (int i = 0; i < reply.return_object_ids_size(); i++) {
-          ObjectID object_id = ObjectID::FromBinary(reply.return_object_ids(i));
+        for (int i = 0; i < reply.return_objects_size(); i++) {
           const auto &return_object = reply.return_objects(i);
-
+          ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
           std::shared_ptr<LocalMemoryBuffer> data_buffer;
           if (return_object.data().size() > 0) {
             data_buffer = std::make_shared<LocalMemoryBuffer>(
@@ -194,13 +189,11 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   auto status = task_handler_(spec, &results);
   RAY_CHECK(results.size() == spec.NumReturns())
       << results.size() << "  " << spec.NumReturns();
-  for (int i = 0; i < spec.NumReturns(); i++) {
-    ObjectID id = ObjectID::ForTaskReturn(spec.TaskId(), i + 1);
-    (*reply).add_return_object_ids(id.Binary());
-  }
 
-  for (int i = 0; i < results.size(); i++) {
+  for (int i = 0; i < results.size(); i++) {  
     auto return_object = (*reply).add_return_objects();
+    ObjectID id = ObjectID::ForTaskReturn(spec.TaskId(), i + 1);
+    return_object->set_object_id(id.Binary());
     const auto &result = results[i];
     if (result->GetData() != nullptr) {
       return_object->set_data(result->GetData()->Data(), result->GetData()->Size());

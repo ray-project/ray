@@ -46,7 +46,7 @@ int64_t ActorHandle::TaskCounter() const { return inner_.task_counter(); };
 
 int64_t ActorHandle::NumForks() const { return inner_.num_forks(); };
 
-bool ActorHandle::IsDirectCall() const { return inner_.direct_call(); }
+bool ActorHandle::IsDirectActorCall() const { return inner_.direct_call(); }
 
 ActorHandle ActorHandle::Fork() {
   ActorHandle new_handle;
@@ -173,7 +173,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
-  const bool direct_call = actor_handle.IsDirectCall();
+  const bool direct_call = actor_handle.IsDirectActorCall();
   // Add one for actor cursor object id for tasks sent via raylet. Direct actor call
   // doesn't use dummy objects and thus don't need to add one.
   const auto num_returns =

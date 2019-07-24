@@ -40,7 +40,7 @@ CoreWorker::CoreWorker(
       (worker_type_ == WorkerType::WORKER), worker_context_.GetCurrentJobID(), language_,
       rpc_server_port));
 
-  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
+  io_thread_ = std::thread(&CoreWorker::StartIOService, this);
 }
 
 CoreWorker::~CoreWorker() {
@@ -49,6 +49,6 @@ CoreWorker::~CoreWorker() {
   io_thread_.join();
 }
 
-void CoreWorker::RunIOService() { io_service_.run(); }
+void CoreWorker::StartIOService() { io_service_.run(); }
 
 }  // namespace ray

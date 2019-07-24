@@ -52,7 +52,7 @@ class CoreWorker {
   }
 
  private:
-  void RunIOService();
+  void StartIOService();
 
   /// Type of this worker.
   const WorkerType worker_type_;
