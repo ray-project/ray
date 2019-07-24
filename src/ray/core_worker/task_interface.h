@@ -84,7 +84,7 @@ class ActorHandle {
 
   /// Whether direct call is used. If this is true, then the tasks
   /// are submitted directly to the actor without going through raylet.
-  bool IsDirectActorCall() const;
+  bool IsDirectCallActor() const;
 
   ActorHandle Fork();
 

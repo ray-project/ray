@@ -45,7 +45,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto iter = actor_states_.find(actor_id);
   if (iter == actor_states_.end() || iter->second.state_ == ActorTableData::RECONSTRUCTING) {
-    // Actor is not yet created, or is being reconstructing, cache the request
+    // Actor is not yet created, or is being reconstructed, cache the request
     // and submit after actor is alive.
     // TODO(zhijunfu): it might be possible for a user to specify an invalid
     // actor handle (e.g. from unpickling), in that case it might be desirable
