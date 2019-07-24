@@ -23,7 +23,7 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, int port, const Language &language,
+  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -32,6 +32,8 @@ class Worker {
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
+  /// Return the worker's ID.
+  WorkerID WorkerId() const;
   /// Return the worker's PID.
   pid_t Pid() const;
   Language GetLanguage() const;

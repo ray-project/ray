@@ -41,7 +41,7 @@ def build_tf_policy(name,
     This means that you can e.g., depend on any policy attributes created in
     the running of `loss_fn` in later functions such as `stats_fn`.
 
-    In eager mode (experimental), the following functions will be run
+    In eager mode (to be implemented), the following functions will be run
     repeatedly on each eager execution: loss_fn, stats_fn
 
     This means that these functions should not define any variables internally,
