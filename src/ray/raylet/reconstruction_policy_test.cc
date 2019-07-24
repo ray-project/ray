@@ -155,7 +155,9 @@ class ReconstructionPolicyTest : public ::testing::Test {
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
             io_service_,
-            [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
+            [this](const TaskID &task_id, const ObjectID &obj) {
+              TriggerReconstruction(task_id);
+            },
             reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
             mock_object_directory_, mock_gcs_)),
         timer_canceled_(false) {

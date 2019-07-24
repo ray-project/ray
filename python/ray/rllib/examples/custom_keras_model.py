@@ -1,7 +1,4 @@
-"""Example of using a custom ModelV2 Keras-style model.
-
-TODO(ekl): add this to docs once ModelV2 is fully implemented.
-"""
+"""Example of using a custom ModelV2 Keras-style model."""
 
 from __future__ import absolute_import
 from __future__ import division
