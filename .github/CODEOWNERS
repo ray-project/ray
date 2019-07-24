@@ -33,6 +33,7 @@
 /WORKSPACE @ray-project/ray-core
 /bazel/ @ray-project/ray-core
 
-# CI.
-/ci/ @ray-project/ray-core
+# CI scripts.
+.travis.yml @ray-project/ray-core
+/ci/travis/ @ray-project/ray-core
 
