@@ -44,7 +44,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto iter = actor_states_.find(actor_id);
-  if (iter == actor_states_.end() || iter->second.state_ == ActorTableData::RECONSTRUCTING) {
+  if (iter == actor_states_.end() ||
+      iter->second.state_ == ActorTableData::RECONSTRUCTING) {
     // Actor is not yet created, or is being reconstructed, cache the request
     // and submit after actor is alive.
     // TODO(zhijunfu): it might be possible for a user to specify an invalid
@@ -59,7 +60,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // Actor is alive, submit the request.
     if (rpc_clients_.count(actor_id) == 0) {
       // If rpc client is not available, then create it.
-      HandleActorAlive(actor_id, iter->second.location_.first, iter->second.location_.second);
+      HandleActorAlive(actor_id, iter->second.location_.first,
+                       iter->second.location_.second);
     }
 
     // Submit request.
@@ -77,11 +79,11 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &actor_data) {
-    
     std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
     actor_states_.erase(actor_id);
-    actor_states_.emplace(actor_id, ActorStateData(
-        actor_data.state(), actor_data.ip_address(), actor_data.port()));
+    actor_states_.emplace(
+        actor_id,
+        ActorStateData(actor_data.state(), actor_data.ip_address(), actor_data.port()));
 
     if (actor_data.state() == ActorTableData::ALIVE) {
       // Check if this actor is the one that we're interested, if we already have
@@ -91,7 +93,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
         HandleActorAlive(actor_id, actor_data.ip_address(), actor_data.port());
       }
     }
-    
+
     RAY_LOG(INFO) << "received notification on actor, state="
                   << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
                   << ", ip address: " << actor_data.ip_address()
@@ -108,7 +110,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorAlive(const ActorID &actor_i
       new rpc::DirectActorClient(ip_address, port, client_call_manager_));
   // replace old rpc client if it exists.
   rpc_clients_[actor_id] = std::move(grpc_client);
- 
+
   // Submit all pending requests.
   auto &client = rpc_clients_[actor_id];
   auto &requests = pending_requests_[actor_id];
@@ -190,7 +192,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   RAY_CHECK(results.size() == spec.NumReturns())
       << results.size() << "  " << spec.NumReturns();
 
-  for (int i = 0; i < results.size(); i++) {  
+  for (int i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
     ObjectID id = ObjectID::ForTaskReturn(spec.TaskId(), i + 1);
     return_object->set_object_id(id.Binary());

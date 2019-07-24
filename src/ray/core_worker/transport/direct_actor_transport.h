@@ -29,11 +29,8 @@ struct PendingTaskRequest {
 
 /// The state data for an actor.
 struct ActorStateData {
-
-  ActorStateData(gcs::ActorTableData::ActorState state,
-      const std::string &ip, int port)
-    : state_(state),
-      location_(std::make_pair(ip, port)) {}
+  ActorStateData(gcs::ActorTableData::ActorState state, const std::string &ip, int port)
+      : state_(state), location_(std::make_pair(ip, port)) {}
 
   /// Actor's state (e.g. alive, dead, reconstrucing).
   gcs::ActorTableData::ActorState state_;
@@ -114,7 +111,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>> pending_requests_;
+  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>>
+      pending_requests_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
