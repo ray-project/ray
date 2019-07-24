@@ -1,46 +1,11 @@
-Resources (CPUs, GPUs)
-======================
+Resources
+=========
 
-This document describes how resources are managed in Ray. Each node in a Ray
-cluster knows its own resource capacities, and each task specifies its resource
-requirements.
+Often times, you might want to load balance your Ray program, not placing all functions and actors on one machine. This is especially important with GPUs, where one actor may require an entire GPU to complete its task.
 
-CPUs and GPUs
--------------
+When calling ``ray.init()`` without connecting to an existing Ray cluster, Ray will automatically detect the available GPUs and CPUs on the machine.
 
-The Ray backend includes built-in support for CPUs and GPUs.
-
-Specifying a node's resource requirements
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To specify a node's resource requirements from the command line, pass the
-``--num-cpus`` and ``--num-cpus`` flags into ``ray start``.
-
-.. code-block:: bash
-
-  # To start a head node.
-  ray start --head --num-cpus=8 --num-gpus=1
-
-  # To start a non-head node.
-  ray start --redis-address=<redis-address> --num-cpus=4 --num-gpus=2
-
-To specify a node's resource requirements when the Ray processes are all started
-through ``ray.init``, do the following.
-
-.. code-block:: python
-
-  ray.init(num_cpus=8, num_gpus=1)
-
-If the number of CPUs is unspecified, Ray will automatically determine the
-number by running ``multiprocessing.cpu_count()``. If the number of GPUs is
-unspecified, Ray will attempt to automatically detect the number of GPUs.
-
-Specifying a task's CPU and GPU requirements
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and
-``num_gpus`` arguments into the remote decorator. Note that Ray supports
-**fractional** resource requirements.
+To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and ``num_gpus`` arguments into the remote decorator. Note that Ray supports **fractional** resource requirements.
 
 .. code-block:: python
 
@@ -54,7 +19,16 @@ To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and
 
 The ``f`` tasks will be scheduled on machines that have at least 4 CPUs and 2
 GPUs, and when one of the ``f`` tasks executes, 4 CPUs and 2 GPUs will be
-reserved for that task. The IDs of the GPUs that are reserved for the task can
+reserved for the duration of the task. We will cover how available resources are determined in the Ray cluster below.
+
+**Differences between CPU and GPU Requirements**: Note that there is different behavior between CPUs and GPUs.
+
+.. note::
+
+  FIXME
+
+
+The IDs of the GPUs that are reserved for the task can
 be accessed with ``ray.get_gpu_ids()``. Ray will automatically set the
 environment variable ``CUDA_VISIBLE_DEVICES`` for that process. These resources
 will be released when the task finishes executing.
@@ -81,11 +55,34 @@ To specify that an **actor** requires GPUs, do the following.
   class Actor(object):
       pass
 
-When an ``Actor`` instance is created, it will be placed on a node that has at
-least 1 GPU, and the GPU will be reserved for the actor for the duration of the
-actor's lifetime (even if the actor is not executing tasks). The GPU resources
-will be released when the actor terminates. Note that currently **only GPU
-resources are used for actor placement**.
+.. note::
+
+    FIXME : When an ``Actor`` instance is created, it will be placed on a node that has at least 1 GPU, and the GPU will be reserved for the actor for the duration of the actor's lifetime (even if the actor is not executing tasks). The GPU resources will be released when the actor terminates. Note that currently **only GPU resources are used for actor placement**.
+
+Cluster Resources
+-----------------
+
+The Ray backend includes built-in support for CPUs and GPUs.
+
+Specifying a cluster's resource
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, available resource are detected. However, to override the available resources, pass the
+``--num-cpus`` and ``--num-cpus`` flags into ``ray start``.
+
+.. code-block:: bash
+
+  # To start a head node.
+  $ ray start --head --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
+
+  # To start a non-head node.
+  $ ray start --redis-address=<redis-address> --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
+
+  # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
+  ray.init(redis_address=<redis-address>)
+
+  # If not connecting to an existing cluster, you can specify resources:
+  ray.init(num_cpus=8, num_gpus=1)
 
 Custom Resources
 ----------------
@@ -114,8 +111,3 @@ decorator.
   def f():
       return 1
 
-Fractional Resources
---------------------
-
-Task and actor resource requirements can be fractional. This is particularly
-useful if you want multiple tasks or actors to share a single GPU.
