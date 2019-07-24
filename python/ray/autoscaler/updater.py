@@ -295,7 +295,6 @@ class NodeUpdater(object):
             self.ssh_private_key, connect_timeout, self.ssh_control_path) + [
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ]
-
         try:
             self.get_caller(expect_error)(
                 final_cmd,
@@ -304,7 +303,7 @@ class NodeUpdater(object):
         except subprocess.CalledProcessError:
             logger.error("Command failed: \n\n  {}\n".format(
                 " ".join(final_cmd)))
-            sys.exit(1)
+            raise
 
 
 class NodeUpdaterThread(NodeUpdater, Thread):
