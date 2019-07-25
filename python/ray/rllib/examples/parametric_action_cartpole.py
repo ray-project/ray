@@ -28,8 +28,8 @@ import ray
 from ray import tune
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.misc import normc_initializer
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
 
@@ -133,31 +133,10 @@ class ParametricActionsModel(DistributionalQModel, TFModelV2):
                  **kw):
         super(ParametricActionsModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name, **kw)
-        input_layer = tf.keras.layers.Input(
-            shape=true_obs_shape, name="true_obs")
-        fc1 = tf.keras.layers.Dense(
-            256,
-            name="fc1",
-            activation=tf.nn.tanh,
-            kernel_initializer=normc_initializer(1.0))(input_layer)
-        fc2 = tf.keras.layers.Dense(
-            256,
-            name="fc2",
-            activation=tf.nn.tanh,
-            kernel_initializer=normc_initializer(1.0))(fc1)
-        action_embed = tf.keras.layers.Dense(
-            action_embed_size,
-            name="action_embed",
-            activation=None,
-            kernel_initializer=normc_initializer(0.01))(fc2)
-        value_out = tf.keras.layers.Dense(
-            1,
-            name="value_out",
-            activation=None,
-            kernel_initializer=normc_initializer(0.01))(fc2)
-        self.action_embed_model = tf.keras.Model(input_layer,
-                                                 [action_embed, value_out])
-        self.register_variables(self.action_embed_model.variables)
+        self.action_embed_model = FullyConnectedNetwork(
+            Box(-1, 1, shape=true_obs_shape), action_space, action_embed_size,
+            model_config, name + "_action_embed")
+        self.register_variables(self.action_embed_model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.
@@ -169,8 +148,9 @@ class ParametricActionsModel(DistributionalQModel, TFModelV2):
                 self.num_outputs, avail_actions)
 
         # Compute the predicted action embedding
-        action_embed, self._value_out = self.action_embed_model(
-            input_dict["obs"]["cart"])
+        action_embed, _ = self.action_embed_model({
+            "obs": input_dict["obs"]["cart"]
+        })
 
         # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
         # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
@@ -184,7 +164,7 @@ class ParametricActionsModel(DistributionalQModel, TFModelV2):
         return action_logits + inf_mask, state
 
     def value_function(self):
-        return tf.reshape(self._value_out, [-1])
+        return self.action_embed_model.value_function()
 
 
 if __name__ == "__main__":
