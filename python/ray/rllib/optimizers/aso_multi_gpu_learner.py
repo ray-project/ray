@@ -43,7 +43,8 @@ class TFMultiGPULearner(LearnerThread):
                  num_data_load_threads=16,
                  _fake_gpus=False):
         LearnerThread.__init__(self, local_worker, minibatch_buffer_size,
-                               num_sgd_iter, learner_queue_size, learner_queue_timeout)
+                               num_sgd_iter, learner_queue_size,
+                               learner_queue_timeout)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
@@ -100,7 +101,8 @@ class TFMultiGPULearner(LearnerThread):
             self.loader_thread.start()
 
         self.minibatch_buffer = MinibatchBuffer(
-            self.ready_optimizers, minibatch_buffer_size, learner_queue_timeout, num_sgd_iter)
+            self.ready_optimizers, minibatch_buffer_size,
+            learner_queue_timeout, num_sgd_iter)
 
     @override(LearnerThread)
     def step(self):
