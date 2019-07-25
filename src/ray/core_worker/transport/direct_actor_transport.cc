@@ -161,7 +161,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     const auto object_id = ObjectID::ForTaskReturn(task_id, i + 1);
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(data, meta.size());
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
     store_provider_->Put(RayObject(nullptr, meta_buffer), object_id);
   }
 }
