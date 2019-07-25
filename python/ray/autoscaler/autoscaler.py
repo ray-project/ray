@@ -871,12 +871,14 @@ def request_resources(num_cpus=None, num_gpus=None):
     Args:
 
         num_cpus: int              -- the number of CPU cores to request
-        num_gpus: int              -- the number of GPUs to request (not implemented yet)
+        num_gpus: int              -- the number of GPUs to request (Not implemented)
 
     """
     if num_gpus is not None:
-        raise NotImplementedError("GPU resource is not yet supported through request_resources")
-    r = services.create_redis_client(global_worker.node.redis_address, password=global_worker.node.redis_password)
+        raise NotImplementedError(
+            "GPU resource is not yet supported through request_resources")
+    r = services.create_redis_client(global_worker.node.redis_address,
+                                     password=global_worker.node.redis_password)
     assert isinstance(num_cpus, int)
     if num_cpus > 0:
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps({"CPU": num_cpus}))
