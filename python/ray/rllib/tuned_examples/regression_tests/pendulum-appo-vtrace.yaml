@@ -9,4 +9,4 @@ pendulum-appo-vt:
         num_workers: 1
         gamma: 0.95
         train_batch_size: 50
-        vtrace: true
+        vtrace: false
