@@ -394,21 +394,36 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native()))
 
-    # TODO: reconstructions
-    def get_objects(self, object_ids, deserialization_context=None):
-        cdef c_vector[CObjectID] get_ids = ObjectIDsToVector(object_ids)
+    def get_objects(self, object_ids, TaskID current_task_id):
+        # TODO: do this core worker
+        object_id_dict = {}
+        for i,object_id in enumerate(object_ids):
+            try: object_id_dict[object_id].append(i)
+            except: object_id_dict[object_id] = [i]
+
+        deduped = object_id_dict.keys()
+        cdef c_vector[CObjectID] get_ids = ObjectIDsToVector(deduped)
         cdef c_vector[shared_ptr[CRayObject]] results
+        cdef CTaskID task_id
 
-        timeout = RayConfig.instance().get_timeout_milliseconds()
-        check_status(self.core_worker.get().Objects().Get(get_ids, timeout, &results))
+        task_id = current_task_id.native()
+        with nogil:
+            check_status(self.core_worker.get().Objects().Get(get_ids, task_id, -1, &results))
 
-        data_metadata_pairs = []
-        for result in results:
+        data_metadata_pairs = [None for _ in range(len(object_ids))]
+        for i,object_id in enumerate(deduped):
+            result = results[i]
+            if not result.get():
+                print('oopsies')
+                return []
+
             data_buffer = Buffer.make(result.get().GetData())
             metadata_bytes = Buffer.make(result.get().GetMetadata()).to_pybytes()
-            data_metadata_pairs.append((
-                data_buffer,
-                metadata_bytes if len(metadata_bytes) > 0 else None))
+
+            for idx in object_id_dict[object_id]:
+                data_metadata_pairs[idx] = (
+                    data_buffer,
+                    metadata_bytes if len(metadata_bytes) > 0 else None)
 
         return data_metadata_pairs
 
@@ -420,12 +435,15 @@ cdef class CoreWorker:
         serialized = pyarrow.serialize(value, serialization_context)
         cdef size_t data_size = serialized.total_bytes
 
-        check_status(self.core_worker.get().Objects().Create(metadata, data_size, object_id.native(), data))
+        object_id_ = object_id.native()
+        with nogil:
+            check_status(self.core_worker.get().Objects().Create(metadata, data_size, object_id_, data))
 
         buffer = Buffer.make(data)
         serialized.write_to(pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer)))
 
-        check_status(self.core_worker.get().Objects().Seal(object_id.native()))
+        with nogil:
+            check_status(self.core_worker.get().Objects().Seal(object_id_))
 
     def put_raw_buffer(self, object value, ObjectID object_id, c_string metadata=b"", int memcopy_threads=6):
         cdef shared_ptr[CBuffer] data_buf
@@ -434,7 +452,7 @@ cdef class CoreWorker:
         check_status(self.core_worker.get().Objects().Create(metadata_buf, len(value), object_id.native(), data_buf))
 
         stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data_buf)))
-        stream.set_memcopy_threads(memcopy_threads) # TODO
+        stream.set_memcopy_threads(memcopy_threads)
         stream.write(pyarrow.py_buffer(value))
 
         check_status(self.core_worker.get().Objects().Seal(object_id.native()))

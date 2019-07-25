@@ -27,6 +27,7 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   return local_store_provider_.Seal(object_id);
 }
 
+/// TODO: timeouts, nullptrs, duplicates
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
@@ -56,7 +57,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       was_blocked = true;
     }
 
-    // TODO(zhijunfu): can call `fetchOrReconstruct` in batches as an optimization.
+    // TODO(zhijunfu): can call `FetchOrReconstruct` in batches as an optimization.
     RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
 
     // Get the objects from the object store, and parse the result.
@@ -66,8 +67,13 @@ Status CoreWorkerPlasmaStoreProvider::Get(
           std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
       remaining_timeout -= get_timeout;
       should_break = remaining_timeout <= 0;
+      std::cout << "timed out" << std::endl;
     } else {
-      get_timeout = RayConfig::instance().get_timeout_milliseconds();
+      if (num_attempts == 0) {
+        get_timeout = 0;
+      } else {
+        get_timeout = RayConfig::instance().get_timeout_milliseconds();
+      }
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
@@ -80,6 +86,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         (*results)[unready[object_id]] = result_objects[i];
         unready.erase(object_id);
         if (IsException(*result_objects[i])) {
+          std::cout << "was exception" << std::endl;
           should_break = true;
         }
       }

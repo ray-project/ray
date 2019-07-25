@@ -53,6 +53,9 @@ class CoreWorkerObjectInterface {
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
+  Status Get(const std::vector<ObjectID> &ids, const TaskID &task_id, int64_t timeout_ms,
+             std::vector<std::shared_ptr<RayObject>> *results);
+
   /// Wait for a list of objects to appear in the object store.
   ///
   /// \param[in] IDs of the objects to wait for.

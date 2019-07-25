@@ -6,6 +6,7 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CJobID,
+    CTaskID,
     CObjectID,
 )
 from ray.includes.common cimport (
@@ -25,6 +26,8 @@ cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
       CRayStatus Create(const shared_ptr[CBuffer] metadata, const size_t data_size, const CObjectID &object_id, shared_ptr[CBuffer] &data);
       CRayStatus Seal(const CObjectID &object_id);
       CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
+                 c_vector[shared_ptr[CRayObject]] *results);
+      CRayStatus Get(const c_vector[CObjectID] &ids, const CTaskID &task_id, int64_t timeout_ms,
                  c_vector[shared_ptr[CRayObject]] *results);
       CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                   int64_t timeout_ms, c_vector[c_bool] *results);
