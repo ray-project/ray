@@ -259,7 +259,8 @@ class Monitor(object):
                 elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
                     # Handles driver death.
                     message_handler = self.xray_job_notification_handler
-                elif channel == ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL:
+                elif (channel ==
+                      ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
                     message_handler = self.autoscaler_resource_request_handler
                 else:
                     raise Exception("This code should be unreachable.")
@@ -328,7 +329,8 @@ class Monitor(object):
         self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
 
         if self.autoscaler:
-            self.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+            self.subscribe(
+                ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
         # up the associated state in the state tables.

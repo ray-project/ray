@@ -280,7 +280,7 @@ class AutoscalingTest(unittest.TestCase):
         config["min_workers"] = 0
         config["max_workers"] = 50
         cores_per_node = 2
-        config["worker_nodes"] = { "Resources": { "CPU": cores_per_node } }
+        config["worker_nodes"] = {"Resources": {"CPU": cores_per_node}}
         config_path = self.write_config(config)
         self.provider = MockProvider()
         autoscaler = StandardAutoscaler(
@@ -293,11 +293,11 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(0)
-        autoscaler.request_resources({ "CPU": cores_per_node*10 })
+        autoscaler.request_resources({"CPU": cores_per_node * 10})
         for _ in range(3):  # Maximum launch batch is 5
             autoscaler.update()
         self.waitForNodes(10)
-        autoscaler.request_resources({ "CPU": cores_per_node*30 })
+        autoscaler.request_resources({"CPU": cores_per_node * 30})
         for _ in range(4):  # Maximum launch batch is 5
             autoscaler.update()
         self.waitForNodes(30)

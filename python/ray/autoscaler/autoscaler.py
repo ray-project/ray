@@ -571,14 +571,16 @@ class StandardAutoscaler(object):
         # Other resources are not supported at present.
         if "CPU" in self.resource_requests:
             try:
-                cores_per_worker = self.config["worker_nodes"]["Resources"]["CPU"]
+                cores_per_worker = self.config["worker_nodes"]["Resources"][
+                    "CPU"]
             except KeyError:
                 cores_per_worker = 1  # Assume the worst
 
             cores_desired = self.resource_requests["CPU"]
 
-            ideal_num_workers = max(ideal_num_workers,
-                int(np.ceil(cores_desired/cores_per_worker)))
+            ideal_num_workers = max(
+                ideal_num_workers,
+                int(np.ceil(cores_desired / cores_per_worker)))
 
         return min(self.config["max_workers"],
                    max(self.config["min_workers"], ideal_num_workers))
@@ -684,7 +686,8 @@ class StandardAutoscaler(object):
             tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def log_info_string(self, nodes, target):
-        logger.info("StandardAutoscaler: {}".format(self.info_string(nodes, target)))
+        logger.info("StandardAutoscaler: {}".format(
+            self.info_string(nodes, target)))
         logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
 
     def info_string(self, nodes, target):
@@ -699,12 +702,12 @@ class StandardAutoscaler(object):
         if self.bringup:
             suffix += " (bringup=True)"
 
-        return "{}/{} target nodes{}".format(
-            len(nodes), target, suffix)
+        return "{}/{} target nodes{}".format(len(nodes), target, suffix)
 
     def request_resources(self, resources):
         for resource, count in resources.items():
-            self.resource_requests[resource] = max(self.resource_requests[resource], count)
+            self.resource_requests[resource] = max(
+                self.resource_requests[resource], count)
 
         logger.info("StandardAutoscaler: resource_requests={}".format(
             self.resource_requests))
@@ -870,15 +873,19 @@ def request_resources(num_cpus=None, num_gpus=None):
 
     Args:
 
-        num_cpus: int              -- the number of CPU cores to request
-        num_gpus: int              -- the number of GPUs to request (Not implemented)
+        num_cpus: int -- the number of CPU cores to request
+        num_gpus: int -- the number of GPUs to request (Not implemented)
 
     """
     if num_gpus is not None:
         raise NotImplementedError(
             "GPU resource is not yet supported through request_resources")
-    r = services.create_redis_client(global_worker.node.redis_address,
-                                     password=global_worker.node.redis_password)
+    r = services.create_redis_client(
+        global_worker.node.redis_address,
+        password=global_worker.node.redis_password)
     assert isinstance(num_cpus, int)
     if num_cpus > 0:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps({"CPU": num_cpus}))
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+                  json.dumps({
+                      "CPU": num_cpus
+                  }))
