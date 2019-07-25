@@ -33,16 +33,9 @@ class WorkerPoolMock : public WorkerPool {
     WorkerPool::StartWorkerProcess(language, dynamic_options);
   }
 
-  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
+  pid_t StartProcess(const std::vector<std::string> &worker_command_args) override {
     last_worker_pid_ += 1;
-    std::vector<std::string> local_worker_commands_args;
-    for (auto item : worker_command_args) {
-      if (item == nullptr) {
-        break;
-      }
-      local_worker_commands_args.push_back(std::string(item));
-    }
-    worker_commands_by_pid[last_worker_pid_] = std::move(local_worker_commands_args);
+    worker_commands_by_pid[last_worker_pid_] = worker_command_args;
     return last_worker_pid_;
   }
 
@@ -89,8 +82,8 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(
-        new Worker(pid, language, -1, client, client_call_manager_));
+    return std::shared_ptr<Worker>(new Worker(WorkerID::FromRandom(), pid, language, -1,
+                                              client, client_call_manager_));
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {

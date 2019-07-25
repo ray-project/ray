@@ -15,9 +15,9 @@ def build_tf_policy(name,
                     get_default_config=None,
                     postprocess_fn=None,
                     stats_fn=None,
-                    update_ops_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
+                    apply_gradients_fn=None,
                     grad_stats_fn=None,
                     extra_action_fetches_fn=None,
                     extra_action_feed_fn=None,
@@ -35,13 +35,14 @@ def build_tf_policy(name,
 
     Functions will be run in this order to initialize the policy:
         1. Placeholder setup: postprocess_fn
-        2. Loss init: loss_fn, stats_fn, update_ops_fn
-        3. Optimizer init: optimizer_fn, gradients_fn, grad_stats_fn
+        2. Loss init: loss_fn, stats_fn
+        3. Optimizer init: optimizer_fn, gradients_fn, apply_gradients_fn,
+                           grad_stats_fn
 
     This means that you can e.g., depend on any policy attributes created in
     the running of `loss_fn` in later functions such as `stats_fn`.
 
-    In eager mode (experimental), the following functions will be run
+    In eager mode (to be implemented), the following functions will be run
     repeatedly on each eager execution: loss_fn, stats_fn
 
     This means that these functions should not define any variables internally,
@@ -58,13 +59,13 @@ def build_tf_policy(name,
             that takes the same args as Policy.postprocess_trajectory()
         stats_fn (func): optional function that returns a dict of
             TF fetches given the policy and batch input tensors
-        update_ops_fn (func): optional function that returns a list overriding
-            the update ops to run when applying gradients
         optimizer_fn (func): optional function that returns a tf.Optimizer
             given the policy and config
         gradients_fn (func): optional function that returns a list of gradients
-            given a tf optimizer and loss tensor. If not specified, this
+            given (policy, optimizer, loss). If not specified, this
             defaults to optimizer.compute_gradients(loss)
+        apply_gradients_fn (func): optional function that returns an apply
+            gradients op given (policy, optimizer, grads_and_vars)
         grad_stats_fn (func): optional function that returns a dict of
             TF fetches given the policy and loss gradient tensors
         extra_action_fetches_fn (func): optional function that returns
@@ -134,7 +135,6 @@ def build_tf_policy(name,
                 loss_fn,
                 stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
-                update_ops_fn=update_ops_fn,
                 before_loss_init=before_loss_init_wrapper,
                 make_model=make_model,
                 action_sampler_fn=action_sampler_fn,
@@ -169,6 +169,13 @@ def build_tf_policy(name,
                 return gradients_fn(self, optimizer, loss)
             else:
                 return TFPolicy.gradients(self, optimizer, loss)
+
+        @override(TFPolicy)
+        def build_apply_op(self, optimizer, grads_and_vars):
+            if apply_gradients_fn:
+                return apply_gradients_fn(self, optimizer, grads_and_vars)
+            else:
+                return TFPolicy.build_apply_op(self, optimizer, grads_and_vars)
 
         @override(TFPolicy)
         def extra_compute_action_fetches(self):

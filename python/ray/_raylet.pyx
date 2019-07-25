@@ -36,6 +36,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+from ray.exceptions import RayletError
 from ray.utils import decode
 
 cimport cpython
@@ -57,7 +58,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        raise Exception(message)
+        raise RayletError(message)
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
@@ -232,14 +233,11 @@ cdef class RayletClient:
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def submit_task(self, TaskSpec task_spec, execution_dependencies):
+    def submit_task(self, TaskSpec task_spec):
         cdef:
             CObjectID c_id
-            c_vector[CObjectID] c_dependencies
-        for dep in execution_dependencies:
-            c_dependencies.push_back((<ObjectID>dep).native())
         check_status(self.client.get().SubmitTask(
-            c_dependencies, task_spec.task_spec.get()[0]))
+            task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:

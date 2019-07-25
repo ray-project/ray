@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.NotImplementedException;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
@@ -23,7 +24,8 @@ import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.Worker;
-import org.ray.runtime.objectstore.MockObjectStore;
+import org.ray.runtime.objectstore.MockObjectInterface;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskSpec;
 import org.slf4j.Logger;
@@ -37,7 +39,7 @@ public class MockRayletClient implements RayletClient {
   private static final Logger LOGGER = LoggerFactory.getLogger(MockRayletClient.class);
 
   private final Map<ObjectId, Set<TaskSpec>> waitingTasks = new ConcurrentHashMap<>();
-  private final MockObjectStore store;
+  private final MockObjectInterface objectInterface;
   private final RayDevRuntime runtime;
   private final ExecutorService exec;
   private final Deque<Worker> idleWorkers;
@@ -46,8 +48,8 @@ public class MockRayletClient implements RayletClient {
 
   public MockRayletClient(RayDevRuntime runtime, int numberThreads) {
     this.runtime = runtime;
-    this.store = runtime.getObjectStore();
-    store.addObjectPutCallback(this::onObjectPut);
+    this.objectInterface = runtime.getObjectInterface();
+    objectInterface.addObjectPutCallback(this::onObjectPut);
     // The thread pool that executes tasks in parallel.
     exec = Executors.newFixedThreadPool(numberThreads);
     idleWorkers = new ConcurrentLinkedDeque<>();
@@ -113,8 +115,8 @@ public class MockRayletClient implements RayletClient {
           // can be executed.
           if (task.isActorCreationTask() || task.isActorTask()) {
             ObjectId[] returnIds = task.returnIds;
-            store.put(returnIds[returnIds.length - 1].getBytes(),
-                    new byte[]{}, new byte[]{});
+            objectInterface.put(new NativeRayObject(new byte[] {}, new byte[] {}),
+                returnIds[returnIds.length - 1]);
           }
         } finally {
           returnWorker(worker);
@@ -133,15 +135,14 @@ public class MockRayletClient implements RayletClient {
     // Check whether task arguments are ready.
     for (FunctionArg arg : spec.args) {
       if (arg.id != null) {
-        if (!store.isObjectReady(arg.id)) {
+        if (!objectInterface.isObjectReady(arg.id)) {
           unreadyObjects.add(arg.id);
         }
       }
     }
-    // Check whether task dependencies are ready.
-    for (ObjectId id : spec.getExecutionDependencies()) {
-      if (!store.isObjectReady(id)) {
-        unreadyObjects.add(id);
+    if (spec.isActorTask()) {
+      if (!objectInterface.isObjectReady(spec.previousActorTaskDummyObjectId)) {
+        unreadyObjects.add(spec.previousActorTaskDummyObjectId);
       }
     }
     return unreadyObjects;
@@ -155,7 +156,7 @@ public class MockRayletClient implements RayletClient {
 
   @Override
   public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
-      TaskId currentTaskId) {
+                                 TaskId currentTaskId) {
 
   }
 
@@ -171,20 +172,17 @@ public class MockRayletClient implements RayletClient {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
-          timeoutMs, TaskId currentTaskId) {
+      timeoutMs, TaskId currentTaskId) {
     if (waitFor == null || waitFor.isEmpty()) {
       return new WaitResult<>(ImmutableList.of(), ImmutableList.of());
     }
 
-    byte[][] ids = new byte[waitFor.size()][];
-    for (int i = 0; i < waitFor.size(); i++) {
-      ids[i] = waitFor.get(i).getId().getBytes();
-    }
+    List<ObjectId> ids = waitFor.stream().map(RayObject::getId).collect(Collectors.toList());
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
-    List<byte[]> result = store.get(ids, timeoutMs, false);
+    List<Boolean> result = objectInterface.wait(ids, ids.size(), timeoutMs);
     for (int i = 0; i < waitFor.size(); i++) {
-      if (result.get(i) != null) {
+      if (result.get(i)) {
         readyList.add(waitFor.get(i));
       } else {
         unreadyList.add(waitFor.get(i));
@@ -196,9 +194,7 @@ public class MockRayletClient implements RayletClient {
   @Override
   public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
                                 boolean deleteCreatingTasks) {
-    for (ObjectId id : objectIds) {
-      store.free(id);
-    }
+    objectInterface.delete(objectIds, localOnly, deleteCreatingTasks);
   }
 
 

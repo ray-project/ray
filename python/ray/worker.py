@@ -12,6 +12,7 @@ import json
 import logging
 import numpy as np
 import os
+import redis
 import signal
 from six.moves import queue
 import sys
@@ -390,7 +391,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
+        except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
@@ -586,8 +587,8 @@ class Worker(object):
                     actor_counter=0,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
+                    previous_actor_task_dummy_object_id=None,
                     max_actor_reconstructions=0,
-                    execution_dependencies=None,
                     new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
@@ -611,7 +612,9 @@ class Worker(object):
             actor_creation_dummy_object_id: If this task is an actor method,
                 then this argument is the dummy object ID associated with the
                 actor creation task for the corresponding actor.
-            execution_dependencies: The execution dependencies for this task.
+            previous_actor_task_dummy_object_id: If this task is an actor,
+                then this argument is the dummy object ID associated with the
+                task previously submitted to the corresponding actor.
             num_return_vals: The number of return values this function should
                 have.
             resources: The resource requirements for this task.
@@ -651,10 +654,6 @@ class Worker(object):
                     args_for_raylet.append(arg)
                 else:
                     args_for_raylet.append(put(arg))
-
-            # By default, there are no execution dependencies.
-            if execution_dependencies is None:
-                execution_dependencies = []
 
             if new_actor_handles is None:
                 new_actor_handles = []
@@ -705,6 +704,7 @@ class Worker(object):
                 self.task_context.task_index,
                 actor_creation_id,
                 actor_creation_dummy_object_id,
+                previous_actor_task_dummy_object_id,
                 max_actor_reconstructions,
                 actor_id,
                 actor_handle_id,
@@ -713,7 +713,7 @@ class Worker(object):
                 resources,
                 placement_resources,
             )
-            self.raylet_client.submit_task(task, execution_dependencies)
+            self.raylet_client.submit_task(task)
 
             return task.returns()
 
@@ -1538,8 +1538,12 @@ def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
-                                         {"exception": error_message})
+        try:
+            global_worker.redis_client.hmset(
+                b"Drivers:" + global_worker.worker_id,
+                {"exception": error_message})
+        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
+            logger.warning("Could not push exception to redis.")
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1601,6 +1605,8 @@ def print_logs(redis_client, threads_stopped):
                     "The driver may not be able to keep up with the "
                     "stdout/stderr of the workers. To avoid forwarding logs "
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("print_logs: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1699,6 +1705,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 task_error_queue.put((error_message, time.time()))
             else:
                 logger.error(error_message)
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1904,6 +1912,7 @@ def connect(node,
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
+            ObjectID.nil(),  # previous_actor_task_dummy_object_id.
             0,  # max_actor_reconstructions.
             ActorID.nil(),  # actor_id.
             ActorHandleID.nil(),  # actor_handle_id.

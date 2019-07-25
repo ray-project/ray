@@ -6,6 +6,7 @@ import json
 import numpy as np
 import os
 import pytest
+import sys
 import time
 
 import ray
@@ -479,6 +480,8 @@ def test_nondeterministic_task(ray_start_reconstruction):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory):
@@ -524,6 +527,7 @@ def test_driver_put_errors(ray_start_object_store_memory):
 
     errors = wait_for_errors(error_check)
     assert all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+               or "ray.exceptions.UnreconstructableError" in error["message"]
                for error in errors)
 
 
