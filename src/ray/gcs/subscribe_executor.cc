@@ -71,8 +71,9 @@ Status SubscribeExecutor<ID, Data, Table>::AsyncSubscribe(
 }
 
 template <typename ID, typename Data, typename Table>
-Status SubscribeExecutor<ID, Data, Table>::AsyncUnsubscribe(
-    const ClientID &client_id, const ID &id, const StatusCallback &done) {
+Status SubscribeExecutor<ID, Data, Table>::AsyncUnsubscribe(const ClientID &client_id,
+                                                            const ID &id,
+                                                            const StatusCallback &done) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = id_to_request_map_.find(id);

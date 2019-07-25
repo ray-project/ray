@@ -56,8 +56,8 @@ class SubscribeExecutor {
   /// \param id The id of the element to be unsubscribed to.
   /// \param done Callback that will be called when cancel subscription is complete.
   /// \return Status
-  Status AsyncUnsubscribe(const ClientID &client_id,
-                          const ID &id, const StatusCallback &done);
+  Status AsyncUnsubscribe(const ClientID &client_id, const ID &id,
+                          const StatusCallback &done);
 
  private:
   struct SubscribeCallbacks {
