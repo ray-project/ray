@@ -29,10 +29,10 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
   stub_ = RayletService::NewStub(channel);
 
   rpc_thread_ = std::thread([this]() { main_service_.run(); });
-  RAY_LOG(INFO) << "Connecting to unix socket: "
-                << "unix://" + raylet_socket
-                << ", is worker: " << (is_worker_ ? "true" : "false")
-                << ", worker id: " << worker_id;
+  RAY_LOG(DEBUG) << "Connecting to unix socket: "
+                 << "unix://" + raylet_socket
+                 << ", is worker: " << (is_worker_ ? "true" : "false")
+                 << ", worker id: " << worker_id;
   // Try to register client `num_raylet_client_retry_times` times.
   TryRegisterClient(RayConfig::instance().num_raylet_client_retry_times());
 }
