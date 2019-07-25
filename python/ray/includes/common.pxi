@@ -29,16 +29,6 @@ cdef class Buffer:
         """
         return self.buffer.get().Size()
 
-    @property
-    def address(self):
-        """
-        The buffer's address, as an integer.
-        """
-        return <uintptr_t> self.buffer.get().Data()
-
-    cdef getitem(self, int64_t i):
-        return self.buffer.get().Data()[i]
-
     def to_pybytes(self):
         """
         Return this buffer as a Python bytes object.  Memory is copied.
