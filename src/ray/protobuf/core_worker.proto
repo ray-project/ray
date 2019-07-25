@@ -29,5 +29,5 @@ message ActorHandle {
   int64 num_forks = 7;
 
   // Whether direct actor call is used.
-  bool direct_call = 8;
+  bool is_direct_call = 8;
 }

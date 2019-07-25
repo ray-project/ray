@@ -36,10 +36,10 @@ struct TaskOptions {
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions, bool direct_call,
+  ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
                        const std::unordered_map<std::string, double> &resources)
       : max_reconstructions(max_reconstructions),
-        direct_call(direct_call),
+        is_direct_call(is_direct_call),
         resources(resources) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
@@ -47,7 +47,7 @@ struct ActorCreationOptions {
   const uint64_t max_reconstructions = 0;
   /// Whether to use direct actor call. If this is set to true, callers will submit
   /// tasks directly to the created actor without going through raylet.
-  const bool direct_call = false;
+  const bool is_direct_call = false;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
 };
@@ -56,7 +56,7 @@ struct ActorCreationOptions {
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const Language actor_language, bool direct_call,
+              const Language actor_language, bool is_direct_call,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   ActorHandle(const ActorHandle &other);

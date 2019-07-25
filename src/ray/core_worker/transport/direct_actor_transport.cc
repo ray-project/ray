@@ -60,7 +60,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // Actor is alive, submit the request.
     if (rpc_clients_.count(actor_id) == 0) {
       // If rpc client is not available, then create it.
-      HandleActorAlive(actor_id, iter->second.location_.first,
+      ConnectAndSendPendingTasks(actor_id, iter->second.location_.first,
                        iter->second.location_.second);
     }
 
@@ -90,7 +90,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
       // a connection to the actor, or have pending requests for it, we should
       // create a new connection.
       if (rpc_clients_.count(actor_id) > 0 || pending_requests_.count(actor_id) > 0) {
-        HandleActorAlive(actor_id, actor_data.ip_address(), actor_data.port());
+        ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
       }
     }
 
@@ -103,7 +103,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::HandleActorAlive(const ActorID &actor_id,
+void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(const ActorID &actor_id,
                                                           std::string ip_address,
                                                           int port) {
   std::unique_ptr<rpc::DirectActorClient> grpc_client(
@@ -179,22 +179,28 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const TaskSpecification spec(request.task_spec());
-  if (HasByReferenceArgs(spec)) {
+  const TaskSpecification task_spec(request.task_spec());
+  if (HasByReferenceArgs(task_spec)) {
     send_reply_callback(
         Status::Invalid("direct actor call only supports by value arguments"), nullptr,
         nullptr);
     return;
   }
 
+  auto num_returns = task_spec.NumReturns();
+  RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
+  RAY_CHECK(num_returns > 0);
+  // Decrease to account for the dummy object id.
+  num_returns--;
+
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(spec, &results);
-  RAY_CHECK(results.size() == spec.NumReturns())
-      << results.size() << "  " << spec.NumReturns();
+  auto status = task_handler_(task_spec, &results);
+  RAY_CHECK(results.size() == num_returns)
+      << results.size() << "  " << num_returns;
 
   for (int i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
-    ObjectID id = ObjectID::ForTaskReturn(spec.TaskId(), i + 1);
+    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
     return_object->set_object_id(id.Binary());
     const auto &result = results[i];
     if (result->GetData() != nullptr) {

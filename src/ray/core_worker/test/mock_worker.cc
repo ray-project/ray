@@ -39,9 +39,13 @@ class MockWorker {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
 
-    if (ray_function.function_descriptor.size() == 1 &&
-        ray_function.function_descriptor[0] == c_actor_creation_function_str) {
-      // This is an actor creation task.
+    if (task_info.task_type == TaskType::ACTOR_CREATION_TASK &&
+        ray_function.function_descriptor.size() == 1 &&
+        ray_function.function_descriptor[0] == c_test_actor_failover_str) {
+      // This is an actor creation task, and the caller passes a list of object IDs
+      // to this mock worker, which will check if all the objects exist in store,
+      // if it find an object ID that doesn't exist, it will call `Put` to add it
+      // to store, and break. This is used to test actor failover scenario.
       RAY_CHECK(args.size() > 0);
       for (const auto &arg : args) {
         std::string object_id_str(reinterpret_cast<char *>(arg->GetData()->Data()),

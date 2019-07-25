@@ -5,7 +5,7 @@
 
 namespace ray {
 
-const std::string c_actor_creation_function_str = "MockActorConstructor";
+const std::string c_test_actor_failover_str = "MockActorConstructor";
 
 }  // namespace ray
 

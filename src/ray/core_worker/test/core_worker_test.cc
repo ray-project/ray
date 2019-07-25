@@ -129,19 +129,19 @@ class CoreWorkerTest : public ::testing::Test {
 
   // Test actor tasks.
   void TestActorTask(const std::unordered_map<std::string, double> &resources,
-                     bool direct_call);
+                     bool is_direct_call);
 
   // Test actor failure case, verify that the tasks would either succeed or
   // fail with exceptions, in that case the return objects fetched from `Get`
   // contain errors.
   void TestActorFailure(const std::unordered_map<std::string, double> &resources,
-                        bool direct_call);
+                        bool is_direct_call);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstructionbefore submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
   void TestActorFO(const std::unordered_map<std::string, double> &resources,
-                   bool direct_call);
+                   bool is_direct_call);
 
  protected:
   std::vector<std::string> raylet_socket_names_;
@@ -198,7 +198,7 @@ void CoreWorkerTest::TestNormalTask(
 }
 
 void CoreWorkerTest::TestActorTask(
-    const std::unordered_map<std::string, double> &resources, bool direct_call) {
+    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
 
@@ -213,7 +213,7 @@ void CoreWorkerTest::TestActorTask(
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByValue(buffer));
 
-    ActorCreationOptions actor_options{0, direct_call, resources};
+    ActorCreationOptions actor_options{0, is_direct_call, resources};
 
     // Create an actor.
     RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -280,7 +280,7 @@ void CoreWorkerTest::TestActorTask(
     RayFunction func{ray::Language::PYTHON, {}};
     auto status =
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
-    if (direct_call) {
+    if (is_direct_call) {
       // For direct actor call, submitting a task with by-reference arguments
       // would fail.
       RAY_CHECK(!status.ok());
@@ -302,7 +302,7 @@ void CoreWorkerTest::TestActorTask(
 }
 
 void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &resources,
-                                 bool direct_call) {
+                                 bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
 
@@ -318,7 +318,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
 
   {
     // Test creating actor.
-    RayFunction func{ray::Language::PYTHON, {c_actor_creation_function_str}};
+    RayFunction func{ray::Language::PYTHON, {c_test_actor_failover_str}};
 
     std::vector<TaskArg> args;
     for (const auto &entry : object_id_strs) {
@@ -327,7 +327,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
       args.emplace_back(TaskArg::PassByValue(object_id_buffer));
     }
 
-    ActorCreationOptions actor_options{1000, direct_call, resources};
+    ActorCreationOptions actor_options{1000, is_direct_call, resources};
 
     // Create an actor.
     RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -391,7 +391,7 @@ void CoreWorkerTest::TestActorFO(const std::unordered_map<std::string, double> &
 }
 
 void CoreWorkerTest::TestActorFailure(
-    const std::unordered_map<std::string, double> &resources, bool direct_call) {
+    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
 
@@ -407,7 +407,7 @@ void CoreWorkerTest::TestActorFailure(
 
   {
     // Test creating actor.
-    RayFunction func{ray::Language::PYTHON, {c_actor_creation_function_str}};
+    RayFunction func{ray::Language::PYTHON, {c_test_actor_failover_str}};
 
     std::vector<TaskArg> args;
     for (const auto &entry : object_id_strs) {
@@ -416,7 +416,7 @@ void CoreWorkerTest::TestActorFailure(
       args.emplace_back(TaskArg::PassByValue(object_id_buffer));
     }
 
-    ActorCreationOptions actor_options{0 /* disable reconstruction */, direct_call,
+    ActorCreationOptions actor_options{0 /* disable reconstruction */, is_direct_call,
                                        resources};
 
     // Create an actor.

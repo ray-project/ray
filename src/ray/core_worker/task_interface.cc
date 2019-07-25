@@ -9,7 +9,7 @@ namespace ray {
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const class ActorHandleID &actor_handle_id,
-    const Language actor_language, bool direct_call,
+    const Language actor_language, bool is_direct_call,
     const std::vector<std::string> &actor_creation_task_function_descriptor) {
   inner_.set_actor_id(actor_id.Data(), actor_id.Size());
   inner_.set_actor_handle_id(actor_handle_id.Data(), actor_handle_id.Size());
@@ -18,7 +18,7 @@ ActorHandle::ActorHandle(
       actor_creation_task_function_descriptor.begin(),
       actor_creation_task_function_descriptor.end()};
   inner_.set_actor_cursor(actor_id.Data(), actor_id.Size());
-  inner_.set_direct_call(direct_call);
+  inner_.set_is_direct_call(is_direct_call);
 }
 
 ActorHandle::ActorHandle(const ActorHandle &other)
@@ -46,7 +46,7 @@ int64_t ActorHandle::TaskCounter() const { return inner_.task_counter(); };
 
 int64_t ActorHandle::NumForks() const { return inner_.num_forks(); };
 
-bool ActorHandle::IsDirectCallActor() const { return inner_.direct_call(); }
+bool ActorHandle::IsDirectCallActor() const { return inner_.is_direct_call(); }
 
 ActorHandle ActorHandle::Fork() {
   ActorHandle new_handle;
@@ -161,7 +161,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 
   *actor_handle = std::unique_ptr<ActorHandle>(
       new ActorHandle(actor_id, ActorHandleID::Nil(), function.language,
-                      actor_creation_options.direct_call, function.function_descriptor));
+                      actor_creation_options.is_direct_call, function.function_descriptor));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
@@ -173,11 +173,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
-  const bool direct_call = actor_handle.IsDirectCallActor();
-  // Add one for actor cursor object id for tasks sent via raylet. Direct actor call
-  // doesn't use dummy objects and thus don't need to add one.
-  const auto num_returns =
-      direct_call ? task_options.num_returns : (task_options.num_returns + 1);
+  // Add one for actor cursor object id for tasks.
+  const auto num_returns = task_options.num_returns + 1;
 
   // Build common task spec.
   auto builder = BuildCommonTaskSpec(function, args, num_returns, task_options.resources,
@@ -186,31 +183,29 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
   const auto actor_creation_dummy_object_id =
-      direct_call ? ObjectID::Nil()
-                  : ObjectID::FromBinary(actor_handle.ActorID().Binary());
-  const auto previous_actor_task_dummy_object_id =
-      direct_call ? ObjectID::Nil() : actor_handle.ActorCursor();
+      ObjectID::FromBinary(actor_handle.ActorID().Binary());
   builder.SetActorTaskSpec(
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
-      actor_creation_dummy_object_id, previous_actor_task_dummy_object_id,
+      actor_creation_dummy_object_id,
+      /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
       actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
 
-  if (!direct_call) {
-    // Manipulate actor handle state.
-    auto actor_cursor = (*return_ids).back();
-    actor_handle.SetActorCursor(actor_cursor);
-    actor_handle.ClearNewActorHandles();
-  }
+
+  // Manipulate actor handle state.
+  auto actor_cursor = (*return_ids).back();
+  actor_handle.SetActorCursor(actor_cursor);
+  actor_handle.ClearNewActorHandles();
+
   guard.unlock();
 
   // Submit task.
+  const bool is_direct_call = actor_handle.IsDirectCallActor();
   const auto transport_type =
-      direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
+      is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
   auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());
-  if (!direct_call) {
-    // Remove cursor from return ids.
-    (*return_ids).pop_back();
-  }
+  // Remove cursor from return ids.
+  (*return_ids).pop_back();
+
   return status;
 }
 

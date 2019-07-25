@@ -54,13 +54,9 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   TaskInfo task_info{task_spec.TaskId(), task_spec.JobId(), task_type};
 
   auto num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorCreationTask() ||
-      (task_spec.IsActorTask() && !task_spec.ActorCreationDummyObjectId().IsNil())) {
-    // Note for direct actor call doesn't use dummy object id,
-    // and in that case it's set to nil in task spec.
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
-    // Decrease to account for the dummy object id, this logic only
-    // applies to task submitted via raylet.
+    // Decrease to account for the dummy object id.
     num_returns--;
   }
 
