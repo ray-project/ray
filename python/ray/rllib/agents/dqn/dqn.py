@@ -187,7 +187,7 @@ def check_config_and_setup_param_noise(config):
             policies = info["policy"]
             episode = info["episode"]
             episode.custom_metrics["policy_distance"] = policies[
-                DEFAULT_POLICY_ID].pi_distance
+                DEFAULT_POLICY_ID].model.pi_distance
             if end_callback:
                 end_callback(info)
 
@@ -207,6 +207,7 @@ def make_exploration_schedule(config, worker_index):
         assert config["num_workers"] > 1, \
             "This requires multiple workers"
         if worker_index >= 0:
+            # Exploration constants from the Ape-X paper
             exponent = (
                 1 + worker_index / float(config["num_workers"] - 1) * 7)
             return ConstantSchedule(0.4**exponent)

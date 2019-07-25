@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ray-worker
+  namespace: ray
 spec:
   replicas: 3
   selector:

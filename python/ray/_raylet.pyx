@@ -36,6 +36,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+from ray.exceptions import RayletError
 from ray.utils import decode
 
 cimport cpython
@@ -57,7 +58,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        raise Exception(message)
+        raise RayletError(message)
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
@@ -219,14 +220,14 @@ cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
     def __cinit__(self, raylet_socket,
-                  ClientID client_id,
+                  WorkerID worker_id,
                   c_bool is_worker,
                   JobID job_id):
         # We know that we are using Python, so just skip the language
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(
-            raylet_socket.encode("ascii"), client_id.native(), is_worker,
+            raylet_socket.encode("ascii"), worker_id.native(), is_worker,
             job_id.native(), LANGUAGE_PYTHON))
 
     def disconnect(self):
@@ -373,7 +374,7 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetClientID().Binary())
+        return ClientID(self.client.get().GetWorkerId().Binary())
 
     @property
     def job_id(self):
