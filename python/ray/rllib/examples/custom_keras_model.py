@@ -49,7 +49,6 @@ class MyKerasModel(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        self.prev_input = input_dict
         model_out, self._value_out = self.base_model(input_dict["obs"])
         return model_out, state
 
@@ -84,7 +83,6 @@ class MyKerasQModel(DistributionalQModel):
 
     # Implement the core forward method
     def forward(self, input_dict, state, seq_lens):
-        self.prev_input = input_dict
         model_out = self.base_model(input_dict["obs"])
         return model_out, state
 

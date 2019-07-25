@@ -49,7 +49,6 @@ Models and Preprocessors
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Customizing Policies <rllib-models.html#customizing-policys>`__
 
 Algorithms
 ----------
@@ -95,8 +94,8 @@ Offline Datasets
 * `Input API <rllib-offline.html#input-api>`__
 * `Output API <rllib-offline.html#output-api>`__
 
-Concepts and Building Custom Algorithms
----------------------------------------
+Concepts and Custom Algorithms
+------------------------------
 *  `Policies <rllib-concepts.html>`__
 
    -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__

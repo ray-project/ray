@@ -209,7 +209,7 @@ class ModelCatalog(object):
                      num_outputs,
                      model_config,
                      framework,
-                     name=None,
+                     name="default_model",
                      model_interface=None,
                      default_model=None,
                      **model_kwargs):
@@ -306,7 +306,6 @@ class ModelCatalog(object):
         return wrapper
 
     @staticmethod
-    @DeveloperAPI
     def get_model(input_dict,
                   obs_space,
                   action_space,
@@ -314,21 +313,7 @@ class ModelCatalog(object):
                   options,
                   state_in=None,
                   seq_lens=None):
-        """Returns a suitable model conforming to given input and output specs.
-
-        Args:
-            input_dict (dict): Dict of input tensors to the model, including
-                the observation under the "obs" key.
-            obs_space (Space): Observation space of the target gym env.
-            action_space (Space): Action space of the target gym env.
-            num_outputs (int): The size of the output vector of the model.
-            options (dict): Optional args to pass to the model constructor.
-            state_in (list): Optional RNN state in tensors.
-            seq_lens (Tensor): Optional RNN sequence length tensor.
-
-        Returns:
-            model (models.Model): Neural network model.
-        """
+        """Deprecated: use get_model_v2() instead."""
 
         assert isinstance(input_dict, dict)
         options = options or MODEL_DEFAULTS
@@ -377,7 +362,6 @@ class ModelCatalog(object):
                                      num_outputs, options)
 
     @staticmethod
-    @DeveloperAPI
     def get_torch_model(obs_space,
                         num_outputs,
                         options=None,

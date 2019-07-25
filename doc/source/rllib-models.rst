@@ -348,55 +348,6 @@ Custom models can be used to work with environments where (1) the set of valid a
 
 Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms.
 
-Customizing Policies
--------------------------
-
-For deeper customization of algorithms, you can modify the policies of the trainer classes. Here's an example of extending the DDPG policy to specify custom sub-network modules:
-
-.. code-block:: python
-
-    from ray.rllib.models import ModelCatalog
-    from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy as BaseDDPGTFPolicy
-
-    class CustomPNetwork(object):
-        def __init__(self, dim_actions, hiddens, activation):
-            action_out = ...
-            # Use sigmoid layer to bound values within (0, 1)
-            # shape of action_scores is [batch_size, dim_actions]
-            self.action_scores = layers.fully_connected(
-                action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
-
-    class CustomQNetwork(object):
-        def __init__(self, action_inputs, hiddens, activation):
-            q_out = ...
-            self.value = layers.fully_connected(
-                q_out, num_outputs=1, activation_fn=None)
-
-    class CustomDDPGTFPolicy(BaseDDPGTFPolicy):
-        def _build_p_network(self, obs):
-            return CustomPNetwork(
-                self.dim_actions,
-                self.config["actor_hiddens"],
-                self.config["actor_hidden_activation"]).action_scores
-
-        def _build_q_network(self, obs, actions):
-            return CustomQNetwork(
-                actions,
-                self.config["critic_hiddens"],
-                self.config["critic_hidden_activation"]).value
-
-Then, you can create an trainer with your custom policy by:
-
-.. code-block:: python
-
-    from ray.rllib.agents.ddpg.ddpg import DDPGTrainer
-    from custom_policy import CustomDDPGTFPolicy
-
-    DDPGTrainer._policy = CustomDDPGTFPolicy
-    trainer = DDPGTrainer(...)
-
-In this example we overrode existing methods of the existing DDPG policy, i.e., `_build_q_network`, `_build_p_network`, `_build_action_network`, `_build_actor_critic_loss`, but you can also replace the entire graph class entirely.
-
 Model-Based Rollouts
 ~~~~~~~~~~~~~~~~~~~~
 
