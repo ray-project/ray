@@ -61,7 +61,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     if (rpc_clients_.count(actor_id) == 0) {
       // If rpc client is not available, then create it.
       ConnectAndSendPendingTasks(actor_id, iter->second.location_.first,
-                       iter->second.location_.second);
+                                 iter->second.location_.second);
     }
 
     // Submit request.
@@ -103,9 +103,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(const ActorID &actor_id,
-                                                          std::string ip_address,
-                                                          int port) {
+void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
+    const ActorID &actor_id, std::string ip_address, int port) {
   std::unique_ptr<rpc::DirectActorClient> grpc_client(
       new rpc::DirectActorClient(ip_address, port, client_call_manager_));
   // replace old rpc client if it exists.
@@ -195,8 +194,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, &results);
-  RAY_CHECK(results.size() == num_returns)
-      << results.size() << "  " << num_returns;
+  RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
   for (int i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();

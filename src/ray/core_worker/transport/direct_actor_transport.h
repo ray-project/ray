@@ -81,7 +81,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \param[in] ip_address The ip address of the node that the actor is running on.
   /// \param[in] port The port that the actor is listening on.
   /// \return Void.
-  void ConnectAndSendPendingTasks(const ActorID &actor_id, std::string ip_address, int port);
+  void ConnectAndSendPendingTasks(const ActorID &actor_id, std::string ip_address,
+                                  int port);
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;

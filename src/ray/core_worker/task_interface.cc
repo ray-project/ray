@@ -159,9 +159,9 @@ Status CoreWorkerTaskInterface::CreateActor(
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    {});
 
-  *actor_handle = std::unique_ptr<ActorHandle>(
-      new ActorHandle(actor_id, ActorHandleID::Nil(), function.language,
-                      actor_creation_options.is_direct_call, function.function_descriptor));
+  *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
+      actor_id, ActorHandleID::Nil(), function.language,
+      actor_creation_options.is_direct_call, function.function_descriptor));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
@@ -189,7 +189,6 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       actor_creation_dummy_object_id,
       /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
       actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
-
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();
