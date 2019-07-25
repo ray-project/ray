@@ -12,7 +12,7 @@ from ray.rllib.agents import impala
 DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     # Whether to use V-trace weighted advantages. If false, PPO GAE advantages
     # will be used instead.
-    "vtrace": True,
+    "vtrace": False,
 
     # == These two options only apply if vtrace: False ==
     # If true, use the Generalized Advantage Estimator (GAE)
@@ -25,7 +25,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "clip_param": 0.4,
 
     # == PPO KL Loss options ==
-    "use_kl_loss": True,
+    "use_kl_loss": False,
     "kl_coeff": 1.0,
     "kl_target": 0.01,
 
