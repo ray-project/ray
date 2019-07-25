@@ -7,7 +7,8 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.maddpg.maddpg_policy import MADDPGTFPolicy
-from ray.rllib.optimizers import MultiAgentSyncReplayOptimizer
+from ray.rllib.optimizers import SyncReplayOptimizer
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -107,12 +108,45 @@ def set_global_timestep(trainer):
     trainer.train_start_timestep = global_timestep
 
 
+def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
+    samples = {}
+
+    # Modify keys.
+    for pid, p in policies.items():
+        i = pid.split("_")[1]
+        keys = multi_agent_batch.policy_batches[pid].data.keys()
+        keys = ["_".join([k, i]) for k in keys]
+        samples.update(dict(zip(keys, multi_agent_batch.policy_batches[pid].data.values())))
+
+    # Make ops and feed_dict to get "new_obs" from target action sampler.
+    new_obs_ph_n = [p.new_obs_ph for p in policies.values()]
+    new_obs_n = list()
+    for k, v in samples.items():
+        if "new_obs" in k:
+            new_obs_n.append(v)
+
+    target_act_sampler_n = [p.target_act_sampler for p in policies.values()]
+    feed_dict = dict(zip(new_obs_ph_n, new_obs_n))
+
+    new_act_n = p.sess.run(target_act_sampler_n, feed_dict)
+    samples.update({
+        "new_actions_%d" % i: new_act for i, new_act in enumerate(new_act_n)
+    })
+
+    # Share samples among agents.
+    policy_batches = {pid: SampleBatch(samples) for pid in policies.keys()}
+    return MultiAgentBatch(policy_batches, train_batch_size)
+
+
 def make_optimizer(workers, config):
-    return MultiAgentSyncReplayOptimizer(
+    return SyncReplayOptimizer(
         workers,
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"]
+        train_batch_size=config["train_batch_size"],
+        before_learn_on_batch=before_learn_on_batch,
+        synchronize_sampling=True,
+        prioritized_replay=False
     )
 
 

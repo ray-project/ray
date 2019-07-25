@@ -74,11 +74,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     for i, space in enumerate(space_n)]
 
         obs_ph_n = _make_ph_n(obs_space_n, "obs")
-        act_ph_n = _make_ph_n(act_space_n, "act")
+        act_ph_n = _make_ph_n(act_space_n, "actions")
         new_obs_ph_n = _make_ph_n(obs_space_n, "new_obs")
-        new_act_ph_n = _make_ph_n(act_space_n, "new_act")
-        rew_ph = tf.placeholder(tf.float32, shape=(None, 1), name="rew_%d" % agent_id)
-        done_ph = tf.placeholder(tf.float32, shape=(None, 1), name="done_%d" % agent_id)
+        new_act_ph_n = _make_ph_n(act_space_n, "new_actions")
+        rew_ph = tf.placeholder(tf.float32, shape=None, name="rewards_%d" % agent_id)
+        done_ph = tf.placeholder(tf.float32, shape=None, name="dones_%d" % agent_id)
 
         if config["use_local_critic"]:
             obs_space_n, act_space_n = [obs_space_n[agent_id]], [act_space_n[agent_id]]
@@ -103,8 +103,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         # Build critic loss.
         td_error = tf.subtract(
-            tf.stop_gradient(rew_ph + (1.0 - done_ph) * (config["gamma"] ** config["n_step"]) * target_critic),
-            critic
+            tf.stop_gradient(rew_ph + (1.0 - done_ph) * (config["gamma"] ** config["n_step"]) * target_critic[:, 0]),
+            critic[:, 0]
         )
         critic_loss = tf.reduce_mean(td_error ** 2)
 

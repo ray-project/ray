@@ -41,7 +41,9 @@ class SyncReplayOptimizer(PolicyOptimizer):
                  final_prioritized_replay_beta=0.4,
                  prioritized_replay_eps=1e-6,
                  train_batch_size=32,
-                 sample_batch_size=4):
+                 sample_batch_size=4,
+                 before_learn_on_batch=None,
+                 synchronize_sampling=False):
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts
@@ -53,6 +55,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
             final_p=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
+        self.before_learn_on_batch = before_learn_on_batch
+        self.synchronize_sampling = synchronize_sampling
 
         # Stats
         self.update_weights_timer = TimerStat()
@@ -136,6 +140,12 @@ class SyncReplayOptimizer(PolicyOptimizer):
         samples = self._replay()
 
         with self.grad_timer:
+            if self.before_learn_on_batch:
+                samples = self.before_learn_on_batch(
+                    samples,
+                    self.workers.local_worker().policy_map,
+                    self.train_batch_size
+                )
             info_dict = self.workers.local_worker().learn_on_batch(samples)
             for policy_id, info in info_dict.items():
                 self.learner_stats[policy_id] = get_learner_stats(info)
@@ -155,15 +165,21 @@ class SyncReplayOptimizer(PolicyOptimizer):
         samples = {}
         with self.replay_timer:
             for policy_id, replay_buffer in self.replay_buffers.items():
+                if self.synchronize_sampling:
+                    if policy_id == "policy_0":
+                        idxes = replay_buffer.sample_idxes(self.train_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(self.train_batch_size)
+
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
                     (obses_t, actions, rewards, obses_tp1, dones, weights,
-                     batch_indexes) = replay_buffer.sample(
-                         self.train_batch_size,
+                     batch_indexes) = replay_buffer.sample_with_idxes(
+                         idxes,
                          beta=self.prioritized_replay_beta.value(
                              self.num_steps_trained))
                 else:
                     (obses_t, actions, rewards, obses_tp1,
-                     dones) = replay_buffer.sample(self.train_batch_size)
+                     dones) = replay_buffer.sample_with_idxes(idxes)
                     weights = np.ones_like(rewards)
                     batch_indexes = -np.ones_like(rewards)
                 samples[policy_id] = SampleBatch({

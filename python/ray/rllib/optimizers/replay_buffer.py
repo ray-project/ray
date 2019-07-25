@@ -67,6 +67,17 @@ class ReplayBuffer(object):
             self._hit_count[i] += 1
         return (np.array(obses_t), np.array(actions), np.array(rewards),
                 np.array(obses_tp1), np.array(dones))
+    @DeveloperAPI
+    def sample_idxes(self, batch_size):
+        return [
+            random.randint(0,
+                           len(self._storage) - 1) for _ in range(batch_size)
+        ]
+    
+    @DeveloperAPI
+    def sample_with_idxes(self, idxes):
+        self._num_sampled += len(idxes)
+        return self._encode_sample(idxes)
 
     @DeveloperAPI
     def sample(self, batch_size):
@@ -163,6 +174,27 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
+
+    @DeveloperAPI
+    def sample_idxes(self, batch_size):
+        return self._sample_proportional(batch_size)
+
+    @DeveloperAPI
+    def sample_with_idxes(self, idxes, beta):
+        assert beta > 0
+        self._num_sampled += len(idxes)
+
+        weights = []
+        p_min = self._it_min.min() / self._it_sum.sum()
+        max_weight = (p_min * len(self._storage))**(-beta)
+
+        for idx in idxes:
+            p_sample = self._it_sum[idx] / self._it_sum.sum()
+            weight = (p_sample * len(self._storage))**(-beta)
+            weights.append(weight / max_weight)
+        weights = np.array(weights)
+        encoded_sample = self._encode_sample(idxes)
+        return tuple(list(encoded_sample) + [weights, idxes])
 
     @DeveloperAPI
     def sample(self, batch_size, beta):
