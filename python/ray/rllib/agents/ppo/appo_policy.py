@@ -396,6 +396,11 @@ def add_values_and_logits(policy):
 
 class TargetNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
+        """Target Network is updated by the master learner every
+        trainer.update_target_frequency steps. All worker batches
+        are importance sampled w.r. to the target network to ensure
+        a more stable pi_old in PPO.
+        """
         assign_ops = []
         assert len(self.model_vars) == len(self.target_model_vars)
         for var, var_target in zip(self.model_vars, self.target_model_vars):

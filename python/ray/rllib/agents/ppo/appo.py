@@ -36,8 +36,8 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "num_workers": 2,
     "num_gpus": 1,
     "num_data_loader_buffers": 1,
-    "minibatch_buffer_size": 4,
-    "num_sgd_iter": 2,
+    "minibatch_buffer_size": 1,
+    "num_sgd_iter": 1,
     "replay_proportion": 0.0,
     "replay_buffer_num_slots": 100,
     "learner_queue_size": 16,
@@ -74,7 +74,7 @@ def update_target_and_kl(trainer, fetches):
             update_kl(trainer, trainer.optimizer.learner.stats)
 
 
-def initalize_target(trainer):
+def initialize_target(trainer):
     trainer.workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.update_target())
     trainer.target_update_frequency = trainer.config["num_sgd_iter"] \
@@ -86,5 +86,5 @@ APPOTrainer = impala.ImpalaTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     default_policy=AsyncPPOTFPolicy,
     get_policy_class=lambda _: AsyncPPOTFPolicy,
-    after_init=initalize_target,
+    after_init=initialize_target,
     after_optimizer_step=update_target_and_kl)
