@@ -3,9 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -19,6 +16,11 @@ class ActionDistribution(object):
     @DeveloperAPI
     def __init__(self, inputs):
         self.inputs = inputs
+
+    @DeveloperAPI
+    def sample(self):
+        """Draw a sample from the action distribution."""
+        raise NotImplementedError
 
     @DeveloperAPI
     def logp(self, x):

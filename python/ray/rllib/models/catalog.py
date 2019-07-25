@@ -16,13 +16,13 @@ from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
 from ray.rllib.models.tf.tf_action_dist import (
     Categorical, MultiCategorical, Deterministic, DiagGaussian,
     MultiActionDistribution, Dirichlet)
-from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
 from ray.rllib.models.preprocessors import get_preprocessor
-from ray.rllib.models.fcnet import FullyConnectedNetwork
-from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm import LSTM
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
