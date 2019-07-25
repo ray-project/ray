@@ -152,8 +152,8 @@ class Worker(object):
         # It is a JobID.
         self.current_job_id = JobID.nil()
         # Identity of the previous driver that this worker was processing.
-        # It is a DriverID.
-        self.previous_driver_id = DriverID.nil()
+        # It is a JobID.
+        self.previous_job_id = JobID.nil()
         self._task_context = threading.local()
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
@@ -1016,14 +1016,14 @@ class Worker(object):
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
                 # Print new driver to stdout/err if it has changed
-                if self.previous_driver_id != driver_id:
-                    print("Ray driver id: {}".format(str(driver_id.hex())))
+                if self.previous_job_id != job_id:
+                    print("Ray job id: {}".format(str(job_id.hex())))
                     print(
-                        "Ray driver id: {}".format(str(driver_id.hex())),
+                        "Ray job id: {}".format(str(job_id.hex())),
                         file=sys.stderr)
                     sys.stdout.flush()
                     sys.stderr.flush()
-                self.previous_driver_id = driver_id
+                self.previous_job_id = job_id
                 self._process_task(task, execution_info)
             # Reset the state fields so the next task can run.
             self.task_context.current_task_id = TaskID.nil()
@@ -1971,7 +1971,7 @@ def connect(node,
                 target=print_logs,
                 name="ray_print_logs",
                 args=(worker.redis_client, worker.threads_stopped,
-                      DriverID(worker.worker_id)))
+                      JobID(worker.worker_id)))
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
