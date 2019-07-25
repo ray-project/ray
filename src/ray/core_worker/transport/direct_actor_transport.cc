@@ -71,7 +71,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
-    return Status::IOError("actor is dead or being reconstructed");
+    return Status::IOError("Actor is dead.");
   }
 }
 
@@ -160,7 +160,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(task_id, i + 1);
     std::string meta = std::to_string(static_cast<int>(error_type));
-    auto data = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(data, meta.size());
     store_provider_->Put(RayObject(nullptr, meta_buffer), object_id);
   }

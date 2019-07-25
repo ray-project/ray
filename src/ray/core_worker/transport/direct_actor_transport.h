@@ -51,7 +51,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
-  /// Subscribe for all actor updates.
+  /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();
 
   /// Helper function to push a task to an actor.
