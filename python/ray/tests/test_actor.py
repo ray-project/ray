@@ -2105,48 +2105,6 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 5,
-        "object_store_memory": 10**7
-    }],
-    indirect=True)
-@pytest.mark.parametrize("num_actors", [1, 2, 5])
-def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
-    @ray.remote
-    class LargeMemoryActor(object):
-        def some_expensive_task(self):
-            return np.zeros(10**7 // 2, dtype=np.uint8)
-
-    i = 0
-    actors = [LargeMemoryActor.remote() for _ in range(num_actors)]
-    for _ in range(10):
-        pending = [a.some_expensive_task.remote() for a in actors]
-        while pending:
-            [done], pending = ray.wait(pending, num_returns=1)
-            i += 1
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 2,
-        "object_store_memory": 10**7
-    }],
-    indirect=True)
-def test_fill_plasma_exception(ray_start_cluster_head, num_actors):
-    @ray.remote
-    class LargeMemoryActor(object):
-        def some_expensive_task(self):
-            return np.zeros(10**7 + 2, dtype=np.uint8)
-
-    actor = LargeMemoryActor.remote()
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(actor.some_expensive_task.remote())
-
-    with pytest.raises(plasma.PlasmaStoreFull):
-        ray.put(np.zeros(10**7 + 2, dtype=np.uint8))
-
-
-@pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**8], indirect=True)
 def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory
