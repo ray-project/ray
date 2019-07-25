@@ -17,6 +17,7 @@ from collections import defaultdict
 import numpy as np
 import ray.services as services
 import yaml
+from ray.worker import global_worker
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
@@ -855,8 +856,10 @@ def hash_runtime_conf(file_mounts, extra_objs):
 
     return _hash_cache[conf_str]
 
-def request_cores(redis_address, cores, redis_password=None):
-    """Remotely request some CPU cores from the autoscaler.
+
+def request_resources(num_cpus=None, num_gpus=None):
+    """Remotely request some CPU or GPU resources from the autoscaler.
+
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
 
@@ -867,9 +870,13 @@ def request_cores(redis_address, cores, redis_password=None):
 
     Args:
 
-    redis_address: str      -- the redis address of the head ray node (required)
-    cores: int              -- the number of CPU cores to request (required)
-    redis_password: str     -- redis password (optional, default None)
+        num_cpus: int              -- the number of CPU cores to request
+        num_gpus: int              -- the number of GPUs to request (not implemented yet)
+
     """
-    r = services.create_redis_client(redis_address, password=redis_password)
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps({"CPU": cores}))
+    if num_gpus is not None:
+        raise NotImplementedError("GPU resource is not yet supported through request_resources")
+    r = services.create_redis_client(global_worker.node.redis_address, password=global_worker.node.redis_password)
+    assert isinstance(num_cpus, int)
+    if num_cpus > 0:
+        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps({"CPU": num_cpus}))
