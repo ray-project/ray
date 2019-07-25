@@ -39,7 +39,6 @@ class DynamicTFPolicy(TFPolicy):
                  config,
                  loss_fn,
                  stats_fn=None,
-                 update_ops_fn=None,
                  grad_stats_fn=None,
                  before_loss_init=None,
                  make_model=None,
@@ -60,8 +59,6 @@ class DynamicTFPolicy(TFPolicy):
                 TF fetches given the policy and batch input tensors
             grad_stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy and loss gradient tensors
-            update_ops_fn (func): optional function that returns a list
-                overriding the update ops to run when applying gradients
             before_loss_init (func): optional function to run prior to loss
                 init that takes the same arguments as __init__
             make_model (func): optional function that returns a ModelV2 object
@@ -95,7 +92,6 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
-        self._update_ops_fn = update_ops_fn
         self._obs_include_prev_action_reward = obs_include_prev_action_reward
 
         # Setup standard placeholders
@@ -127,8 +123,14 @@ class DynamicTFPolicy(TFPolicy):
             dtype=tf.int32, shape=[None], name="seq_lens")
 
         # Setup model
-        self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-            action_space, self.config["model"])
+        if action_sampler_fn:
+            if not make_model:
+                raise ValueError(
+                    "make_model is required if action_sampler_fn is given")
+            self.dist_class = None
+        else:
+            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+                action_space, self.config["model"])
         if existing_model:
             self.model = existing_model
         elif make_model:
@@ -158,7 +160,6 @@ class DynamicTFPolicy(TFPolicy):
         # Setup action sampler
         if action_sampler_fn:
             self.action_dist = None
-            self.dist_class = None
             action_sampler, action_prob = action_sampler_fn(
                 self, self.model, self.input_dict, obs_space, action_space,
                 config)
@@ -335,6 +336,6 @@ class DynamicTFPolicy(TFPolicy):
         loss = self._loss_fn(self, batch_tensors)
         if self._stats_fn:
             self._stats_fetches.update(self._stats_fn(self, batch_tensors))
-        if self._update_ops_fn:
-            self._update_ops = self._update_ops_fn(self)
+        # override the update ops to be those of the model
+        self._update_ops = self.model.update_ops()
         return loss

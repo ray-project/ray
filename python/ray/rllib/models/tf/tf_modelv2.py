@@ -16,13 +16,13 @@ class TFModelV2(ModelV2):
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
-    def __init__(self, obs_space, action_space, output_spec, model_config,
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         ModelV2.__init__(
             self,
             obs_space,
             action_space,
-            output_spec,
+            num_outputs,
             model_config,
             name,
             framework="tf")
