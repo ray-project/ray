@@ -98,7 +98,7 @@ def make_v1_wrapper(legacy_model_cls):
                     "Cannot get update ops before wrapped v1 model init")
             return list(self._update_ops)
 
-        @override(ModelV2)
+        @override(TFModelV2)
         def variables(self):
             var_list = super(ModelV1Wrapper, self).variables()
             for v in scope_vars(self.variable_scope):

@@ -65,7 +65,10 @@ class QMixLoss(nn.Module):
 
         # Calculate estimated Q-Values
         mac_out = []
-        h = [s.expand([B, self.n_agents, -1]) for s in self.model.state_init()]
+        h = [
+            s.expand([B, self.n_agents, -1])
+            for s in self.model.get_initial_state()
+        ]
         for t in range(T):
             q, h = _mac(self.model, obs[:, t], h)
             mac_out.append(q)
@@ -79,7 +82,7 @@ class QMixLoss(nn.Module):
         target_mac_out = []
         target_h = [
             s.expand([B, self.n_agents, -1])
-            for s in self.target_model.state_init()
+            for s in self.target_model.get_initial_state()
         ]
         for t in range(T):
             target_q, target_h = _mac(self.target_model, next_obs[:, t],
@@ -171,16 +174,23 @@ class QMixTorchPolicy(Policy):
             self.has_action_mask = False
             self.obs_size = _get_size(agent_obs_space)
 
-        self.model = ModelCatalog.get_torch_model(
+        self.model = ModelCatalog.get_model_v2(
             agent_obs_space,
+            action_space.spaces[0],
             self.n_actions,
             config["model"],
-            default_model_cls=RNNModel)
-        self.target_model = ModelCatalog.get_torch_model(
+            framework="torch",
+            name="model",
+            default_model=RNNModel)
+
+        self.target_model = ModelCatalog.get_model_v2(
             agent_obs_space,
+            action_space.spaces[0],
             self.n_actions,
             config["model"],
-            default_model_cls=RNNModel)
+            framework="torch",
+            name="target_model",
+            default_model=RNNModel)
 
         # Setup the mixer network.
         # The global state is just the stacked agent observations for now.
@@ -320,7 +330,7 @@ class QMixTorchPolicy(Policy):
     def get_initial_state(self):
         return [
             s.expand([self.n_agents, -1]).numpy()
-            for s in self.model.state_init()
+            for s in self.model.get_initial_state()
         ]
 
     @override(Policy)
@@ -425,7 +435,7 @@ def _mac(model, obs, h):
     """Forward pass of the multi-agent controller.
 
     Arguments:
-        model: TorchModel class
+        model: TorchModelV2 class
         obs: Tensor of shape [B, n_agents, obs_size]
         h: List of tensors of shape [B, n_agents, h_size]
 
@@ -436,6 +446,6 @@ def _mac(model, obs, h):
     B, n_agents = obs.size(0), obs.size(1)
     obs_flat = obs.reshape([B * n_agents, -1])
     h_flat = [s.reshape([B * n_agents, -1]) for s in h]
-    q_flat, _, _, h_flat = model.forward({"obs": obs_flat}, h_flat)
+    q_flat, h_flat = model({"obs": obs_flat}, h_flat, None)
     return q_flat.reshape(
         [B, n_agents, -1]), [s.reshape([B, n_agents, -1]) for s in h_flat]

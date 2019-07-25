@@ -3,8 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.utils.annotations import PublicAPI
 
 
+@PublicAPI
 class ModelV2(object):
     """Defines a Keras-style abstract network model for use with RLlib.
 
@@ -39,7 +41,6 @@ class ModelV2(object):
         self.model_config = model_config
         self.name = name or "default_model"
         self.framework = framework
-        self.var_list = []
 
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
@@ -118,19 +119,7 @@ class ModelV2(object):
         """
         return {}
 
-    def register_variables(self, variables):
-        """Register the given list of variables with this model."""
-        self.var_list.extend(variables)
-
-    def variables(self):
-        """Returns the list of variables for this model."""
-        return list(self.var_list)
-
-    def trainable_variables(self):
-        """Returns the list of trainable variables for this model."""
-        return [v for v in self.variables() if v.trainable]
-
-    def __call__(self, input_dict, state, seq_lens):
+    def __call__(self, input_dict, state=None, seq_lens=None):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -156,7 +145,7 @@ class ModelV2(object):
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         restored["obs_flat"] = input_dict["obs"]
-        outputs, state = self.forward(restored, state, seq_lens)
+        outputs, state = self.forward(restored, state or [], seq_lens)
 
         try:
             shape = outputs.shape
