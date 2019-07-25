@@ -1577,7 +1577,6 @@ void NodeManager::HandleTaskBlocked(const WorkerID &worker_id,
       local_queues_.QueueTasks({task}, TaskState::RUNNING);
       // Get the CPU resources required by the running task.
       // Release the CPU resources.
-      RAY_LOG(INFO) << ">>>>>>>>>>>>>>>>>>>>here here.";
       auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
       local_available_resources_.Release(cpu_resource_ids);
       cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
