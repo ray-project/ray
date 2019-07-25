@@ -374,12 +374,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
                 shutdown_cmd = wrap_docker(shutdown_cmd)
             cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
 
-        _exec(
-            updater,
-            cmd,
-            screen,
-            tmux,
-            port_forward=port_forward)
+        _exec(updater, cmd, screen, tmux, port_forward=port_forward)
 
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
@@ -414,10 +409,7 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.ssh_cmd(
-            cmd,
-            allocate_tty=True,
-            port_forward=port_forward)
+        updater.ssh_cmd(cmd, allocate_tty=True, port_forward=port_forward)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):
