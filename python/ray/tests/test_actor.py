@@ -2139,7 +2139,11 @@ def test_fill_plasma_exception(ray_start_cluster_head, num_actors):
             return np.zeros(10**7 + 2, dtype=np.uint8)
 
     actor = LargeMemoryActor.remote()
-    ray.get(actor.some_expensive_task.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.some_expensive_task.remote())
+
+    with pytest.raises(plasma.PlasmaStoreFull):
+        ray.put(np.zeros(10**7 + 2, dtype=np.uint8))
 
 
 @pytest.mark.parametrize(
