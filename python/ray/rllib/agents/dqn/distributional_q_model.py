@@ -15,6 +15,11 @@ class DistributionalQModel(TFModelV2):
 
     It also supports options for noisy nets and parameter space noise.
 
+    Data flow:
+        obs -> forward() -> model_out
+        model_out -> get_q_value_distributions() -> Q(s, a) atoms
+        model_out -> get_state_value() -> V(s)
+
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
