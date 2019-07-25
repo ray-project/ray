@@ -58,6 +58,14 @@ class ServerCall {
   /// Set state of this `ServerCall`.
   virtual void SetState(const ServerCallState &new_state) = 0;
 
+  /// This function will be invoked before we actually handle the request, which
+  /// can be used to print logs or execute some common operations.
+  /// It's a service level handler which means all the request in one service
+  /// will be handled in the same way.
+  /// \return Returning true means we need the futher processing of this request, otherwise,
+  /// just finish this request without handling the request.
+  virtual bool PreprocessRequest() = 0;
+
   /// Handle the requst. This is the callback function to be called by
   /// `GrpcServer` when the request is received.
   virtual void HandleRequest() = 0;
@@ -127,9 +135,17 @@ class ServerCallImpl : public ServerCall {
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
+  bool PreprocessRequest() override {
+    service_handler_.
+  }
+
   void HandleRequest() override {
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); });
+      io_service_.post([this] {
+        if (PreprocessRequest()) {
+          HandleRequestImpl();
+        }
+      });
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq

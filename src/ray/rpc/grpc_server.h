@@ -89,6 +89,8 @@ class GrpcServer {
   bool is_closed_;
 };
 
+using PreprocessRequestFunction =
+
 /// Base class that represents an abstract gRPC service.
 ///
 /// Subclass should implement `InitServerCallFactories` to decide
@@ -124,9 +126,14 @@ class GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) = 0;
 
+  /// Register the preprocessing function for this service, which will be executed before handling
+  /// the request.
+  virtual void RegisterPreprocessFunction() = 0;
+
   /// The main event loop, to which the service handler functions will be posted.
   boost::asio::io_service &main_service_;
 
+  PreprocessRequestFunction preprocess_request_function_ = nullptr;
   friend class GrpcServer;
 };
 
