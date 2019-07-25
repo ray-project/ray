@@ -6,6 +6,8 @@
         - `simple`, `simple_adversary`, `simple_crypto`, `simple_push`, `simple_speaker_listener`, `simple_spread`, `simple_tag`
             - RLlib MADDPG shows the similar performance as OpenAI MADDPG on 7 scenarios except `simple_crypto`. 
     - Hyperparameters were set to follow the original hyperparameter setting in [OpenAI/MADDPG](https://github.com/openai/maddpg).
+    
+- Empirically, it was shown that running without `lz4` shows much faster performance.
 
 ## References
 - [OpenAI/MADDPG](https://github.com/openai/maddpg)
