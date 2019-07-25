@@ -6,8 +6,9 @@ from collections import namedtuple
 import distutils.version
 import numpy as np
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.policy import TupleActions
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -24,32 +25,13 @@ else:
 
 
 @DeveloperAPI
-class ActionDistribution(object):
-    """The policy action distribution of an agent.
-
-    Args:
-      inputs (Tensor): The input vector to compute samples from.
-    """
+class TFActionDistribution(ActionDistribution):
+    """TF-specific extensions for building action distributions."""
 
     @DeveloperAPI
     def __init__(self, inputs):
-        self.inputs = inputs
+        super(TFActionDistribution, self).__init__(inputs)
         self.sample_op = self._build_sample_op()
-
-    @DeveloperAPI
-    def logp(self, x):
-        """The log-likelihood of the action distribution."""
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def kl(self, other):
-        """The KL-divergence between two action distributions."""
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def entropy(self):
-        """The entropy of the action distribution."""
-        raise NotImplementedError
 
     @DeveloperAPI
     def _build_sample_op(self):
@@ -70,24 +52,8 @@ class ActionDistribution(object):
         """Returns the log probability of the sampled action."""
         return tf.exp(self.logp(self.sample_op))
 
-    def multi_kl(self, other):
-        """The KL-divergence between two action distributions.
 
-        This differs from kl() in that it can return an array for
-        MultiDiscrete. TODO(ekl) consider removing this.
-        """
-        return self.kl(other)
-
-    def multi_entropy(self):
-        """The entropy of the action distribution.
-
-        This differs from entropy() in that it can return an array for
-        MultiDiscrete. TODO(ekl) consider removing this.
-        """
-        return self.entropy()
-
-
-class Categorical(ActionDistribution):
+class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
     @override(ActionDistribution)
@@ -135,12 +101,12 @@ class Categorical(ActionDistribution):
         return tf.reduce_sum(
             p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
 
-class MultiCategorical(ActionDistribution):
+class MultiCategorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
     def __init__(self, inputs, input_lens):
@@ -175,12 +141,12 @@ class MultiCategorical(ActionDistribution):
     def kl(self, other):
         return tf.reduce_sum(self.multi_kl(other), axis=1)
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
 
-class DiagGaussian(ActionDistribution):
+class DiagGaussian(TFActionDistribution):
     """Action distribution where each vector element is a gaussian.
 
     The first half of the input vector defines the gaussian means, and the
@@ -192,7 +158,7 @@ class DiagGaussian(ActionDistribution):
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        ActionDistribution.__init__(self, inputs)
+        TFActionDistribution.__init__(self, inputs)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -216,27 +182,27 @@ class DiagGaussian(ActionDistribution):
             .5 * self.log_std + .5 * np.log(2.0 * np.pi * np.e),
             reduction_indices=[1])
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
 
-class Deterministic(ActionDistribution):
+class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
     This is similar to DiagGaussian with standard deviation zero.
     """
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def sampled_action_prob(self):
         return 1.0
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.inputs
 
 
-class MultiActionDistribution(ActionDistribution):
+class MultiActionDistribution(TFActionDistribution):
     """Action distribution that operates for list of actions.
 
     Args:
@@ -290,7 +256,7 @@ class MultiActionDistribution(ActionDistribution):
     def sample(self):
         return TupleActions([s.sample() for s in self.child_distributions])
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def sampled_action_prob(self):
         p = self.child_distributions[0].sampled_action_prob()
         for c in self.child_distributions[1:]:
@@ -298,7 +264,7 @@ class MultiActionDistribution(ActionDistribution):
         return p
 
 
-class Dirichlet(ActionDistribution):
+class Dirichlet(TFActionDistribution):
     """Dirichlet distribution for continuous actions that are between
     [0,1] and sum to 1.
 
@@ -319,7 +285,7 @@ class Dirichlet(ActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        ActionDistribution.__init__(self, concentration)
+        TFActionDistribution.__init__(self, concentration)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -338,6 +304,6 @@ class Dirichlet(ActionDistribution):
     def kl(self, other):
         return self.dist.kl_divergence(other.dist)
 
-    @override(ActionDistribution)
+    @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.dist.sample()
