@@ -17,6 +17,8 @@
 
 namespace ray {
 
+using rpc::RayletClient;
+
 class CoreWorker;
 
 /// Options of a non-actor-creation task.

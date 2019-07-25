@@ -6,7 +6,6 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
 

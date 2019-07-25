@@ -3,6 +3,7 @@
 
 // clang-format off
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -43,8 +44,11 @@ class TaskDependencyManager {
   bool CheckObjectLocal(const ObjectID &object_id) const;
 
   /// Subscribe to object depedencies required by the task and check whether
-  /// all dependencies are fulfilled. This will track this task's dependencies
-  /// until UnsubscribeDependencies is called on the same task ID. If any
+  /// all dependencies are fulfilled. This should be called for task arguments and
+  /// `ray.get` calls during task execution.
+  ///
+  /// The TaskDependencyManager will track the task's dependencies
+  /// until UnsubscribeGetDependencies is called on the same task ID. If any
   /// dependencies are remote, then they will be requested. When the last
   /// remote dependency later appears locally via a call to HandleObjectLocal,
   /// the subscribed task will be returned by the HandleObjectLocal call,
@@ -55,16 +59,39 @@ class TaskDependencyManager {
   /// \param required_objects The objects required by the task.
   /// \return Whether all of the given dependencies for the given task are
   /// local.
-  bool SubscribeDependencies(const TaskID &task_id,
-                             const std::vector<ObjectID> &required_objects);
+  bool SubscribeGetDependencies(const TaskID &task_id,
+                                const std::vector<ObjectID> &required_objects);
 
-  /// Unsubscribe from the object dependencies required by this task. If the
-  /// objects were remote and are no longer required by any subscribed task,
-  /// then they will be canceled.
+  /// Subscribe to object depedencies required by the worker. This should be called for
+  /// ray.wait calls during task execution.
   ///
-  /// \param task_id The ID of the task whose dependencies to unsubscribe from.
+  /// The TaskDependencyManager will track all remote dependencies until the
+  /// dependencies are local, or until UnsubscribeWaitDependencies is called
+  /// with the same worker ID, whichever occurs first. Remote dependencies will
+  /// be requested.  This method may be called multiple times per worker on the
+  /// same objects.
+  ///
+  /// \param worker_id The ID of the worker that called `ray.wait`.
+  /// \param required_objects The objects required by the worker.
+  /// \return Void.
+  void SubscribeWaitDependencies(const WorkerID &worker_id,
+                                 const std::vector<ObjectID> &required_objects);
+
+  /// Unsubscribe from the object dependencies required by this task through the task
+  /// arguments or `ray.get`. If the objects were remote and are no longer required by any
+  /// subscribed task, then they will be canceled.
+  ///
+  /// \param task_id The ID of the task whose dependencies we should unsubscribe from.
   /// \return Whether the task was subscribed before.
-  bool UnsubscribeDependencies(const TaskID &task_id);
+  bool UnsubscribeGetDependencies(const TaskID &task_id);
+
+  /// Unsubscribe from the object dependencies required by this worker through `ray.wait`.
+  /// If the objects were remote and are no longer required by any subscribed task, then
+  /// they will be canceled.
+  ///
+  /// \param worker_id The ID of the worker whose dependencies we should unsubscribe from.
+  /// \return The objects that the worker was waiting on.
+  void UnsubscribeWaitDependencies(const WorkerID &worker_id);
 
   /// Mark that the given task is pending execution. Any objects that it creates
   /// are now considered to be pending creation. If there are any subscribed
@@ -125,17 +152,33 @@ class TaskDependencyManager {
   void RecordMetrics() const;
 
  private:
-  using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
+  struct ObjectDependencies {
+    /// The tasks that depend on this object, either because the object is a task argument
+    /// or because the task called `ray.get` on the object.
+    std::unordered_set<TaskID> dependent_tasks;
+    /// The workers that depend on this object because they called `ray.wait` on the
+    /// object.
+    std::unordered_set<WorkerID> dependent_workers;
+
+    bool Empty() const { return dependent_tasks.empty() && dependent_workers.empty(); }
+  };
 
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
-    /// The objects that the task is dependent on. These must be local before
-    /// the task is ready to execute.
-    std::unordered_set<ObjectID> object_dependencies;
+    /// The objects that the task depends on. These are either the arguments to
+    /// the task or objects that the task calls `ray.get` on. These must be
+    /// local before the task is ready to execute. Objects are removed from
+    /// this set once UnsubscribeGetDependencies is called.
+    std::unordered_set<ObjectID> get_dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
-    int64_t num_missing_dependencies;
+    int64_t num_missing_get_dependencies;
   };
+
+  /// The objects that the worker is fetching. These are objects that a task that executed
+  /// or is executing on the worker called `ray.wait` on that are not yet local. An object
+  /// will be automatically removed from this set once it becomes local.
+  using WorkerDependencies = std::unordered_set<ObjectID>;
 
   struct PendingTask {
     PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
@@ -188,13 +231,16 @@ class TaskDependencyManager {
   /// The storage system for the task lease table.
   gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table_;
   /// A mapping from task ID of each subscribed task to its list of object
-  /// dependencies.
+  /// dependencies, either task arguments or objects passed into `ray.get`.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;
+  /// A mapping from worker ID to each object that the worker called `ray.wait` on.
+  std::unordered_map<ray::WorkerID, WorkerDependencies> worker_dependencies_;
   /// All tasks whose outputs are required by a subscribed task. This is a
   /// mapping from task ID to information about the objects that the task
   /// creates, either by return value or by `ray.put`. For each object, we
   /// store the IDs of the subscribed tasks that are dependent on the object.
-  std::unordered_map<ray::TaskID, ObjectDependencyMap> required_tasks_;
+  std::unordered_map<ray::TaskID, std::unordered_map<ObjectID, ObjectDependencies>>
+      required_tasks_;
   /// Objects that are required by a subscribed task, are not local, and are
   /// not created by a pending task. For these objects, there are pending
   /// operations to make the object available.

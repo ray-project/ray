@@ -5,6 +5,8 @@
 #include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/core_worker/object_interface.h"
 
+using ray::rpc::RayletClient;
+
 inline ray::CoreWorkerObjectInterface *GetObjectInterfaceFromPointer(
     jlong nativeObjectInterfacePointer) {
   return reinterpret_cast<ray::CoreWorkerObjectInterface *>(nativeObjectInterfacePointer);

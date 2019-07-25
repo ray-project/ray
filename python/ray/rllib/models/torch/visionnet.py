@@ -4,19 +4,22 @@ from __future__ import print_function
 
 import torch.nn as nn
 
-from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.visionnet import _get_filter_config
 from ray.rllib.utils.annotations import override
 
 
-class VisionNetwork(TorchModel):
+class VisionNetwork(TorchModelV2):
     """Generic vision network."""
 
-    def __init__(self, obs_space, num_outputs, options):
-        TorchModel.__init__(self, obs_space, num_outputs, options)
-        filters = options.get("conv_filters")
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super(VisionNetwork, self).__init__(obs_space, action_space,
+                                            num_outputs, model_config, name)
+
+        filters = model_config.get("conv_filters")
         if not filters:
             filters = _get_filter_config(obs_space.shape)
         layers = []
@@ -40,13 +43,19 @@ class VisionNetwork(TorchModel):
             out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
         self._value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
+        self._cur_value = None
 
-    @override(TorchModel)
-    def _forward(self, input_dict, hidden_state):
-        features = self._hidden_layers(input_dict["obs"])
+    @override(TorchModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        features = self._hidden_layers(input_dict["obs"].float())
         logits = self._logits(features)
-        value = self._value_branch(features).squeeze(1)
-        return logits, features, value, hidden_state
+        self._cur_value = self._value_branch(features).squeeze(1)
+        return logits, state
+
+    @override(TorchModelV2)
+    def value_function(self):
+        assert self._cur_value is not None, "must call forward() first"
+        return self._cur_value
 
     def _hidden_layers(self, obs):
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
