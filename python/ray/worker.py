@@ -388,29 +388,43 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        # Serialize and put the object in the object store.
-        try:
-            self.store_and_register(object_id, value)
-        except pyarrow.plasma.PlasmaObjectExists:
-            # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare the hashes
-            # and make sure that the objects are in fact the same. We also
-            # should return an error code to the caller instead of printing a
-            # message.
-            logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
-        except TypeError:
-            # This error can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need these extra
-            # fallbacks here to start from the beginning. Hopefully the object
-            # could have a `__reduce__` method.
-            register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
-            logger.warning(warning_message)
-            self.store_and_register(object_id, value)
+        def try_store_and_register():
+            # Serialize and put the object in the object store.
+            try:
+                self.store_and_register(object_id, value)
+            except pyarrow.plasma.PlasmaObjectExists:
+                # The object already exists in the object store, so there is no
+                # need to add it again. TODO(rkn): We need to compare the hashes
+                # and make sure that the objects are in fact the same. We also
+                # should return an error code to the caller instead of printing a
+                # message.
+                logger.info(
+                    "The object with ID {} already exists in the object store.".
+                    format(object_id))
+            except TypeError:
+                # This error can happen because one of the members of the object
+                # may not be serializable for cloudpickle. So we need these extra
+                # fallbacks here to start from the beginning. Hopefully the object
+                # could have a `__reduce__` method.
+                register_custom_serializer(type(value), use_pickle=True)
+                warning_message = (
+                    "WARNING: Serializing the class {} failed, "
+                    "so are are falling back to cloudpickle.".format(type(value)))
+                logger.warning(warning_message)
+                self.store_and_register(object_id, value)
+
+        for attempt in reversed(range(retries_left)):
+            try:
+                try_store_and_register(object_id, value)
+                break
+            except pyarrow.lib.PlasmaStoreFull as plasma_exc:
+                if attempt:
+                    logger.debug(
+                        "Waiting {} sec for plasma to drain.".format(delay))
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    raise plasma_exc
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
