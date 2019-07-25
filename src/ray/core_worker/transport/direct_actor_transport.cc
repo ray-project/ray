@@ -71,7 +71,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
-    return Status::IOError("actor is dead or being reconstructed");
+    return Status::IOError("Actor is dead.");
   }
 }
 
