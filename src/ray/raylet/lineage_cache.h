@@ -4,17 +4,16 @@
 #include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
 
-// clang-format off
-#include "ray/common/common_protocol.h"
-#include "ray/raylet/task.h"
-#include "ray/gcs/tables.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-// clang-format on
+#include "ray/common/task/task.h"
+#include "ray/gcs/tables.h"
 
 namespace ray {
 
 namespace raylet {
+
+using rpc::TaskTableData;
 
 /// The status of a lineage cache entry according to its status in the GCS.
 /// Tasks can only transition to a higher GcsStatus (e.g., an UNCOMMITTED state
@@ -136,12 +135,6 @@ class Lineage {
   /// Construct an empty Lineage.
   Lineage();
 
-  /// Construct a Lineage from a ForwardTaskRequest.
-  ///
-  /// \param task_request The request to construct the lineage from. All
-  /// uncommitted tasks in the request will be added to the lineage.
-  Lineage(const protocol::ForwardTaskRequest &task_request);
-
   /// Get an entry from the lineage.
   ///
   /// \param entry_id The ID of the entry to get.
@@ -171,15 +164,6 @@ class Lineage {
   ///
   /// \return A const reference to the lineage entries.
   const std::unordered_map<const TaskID, LineageEntry> &GetEntries() const;
-
-  /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
-  ///
-  /// \param entry_id The task ID to include in the ForwardTaskRequest
-  /// flatbuffer.
-  /// \return An offset to the serialized lineage. The serialization includes
-  /// all task and object entries in the lineage.
-  flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
-      flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
   /// Return the IDs of tasks in the lineage that are dependent on the given
   /// task.
@@ -221,7 +205,7 @@ class LineageCache {
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
   LineageCache(const ClientID &client_id,
-               gcs::TableInterface<TaskID, protocol::Task> &task_storage,
+               gcs::TableInterface<TaskID, TaskTableData> &task_storage,
                gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
 
   /// Asynchronously commit a task to the GCS.
@@ -230,6 +214,13 @@ class LineageCache {
   /// \return Whether the task was successfully committed. This can fail if the
   /// task was already in the COMMITTING state.
   bool CommitTask(const Task &task);
+
+  /// Flush all tasks in the local cache that are not already being
+  /// committed. This is equivalent to all tasks in the UNCOMMITTED
+  /// state.
+  ///
+  /// \return Void.
+  void FlushAllUncommittedTasks();
 
   /// Add a task and its (estimated) uncommitted lineage to the local cache. We
   /// will subscribe to commit notifications for all uncommitted tasks to
@@ -253,13 +244,12 @@ class LineageCache {
   /// The uncommitted lineage consists of all tasks in the given task's lineage
   /// that have not been committed in the GCS, as far as we know.
   ///
-  /// \param task_id The ID of the task to get the uncommitted lineage for. It is
-  ///                a fatal error if the task is not found.
+  /// \param task_id The ID of the task to get the uncommitted lineage for. If
+  /// the task is not found, then the returned lineage will be empty.
   /// \param node_id The ID of the receiving node.
   /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
-  Lineage GetUncommittedLineageOrDie(const TaskID &task_id,
-                                     const ClientID &node_id) const;
+  Lineage GetUncommittedLineage(const TaskID &task_id, const ClientID &node_id) const;
 
   /// Handle the commit of a task entry in the GCS. This attempts to evict the
   /// task if possible.
@@ -312,7 +302,7 @@ class LineageCache {
   /// TODO(swang): Move the ClientID into the generic Table implementation.
   ClientID client_id_;
   /// The durable storage system for task information.
-  gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
+  gcs::TableInterface<TaskID, TaskTableData> &task_storage_;
   /// The pubsub storage system for task information. This can be used to
   /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;

@@ -6,7 +6,8 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
-    CDriverID,
+    CJobID,
+    CWorkerID,
     CObjectID,
     CTaskID,
 )
@@ -81,29 +82,26 @@ cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
 
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
-    const CTaskID GenerateTaskId(const CDriverID &driver_id,
+    const CTaskID GenerateTaskId(const CJobID &job_id,
                                  const CTaskID &parent_task_id,
                                  int parent_task_counter)
 
 
-cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
-    cdef cppclass GCSArg "Arg":
-        pass
-
+cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/gcs/format/gcs_generated.h" namespace "Language" nogil:
+cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 
-cdef extern from "ray/raylet/scheduling_resources.h" \
-        namespace "ray::raylet" nogil:
+cdef extern from "ray/common/task/scheduling_resources.h" \
+        namespace "ray" nogil:
     cdef cppclass ResourceSet "ResourceSet":
         ResourceSet()
         ResourceSet(const unordered_map[c_string, double] &resource_map)

@@ -8,7 +8,6 @@ import time
 import redis
 
 import ray
-from ray.core.generated.EntryType import EntryType
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +175,7 @@ class Cluster(object):
         while time.time() - start_time < timeout:
             clients = ray.state._parse_client_table(redis_client)
             live_clients = [
-                client for client in clients
-                if client["EntryType"] == EntryType.INSERTION
+                client for client in clients if client["IsInsertion"]
             ]
 
             expected = len(self.list_all_nodes())

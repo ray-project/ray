@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
+CONTROL_PATH_MAX_LENGTH = 70
 
 
 def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
@@ -56,7 +57,7 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
-            getuser(), cluster_name)
+            getuser(), cluster_name)[:CONTROL_PATH_MAX_LENGTH]
 
         self.daemon = True
         self.process_runner = process_runner
@@ -165,9 +166,10 @@ class NodeUpdater(object):
                 logger.debug("NodeUpdater: "
                              "{}: Waiting for SSH...".format(self.node_id))
 
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "uptime", connect_timeout=5, redirect=redirect)
+                # Setting redirect=False allows the user to see errors like
+                # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
+                # for Unix domain socket.
+                self.ssh_cmd("uptime", connect_timeout=5, redirect=False)
 
                 return True
 
@@ -196,12 +198,11 @@ class NodeUpdater(object):
             m = "{}: Synced {} to {}".format(self.node_id, local_path,
                                              remote_path)
             with LogTimer("NodeUpdater {}".format(m)):
-                with open("/dev/null", "w") as redirect:
-                    self.ssh_cmd(
-                        "mkdir -p {}".format(os.path.dirname(remote_path)),
-                        redirect=redirect,
-                    )
-                    sync_cmd(local_path, remote_path, redirect=redirect)
+                self.ssh_cmd(
+                    "mkdir -p {}".format(os.path.dirname(remote_path)),
+                    redirect=None,
+                )
+                sync_cmd(local_path, remote_path, redirect=None)
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
@@ -222,18 +223,15 @@ class NodeUpdater(object):
         # Run init commands
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "setting-up"})
-
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.initialization_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.initialization_commands:
+                self.ssh_cmd(cmd)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            with open("/dev/null", "w") as redirect:
-                for cmd in self.setup_commands:
-                    self.ssh_cmd(cmd, redirect=redirect)
+            for cmd in self.setup_commands:
+                self.ssh_cmd(cmd)
 
     def rsync_up(self, source, target, redirect=None, check_error=True):
         logger.info("NodeUpdater: "
@@ -293,12 +291,20 @@ class NodeUpdater(object):
                 "-L", "{}:localhost:{}".format(port_forward, port_forward)
             ]
 
-        self.get_caller(expect_error)(
-            ssh + ssh_opt + get_default_ssh_options(
-                self.ssh_private_key, connect_timeout, self.ssh_control_path) +
-            ["{}@{}".format(self.ssh_user, self.ssh_ip), cmd],
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+        final_cmd = ssh + ssh_opt + get_default_ssh_options(
+            self.ssh_private_key, connect_timeout, self.ssh_control_path) + [
+                "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
+            ]
+
+        try:
+            self.get_caller(expect_error)(
+                final_cmd,
+                stdout=redirect or sys.stdout,
+                stderr=redirect or sys.stderr)
+        except subprocess.CalledProcessError:
+            logger.error("Command failed: \n\n  {}\n".format(
+                " ".join(final_cmd)))
+            sys.exit(1)
 
 
 class NodeUpdaterThread(NodeUpdater, Thread):

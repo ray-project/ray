@@ -2,6 +2,7 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
+import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.api.runtimecontext.RuntimeContext;
@@ -17,8 +18,8 @@ public class RuntimeContextImpl implements RuntimeContext {
   }
 
   @Override
-  public UniqueId getCurrentDriverId() {
-    return runtime.getWorkerContext().getCurrentDriverId();
+  public JobId getCurrentJobId() {
+    return runtime.getWorkerContext().getCurrentJobId();
   }
 
   @Override

@@ -1,10 +1,17 @@
 #ifndef RAY_CORE_WORKER_TASK_INTERFACE_H
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
-#include "common.h"
 #include "ray/common/buffer.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/transport/transport.h"
+#include "ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 
@@ -12,6 +19,10 @@ class CoreWorker;
 
 /// Options of a non-actor-creation task.
 struct TaskOptions {
+  TaskOptions() {}
+  TaskOptions(int num_returns, const std::unordered_map<std::string, double> &resources)
+      : num_returns(num_returns), resources(resources) {}
+
   /// Number of returns of this task.
   const int num_returns = 1;
   /// Resources required by this task.
@@ -20,6 +31,11 @@ struct TaskOptions {
 
 /// Options of an actor creation task.
 struct ActorCreationOptions {
+  ActorCreationOptions() {}
+  ActorCreationOptions(uint64_t max_reconstructions,
+                       const std::unordered_map<std::string, double> &resources)
+      : max_reconstructions(max_reconstructions), resources(resources) {}
+
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
@@ -30,27 +46,75 @@ struct ActorCreationOptions {
 /// A handle to an actor.
 class ActorHandle {
  public:
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id)
-      : actor_id_(actor_id), actor_handle_id_(actor_handle_id) {}
+  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+              const Language actor_language,
+              const std::vector<std::string> &actor_creation_task_function_descriptor);
+
+  ActorHandle(const ActorHandle &other);
 
   /// ID of the actor.
-  const class ActorID &ActorID() const { return actor_id_; }
+  ray::ActorID ActorID() const;
 
   /// ID of this actor handle.
-  const class ActorHandleID &ActorHandleID() const { return actor_handle_id_; }
+  ray::ActorHandleID ActorHandleID() const;
+
+  /// Language of the actor.
+  Language ActorLanguage() const;
+
+  // Function descriptor of actor creation task.
+  std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
+
+  /// The unique id of the last return of the last task.
+  /// It's used as a dependency for the next task.
+  ObjectID ActorCursor() const;
+
+  /// The number of tasks that have been invoked on this actor.
+  int64_t TaskCounter() const;
+
+  /// The number of times that this actor handle has been forked.
+  /// It's used to make sure ids of actor handles are unique.
+  int64_t NumForks() const;
+
+  ActorHandle Fork();
+
+  void Serialize(std::string *output);
+
+  static ActorHandle Deserialize(const std::string &data);
 
  private:
-  /// ID of the actor.
-  const class ActorID actor_id_;
-  /// ID of this actor handle.
-  const class ActorHandleID actor_handle_id_;
+  ActorHandle();
+
+  /// Set actor cursor.
+  void SetActorCursor(const ObjectID &actor_cursor);
+
+  /// Increase task counter.
+  int64_t IncreaseTaskCounter();
+
+  std::vector<ray::ActorHandleID> NewActorHandles() const;
+
+  void ClearNewActorHandles();
+
+ private:
+  /// Protobuf defined ActorHandle.
+  ray::rpc::ActorHandle inner_;
+  /// The new actor handles that were created from this handle
+  /// since the last task on this handle was submitted. This is
+  /// used to garbage-collect dummy objects that are no longer
+  /// necessary in the backend.
+  std::vector<ray::ActorHandleID> new_actor_handles_;
+
+  /// Mutex to protect mutable fields.
+  std::mutex mutex_;
+
+  friend class CoreWorkerTaskInterface;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task
 /// submission.
 class CoreWorkerTaskInterface {
  public:
-  CoreWorkerTaskInterface(CoreWorker &core_worker) : core_worker_(core_worker) {}
+  CoreWorkerTaskInterface(WorkerContext &worker_context,
+                          std::unique_ptr<RayletClient> &raylet_client);
 
   /// Submit a normal task.
   ///
@@ -71,7 +135,7 @@ class CoreWorkerTaskInterface {
   /// \return Status.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     ActorHandle *actor_handle);
+                     std::unique_ptr<ActorHandle> *actor_handle);
 
   /// Submit an actor task.
   ///
@@ -87,8 +151,28 @@ class CoreWorkerTaskInterface {
                          std::vector<ObjectID> *return_ids);
 
  private:
-  /// Reference to the parent CoreWorker instance.
-  CoreWorker &core_worker_;
+  /// Build common attributes of the task spec, and compute return ids.
+  ///
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] num_returns Number of returns.
+  /// \param[in] required_resources Resources required by this task.
+  /// \param[in] required_placement_resources Resources required by placing this task on a
+  /// node.
+  /// \param[out] return_ids Return IDs.
+  /// \return A `TaskSpecBuilder`.
+  TaskSpecBuilder BuildCommonTaskSpec(
+      const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      std::vector<ObjectID> *return_ids);
+
+  /// Reference to the parent CoreWorker's context.
+  WorkerContext &worker_context_;
+
+  /// All the task submitters supported.
+  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
+      task_submitters_;
 };
 
 }  // namespace ray

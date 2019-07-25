@@ -28,8 +28,8 @@ class MyTrainableClass(Trainable):
 
     def _train(self):
         self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
+        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
+        v *= self.config.get("height", 1)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
@@ -50,8 +50,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--ray-redis-address",
+        help="Address of Ray cluster for seamless distributed execution.")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(redis_address=args.ray_redis_address)
 
     # asynchronous hyperband early stopping, configured with
     # `episode_reward_mean` as the

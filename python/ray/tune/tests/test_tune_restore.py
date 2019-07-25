@@ -10,7 +10,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.tune.util import recursive_fnmatch
+from ray.tune.util import recursive_fnmatch, validate_save_restore
 from ray.rllib import _register_all
 
 
@@ -51,6 +51,49 @@ class TuneRestoreTest(unittest.TestCase):
                 "env": "CartPole-v0",
             },
         )
+
+
+class TuneExampleTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()
+
+    def testTensorFlowMNIST(self):
+        from ray.tune.examples.tune_mnist_ray_hyperband import TrainMNIST
+        validate_save_restore(TrainMNIST)
+        validate_save_restore(TrainMNIST, use_object_store=True)
+
+    def testPBTKeras(self):
+        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
+        from tensorflow.python.keras.datasets import cifar10
+        cifar10.load_data()
+        validate_save_restore(Cifar10Model)
+        validate_save_restore(Cifar10Model, use_object_store=True)
+
+    def testPyTorchMNIST(self):
+        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
+        from torchvision import datasets
+        datasets.MNIST("~/data", train=True, download=True)
+        validate_save_restore(TrainMNIST)
+        validate_save_restore(TrainMNIST, use_object_store=True)
+
+    def testLogging(self):
+        from ray.tune.examples.logging_example import MyTrainableClass
+        validate_save_restore(MyTrainableClass)
+        validate_save_restore(MyTrainableClass, use_object_store=True)
+
+    def testHyperbandExample(self):
+        from ray.tune.examples.hyperband_example import MyTrainableClass
+        validate_save_restore(MyTrainableClass)
+        validate_save_restore(MyTrainableClass, use_object_store=True)
+
+    def testAsyncHyperbandExample(self):
+        from ray.tune.examples.async_hyperband_example import MyTrainableClass
+        validate_save_restore(MyTrainableClass)
+        validate_save_restore(MyTrainableClass, use_object_store=True)
 
 
 class AutoInitTest(unittest.TestCase):

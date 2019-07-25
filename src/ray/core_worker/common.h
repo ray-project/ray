@@ -5,14 +5,12 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/raylet/raylet_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
-
-/// Type of this worker.
-enum class WorkerType { WORKER, DRIVER };
-
-/// Language of Ray tasks and workers.
-enum class Language { PYTHON, JAVA };
+using WorkerType = rpc::WorkerType;
 
 /// Information about a remote function.
 struct RayFunction {
@@ -65,6 +63,20 @@ class TaskArg {
   /// Data of the argument, if passed by value, otherwise nullptr.
   const std::shared_ptr<Buffer> data_;
 };
+
+/// Information of a task
+struct TaskInfo {
+  /// The ID of task.
+  const TaskID task_id;
+  /// The job ID.
+  const JobID job_id;
+  /// The type of task.
+  const TaskType task_type;
+};
+
+enum class StoreProviderType { LOCAL_PLASMA, PLASMA };
+
+enum class TaskTransportType { RAYLET };
 
 }  // namespace ray
 

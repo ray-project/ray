@@ -7,10 +7,17 @@ intended to run forever until they fail.
 Running the Workloads
 ---------------------
 
-To run the workloads, run ``./start_workloads.sh``. This will start one EC2
-instance per  workload and will start the workloads running (one per instance).
-Running the ``./start_workloads.sh`` script again will clean up any state from
-the previous runs and will start the workloads again.
+To run the workloads, first edit the config.yaml and replace
+``RAY_WHEEL_TO_TEST_HERE`` with the desired version to test, then run:
+
+.. code-block:: bash
+
+    ./start_workloads.sh
+
+This will start one EC2 instance per  workload and will start
+the workloads running (one per instance). Running the ``./start_workloads.sh``
+script again will clean up any state from the previous runs and will start the
+workloads again.
 
 Check Workload Statuses
 -----------------------

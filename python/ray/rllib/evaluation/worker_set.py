@@ -211,4 +211,6 @@ class WorkerSet(object):
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
             soft_horizon=config["soft_horizon"],
+            seed=(config["seed"] + worker_index)
+            if config["seed"] is not None else None,
             _fake_sampler=config.get("_fake_sampler", False))

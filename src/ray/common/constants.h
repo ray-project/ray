@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
-constexpr int64_t kUniqueIDSize = 20;
+constexpr size_t kUniqueIDSize = 20;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
@@ -35,5 +35,7 @@ constexpr int64_t kMaxTaskPuts = ((int64_t)1 << (kObjectIdIndexSize - 1));
 constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
+
+constexpr char kWorkerDynamicOptionPlaceholderPrefix[] = "RAY_WORKER_OPTION_";
 
 #endif  // RAY_CONSTANTS_H_

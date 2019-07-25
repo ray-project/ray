@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.tests.conftest import _ray_start_cluster
 
 num_tasks_submitted = [10**n for n in range(0, 6)]
 num_tasks_ids = ["{}_tasks".format(i) for i in num_tasks_submitted]
@@ -41,3 +42,61 @@ def test_task_submission(benchmark, num_tasks):
     warmup()
     benchmark(benchmark_task_submission, num_tasks)
     ray.shutdown()
+
+
+def benchmark_task_forward(f, num_tasks):
+    ray.get([f.remote() for _ in range(num_tasks)])
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize(
+    "num_tasks", [10**3, 10**4],
+    ids=[str(num) + "_tasks" for num in [10**3, 10**4]])
+def test_task_forward(benchmark, num_tasks):
+    with _ray_start_cluster(
+            do_init=True,
+            num_nodes=1,
+            num_cpus=16,
+            object_store_memory=10**7,
+    ) as cluster:
+        cluster.add_node(
+            num_cpus=16,
+            object_store_memory=10**7,
+            resources={"my_resource": 100},
+        )
+
+        @ray.remote(resources={"my_resource": 0.001})
+        def f():
+            return 1
+
+        # Warm up
+        ray.get([f.remote() for _ in range(100)])
+        benchmark(benchmark_task_forward, f, num_tasks)
+
+
+def benchmark_transfer_object(actor, object_ids):
+    ray.get(actor.f.remote(object_ids))
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize("object_number, data_size",
+                         [(10000, 500), (10000, 5000), (1000, 500),
+                          (1000, 5000)])
+def test_transfer_performance(benchmark, ray_start_cluster_head, object_number,
+                              data_size):
+    cluster = ray_start_cluster_head
+    cluster.add_node(resources={"my_resource": 1}, object_store_memory=10**9)
+
+    @ray.remote(resources={"my_resource": 1})
+    class ObjectActor:
+        def f(self, object_ids):
+            ray.get(object_ids)
+
+    # setup remote actor
+    actor = ObjectActor.remote()
+    actor.f.remote([])
+
+    data = bytes(1) * data_size
+    object_ids = [ray.put(data) for _ in range(object_number)]
+
+    benchmark(benchmark_transfer_object, actor, object_ids)

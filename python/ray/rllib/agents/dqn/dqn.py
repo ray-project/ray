@@ -8,6 +8,7 @@ from ray import tune
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
+from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
@@ -186,7 +187,7 @@ def check_config_and_setup_param_noise(config):
             policies = info["policy"]
             episode = info["episode"]
             episode.custom_metrics["policy_distance"] = policies[
-                DEFAULT_POLICY_ID].pi_distance
+                DEFAULT_POLICY_ID].model.pi_distance
             if end_callback:
                 end_callback(info)
 
@@ -206,6 +207,7 @@ def make_exploration_schedule(config, worker_index):
         assert config["num_workers"] > 1, \
             "This requires multiple workers"
         if worker_index >= 0:
+            # Exploration constants from the Ape-X paper
             exponent = (
                 1 + worker_index / float(config["num_workers"] - 1) * 7)
             return ConstantSchedule(0.4**exponent)
@@ -294,3 +296,5 @@ GenericOffPolicyTrainer = build_trainer(
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
+
+SimpleQTrainer = DQNTrainer.with_updates(default_policy=SimpleQPolicy)
