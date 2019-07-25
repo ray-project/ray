@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import distutils.version
 import numpy as np
 
 from ray.rllib.models.action_dist import ActionDistribution
