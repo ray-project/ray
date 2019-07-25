@@ -10,8 +10,8 @@ import unittest
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.lstm import add_time_dimension, chop_into_sequences
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.tf.lstm import add_time_dimension, chop_into_sequences
+from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf

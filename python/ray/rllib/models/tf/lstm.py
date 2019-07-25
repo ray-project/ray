@@ -19,7 +19,7 @@ more info.
 
 import numpy as np
 
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.rllib.utils.annotations import override, DeveloperAPI, PublicAPI
 from ray.rllib.utils import try_import_tf
@@ -27,6 +27,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
+# Deprecated: see as an alternative models/tf/recurrent_tf_modelv2.py
 class LSTM(Model):
     """Adds a LSTM cell on top of some other model output.
 

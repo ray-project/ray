@@ -6,6 +6,7 @@ from collections import namedtuple
 import distutils.version
 import numpy as np
 
+from ray.rllib.policy.policy import TupleActions
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf
 
@@ -295,9 +296,6 @@ class MultiActionDistribution(ActionDistribution):
         for c in self.child_distributions[1:]:
             p *= c.sampled_action_prob()
         return p
-
-
-TupleActions = namedtuple("TupleActions", ["batches"])
 
 
 class Dirichlet(ActionDistribution):

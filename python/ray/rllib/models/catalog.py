@@ -14,13 +14,13 @@ from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import (Categorical, MultiCategorical,
                                           Deterministic, DiagGaussian,
                                           MultiActionDistribution, Dirichlet)
-from ray.rllib.models.torch_action_dist import (TorchCategorical,
+from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                 TorchDiagGaussian)
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
-from ray.rllib.models.lstm import LSTM
+from ray.rllib.models.tf.lstm import LSTM
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils import try_import_tf

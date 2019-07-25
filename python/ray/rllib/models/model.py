@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 import gym
 
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils import try_import_tf

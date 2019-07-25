@@ -13,10 +13,10 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
+from ray.rllib.policy.policy import TupleActions
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
-from ray.rllib.models.action_dist import TupleActions
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once, summarize
