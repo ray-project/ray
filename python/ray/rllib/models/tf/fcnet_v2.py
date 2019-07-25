@@ -19,12 +19,10 @@ class FullyConnectedNetwork(TFModelV2):
         super(FullyConnectedNetwork, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
 
-        if not model_config["vf_share_layers"]:
-            raise NotImplementedError("vf_share_layers=False")
-
-        hiddens = model_config.get("fcnet_hiddens")
         activation = get_activation_fn(model_config.get("fcnet_activation"))
+        hiddens = model_config.get("fcnet_hiddens")
         no_final_linear = model_config.get("no_final_linear")
+        vf_share_layers = model_config.get("vf_share_layers")
 
         inputs = tf.keras.layers.Input(
             shape=obs_space.shape, name="observations")
@@ -32,6 +30,7 @@ class FullyConnectedNetwork(TFModelV2):
         i = 1
 
         if no_final_linear:
+            # the last layer is adjusted to be of size num_outputs
             for size in hiddens[:-1]:
                 last_layer = tf.keras.layers.Dense(
                     size,
@@ -40,11 +39,12 @@ class FullyConnectedNetwork(TFModelV2):
                     kernel_initializer=normc_initializer(1.0))(last_layer)
                 i += 1
             layer_out = tf.keras.layers.Dense(
-                size,
+                num_outputs,
                 name="fc_out",
                 activation=activation,
                 kernel_initializer=normc_initializer(1.0))(last_layer)
         else:
+            # the last layer is a linear to size num_outputs
             for size in hiddens:
                 last_layer = tf.keras.layers.Dense(
                     size,
@@ -57,11 +57,25 @@ class FullyConnectedNetwork(TFModelV2):
                 name="fc_out",
                 activation=None,
                 kernel_initializer=normc_initializer(0.01))(last_layer)
+
+        if not vf_share_layers:
+            # build a parallel set of hidden layers for the value net
+            last_layer = inputs
+            i = 1
+            for size in hiddens:
+                last_layer = tf.keras.layers.Dense(
+                    size,
+                    name="value_fc_{}".format(i),
+                    activation=activation,
+                    kernel_initializer=normc_initializer(1.0))(last_layer)
+                i += 1
+
         value_out = tf.keras.layers.Dense(
             1,
             name="value_out",
             activation=None,
             kernel_initializer=normc_initializer(0.01))(last_layer)
+
         self.base_model = tf.keras.Model(inputs, [layer_out, value_out])
         self.register_variables(self.base_model.variables)
 
