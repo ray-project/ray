@@ -3,6 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
+#include "ray/gcs/subscribe_executor.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -50,7 +51,7 @@ class ActorStateAccessor {
                      const std::shared_ptr<ActorTableData> &data_ptr,
                      const StatusCallback &callback);
 
-  /// Subscribe to any register operations of actors.
+  /// Subscribe to any register or update operations of actors.
   ///
   /// \param subscribe Callback that will be called each time when an actor is registered
   /// or updated.
@@ -60,8 +61,26 @@ class ActorStateAccessor {
   Status AsyncSubscribe(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
 
+  /// Subscribe to any update operations of an actor.
+  ///
+  /// \param actor_id The ID of actor to be subscribed to.
+  /// \param subscribe  Callback that will be called each time when the actor is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  Status AsyncSubscribe(const ActorID &actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                        const StatusCallback &done);
+
+  /// Cancel subscription to an actor.
+  ///
+  /// \param actor_id The ID of the actor to be unsubscribed to.
+  /// \param done Callback that will be called when unsubscribe is complete.
+  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done);
+
  private:
   RedisGcsClient &client_impl_;
+
+  typedef SubscribeExecutor<ActorID, ActorTableData, ActorTable> ActorSubscribeExecutor;
+  ActorSubscribeExecutor actor_sub_executor_;
 };
 
 }  // namespace gcs

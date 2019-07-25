@@ -159,7 +159,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
-        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId(),
+        /*done*/ nullptr);
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -187,7 +188,8 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
-        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId(),
+        /*done*/ nullptr);
     listeners_.erase(entry);
   }
   return status;

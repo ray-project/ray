@@ -11,6 +11,7 @@
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
+#include "ray/gcs/callback.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -56,9 +57,11 @@ template <typename ID>
 class PubsubInterface {
  public:
   virtual Status RequestNotifications(const JobID &job_id, const ID &id,
-                                      const ClientID &client_id) = 0;
+                                      const ClientID &client_id,
+                                      const StatusCallback &done) = 0;
   virtual Status CancelNotifications(const JobID &job_id, const ID &id,
-                                     const ClientID &client_id) = 0;
+                                     const ClientID &client_id,
+                                     const StatusCallback &done) = 0;
   virtual ~PubsubInterface(){};
 };
 
@@ -182,20 +185,22 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param job_id The ID of the job.
   /// \param id The ID of the key to request notifications for.
   /// \param client_id The client who is requesting notifications. Before
+  /// \param done Callback that is called when request notifications is complete.
   /// notifications can be requested, a call to `Subscribe` to this
   /// table with the same `client_id` must complete successfully.
   /// \return Status
   Status RequestNotifications(const JobID &job_id, const ID &id,
-                              const ClientID &client_id);
+                              const ClientID &client_id, const StatusCallback &done);
 
   /// Cancel notifications about a key in this table.
   ///
   /// \param job_id The ID of the job.
   /// \param id The ID of the key to request notifications for.
   /// \param client_id The client who originally requested notifications.
+  /// \param done Callback that is called when cancel notifications is complete.
   /// \return Status
-  Status CancelNotifications(const JobID &job_id, const ID &id,
-                             const ClientID &client_id);
+  Status CancelNotifications(const JobID &job_id, const ID &id, const ClientID &client_id,
+                             const StatusCallback &done);
 
   /// Delete an entire key from redis.
   ///
