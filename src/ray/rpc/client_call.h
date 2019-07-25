@@ -136,8 +136,8 @@ class ClientStreamCallImpl : public ClientCall {
                const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
                grpc::CompletionQueue &cq) {
     state_ = ClientCallState::CONNECT;
-    client_stream_ = (stub.*async_rpc_function)(
-        &context_, &cq, reinterpret_cast<void *>(tag_));
+    client_stream_ =
+        (stub.*async_rpc_function)(&context_, &cq, reinterpret_cast<void *>(tag_));
     /// Wait for an asynchronous reading.
     AsyncReadNextMessage();
   }

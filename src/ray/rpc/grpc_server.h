@@ -8,7 +8,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/common/status.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/server_call_factory.h"
 
 namespace ray {
 namespace rpc {

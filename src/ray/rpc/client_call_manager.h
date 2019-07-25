@@ -1,5 +1,5 @@
-#ifndef RAY_RPC_CLIENT_CALL_H
-#define RAY_RPC_CLIENT_CALL_H
+#ifndef RAY_RPC_CLIENT_CALL_MANAGER_H
+#define RAY_RPC_CLIENT_CALL_MANAGER_H
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
@@ -84,7 +84,8 @@ class ClientCallManager {
       typename GrpcService::Stub &stub,
       const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
       const ClientCallback<Reply> &callback) {
-    auto call = std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
+    auto call =
+        std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
     // Setup connection with remote server.
     call->Connect(stub, async_rpc_function, &cq_);
     auto tag = new ClientCallTag(call);

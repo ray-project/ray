@@ -20,9 +20,11 @@ using SendReplyCallback = std::function<void(Status status, std::function<void()
                                              std::function<void()> failure)>;
 
 /// At present, this gRPC server supports two types of request.
-/// The first is default asynchronous request call that each call contains exactly a request and a reply.
-/// Second, asynchronous stream call that the client can send a sequence of request messages
-///         and receive a sequence of reply messages, and the number of reply messages is determined by user.
+/// The first is default asynchronous request call that each call contains exactly a
+/// request and a reply. Second, asynchronous stream call that the client can send a
+/// sequence of request messages
+///         and receive a sequence of reply messages, and the number of reply messages is
+///         determined by user.
 enum class ServerCallType {
   DEFAULT_ASYNC_CALL = 1,
   STREAM_ASYNC_CALL = 2,
@@ -35,7 +37,9 @@ enum class ServerCallState {
   /// Request is received and being processed.
   PROCESSING,
   /// Request processing is done, and reply is being sent to client.
-  SENDING_REPLY
+  SENDING_REPLY,
+  /// Stream requests are done, we can close the stream now.
+  DONE
 };
 
 class ServerCallFactory;
@@ -83,9 +87,12 @@ class ServerCall {
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 
-  ServerCall(ServerCallType type) type_(type) {}
+ public:
+  /// Common methods for both default server call and stream server call.
+  ServerCall(ServerCallType type) : type_(type) {}
 
   const ServerCallType &GetCallType() { return type_; }
+
  protected:
   /// Context for the request, allowing to tweak aspects of it such as the use
   /// of compression, authentication, as well as to send metadata back to the client.
@@ -151,7 +158,7 @@ class ServerCallImpl : public ServerCall {
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,
-              std::function<void()> failure) {
+               std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
@@ -203,12 +210,10 @@ class ServerCallImpl : public ServerCall {
   grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The asynchronous reader writer for stream call.
-  std::shared_ptr<ServerAsyncReaderWriter<Request, Reply>> server_stream_;
+  std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream_;
 
   /// The event loop.
   boost::asio::io_service &io_service_;
-
-  ServerCallType type_;
 
   /// The request message.
   Request request_;
@@ -227,8 +232,8 @@ class ServerCallImpl : public ServerCall {
 };
 
 template <class ServiceHandler, class Request, class Reply>
-using HandleStreamRequestFunction = void (ServiceHandler::*)(const Request &,
-                              std::shared_ptr<ServerAsyncReaderWriter<Request, Reply>>);
+using HandleStreamRequestFunction = void (ServiceHandler::*)(
+    const Request &, std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>>);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a stream type rpc.
 ///
@@ -244,10 +249,10 @@ class ServerStreamCallImpl : public ServerCall {
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] io_service The event loop.
-  ServerStreamCallImpl(
-      const ServerCallFactory &factory, ServiceHandler &service_handler,
-      HandleStreamRequestFunction<ServiceHandler, Request, Reply> handle_stream_request_function,
-      boost::asio::io_service &io_service)
+  ServerStreamCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
+                       HandleStreamRequestFunction<ServiceHandler, Request, Reply>
+                           handle_stream_request_function,
+                       boost::asio::io_service &io_service)
       : ServerCall(ServerCallType::STREAM_ASYNC_CALL),
         state_(ServerCallState::PENDING),
         factory_(factory),
@@ -256,12 +261,12 @@ class ServerStreamCallImpl : public ServerCall {
         server_stream_(std::make_shared<Request, Reply>(&context_)),
         io_service_(io_service) {
     // This is important as the server should know when the client is done.
-    context_.AsyncNotifyWhenDone(reinterpret_cast<void*>(this));
+    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(this));
     AsyncReadNextRequest();
   }
 
   void AsyncReadNextRequest() {
-    server_stream_->Read(&request_, reinterpret_cast<void*>(this));
+    server_stream_->Read(&request_, reinterpret_cast<void *>(this));
   }
 
   ServerCallState GetState() const override { return state_; }
@@ -285,8 +290,7 @@ class ServerStreamCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     // Actual handler for the request.
-    (service_handler_.*handle_stream_request_function_)(
-        request_, server_stream_);
+    (service_handler_.*handle_stream_request_function_)(request_, server_stream_);
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
@@ -302,15 +306,14 @@ class ServerStreamCallImpl : public ServerCall {
   ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
-  HandleStreamRequestFunction<ServiceHandler, Request, Reply> handle_stream_request_function_;
+  HandleStreamRequestFunction<ServiceHandler, Request, Reply>
+      handle_stream_request_function_;
 
   /// The asynchronous reader writer for stream call.
-  std::shared_ptr<ServerAsyncReaderWriter<Request, Reply>> server_stream_;
+  std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream_;
 
   /// The event loop.
   boost::asio::io_service &io_service_;
-
-  ServerCallType type_;
 
   /// The request message.
   Request request_;

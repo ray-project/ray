@@ -72,6 +72,8 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         // The rpc call has finished and can be deleted now.
         delete_call = true;
         break;
+      case ServerCallState::DONE:
+        delete_call = true;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
         break;
