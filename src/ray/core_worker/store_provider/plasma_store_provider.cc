@@ -16,6 +16,17 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   return local_store_provider_.Put(object, object_id);
 }
 
+Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> metadata,
+		                               const size_t data_size,
+                                               const ObjectID &object_id,
+					       std::shared_ptr<Buffer> &data) {
+  return local_store_provider_.Create(metadata, data_size, object_id, data);
+}
+
+Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
+  return local_store_provider_.Seal(object_id);
+}
+
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {

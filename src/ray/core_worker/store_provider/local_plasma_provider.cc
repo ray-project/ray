@@ -18,21 +18,33 @@ CoreWorkerLocalPlasmaStoreProvider::CoreWorkerLocalPlasmaStoreProvider(
 
 Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
                                                const ObjectID &object_id) {
+  std::shared_ptr<Buffer> data;
+  RAY_RETURN_NOT_OK(Create(object.GetMetadata(), object.GetData()->Size(), object_id, data));
+  if (data != nullptr) {
+    memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
+  }
+  RAY_RETURN_NOT_OK(Seal(object_id));
+  return Status::OK();
+}
+
+Status CoreWorkerLocalPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> metadata,
+		                               const size_t data_size,
+                                               const ObjectID &object_id,
+					       std::shared_ptr<Buffer> &data) {
   auto plasma_id = object_id.ToPlasmaId();
-  auto data = object.GetData();
-  auto metadata = object.GetMetadata();
-  std::shared_ptr<arrow::Buffer> out_buffer;
+  std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Create(
-        plasma_id, data ? data->Size() : 0, metadata ? metadata->Data() : nullptr,
-        metadata ? metadata->Size() : 0, &out_buffer));
+        plasma_id, data_size, metadata ? metadata->Data() : nullptr,
+        metadata ? metadata->Size() : 0, &arrow_buffer));
   }
+  data.reset(new PlasmaBuffer(arrow_buffer));
+  return Status::OK();
+}
 
-  if (data != nullptr) {
-    memcpy(out_buffer->mutable_data(), data->Data(), data->Size());
-  }
-
+Status CoreWorkerLocalPlasmaStoreProvider::Seal(const ObjectID &object_id) {
+  auto plasma_id = object_id.ToPlasmaId();
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));

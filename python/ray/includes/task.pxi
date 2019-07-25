@@ -1,9 +1,4 @@
-from libc.stdint cimport uint8_t
-from libcpp.memory cimport (
-    make_shared,
-    shared_ptr,
-    static_pointer_cast,
-)
+from libc.stdint cimport uint8_t, int32_t
 from ray.includes.task cimport (
     CTask,
     CTaskExecutionSpec,

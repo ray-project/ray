@@ -4,10 +4,14 @@
 # cython: language_level = 3
 
 import numpy
+import pyarrow
+from pyarrow.lib import py_buffer
+from pyarrow.lib import FixedSizeBufferWriter
 
 from libc.stdint cimport int32_t, int64_t
+from libc.stdlib cimport malloc, free
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport unique_ptr
+from libcpp.memory cimport unique_ptr, shared_ptr, make_shared
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -17,10 +21,14 @@ from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
     CLanguage,
+    CRayObject,
     CRayStatus,
+    LocalMemoryBuffer,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
+    WORKER_WORKER,
+    WORKER_DRIVER,
 )
 from ray.includes.libraylet cimport (
     CRayletClient,
@@ -28,6 +36,9 @@ from ray.includes.libraylet cimport (
     GCSProfileTableData,
     ResourceMappingType,
     WaitResultPair,
+)
+from ray.includes.libcoreworker cimport (
+    CCoreWorker,
 )
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
@@ -44,6 +55,7 @@ cimport cpython
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/task.pxi"
+include "includes/common.pxi"
 
 
 if cpython.PY_MAJOR_VERSION >= 3:
@@ -383,3 +395,54 @@ cdef class RayletClient:
     @property
     def is_worker(self):
         return self.client.get().IsWorker()
+
+
+cdef class CoreWorker:
+    cdef unique_ptr[CCoreWorker] core_worker
+
+    def __cinit__(self, is_driver, store_socket, raylet_socket, JobID job_id):
+        self.core_worker.reset(new CCoreWorker(
+            WORKER_DRIVER if is_driver else WORKER_WORKER,
+            LANGUAGE_PYTHON, store_socket.encode("ascii"),
+            raylet_socket.encode("ascii"), job_id.native()))
+
+    # TODO: reconstructions
+    def get_objects(self, object_ids, deserialization_context=None):
+        cdef c_vector[CObjectID] get_ids = ObjectIDsToVector(object_ids)
+        cdef c_vector[shared_ptr[CRayObject]] results
+
+        timeout = RayConfig.instance().get_timeout_milliseconds()
+        check_status(self.core_worker.get().Objects().Get(get_ids, timeout, &results))
+
+        return [pyarrow.deserialize(Buffer.make(result.get().GetData())) for result in results]
+
+
+    def serialize_and_put(self, object value, ObjectID object_id, serialization_context=None):
+        cdef shared_ptr[CBuffer] data
+        cdef shared_ptr[CBuffer] metadata
+
+        serialized = pyarrow.serialize(value, serialization_context)
+        cdef size_t data_size = serialized.total_bytes
+
+        check_status(self.core_worker.get().Objects().Create(metadata, data_size, object_id.native(), data))
+
+        buffer = Buffer.make(data)
+        serialized.write_to(FixedSizeBufferWriter(py_buffer(buffer)))
+
+        check_status(self.core_worker.get().Objects().Seal(object_id.native()))
+
+    def put_raw_buffer(self, object value, ObjectID object_id, c_string metadata_str=b"", int memcopy_threads=6):
+        cdef shared_ptr[CBuffer] data
+        cdef shared_ptr[CBuffer] metadata = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata_str.data()), metadata_str.size()))
+
+        check_status(self.core_worker.get().Objects().Create(metadata, len(value), object_id.native(), data))
+
+        stream = pyarrow.FixedSizeBufferWriter(py_buffer(Buffer.make(data)))
+        stream.set_memcopy_threads(memcopy_threads) # TODO
+        stream.write(py_buffer(value))
+
+        check_status(self.core_worker.get().Objects().Seal(object_id.native()))
+
+    # TODO: wait_local?
+    def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds):
+        pass

@@ -18,8 +18,16 @@ class CoreWorkerLocalPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerLocalPlasmaStoreProvider(const std::string &store_socket);
 
-  /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
+
+  /// See `CoreWorkerStoreProvider::Put` for semantics.
+  Status Create(const std::shared_ptr<Buffer> metadata,
+		                               const size_t data_size,
+                                               const ObjectID &object_id,
+					       std::shared_ptr<Buffer> &data) override;
+
+  /// See `CoreWorkerStoreProvider::Seal` for semantics.
+  Status Seal(const ObjectID &object_id) override;
 
   /// See `CoreWorkerStoreProvider::Get` for semantics.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,

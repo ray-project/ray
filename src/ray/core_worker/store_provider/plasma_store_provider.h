@@ -23,12 +23,15 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
-  /// Put an object with specified ID into object store.
-  ///
-  /// \param[in] object The ray object.
-  /// \param[in] object_id Object ID specified by user.
-  /// \return Status.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
+
+  Status Create(const std::shared_ptr<Buffer> metadata,
+		                               const size_t data_size,
+                                               const ObjectID &object_id,
+					       std::shared_ptr<Buffer> &data) override;
+
+  /// See `CoreWorkerStoreProvider::Seal` for semantics.
+  Status Seal(const ObjectID &object_id) override;
 
   /// Get a list of objects from the object store.
   ///

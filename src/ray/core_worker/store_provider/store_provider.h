@@ -48,6 +48,13 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Put(const RayObject &object, const ObjectID &object_id) = 0;
 
+  virtual Status Create(const std::shared_ptr<Buffer> metadata,
+		                               const size_t data_size,
+                                               const ObjectID &object_id,
+					       std::shared_ptr<Buffer> &data) = 0;
+
+  virtual Status Seal(const ObjectID &object_id) = 0;
+
   /// Get a list of objects from the object store.
   ///
   /// \param[in] ids IDs of the objects to get.
