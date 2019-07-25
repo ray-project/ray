@@ -416,9 +416,9 @@ class Worker(object):
         for attempt in reversed(
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
-                try_store_and_register(object_id, value)
+                try_store_and_register()
                 break
-            except pyarrow.lib.PlasmaStoreFull as plasma_exc:
+            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
                     logger.debug(
                         "Waiting {} secs for plasma to drain.".format(delay))
