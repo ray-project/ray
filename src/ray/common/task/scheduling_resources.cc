@@ -674,37 +674,22 @@ std::string ResourceIdSet::ToString() const {
   return return_string;
 }
 
-std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToFlatbuf(
-    flatbuffers::FlatBufferBuilder &fbb) const {
-  std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> return_message;
+std::vector<rpc::ResourceIdSetInfo> ResourceIdSet::ToProtobuf() const {
+  std::vector<rpc::ResourceIdSetInfo> resources;
   for (auto const &resource_pair : available_resources_) {
-    std::vector<int64_t> resource_ids;
-    std::vector<double> resource_fractions;
+    rpc::ResourceIdSetInfo resource_id_set_info;
+    resource_id_set_info.set_resource_name(resource_pair.first);
     for (auto whole_id : resource_pair.second.WholeIds()) {
-      resource_ids.push_back(whole_id);
-      resource_fractions.push_back(1);
+      resource_id_set_info.add_resource_ids(whole_id);
+      resource_id_set_info.add_resource_fractions(1);
     }
-
     for (auto const &fractional_pair : resource_pair.second.FractionalIds()) {
-      resource_ids.push_back(fractional_pair.first);
-      resource_fractions.push_back(fractional_pair.second.ToDouble());
+      resource_id_set_info.add_resource_ids(fractional_pair.first);
+      resource_id_set_info.add_resource_fractions(fractional_pair.second.ToDouble());
     }
-
-    auto resource_id_set_message = protocol::CreateResourceIdSetInfo(
-        fbb, fbb.CreateString(resource_pair.first), fbb.CreateVector(resource_ids),
-        fbb.CreateVector(resource_fractions));
-
-    return_message.push_back(resource_id_set_message);
+    resources.emplace_back(resource_id_set_info);
   }
-
-  return return_message;
-}
-
-const std::string ResourceIdSet::Serialize() const {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto resource_id_set_flatbuf = ToFlatbuf(fbb);
-  fbb.Finish(fbb.CreateVector(resource_id_set_flatbuf));
-  return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+  return resources;
 }
 
 /// SchedulingResources class implementation
