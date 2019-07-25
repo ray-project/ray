@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 import distutils.version
 import numpy as np
 
@@ -12,16 +11,6 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
-
-if tf:
-    if hasattr(tf, "__version__"):
-        version = tf.__version__
-    else:
-        version = tf.VERSION
-    use_tf150_api = (distutils.version.LooseVersion(version) >=
-                     distutils.version.LooseVersion("1.5.0"))
-else:
-    use_tf150_api = False
 
 
 @DeveloperAPI
@@ -63,40 +52,23 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def entropy(self):
-        if use_tf150_api:
-            a0 = self.inputs - tf.reduce_max(
-                self.inputs, reduction_indices=[1], keepdims=True)
-        else:
-            a0 = self.inputs - tf.reduce_max(
-                self.inputs, reduction_indices=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(
+            self.inputs, reduction_indices=[1], keep_dims=True)
         ea0 = tf.exp(a0)
-        if use_tf150_api:
-            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
-        else:
-            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
     @override(ActionDistribution)
     def kl(self, other):
-        if use_tf150_api:
-            a0 = self.inputs - tf.reduce_max(
-                self.inputs, reduction_indices=[1], keepdims=True)
-            a1 = other.inputs - tf.reduce_max(
-                other.inputs, reduction_indices=[1], keepdims=True)
-        else:
-            a0 = self.inputs - tf.reduce_max(
-                self.inputs, reduction_indices=[1], keep_dims=True)
-            a1 = other.inputs - tf.reduce_max(
-                other.inputs, reduction_indices=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(
+            self.inputs, reduction_indices=[1], keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(
+            other.inputs, reduction_indices=[1], keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        if use_tf150_api:
-            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
-            z1 = tf.reduce_sum(ea1, reduction_indices=[1], keepdims=True)
-        else:
-            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-            z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+        z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(
             p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])

@@ -12,8 +12,7 @@ from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
-from ray.rllib.optimizers.rollout import collect_samples, \
-    collect_samples_straggler_mitigation
+from ray.rllib.optimizers.rollout import collect_samples
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
@@ -50,7 +49,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                  train_batch_size=1024,
                  num_gpus=0,
                  standardize_fields=[],
-                 straggler_mitigation=False,
                  shuffle_sequences=True):
         PolicyOptimizer.__init__(self, workers)
 
@@ -59,7 +57,6 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.num_envs_per_worker = num_envs_per_worker
         self.sample_batch_size = sample_batch_size
         self.train_batch_size = train_batch_size
-        self.straggler_mitigation = straggler_mitigation
         self.shuffle_sequences = shuffle_sequences
         if not num_gpus:
             self.devices = ["/cpu:0"]
@@ -123,13 +120,9 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.workers.remote_workers():
-                if self.straggler_mitigation:
-                    samples = collect_samples_straggler_mitigation(
-                        self.workers.remote_workers(), self.train_batch_size)
-                else:
-                    samples = collect_samples(
-                        self.workers.remote_workers(), self.sample_batch_size,
-                        self.num_envs_per_worker, self.train_batch_size)
+                samples = collect_samples(
+                    self.workers.remote_workers(), self.sample_batch_size,
+                    self.num_envs_per_worker, self.train_batch_size)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(
                         "Collected more training samples than expected "
