@@ -5,13 +5,10 @@
 
 import numpy
 import pyarrow
-from pyarrow.lib import py_buffer
-from pyarrow.lib import FixedSizeBufferWriter
 
 from libc.stdint cimport int32_t, int64_t
-from libc.stdlib cimport malloc, free
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport unique_ptr, shared_ptr, make_shared
+from libcpp.memory cimport unique_ptr, shared_ptr
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -37,14 +34,12 @@ from ray.includes.libraylet cimport (
     ResourceMappingType,
     WaitResultPair,
 )
-from ray.includes.libcoreworker cimport (
-    CCoreWorker,
-)
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CObjectID,
     CClientID,
 )
+from ray.includes.libcoreworker cimport CCoreWorker
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError
@@ -427,19 +422,19 @@ cdef class CoreWorker:
         check_status(self.core_worker.get().Objects().Create(metadata, data_size, object_id.native(), data))
 
         buffer = Buffer.make(data)
-        serialized.write_to(FixedSizeBufferWriter(py_buffer(buffer)))
+        serialized.write_to(pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer)))
 
         check_status(self.core_worker.get().Objects().Seal(object_id.native()))
 
-    def put_raw_buffer(self, object value, ObjectID object_id, c_string metadata_str=b"", int memcopy_threads=6):
-        cdef shared_ptr[CBuffer] data
-        cdef shared_ptr[CBuffer] metadata = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata_str.data()), metadata_str.size()))
+    def put_raw_buffer(self, object value, ObjectID object_id, c_string metadata=b"", int memcopy_threads=6):
+        cdef shared_ptr[CBuffer] data_buf
+        cdef shared_ptr[CBuffer] metadata_buf = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata.data()), metadata.size()))
 
-        check_status(self.core_worker.get().Objects().Create(metadata, len(value), object_id.native(), data))
+        check_status(self.core_worker.get().Objects().Create(metadata_buf, len(value), object_id.native(), data_buf))
 
-        stream = pyarrow.FixedSizeBufferWriter(py_buffer(Buffer.make(data)))
+        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data_buf)))
         stream.set_memcopy_threads(memcopy_threads) # TODO
-        stream.write(py_buffer(value))
+        stream.write(pyarrow.py_buffer(value))
 
         check_status(self.core_worker.get().Objects().Seal(object_id.native()))
 

@@ -2,7 +2,7 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 
-from libc.stdint cimport int64_t, uint8_t
+from libc.stdint cimport uint8_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 

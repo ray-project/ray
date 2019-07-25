@@ -315,7 +315,7 @@ class Worker(object):
                     self.core_worker.put_raw_buffer(
                         value,
                         object_id,
-                        metadata_str=ray_constants.RAW_BUFFER_METADATA,
+                        metadata=ray_constants.RAW_BUFFER_METADATA,
                         memcopy_threads=self.memcopy_threads)
                 else:
                     self.core_worker.serialize_and_put(

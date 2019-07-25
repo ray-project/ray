@@ -1,5 +1,5 @@
 from cpython cimport Py_buffer, PyBytes_FromStringAndSize
-from libc.stdint cimport uint8_t, int32_t, int64_t, uintptr_t
+from libc.stdint cimport int64_t, uintptr_t
 from libcpp.memory cimport shared_ptr
 
 from ray.includes.common cimport CBuffer
