@@ -395,7 +395,7 @@ class Worker(object):
         for attempt in reversed(
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
-                self.try_store_and_register(object_id, value)
+                self._try_store_and_register(object_id, value)
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
