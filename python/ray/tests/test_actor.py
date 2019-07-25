@@ -2127,6 +2127,22 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
 
 
 @pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 2,
+        "object_store_memory": 10**7
+    }],
+    indirect=True)
+def test_fill_plasma_exception(ray_start_cluster_head, num_actors):
+    @ray.remote
+    class LargeMemoryActor(object):
+        def some_expensive_task(self):
+            return np.zeros(10**7 + 2, dtype=np.uint8)
+
+    actor = LargeMemoryActor.remote()
+    ray.get(actor.some_expensive_task.remote())
+
+
+@pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**8], indirect=True)
 def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory

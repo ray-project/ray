@@ -394,33 +394,35 @@ class Worker(object):
                 self.store_and_register(object_id, value)
             except pyarrow.plasma.PlasmaObjectExists:
                 # The object already exists in the object store, so there is no
-                # need to add it again. TODO(rkn): We need to compare the hashes
+                # need to add it again. TODO(rkn): We need to compare hashes
                 # and make sure that the objects are in fact the same. We also
-                # should return an error code to the caller instead of printing a
+                # should return an error code to caller instead of printing a
                 # message.
                 logger.info(
-                    "The object with ID {} already exists in the object store.".
-                    format(object_id))
+                    "The object with ID {} already exists "
+                    "in the object store.".format(object_id))
             except TypeError:
-                # This error can happen because one of the members of the object
-                # may not be serializable for cloudpickle. So we need these extra
-                # fallbacks here to start from the beginning. Hopefully the object
-                # could have a `__reduce__` method.
+                # TypeError can happen because one of the members of the object
+                # may not be serializable for cloudpickle. So we need
+                # these extra fallbacks here to start from the beginning.
+                # Hopefully the object could have a `__reduce__` method.
                 register_custom_serializer(type(value), use_pickle=True)
                 warning_message = (
                     "WARNING: Serializing the class {} failed, "
-                    "so are are falling back to cloudpickle.".format(type(value)))
+                    "falling back to cloudpickle.".format(type(value)))
                 logger.warning(warning_message)
                 self.store_and_register(object_id, value)
 
-        for attempt in reversed(range(retries_left)):
+        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
+        for attempt in reversed(
+                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
                 try_store_and_register(object_id, value)
                 break
             except pyarrow.lib.PlasmaStoreFull as plasma_exc:
                 if attempt:
                     logger.debug(
-                        "Waiting {} sec for plasma to drain.".format(delay))
+                        "Waiting {} secs for plasma to drain.".format(delay))
                     time.sleep(delay)
                     delay *= 2
                 else:
@@ -945,33 +947,16 @@ class Worker(object):
         finally:
             self._current_task = None
 
-        retries_left = 5
-        delay = 1
+        # Store the outputs in the local object store.
         try:
-            while retries_left:
-                retries_left -= 1
-                # Store the outputs in the local object store.
-                try:
-                    with profiling.profile("task:store_outputs"):
-                        # If this is an actor task, then the last object ID
-                        # returned by the task is a dummy output,
-                        # not returned by the function itself. Decrement to
-                        # get the correct number of return values.
-                        num_returns = len(return_object_ids)
-                        if num_returns == 1:
-                            outputs = (outputs, )
-                        self._store_outputs_in_object_store(
-                            return_object_ids, outputs)
-                    return
-                except pyarrow.lib.PlasmaStoreFull as plasma_exc:
-                    if retries_left:
-                        logger.debug(
-                            "Waiting {} seconds for plasma to drain.".format(
-                                delay))
-                        time.sleep(delay)
-                        delay *= 2
-                    else:
-                        raise plasma_exc
+            with profiling.profile("task:store_outputs"):
+                # If this is an actor task, then the last object ID returned by
+                # the task is a dummy output, not returned by the function
+                # itself. Decrement to get the correct number of return values.
+                num_returns = len(return_object_ids)
+                if num_returns == 1:
+                    outputs = (outputs, )
+                self._store_outputs_in_object_store(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
