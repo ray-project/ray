@@ -26,3 +26,9 @@ class TorchModelV2(ModelV2, nn.Module):
             name,
             framework="torch")
         nn.Module.__init__(self)
+
+    def forward(self, input_dict, state, seq_lens):
+        """This returns the (model_out, new_state) tensors.
+
+        You must implement this as documented in modelv2.py."""
+        raise NotImplementedError

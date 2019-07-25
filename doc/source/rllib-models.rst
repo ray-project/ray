@@ -30,69 +30,73 @@ The following is a list of the built-in model hyperparameters:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-Custom Models (TensorFlow)
---------------------------
+TensorFlow Models
+-----------------
 
-Custom TF models should subclass the common RLlib `model class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/model.py>`__ and override the ``_build_layers_v2`` method. This method takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), and returns a feature layer and float vector of the specified output size. You can also override the ``value_function`` method to implement a custom value branch. Additional supervised / self-supervised losses can be added via the ``custom_loss`` method. The model can then be registered and used in place of a built-in model:
+.. note::
 
-.. warning::
+    TFModelV2 replaces the previous ``rllib.models.Model`` class, which did not support Keras-style reuse of variables. The ``rllib.models.Model`` class is deprecated and should not be used.
 
-   Keras custom models are not compatible with multi-GPU (this includes PPO in single-GPU mode). This is because the multi-GPU implementation in RLlib relies on variable scopes to implement cross-GPU support.
+Custom TF models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/tf/tf_modelv2.py>`__ to implement the ``__init__()`` and ``forward()`` methods. Forward takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), optional RNN state, and returns the model output of size ``num_outputs`` and the new state. You can also override extra methods of the model such as ``value_function`` to implement a custom value branch. Additional supervised / self-supervised losses can be added via the ``custom_loss`` method. The model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
     import ray
     import ray.rllib.agents.ppo as ppo
-    from ray.rllib.models import ModelCatalog, Model
+    from ray.rllib.models import ModelCatalog
+    from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 
-    class MyModelClass(Model):
-        def _build_layers_v2(self, input_dict, num_outputs, options):
-            """Define the layers of a custom model.
+    class MyModelClass(TFModelV2):
+        def __init__(self, obs_space, action_space, num_outputs, model_config,
+                     name):
+            """Initialize the model.
+
+            This method should create any variables used by the model.
+            """
+            super(MyModelModel, self).__init__(obs_space, action_space,
+                                               num_outputs, model_config, name)
+            input_layer = tf.keras.layers.Input(...)
+            hidden_layer = tf.keras.layers.Dense(...)(input_layer)
+            output_layer = tf.keras.layers.Dense(...)(hidden_layer)
+            value_layer = tf.keras.layers.Dense(...)(hidden_layer)
+            self.base_model = tf.keras.Model(input_layer, [output_layer, value_layer])
+            self.register_variables(self.base_model.variables)
+
+        def forward(self, input_dict, state, seq_lens):
+            """Call the model with the given input tensors and state.
+
+            Any complex observations (dicts, tuples, etc.) will be unpacked by
+            __call__ before being passed to forward(). To access the flattened
+            observation tensor, refer to input_dict["obs_flat"].
+
+            This method can be called any number of times. In eager execution,
+            each call to forward() will eagerly evaluate the model. In symbolic
+            execution, each call to forward creates a computation graph that
+            operates over the variables of this model (i.e., shares weights).
+
+            Custom models should override this instead of __call__.
 
             Arguments:
-                input_dict (dict): Dictionary of input tensors, including "obs",
-                    "prev_action", "prev_reward", "is_training".
-                num_outputs (int): Output tensor must be of size
-                    [BATCH_SIZE, num_outputs].
-                options (dict): Model options.
+                input_dict (dict): dictionary of input tensors, including "obs",
+                    "obs_flat", "prev_action", "prev_reward", "is_training"
+                state (list): list of state tensors with sizes matching those
+                    returned by get_initial_state + the batch dimension
+                seq_lens (Tensor): 1d tensor holding input sequence lengths
 
             Returns:
-                (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
-                    and [BATCH_SIZE, desired_feature_size].
-
-            When using dict or tuple observation spaces, you can access
-            the nested sub-observation batches here as well:
-
-            Examples:
-                >>> print(input_dict)
-                {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
-                 'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
-                 'is_training': <tf.Tensor shape=(), dtype=bool>,
-                 'obs': OrderedDict([
-                    ('sensors', OrderedDict([
-                        ('front_cam', [
-                            <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>,
-                            <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>]),
-                        ('position', <tf.Tensor shape=(?, 3) dtype=float32>),
-                        ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
+                (outputs, state): The model output tensor of size
+                    [BATCH, num_outputs]
             """
-
-            layer1 = slim.fully_connected(input_dict["obs"], 64, ...)
-            layer2 = slim.fully_connected(layer1, 64, ...)
-            ...
-            return layerN, layerN_minus_1
+            model_out, self._value_out = self.base_model(input_dict["obs"])
+            return model_out, state
 
         def value_function(self):
-            """Builds the value function output.
-
-            This method can be overridden to customize the implementation of the
-            value function (e.g., not sharing hidden layers).
+            """Return the value function estimate for the most recent forward pass.
 
             Returns:
-                Tensor of size [BATCH_SIZE] for the value function.
+                value estimate tensor of shape [BATCH].
             """
-            return tf.reshape(
-                linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
+            return self._value_out
 
         def custom_loss(self, policy_loss, loss_inputs):
             """Override to customize the loss function used to optimize this model.
@@ -113,7 +117,7 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
             """
             return policy_loss
 
-        def custom_stats(self):
+        def metrics(self):
             """Override to return custom metrics from your model.
 
             The stats will be reported as part of the learner stats, i.e.,
@@ -138,51 +142,70 @@ Custom TF models should subclass the common RLlib `model class <https://github.c
         },
     })
 
-For a full example of a custom model in code, see the `custom env example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
+For a full example of a custom model in code, see the `keras model example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_model.py>`__. You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_nested_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
-Custom Recurrent Models
-~~~~~~~~~~~~~~~~~~~~~~~
+Recurrent Models
+~~~~~~~~~~~~~~~~
 
-Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. The only difference from a normal custom model is that you have to define ``self.state_init``, ``self.state_in``, and ``self.state_out``. You can refer to the existing `lstm.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/lstm.py>`__ model as an example to implement your own model:
+Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. For a RNN model it is preferred to subclass ``RecurrentTFModelV2`` to implement ``__init__()``, ``get_initial_state()``, and ``forward_rnn()``. You can check out the `custom_keras_rnn_model.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_rnn_model.py>`__ model as an example to implement your own model:
 
 .. code-block:: python
 
-    class MyCustomLSTM(Model):
-        def _build_layers_v2(self, input_dict, num_outputs, options):
-            # Some initial layers to process inputs, shape [BATCH, OBS...].
-            features = some_hidden_layers(input_dict["obs"])
+    class MyKerasRNN(RecurrentTFModelV2):
+        def __init__(self,
+                     obs_space,
+                     action_space,
+                     num_outputs,
+                     model_config,
+                     name,
+                     cell_size=64):
+            super(MyKerasRNN, self).__init__(obs_space, action_space, num_outputs,
+                                             model_config, name)
+            self.cell_size = cell_size
 
-            # Add back the nested time dimension for tf.dynamic_rnn, new shape
-            # will be [BATCH, MAX_SEQ_LEN, OBS...].
-            last_layer = add_time_dimension(features, self.seq_lens)
+            # Define input layers
+            input_layer = tf.keras.layers.Input(shape=(None, obs_space.shape[0]))
+            state_in_h = tf.keras.layers.Input(shape=(cell_size, ))
+            state_in_c = tf.keras.layers.Input(shape=(cell_size, ))
+            seq_in = tf.keras.layers.Input(shape=())
 
-            # Setup the LSTM cell (see lstm.py for an example)
-            lstm = rnn.BasicLSTMCell(256, state_is_tuple=True)
-            self.state_init = ...
-            self.state_in = ...
-            lstm_out, lstm_state = tf.nn.dynamic_rnn(
-                lstm,
-                last_layer,
-                initial_state=...,
-                sequence_length=self.seq_lens,
-                time_major=False,
-                dtype=tf.float32)
-            self.state_out = list(lstm_state)
+            # Send to LSTM cell
+            lstm_out, state_h, state_c = tf.keras.layers.LSTM(
+                cell_size, return_sequences=True, return_state=True, name="lstm")(
+                    inputs=input_layer,
+                    mask=tf.sequence_mask(seq_in),
+                    initial_state=[state_in_h, state_in_c])
+            output_layer = tf.keras.layers.Dense(...)(lstm_out)
 
-            # Drop the time dimension again so back to shape [BATCH, OBS...].
-            # Note that we retain the zero padding (see issue #2992).
-            last_layer = tf.reshape(lstm_out, [-1, cell_size])
-            logits = linear(last_layer, num_outputs, "action",
-                            normc_initializer(0.01))
-            return logits, last_layer
+            # Create the RNN model
+            self.rnn_model = tf.keras.Model(
+                inputs=[input_layer, seq_in, state_in_h, state_in_c],
+                outputs=[output_layer, state_h, state_c])
+            self.register_variables(self.rnn_model.variables)
+            self.rnn_model.summary()
+
+        @override(RecurrentTFModelV2)
+        def forward_rnn(self, inputs, state, seq_lens):
+            model_out, h, c = self.rnn_model([inputs, seq_lens] + state)
+            return model_out, [h, c]
+
+        @override(ModelV2)
+        def get_initial_state(self):
+            return [
+                np.zeros(self.cell_size, np.float32),
+                np.zeros(self.cell_size, np.float32),
+            ]
+
 
 Batch Normalization
 ~~~~~~~~~~~~~~~~~~~
 
 You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/tf_policy.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
-Custom Models (PyTorch)
------------------------
+In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
+
+PyTorch Models
+--------------
 
 Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, PG, QMIX). See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
 
@@ -274,7 +297,7 @@ Supervised Model Losses
 
 You can mix supervised losses into any RLlib algorithm through custom models. For example, you can add an imitation learning loss on expert experiences, or a self-supervised autoencoder loss within the model. These losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html#input-pipeline-for-supervised-losses>`__.
 
-**TensorFlow**: To add a supervised loss to a custom TF model, you need to override the ``custom_loss()`` method. This method takes in the existing policy loss for the algorithm, which you can add your own supervised loss to before returning. For debugging, you can also return a dictionary of scalar tensors in the ``custom_metrics()`` method. Here is a `runnable example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ of adding an imitation loss to CartPole training that is defined over a `offline dataset <rllib-offline.html#input-pipeline-for-supervised-losses>`__.
+**TensorFlow**: To add a supervised loss to a custom TF model, you need to override the ``custom_loss()`` method. This method takes in the existing policy loss for the algorithm, which you can add your own supervised loss to before returning. For debugging, you can also return a dictionary of scalar tensors in the ``metrics()`` method. Here is a `runnable example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__ of adding an imitation loss to CartPole training that is defined over a `offline dataset <rllib-offline.html#input-pipeline-for-supervised-losses>`__.
 
 **PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
 

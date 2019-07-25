@@ -28,6 +28,12 @@ class TFModelV2(ModelV2):
             framework="tf")
         self.var_list = []
 
+    def forward(self, input_dict, state, seq_lens):
+        """This returns the (model_out, new_state) tensors.
+
+        You must implement this as documented in modelv2.py."""
+        raise NotImplementedError
+
     def update_ops(self):
         """Return the list of update ops for this model.
 
