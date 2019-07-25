@@ -1784,7 +1784,6 @@ bool NodeManager::AssignTask(const Task &task) {
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies.
   RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
-
   return true;
 }
 

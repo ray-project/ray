@@ -234,10 +234,14 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
     // Get the ID of the task that creates the dependency.
     TaskID creating_task_id = object_id.TaskId();
     auto creating_task_entry = required_tasks_.find(creating_task_id);
+    if (creating_task_entry == required_tasks_.end() ||
+          creating_task_entry->second.count(object_id) == 0) {
+      continue;
+    }
     // Remove the task from the list of tasks that are dependent on this
     // object.
     auto &dependent_tasks = creating_task_entry->second[object_id].dependent_tasks;
-    RAY_CHECK(dependent_tasks.erase(task_id) > 0);
+    dependent_tasks.erase(task_id);
     // If nothing else depends on the object, then erase the object entry.
     if (creating_task_entry->second[object_id].Empty()) {
       creating_task_entry->second.erase(object_id);
