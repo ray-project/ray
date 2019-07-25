@@ -130,6 +130,8 @@ def make_aggregators_and_optimizer(workers, config):
         num_sgd_iter=config["num_sgd_iter"],
         minibatch_buffer_size=config["minibatch_buffer_size"],
         num_aggregation_workers=config["num_aggregation_workers"],
+        learner_queue_size=config["learner_queue_size"],
+        learner_queue_timeout=config["learner_queue_timeout"],
         **config["optimizer"])
 
     if aggregators:
