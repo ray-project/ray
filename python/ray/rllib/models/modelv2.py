@@ -9,7 +9,11 @@ class ModelV2(object):
     """Defines a Keras-style abstract network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
-    this class directly. Experimental.
+    this class directly.
+
+    Data flow:
+        obs -> forward() -> model_out
+               value_function() -> V(s)
 
     Attributes:
         obs_space (Space): observation space of the target gym env. This

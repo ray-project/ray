@@ -202,7 +202,7 @@ class TFPolicy(Policy):
             self._update_ops = tf.get_collection(
                 tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
         if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
+            logger.info("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
         with tf.control_dependencies(self._update_ops):
             self._apply_op = self.build_apply_op(self._optimizer,

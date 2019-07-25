@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                  << "rpc_service_threads_number = "
                  << object_manager_config.rpc_service_threads_number
-                 << "object_chunk_size = " << object_manager_config.object_chunk_size;
+                 << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
@@ -171,6 +171,7 @@ int main(int argc, char *argv[]) {
       server.reset();
       gcs_client->Disconnect();
       main_service.stop();
+      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
     // Give a timeout for this Disconnect operation.
