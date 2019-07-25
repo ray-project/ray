@@ -802,7 +802,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     // So if we receive any actor tasks before we receive GCS notification,
     // these tasks can be correctly routed to the `MethodsWaitingForActorCreation`
     // queue, instead of being assigned to the dead actor.
-    HandleActorStateTransition(actor_id, ActorRegistration(new_actor_data));
+    HandleActorStateTransition(actor_id, ActorRegistration(new_actor_info));
   }
 
   auto done = [was_local, actor_id](Status status) {
