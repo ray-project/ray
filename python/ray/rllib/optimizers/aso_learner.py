@@ -35,7 +35,7 @@ class LearnerThread(threading.Thread):
         self.minibatch_buffer = MinibatchBuffer(
             inqueue=self.inqueue,
             size=minibatch_buffer_size,
-            learner_queue_timeout=learner_queue_timeout,
+            timeout=learner_queue_timeout,
             num_passes=num_sgd_iter)
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
