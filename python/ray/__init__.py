@@ -5,13 +5,6 @@ from __future__ import print_function
 import os
 import sys
 
-# MUST import ray._raylet before pyarrow to initialize some global variables.
-# It seems the library related to memory allocation in pyarrow will destroy the
-# initialization of grpc if we import pyarrow at first.
-# NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
-# details.
-import ray._raylet
-
 if "pyarrow" in sys.modules:
     raise ImportError("Ray must be imported before pyarrow because Ray "
                       "requires a specific version of pyarrow (which is "
@@ -22,6 +15,13 @@ if "pyarrow" in sys.modules:
 pyarrow_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
 sys.path.insert(0, pyarrow_path)
+
+# MUST import ray._raylet before pyarrow to initialize some global variables.
+# It seems the library related to memory allocation in pyarrow will destroy the
+# initialization of grpc if we import pyarrow at first.
+# NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
+# details.
+import ray._raylet
 
 # See https://github.com/ray-project/ray/issues/131.
 helpful_message = """

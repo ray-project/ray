@@ -4,7 +4,6 @@
 # cython: language_level = 3
 
 import numpy
-import pyarrow
 
 from libc.stdint cimport int32_t, int64_t
 from libcpp cimport bool as c_bool
@@ -44,6 +43,8 @@ from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError
 from ray.utils import decode
+
+import pyarrow
 
 cimport cpython
 
@@ -224,26 +225,18 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
 
 
 cdef class RayletClient:
-    cdef unique_ptr[CRayletClient] client
+    cdef CRayletClient* client
 
-    def __cinit__(self, raylet_socket,
-                  WorkerID worker_id,
-                  c_bool is_worker,
-                  JobID job_id):
-        # We know that we are using Python, so just skip the language
-        # parameter.
-        # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
-        self.client.reset(new CRayletClient(
-            raylet_socket.encode("ascii"), worker_id.native(), is_worker,
-            job_id.native(), LANGUAGE_PYTHON))
+    def __cinit__(self, CoreWorker core_worker):
+        self.client = core_worker.core_worker.get().GetRayletClient()
 
     def disconnect(self):
-        check_status(self.client.get().Disconnect())
+        check_status(self.client.Disconnect())
 
     def submit_task(self, TaskSpec task_spec):
         cdef:
             CObjectID c_id
-        check_status(self.client.get().SubmitTask(
+        check_status(self.client.SubmitTask(
             task_spec.task_spec.get()[0]))
 
     def get_task(self):
@@ -251,21 +244,21 @@ cdef class RayletClient:
             unique_ptr[CTaskSpec] task_spec
 
         with nogil:
-            check_status(self.client.get().GetTask(&task_spec))
+            check_status(self.client.GetTask(&task_spec))
         return TaskSpec.make(task_spec)
 
     def task_done(self):
-        check_status(self.client.get().TaskDone())
+        check_status(self.client.TaskDone())
 
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
                              TaskID current_task_id=TaskID.nil()):
         cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.get().FetchOrReconstruct(
+        check_status(self.client.FetchOrReconstruct(
             fetch_ids, fetch_only, current_task_id.native()))
 
     def notify_unblocked(self, TaskID current_task_id):
-        check_status(self.client.get().NotifyUnblocked(current_task_id.native()))
+        check_status(self.client.NotifyUnblocked(current_task_id.native()))
 
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
              c_bool wait_local, TaskID current_task_id):
@@ -275,7 +268,7 @@ cdef class RayletClient:
             CTaskID c_task_id = current_task_id.native()
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            check_status(self.client.get().Wait(wait_ids, num_returns,
+            check_status(self.client.Wait(wait_ids, num_returns,
                                                 timeout_milliseconds,
                                                 wait_local,
                                                 c_task_id, &result))
@@ -285,7 +278,7 @@ cdef class RayletClient:
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
-                self.client.get().GetResourceIDs())
+                self.client.GetResourceIDs())
             unordered_map[
                 c_string, c_vector[pair[int64_t, double]]
             ].iterator iterator = resource_mapping.begin()
@@ -304,7 +297,7 @@ cdef class RayletClient:
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
-        check_status(self.client.get().PushError(job_id.native(),
+        check_status(self.client.PushError(job_id.native(),
                                                  error_type.encode("ascii"),
                                                  error_message.encode("ascii"),
                                                  timestamp))
@@ -351,11 +344,11 @@ cdef class RayletClient:
                     raise ValueError(
                         "Unknown profile event key '%s'" % key_string)
 
-        check_status(self.client.get().PushProfileEvents(profile_info))
+        check_status(self.client.PushProfileEvents(profile_info))
 
     def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
         cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.get().FreeObjects(free_ids, local_only, delete_creating_tasks))
+        check_status(self.client.FreeObjects(free_ids, local_only, delete_creating_tasks))
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef CActorCheckpointID checkpoint_id
@@ -363,33 +356,33 @@ cdef class RayletClient:
         # PrepareActorCheckpoint will wait for raylet's reply, release
         # the GIL so other Python threads can run.
         with nogil:
-            check_status(self.client.get().PrepareActorCheckpoint(
+            check_status(self.client.PrepareActorCheckpoint(
                 c_actor_id, checkpoint_id))
         return ActorCheckpointID(checkpoint_id.Binary())
 
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
                                              ActorCheckpointID checkpoint_id):
-        check_status(self.client.get().NotifyActorResumedFromCheckpoint(
+        check_status(self.client.NotifyActorResumedFromCheckpoint(
             actor_id.native(), checkpoint_id.native()))
 
     def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
-        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.FromBinary(client_id.binary()))
+        self.client.SetResource(resource_name.encode("ascii"), capacity, CClientID.FromBinary(client_id.binary()))
 
     @property
     def language(self):
-        return Language.from_native(self.client.get().GetLanguage())
+        return Language.from_native(self.client.GetLanguage())
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetWorkerId().Binary())
+        return ClientID(self.client.GetWorkerId().Binary())
 
     @property
     def job_id(self):
-        return JobID(self.client.get().GetJobID().Binary())
+        return JobID(self.client.GetJobID().Binary())
 
     @property
     def is_worker(self):
-        return self.client.get().IsWorker()
+        return self.client.IsWorker()
 
 
 cdef class CoreWorker:
@@ -409,7 +402,15 @@ cdef class CoreWorker:
         timeout = RayConfig.instance().get_timeout_milliseconds()
         check_status(self.core_worker.get().Objects().Get(get_ids, timeout, &results))
 
-        return [pyarrow.deserialize(Buffer.make(result.get().GetData())) for result in results]
+        data_metadata_pairs = []
+        for result in results:
+            data_buffer = Buffer.make(result.get().GetData())
+            metadata_bytes = Buffer.make(result.get().GetMetadata()).to_pybytes()
+            data_metadata_pairs.append((
+                data_buffer,
+                metadata_bytes if len(metadata_bytes) > 0 else None))
+
+        return data_metadata_pairs
 
 
     def serialize_and_put(self, object value, ObjectID object_id, serialization_context=None):

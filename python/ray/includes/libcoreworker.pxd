@@ -1,6 +1,6 @@
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 
@@ -15,6 +15,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
 )
+from ray.includes.libraylet cimport CRayletClient
 
 
 cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
@@ -41,3 +42,4 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
         CObjectInterface &Objects()
         #CTaskSubmissionInterface &Tasks()
         #CTaskExecutionInterface &Execution()
+        CRayletClient* GetRayletClient()

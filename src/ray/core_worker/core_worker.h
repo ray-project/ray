@@ -35,6 +35,9 @@ class CoreWorker {
   /// Language of this worker.
   Language GetLanguage() const { return language_; }
 
+  /// Initialized raylet client.
+  RayletClient* GetRayletClient() { return raylet_client_.get(); }
+
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return task_interface_; }

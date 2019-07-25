@@ -24,6 +24,7 @@ CoreWorker::CoreWorker(
                                              object_interface_, execution_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
+  #endif
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
@@ -32,7 +33,6 @@ CoreWorker::CoreWorker(
       raylet_socket_, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, rpc_server_port));
-  #endif
 }
 
 }  // namespace ray
