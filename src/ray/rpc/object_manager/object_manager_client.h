@@ -5,6 +5,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
