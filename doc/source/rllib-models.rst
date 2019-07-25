@@ -331,13 +331,11 @@ Custom models can be used to work with environments where (1) the set of valid a
                      num_outputs,
                      model_config,
                      name,
-                     true_obs_shape=(4, ),
-                     action_embed_size=2,
-                     **kw):
+                     true_obs_shape=(4,),
+                     action_embed_size=2):
             super(ParametricActionsModel, self).__init__(
-                obs_space, action_space, num_outputs, model_config, name, **kw)
+                obs_space, action_space, num_outputs, model_config, name)
             self.action_embed_model = FullyConnectedNetwork(...)
-            self.register_variables(self.action_embed_model.variables())
 
         def forward(self, input_dict, state, seq_lens):
             # Extract the available actions tensor from the observation.
