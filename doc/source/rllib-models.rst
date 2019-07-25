@@ -324,26 +324,41 @@ Custom models can be used to work with environments where (1) the set of valid a
 
 .. code-block:: python
 
-    class MyParamActionModel(Model):
-        def _build_layers_v2(self, input_dict, num_outputs, options):
+    class ParametricActionsModel(TFModelV2):
+        def __init__(self,
+                     obs_space,
+                     action_space,
+                     num_outputs,
+                     model_config,
+                     name,
+                     true_obs_shape=(4, ),
+                     action_embed_size=2,
+                     **kw):
+            super(ParametricActionsModel, self).__init__(
+                obs_space, action_space, num_outputs, model_config, name, **kw)
+            self.action_embed_model = FullyConnectedNetwork(...)
+            self.register_variables(self.action_embed_model.variables())
+
+        def forward(self, input_dict, state, seq_lens):
+            # Extract the available actions tensor from the observation.
             avail_actions = input_dict["obs"]["avail_actions"]
             action_mask = input_dict["obs"]["action_mask"]
 
-            output = FullyConnectedNetwork(
-                input_dict["obs"]["real_obs"], num_outputs=action_embedding_sz)
+            # Compute the predicted action embedding
+            action_embed, _ = self.action_embed_model({
+                "obs": input_dict["obs"]["cart"]
+            })
 
             # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
             # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
-            intent_vector = tf.expand_dims(output, 1)
+            intent_vector = tf.expand_dims(action_embed, 1)
 
-            # Shape of logits is [BATCH, MAX_ACTIONS].
+            # Batch dot product => shape of logits is [BATCH, MAX_ACTIONS].
             action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
 
             # Mask out invalid actions (use tf.float32.min for stability)
             inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
-            masked_logits = inf_mask + action_logits
-
-            return masked_logits, last_layer
+            return action_logits + inf_mask, state
 
 
 Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms.

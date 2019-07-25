@@ -142,10 +142,6 @@ class ParametricActionsModel(DistributionalQModel, TFModelV2):
         # Extract the available actions tensor from the observation.
         avail_actions = input_dict["obs"]["avail_actions"]
         action_mask = input_dict["obs"]["action_mask"]
-        if self.num_outputs != avail_actions.shape[1].value:
-            raise ValueError(
-                "This model assumes num outputs is equal to max avail actions",
-                self.num_outputs, avail_actions)
 
         # Compute the predicted action embedding
         action_embed, _ = self.action_embed_model({
