@@ -56,7 +56,7 @@ def _parse_client_table(redis_client):
             ordered_node_ids.append(node_id)
             node_info[node_id] = {
                 "NodeID": node_id,
-                "Alive": true,
+                "Alive": True,
                 "NodeManagerAddress": item.node_manager_address,
                 "NodeManagerPort": item.node_manager_port,
                 "ObjectManagerPort": item.object_manager_port,
@@ -71,7 +71,7 @@ def _parse_client_table(redis_client):
             assert node_id in node_info, "node not found!"
             assert node_info[node_id]["Alive"], (
                 "Unexpected duplicate removal of node.")
-            node_info[node_id]["Alive"] = false
+            node_info[node_id]["Alive"] = False
     # Fill resource info.
     for node_id in ordered_node_ids:
         if node_info[node_id]["Alive"]:
