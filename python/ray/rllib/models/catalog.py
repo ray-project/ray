@@ -204,6 +204,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
+    @DeveloperAPI
     def get_model_v2(obs_space,
                      action_space,
                      num_outputs,
@@ -290,110 +291,6 @@ class ModelCatalog(object):
                 "Framework must be 'tf' or 'torch': {}".format(framework))
 
     @staticmethod
-    def _wrap_if_needed(model_cls, model_interface):
-        assert issubclass(model_cls, TFModelV2)
-
-        if not model_interface or issubclass(model_cls, model_interface):
-            return model_cls
-
-        class wrapper(model_interface, model_cls):
-            pass
-
-        name = "{}_as_{}".format(model_cls.__name__, model_interface.__name__)
-        wrapper.__name__ = name
-        wrapper.__qualname__ = name
-
-        return wrapper
-
-    @staticmethod
-    def get_model(input_dict,
-                  obs_space,
-                  action_space,
-                  num_outputs,
-                  options,
-                  state_in=None,
-                  seq_lens=None):
-        """Deprecated: use get_model_v2() instead."""
-
-        assert isinstance(input_dict, dict)
-        options = options or MODEL_DEFAULTS
-        model = ModelCatalog._get_model(input_dict, obs_space, action_space,
-                                        num_outputs, options, state_in,
-                                        seq_lens)
-
-        if options.get("use_lstm"):
-            copy = dict(input_dict)
-            copy["obs"] = model.last_layer
-            feature_space = gym.spaces.Box(
-                -1, 1, shape=(model.last_layer.shape[1], ))
-            model = LSTM(copy, feature_space, action_space, num_outputs,
-                         options, state_in, seq_lens)
-
-        logger.debug(
-            "Created model {}: ({} of {}, {}, {}, {}) -> {}, {}".format(
-                model, input_dict, obs_space, action_space, state_in, seq_lens,
-                model.outputs, model.state_out))
-
-        model._validate_output_shape()
-        return model
-
-    @staticmethod
-    def _get_model(input_dict, obs_space, action_space, num_outputs, options,
-                   state_in, seq_lens):
-        if options.get("custom_model"):
-            model = options["custom_model"]
-            logger.debug("Using custom model {}".format(model))
-            return _global_registry.get(RLLIB_MODEL, model)(
-                input_dict,
-                obs_space,
-                action_space,
-                num_outputs,
-                options,
-                state_in=state_in,
-                seq_lens=seq_lens)
-
-        obs_rank = len(input_dict["obs"].shape) - 1
-
-        if obs_rank > 1:
-            return VisionNetwork(input_dict, obs_space, action_space,
-                                 num_outputs, options)
-
-        return FullyConnectedNetwork(input_dict, obs_space, action_space,
-                                     num_outputs, options)
-
-    @staticmethod
-    def get_torch_model(obs_space,
-                        num_outputs,
-                        options=None,
-                        default_model_cls=None):
-        raise DeprecationWarning("Please use get_model_v2() instead.")
-
-    def _get_default_torch_model_v2(obs_space, action_space, num_outputs,
-                                    model_config, name):
-        from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                  PyTorchFCNet)
-        from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                      PyTorchVisionNet)
-
-        model_config = model_config or MODEL_DEFAULTS
-
-        if model_config.get("use_lstm"):
-            raise NotImplementedError(
-                "LSTM auto-wrapping not implemented for torch")
-
-        if isinstance(obs_space, gym.spaces.Discrete):
-            obs_rank = 1
-        else:
-            obs_rank = len(obs_space.shape)
-
-        if obs_rank > 1:
-            return PyTorchVisionNet(obs_space, action_space, num_outputs,
-                                    model_config, name)
-
-        return PyTorchFCNet(obs_space, action_space, num_outputs, model_config,
-                            name)
-
-    @staticmethod
     @DeveloperAPI
     def get_preprocessor(env, options=None):
         """Returns a suitable preprocessor for the given env.
@@ -464,3 +361,108 @@ class ModelCatalog(object):
             model_class (type): Python class of the model.
         """
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
+
+    @staticmethod
+    def _wrap_if_needed(model_cls, model_interface):
+        assert issubclass(model_cls, TFModelV2)
+
+        if not model_interface or issubclass(model_cls, model_interface):
+            return model_cls
+
+        class wrapper(model_interface, model_cls):
+            pass
+
+        name = "{}_as_{}".format(model_cls.__name__, model_interface.__name__)
+        wrapper.__name__ = name
+        wrapper.__qualname__ = name
+
+        return wrapper
+
+    @staticmethod
+    def _get_default_torch_model_v2(obs_space, action_space, num_outputs,
+                                    model_config, name):
+        from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                  PyTorchFCNet)
+        from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                      PyTorchVisionNet)
+
+        model_config = model_config or MODEL_DEFAULTS
+
+        if model_config.get("use_lstm"):
+            raise NotImplementedError(
+                "LSTM auto-wrapping not implemented for torch")
+
+        if isinstance(obs_space, gym.spaces.Discrete):
+            obs_rank = 1
+        else:
+            obs_rank = len(obs_space.shape)
+
+        if obs_rank > 1:
+            return PyTorchVisionNet(obs_space, action_space, num_outputs,
+                                    model_config, name)
+
+        return PyTorchFCNet(obs_space, action_space, num_outputs, model_config,
+                            name)
+
+    @staticmethod
+    def get_model(input_dict,
+                  obs_space,
+                  action_space,
+                  num_outputs,
+                  options,
+                  state_in=None,
+                  seq_lens=None):
+        """Deprecated: use get_model_v2() instead."""
+
+        assert isinstance(input_dict, dict)
+        options = options or MODEL_DEFAULTS
+        model = ModelCatalog._get_model(input_dict, obs_space, action_space,
+                                        num_outputs, options, state_in,
+                                        seq_lens)
+
+        if options.get("use_lstm"):
+            copy = dict(input_dict)
+            copy["obs"] = model.last_layer
+            feature_space = gym.spaces.Box(
+                -1, 1, shape=(model.last_layer.shape[1], ))
+            model = LSTM(copy, feature_space, action_space, num_outputs,
+                         options, state_in, seq_lens)
+
+        logger.debug(
+            "Created model {}: ({} of {}, {}, {}, {}) -> {}, {}".format(
+                model, input_dict, obs_space, action_space, state_in, seq_lens,
+                model.outputs, model.state_out))
+
+        model._validate_output_shape()
+        return model
+
+    @staticmethod
+    def _get_model(input_dict, obs_space, action_space, num_outputs, options,
+                   state_in, seq_lens):
+        if options.get("custom_model"):
+            model = options["custom_model"]
+            logger.debug("Using custom model {}".format(model))
+            return _global_registry.get(RLLIB_MODEL, model)(
+                input_dict,
+                obs_space,
+                action_space,
+                num_outputs,
+                options,
+                state_in=state_in,
+                seq_lens=seq_lens)
+
+        obs_rank = len(input_dict["obs"].shape) - 1
+
+        if obs_rank > 1:
+            return VisionNetwork(input_dict, obs_space, action_space,
+                                 num_outputs, options)
+
+        return FullyConnectedNetwork(input_dict, obs_space, action_space,
+                                     num_outputs, options)
+
+    @staticmethod
+    def get_torch_model(obs_space,
+                        num_outputs,
+                        options=None,
+                        default_model_cls=None):
+        raise DeprecationWarning("Please use get_model_v2() instead.")
