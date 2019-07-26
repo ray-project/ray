@@ -1,12 +1,12 @@
 package org.ray.api.id;
 
-import org.ray.api.ObjectType;
-import org.ray.api.TransportType;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Random;
+import org.ray.api.ObjectType;
+import org.ray.api.TransportType;
 
 /**
  * Represents the id of a Ray object.
@@ -59,14 +59,14 @@ public class ObjectId extends BaseId implements Serializable {
   /**
    * Compute the object ID of an object put by the task.
    */
-  public static ObjectId forPut(TaskId taskId, int put_index) {
-    return forPut(taskId, put_index, TransportType.STANDARD);
+  public static ObjectId forPut(TaskId taskId, int putIndex) {
+    return forPut(taskId, putIndex, TransportType.STANDARD);
   }
 
   /**
    * Compute the object ID of an object put by the task.
    */
-  public static ObjectId forPut(TaskId taskId, int put_index, TransportType transportType) {
+  public static ObjectId forPut(TaskId taskId, int putIndex, TransportType transportType) {
     short flags = 0;
     flags = setIsTaskFlag(flags, true);
     flags = setObjectTypeFlag(flags, ObjectType.PUT_OBJECT);
@@ -79,21 +79,21 @@ public class ObjectId extends BaseId implements Serializable {
     wbb.order(ByteOrder.LITTLE_ENDIAN);
     wbb.putShort(FLAGS_BYTES_POS, flags);
 
-    wbb.putInt(INDEX_BYTES_POS, put_index);
+    wbb.putInt(INDEX_BYTES_POS, putIndex);
     return new ObjectId(bytes);
   }
 
   /**
    * Compute the object ID of an object return by the task.
    */
-  public static ObjectId forReturn(TaskId taskId, int return_index) {
-    return forReturn(taskId, return_index, TransportType.STANDARD);
+  public static ObjectId forReturn(TaskId taskId, int returnIndex) {
+    return forReturn(taskId, returnIndex, TransportType.STANDARD);
   }
 
   /**
    * Compute the object ID of an object return by the task.
    */
-  public static ObjectId forReturn(TaskId taskId, int return_index, TransportType transportType) {
+  public static ObjectId forReturn(TaskId taskId, int returnIndex, TransportType transportType) {
     short flags = 0;
     flags = setIsTaskFlag(flags, true);
     flags = setObjectTypeFlag(flags, ObjectType.RETURN_OBJECT);
@@ -106,7 +106,7 @@ public class ObjectId extends BaseId implements Serializable {
     wbb.order(ByteOrder.LITTLE_ENDIAN);
     wbb.putShort(FLAGS_BYTES_POS, flags);
 
-    wbb.putInt(INDEX_BYTES_POS, return_index);
+    wbb.putInt(INDEX_BYTES_POS, returnIndex);
     return new ObjectId(bytes);
   }
 
@@ -124,8 +124,8 @@ public class ObjectId extends BaseId implements Serializable {
     return TaskId.fromByteBuffer(ByteBuffer.wrap(taskIdBytes));
   }
 
-  private static short setIsTaskFlag(short flags, boolean is_task) {
-    if (is_task) {
+  private static short setIsTaskFlag(short flags, boolean isTask) {
+    if (isTask) {
       return (short) (flags | (0x1 << IS_TASK_FLAG_BITS_OFFSET));
     } else {
       return (short) (flags | (0x0 << IS_TASK_FLAG_BITS_OFFSET));

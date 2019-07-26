@@ -37,14 +37,12 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
-import org.ray.runtime.generated.Common;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.IdUtil;
 import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -147,7 +145,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(),
+        workerContext.nextPutIndex());
     put(objectId, obj);
     return new RayObjectImpl<>(objectId);
   }
@@ -166,7 +165,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    * @return A RayObject instance that represents the in-store object.
    */
   public RayObject<Object> putSerialized(byte[] obj) {
-    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(), workerContext.nextPutIndex());
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(),
+        workerContext.nextPutIndex());
     TaskId taskId = workerContext.getCurrentTaskId();
     LOGGER.debug("Putting serialized object {}, for task {} ", objectId, taskId);
     objectStoreProxy.putSerialized(objectId, obj);
@@ -204,7 +204,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         }
         // Call `fetchOrReconstruct` in batches.
         for (List<ObjectId> batch : splitIntoBatches(unreadyIds)) {
-          rayletClient.fetchOrReconstruct(batch, fetchOnly, workerContext.getCurrentTaskId());
+          rayletClient.fetchOrReconstruct(batch, fetchOnly,
+              workerContext.getCurrentTaskId());
         }
 
         // Get the objects from the object store, and parse the result.
@@ -386,7 +387,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
    *
    * @param func The target remote function.
    * @param pyFunctionDescriptor Descriptor of the target Python function, if the task is a Python
-   * task.
+   *                             task.
    * @param actor The actor handle. If the task is not an actor task, actor id must be NIL.
    * @param args The arguments for the remote function.
    * @param isActorCreationTask Whether this task is an actor creation task.
@@ -454,7 +455,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         actor.getId(),
         actor.getHandleId(),
         actor.increaseTaskCounter(),
-	previousActorTaskDummyObjectId,
+        previousActorTaskDummyObjectId,
         actor.getNewActorHandles().toArray(new UniqueId[0]),
         ArgumentsBuilder.wrap(args, language == TaskLanguage.PYTHON),
         numReturns,

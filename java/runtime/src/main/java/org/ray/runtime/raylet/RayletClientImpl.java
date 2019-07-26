@@ -194,7 +194,7 @@ public class RayletClientImpl implements RayletClient {
           .fromByteBuffer(actorTaskSpec.getActorHandleId().asReadOnlyByteBuffer());
       actorCounter = (int) actorTaskSpec.getActorCounter();
       previousActorTaskDummyObjectId = ObjectId.fromByteBuffer(
-		      actorTaskSpec.getPreviousActorTaskDummyObjectId().asReadOnlyByteBuffer());
+          actorTaskSpec.getPreviousActorTaskDummyObjectId().asReadOnlyByteBuffer());
       newActorHandles = actorTaskSpec.getNewActorHandlesList().stream()
           .map(byteString -> UniqueId.fromByteBuffer(byteString.asReadOnlyByteBuffer()))
           .toArray(UniqueId[]::new);
@@ -202,8 +202,8 @@ public class RayletClientImpl implements RayletClient {
 
     return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter,
-	previousActorTaskDummyObjectId, newActorHandles, args, numReturns, resources,
-	TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
+        previousActorTaskDummyObjectId, newActorHandles, args, numReturns, resources,
+        TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
   /**
@@ -264,15 +264,16 @@ public class RayletClientImpl implements RayletClient {
       builder.setType(TaskType.ACTOR_TASK);
       List<ByteString> newHandles = Arrays.stream(task.newActorHandles)
           .map(id -> ByteString.copyFrom(id.getBytes())).collect(Collectors.toList());
-      // TODO(qwang): final ObjectId actorCreationDummyObjectId = ObjectId.fromRandom(actorId);
-      final ObjectId actorCreationDummyObjectId = IdUtil.computeObjectIdFromActorId(ActorId.fromByteBuffer(ByteBuffer.wrap(task.actorId.getBytes())));
+      final ObjectId actorCreationDummyObjectId = IdUtil.computeObjectIdFromActorId(
+          ActorId.fromByteBuffer(ByteBuffer.wrap(task.actorId.getBytes())));
       builder.setActorTaskSpec(
           Common.ActorTaskSpec.newBuilder()
               .setActorId(ByteString.copyFrom(task.actorId.getBytes()))
               .setActorHandleId(ByteString.copyFrom(task.actorHandleId.getBytes()))
-              .setActorCreationDummyObjectId(ByteString.copyFrom(actorCreationDummyObjectId.getBytes()))
+              .setActorCreationDummyObjectId(
+                  ByteString.copyFrom(actorCreationDummyObjectId.getBytes()))
               .setPreviousActorTaskDummyObjectId(
-		      ByteString.copyFrom(task.previousActorTaskDummyObjectId.getBytes()))
+                  ByteString.copyFrom(task.previousActorTaskDummyObjectId.getBytes()))
               .setActorCounter(task.actorCounter)
               .addAllNewActorHandles(newHandles)
       );

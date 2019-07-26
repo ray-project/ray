@@ -1,16 +1,17 @@
 package org.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-
-import org.ray.api.id.*;
+import org.ray.api.id.ActorId;
+import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
+import org.ray.api.id.ObjectId;
+import org.ray.api.id.UniqueId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
-import org.ray.runtime.util.IdUtil;
 
 /**
  * Represents necessary information of a task for scheduling and executing.
