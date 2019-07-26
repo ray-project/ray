@@ -759,7 +759,7 @@ bool NodeManager::PreprocessRequest(const ::google::protobuf::Message &request) 
   // std::string type = request.GetTypeName();
   debug_string << "Received a " << descriptor->name() << " request.";
   if (!worker_id_field) {
-    RAY_LOG(INFO) << debug_string.str();
+    RAY_LOG(DEBUG) << debug_string.str();
     return true;
   }
   std::string worker_id_str;
@@ -777,7 +777,7 @@ bool NodeManager::PreprocessRequest(const ::google::protobuf::Message &request) 
   // Worker process has been killed, we should discard this request.
   if (!worker) {
     debug_string << " Worker is not found in worker pool, request will be discarded.";
-    RAY_LOG(INFO) << debug_string.str();
+    RAY_LOG(WARNING) << debug_string.str();
     return false;
   }
   debug_string << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
@@ -790,7 +790,7 @@ bool NodeManager::PreprocessRequest(const ::google::protobuf::Message &request) 
     return false;
   }
 
-  RAY_LOG(INFO) << debug_string.str();
+  RAY_LOG(DEBUG) << debug_string.str();
   return true;
 }
 
