@@ -33,12 +33,13 @@ class TaskSpecBuilder {
       message_->add_function_descriptor(fd);
     }
     message_->set_job_id(job_id.Binary());
-    message_->set_task_id(GenerateTaskId(job_id, parent_task_id, parent_counter).Binary());
+    message_->set_task_id(
+        GenerateTaskId(job_id, parent_task_id, parent_counter).Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
     message_->set_parent_counter(parent_counter);
     message_->set_num_returns(num_returns);
     message_->mutable_required_resources()->insert(required_resources.begin(),
-                                                  required_resources.end());
+                                                   required_resources.end());
     message_->mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
     return *this;

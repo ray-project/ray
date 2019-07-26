@@ -20,19 +20,18 @@ class MessageWrapper {
   ///
   /// \param message The protobuf message.
   explicit MessageWrapper(const Message message)
-    : message_(std::make_shared<Message>(std::move(message))) {}
+      : message_(std::make_shared<Message>(std::move(message))) {}
 
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
-  explicit MessageWrapper(std::shared_ptr<Message> message)
-    : message_(message) {}
+  explicit MessageWrapper(std::shared_ptr<Message> message) : message_(message) {}
 
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
   explicit MessageWrapper(const std::string &serialized_binary)
-    : message_(std::make_shared<Message>()) {
+      : message_(std::make_shared<Message>()) {
     message_->ParseFromString(serialized_binary);
   }
 

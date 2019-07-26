@@ -179,8 +179,8 @@ class CoreWorkerTaskInterface {
   /// \param[out] return_ids Return IDs.
   /// \return Void.
   void BuildCommonTaskSpec(
-      TaskSpecBuilder &builder,
-      const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+      TaskSpecBuilder &builder, const RayFunction &function,
+      const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       std::vector<ObjectID> *return_ids);

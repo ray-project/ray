@@ -34,7 +34,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message) : MessageWrapper(message) {
+  explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
+      : MessageWrapper(message) {
     ComputeResources();
   }
 

@@ -524,7 +524,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // Create a dummy actor handle, and then create a number of `TaskSpec`
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
-  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));  
+  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction function{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(buffer));
@@ -533,22 +533,22 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
 
   ActorHandle actor_handle(ActorID::FromRandom(), ActorHandleID::Nil(), function.language,
-    true, function.function_descriptor);
+                           true, function.function_descriptor);
 
-  // Manually create `num_tasks` task specs, and for each of them create a `PushTaskRequest`,
-  // this is to batch performance of TaskSpec creation/copy/destruction.
+  // Manually create `num_tasks` task specs, and for each of them create a
+  // `PushTaskRequest`, this is to batch performance of TaskSpec
+  // creation/copy/destruction.
   const auto num_tasks = 10000 * 10;
   RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
   for (int i = 0; i < num_tasks; i++) {
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     auto num_returns = options.num_returns;
-  
+
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(
-        function.language, function.function_descriptor, JobID::FromInt(1),
-        TaskID::FromRandom(), 0, num_returns,
-        resources, resources);
+    builder.SetCommonTaskSpec(function.language, function.function_descriptor,
+                              JobID::FromInt(1), TaskID::FromRandom(), 0, num_returns,
+                              resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {
@@ -563,15 +563,13 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetActorTaskSpec(
         actor_handle.ActorID(), actor_handle.ActorHandleID(),
         actor_creation_dummy_object_id,
-        /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
-        0, {});
-       
+        /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(), 0, {});
+
     const auto &task_spec = builder.Build();
 
     RAY_CHECK(task_spec.IsActorTask());
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
     request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
-  
   }
   RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests";
 }
@@ -610,8 +608,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {}};
 
-    RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
-                                                &return_ids));
+    RAY_CHECK_OK(
+        driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));
     RAY_CHECK(return_ids.size() == 1);
   }
   RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks";

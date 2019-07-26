@@ -4,7 +4,9 @@
 
 namespace ray {
 
-size_t TaskExecutionSpecification::NumForwards() const { return message_->num_forwards(); }
+size_t TaskExecutionSpecification::NumForwards() const {
+  return message_->num_forwards();
+}
 
 void TaskExecutionSpecification::IncrementNumForwards() {
   message_->set_num_forwards(message_->num_forwards() + 1);

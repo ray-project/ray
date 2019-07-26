@@ -102,7 +102,8 @@ uint64_t TaskSpecification::MaxActorReconstructions() const {
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
   RAY_CHECK(IsActorCreationTask());
-  return VectorFromProtobuf(message_->actor_creation_task_spec().dynamic_worker_options());
+  return VectorFromProtobuf(
+      message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
 // === Below are getter methods specific to actor tasks.

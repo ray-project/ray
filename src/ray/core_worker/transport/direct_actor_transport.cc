@@ -113,7 +113,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   while (!requests.empty()) {
     const auto &request = *requests.front();
     auto status =
-        PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()), request.task_spec().num_returns());
+        PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
+                 request.task_spec().num_returns());
     requests.pop_front();
   }
 }

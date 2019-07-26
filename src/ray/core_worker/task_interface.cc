@@ -109,7 +109,8 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
-    TaskSpecBuilder &builder, const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+    TaskSpecBuilder &builder, const RayFunction &function,
+    const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
@@ -142,7 +143,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(builder, function, args, task_options.num_returns,
-                                     task_options.resources, {}, return_ids);
+                      task_options.resources, {}, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
@@ -153,7 +154,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(builder, function, args, 1, actor_creation_options.resources,
-                                     actor_creation_options.resources, &return_ids);
+                      actor_creation_options.resources, &return_ids);
 
   const ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
@@ -178,8 +179,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   // Build common task spec.
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, function, args, num_returns, task_options.resources,
-                                     {}, return_ids);
+  BuildCommonTaskSpec(builder, function, args, num_returns, task_options.resources, {},
+                      return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
