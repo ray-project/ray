@@ -117,26 +117,26 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         ray.init(num_cpus=8)
 
     def testSimple(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(workers)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPU(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(workers, num_gpus=1, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiGPUParallelLoad(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers, num_gpus=1, num_data_loader_buffers=1, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
     def testMultiplePasses(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
@@ -149,7 +149,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
 
     def testReplay(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
@@ -166,7 +166,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self.assertLess(stats["num_steps_trained"], stats["num_steps_sampled"])
 
     def testReplayAndMultiplePasses(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
@@ -187,7 +187,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self.assertLess(train_ratio, 0.4)
 
     def testMultiTierAggregationBadConf(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         aggregators = TreeAggregator.precreate_aggregators(4)
         optimizer = AsyncSamplesOptimizer(workers, num_aggregation_workers=4)
@@ -195,7 +195,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
                           lambda: optimizer.aggregator.init(aggregators))
 
     def testMultiTierAggregation(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         aggregators = TreeAggregator.precreate_aggregators(1)
         optimizer = AsyncSamplesOptimizer(workers, num_aggregation_workers=1)
@@ -203,7 +203,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self._wait_for(optimizer, 1000, 1000)
 
     def testRejectBadConfigs(self):
-        local, remotes = self._make_evs()
+        local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         self.assertRaises(
             ValueError, lambda: AsyncSamplesOptimizer(
@@ -231,7 +231,18 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
-    def _make_evs(self):
+    def testLearnerQueueTimeout(self):
+        local, remotes = self._make_envs()
+        workers = WorkerSet._from_existing(local, remotes)
+        optimizer = AsyncSamplesOptimizer(
+            workers,
+            sample_batch_size=1000,
+            train_batch_size=1000,
+            learner_queue_timeout=1)
+        self.assertRaises(AssertionError,
+                          lambda: self._wait_for(optimizer, 1000, 1000))
+
+    def _make_envs(self):
         def make_sess():
             return tf.Session(config=tf.ConfigProto(device_count={"CPU": 2}))
 
