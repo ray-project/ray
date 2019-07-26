@@ -3,9 +3,9 @@ Walkthrough
 
 This walkthrough will overview the core concepts of Ray:
 
-   1. Launching a remote function
-   2. Fetching results.
-   3. Using remote classes (actors).
+   1. Using remote functions (tasks) [``ray.remote``]
+   2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
+   3. Using remote classes (actors) [``ray.remote``]
 
 Suppose we've already started Ray.
 
@@ -14,11 +14,10 @@ Suppose we've already started Ray.
   import ray
   ray.init()
 
-Launching a function
---------------------
+Remote functions (Tasks)
+------------------------
 
-The standard way to turn a Python function into a remote function is to
-add the ``@ray.remote`` decorator. Here is an example.
+The standard way to turn a Python function into a remote function is to add the ``@ray.remote`` decorator. Here is an example.
 
 .. code:: python
 
@@ -31,7 +30,7 @@ add the ``@ray.remote`` decorator. Here is an example.
     def remote_function():
         return 1
 
-The differences are the following:
+This causes a few things changes in behavior:
 
     1. **Invocation:** The regular version is called with ``regular_function()``, whereas the remote version is called with ``remote_function.remote()``.
     2. **Return values:** ``regular_function`` immediately executes and returns ``1``, whereas ``remote_function`` immediately returns an object ID (a future) and then creates a task that will be executed on a worker process. The result can be obtained with ``ray.get``.
@@ -64,6 +63,40 @@ The differences are the following:
        # These happen in parallel.
        for _ in range(4):
            remote_function.remote()
+
+**Object IDs** can also be passed into remote functions. When the
+function actually gets executed, **the argument will be a retrieved as a
+regular Python object**.
+
+.. code:: python
+
+    >>> y1_id = f.remote(x1_id)
+    >>> ray.get(y1_id)
+    1
+
+    >>> y2_id = f.remote(x2_id)
+    >>> ray.get(y2_id)
+    [1, 2, 3]
+
+
+Note the following behavior when creating these dependencies:
+
+-  The second task will not be executed until the first task has
+   finished executing.
+-  If the two tasks are scheduled on different machines, the output of
+   the first task (the value corresponding to ``x1_id``) will be copied
+   over the network to the machine where the second task is scheduled.
+
+Further, remote function can return multiple object IDs.
+
+.. code-block:: python
+
+  @ray.remote(num_return_vals=3)
+  def return_multiple():
+      return 1, 2, 3
+
+  a_id, b_id, c_id = return_multiple.remote()
+
 
 Objects in Ray
 --------------

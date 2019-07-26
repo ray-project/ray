@@ -1,5 +1,5 @@
-Resources
-=========
+Specifying Resources
+====================
 
 Often times, you might want to load balance your Ray program, not placing all functions and actors on one machine. This is especially important with GPUs, where one actor may require an entire GPU to complete its task.
 
