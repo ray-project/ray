@@ -2,7 +2,6 @@ package org.ray.api.id;
 
 import org.ray.api.ObjectType;
 import org.ray.api.TransportType;
-
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -15,15 +14,21 @@ import java.util.Random;
 public class ObjectId extends BaseId implements Serializable {
 
   public static final int LENGTH = 20;
+
   public static final ObjectId NIL = genNil();
 
   private static int IS_TASK_FLAG_BITS_OFFSET = 15;
+
   private static int OBJECT_TYPE_FLAG_BITS_OFFSET = 14;
+
   private static int TRANSPORT_TYPE_FLAG_BITS_OFFSET = 11;
 
   private static int FLAGS_BYTES_POS = TaskId.LENGTH;
+
   private static int FLAGS_BYTES_LENGTH = 2;
+
   private static int INDEX_BYTES_POS = FLAGS_BYTES_POS + FLAGS_BYTES_LENGTH;
+
   private static int INDEX_BYTES_LENGTH = 4;
 
   /**
@@ -45,41 +50,22 @@ public class ObjectId extends BaseId implements Serializable {
   /**
    * Generate an ObjectId with random value.
    */
-  // TODO(qwang): Refine this.
-  public static ObjectId randomId() {
+  public static ObjectId fromRandom() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
     return new ObjectId(b);
   }
 
-  private static short setIsTaskFlag(short flags, boolean is_task) {
-    if (is_task) {
-      return (short) (flags | (0x1 << IS_TASK_FLAG_BITS_OFFSET));
-    } else {
-      return (short) (flags | (0x0 << IS_TASK_FLAG_BITS_OFFSET));
-    }
-  }
-
-  private static short setObjectTypeFlag(short flags, ObjectType objectType) {
-    if (objectType == ObjectType.RETURN_OBJECT) {
-      return (short)(flags | (0x1 << OBJECT_TYPE_FLAG_BITS_OFFSET));
-    } else {
-      return (short)(flags | (0x0 << OBJECT_TYPE_FLAG_BITS_OFFSET));
-    }
-  }
-
-  private static short setTransportTypeFlags(short flags, TransportType transportType) {
-    if (transportType == TransportType.DIRECT_ACTOR_CALL) {
-      return (short)(0x1 << TRANSPORT_TYPE_FLAG_BITS_OFFSET);
-    } else {
-      return (short)(flags | (0x0 << OBJECT_TYPE_FLAG_BITS_OFFSET));
-    }
-  }
-
+  /**
+   * Compute the object ID of an object put by the task.
+   */
   public static ObjectId forPut(TaskId taskId, int put_index) {
     return forPut(taskId, put_index, TransportType.STANDARD);
   }
 
+  /**
+   * Compute the object ID of an object put by the task.
+   */
   public static ObjectId forPut(TaskId taskId, int put_index, TransportType transportType) {
     short flags = 0;
     flags = setIsTaskFlag(flags, true);
@@ -97,11 +83,16 @@ public class ObjectId extends BaseId implements Serializable {
     return new ObjectId(bytes);
   }
 
+  /**
+   * Compute the object ID of an object return by the task.
+   */
   public static ObjectId forReturn(TaskId taskId, int return_index) {
     return forReturn(taskId, return_index, TransportType.STANDARD);
   }
 
-  // TODO(qwang): Extra these.
+  /**
+   * Compute the object ID of an object return by the task.
+   */
   public static ObjectId forReturn(TaskId taskId, int return_index, TransportType transportType) {
     short flags = 0;
     flags = setIsTaskFlag(flags, true);
@@ -131,6 +122,30 @@ public class ObjectId extends BaseId implements Serializable {
   public TaskId getTaskId() {
     byte[] taskIdBytes = Arrays.copyOf(getBytes(), TaskId.LENGTH);
     return TaskId.fromByteBuffer(ByteBuffer.wrap(taskIdBytes));
+  }
+
+  private static short setIsTaskFlag(short flags, boolean is_task) {
+    if (is_task) {
+      return (short) (flags | (0x1 << IS_TASK_FLAG_BITS_OFFSET));
+    } else {
+      return (short) (flags | (0x0 << IS_TASK_FLAG_BITS_OFFSET));
+    }
+  }
+
+  private static short setObjectTypeFlag(short flags, ObjectType objectType) {
+    if (objectType == ObjectType.RETURN_OBJECT) {
+      return (short)(flags | (0x1 << OBJECT_TYPE_FLAG_BITS_OFFSET));
+    } else {
+      return (short)(flags | (0x0 << OBJECT_TYPE_FLAG_BITS_OFFSET));
+    }
+  }
+
+  private static short setTransportTypeFlags(short flags, TransportType transportType) {
+    if (transportType == TransportType.DIRECT_ACTOR_CALL) {
+      return (short)(0x1 << TRANSPORT_TYPE_FLAG_BITS_OFFSET);
+    } else {
+      return (short)(flags | (0x0 << OBJECT_TYPE_FLAG_BITS_OFFSET));
+    }
   }
 
 }

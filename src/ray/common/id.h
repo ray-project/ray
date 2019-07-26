@@ -158,73 +158,89 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
-  static constexpr int64_t length = 4;
+  static constexpr int64_t LENGTH = 4;
 
   static JobID FromInt(uint32_t value);
 
-  static size_t Size() { return length; }
+  static size_t Size() { return LENGTH; }
 
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
 
  private:
-  uint8_t id_[length];
+  uint8_t id_[LENGTH];
 };
 
 class ActorID : public BaseID<ActorID> {
  private:
-  static constexpr size_t unique_bytes_length = 4;
+  static constexpr size_t UNIQUE_BYTES_LENGTH = 4;
 
  public:
-  static constexpr size_t length = unique_bytes_length + JobID::length;
+  static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + JobID::LENGTH;
 
-  static size_t Size() { return length; }
+  static size_t Size() { return LENGTH; }
 
   static ActorID FromRandom(const JobID &job_id);
+
+  static ActorID FromRandom() = delete;
 
   ActorID() : BaseID() {}
 
   JobID JobId() const;
 
-  static ActorID FromRandom() = delete;
-
  private:
-  uint8_t id_[length];
+  uint8_t id_[LENGTH];
 };
 
 class TaskID : public BaseID<TaskID> {
  private:
-  static constexpr size_t unique_bytes_length = 6;
+  static constexpr size_t UNIQUE_BYTES_LENGTH = 6;
 
  public:
-  static constexpr size_t length = unique_bytes_length + ActorID::length;
+  static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + ActorID::LENGTH;
 
   TaskID() : BaseID() {}
 
-  static size_t Size() { return length; }
+  static size_t Size() { return LENGTH; }
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
   static TaskID FromRandom(const ActorID &actor_id);
 
  private:
-  uint8_t id_[length];
+  uint8_t id_[LENGTH];
 };
 
 // TODO(qwang): Add complete designing to describe structure of ID.
 class ObjectID : public BaseID<ObjectID> {
 private:
-  static constexpr size_t unique_bytes_length = 4;
+  static constexpr size_t UNIQUE_BYTES_LENGTH = 4;
 
-  static constexpr size_t flags_bytes_length = 2;
+  static constexpr size_t FLAGS_BYTES_LENGTH = 2;
 
  public:
-  static constexpr size_t length = unique_bytes_length + flags_bytes_length + TaskID::length;
+  /// The maximum number of objects that can be returned by a task when finishing
+  /// execution. An ObjectID's bytes are split into the task ID itself and the
+  /// index of the object's creation. A positive index indicates an object
+  /// returned by the task, so the maximum number of objects that a task can
+  /// return is the maximum positive value for an integer with bit-width
+  /// `kObjectIdIndexSize`.
+  static constexpr int64_t MAX_TASK_RETURNS = ((int64_t)1 << kObjectIdIndexSize) - 1;
+
+  /// The maximum number of objects that can be put by a task during execution.
+  /// An ObjectID's bytes are split into the task ID itself and the index of the
+  /// object's creation. A negative index indicates an object put by the task
+  /// during execution, so the maximum number of objects that a task can put is
+  /// the maximum negative value for an integer with bit-width
+  /// `kObjectIdIndexSize`.
+  static constexpr int64_t MAX_TASK_PUTS = ((int64_t)1 << kObjectIdIndexSize) - 1;
+
+  static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + FLAGS_BYTES_LENGTH + TaskID::LENGTH;
 
   ObjectID() : BaseID() {}
 
-  static size_t Size() { return length; }
+  static size_t Size() { return LENGTH; }
 
   static ObjectID FromPlasmaIdBinary(const std::string &from);
 
@@ -244,29 +260,19 @@ private:
   /// \return The task ID of the task that created this object.
   TaskID TaskId() const;
 
-  bool IsTask() const {
-    uint16_t flags;
-    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
-    return object_id_helper::IsTask(flags);
-  }
+  /// Whether this object is generated from a task.
+  ///
+  /// \return True if this object is generated from a task, otherwise false.
+  bool IsTask() const;
 
-  bool IsPutObject() const {
-    uint16_t flags;
-    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
-    return object_id_helper::GetObjectType(flags) == ObjectType::PUT_OBJECT;
-  }
+  /// Whether this object is a `PUT_OBJECT`.
+  bool IsPutObject() const;
 
-  bool IsReturnObject() const {
-    uint16_t flags;
-    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
-    return object_id_helper::GetObjectType(flags) == ObjectType::RETURN_OBJECT;
-  }
+  /// Whether this object is a `RETURN_OBJECT`.
+  bool IsReturnObject() const;
 
-  TransportType GetTransportType() const {
-    uint16_t flags;
-    std::memcpy(&flags, id_ + TaskID::length, sizeof(flags));
-    return object_id_helper::GetTransportType(flags);
-  }
+  /// Get the transport type of this object.
+  TransportType GetTransportType() const;
 
   /// Compute the object ID of an object put by the task.
   ///
@@ -286,26 +292,23 @@ private:
   static ObjectID ForTaskReturn(const TaskID &task_id, uint32_t return_index,
                                 TransportType transport = TransportType::STANDARD);
 
-  // TODO(qwang): Add get Flags methods.
-
-  /// \param transport
+  /// Create an object id randomly.
+  /// \param transport_type The transport type of this object.
   ///
-  /// \return
-  static ObjectID FromRandom(TransportType transport = TransportType::STANDARD);
+  /// \return A random object id.
+  static ObjectID FromRandom(TransportType transport_type = TransportType::STANDARD);
 
  private:
-  uint8_t id_[length];
+  uint8_t id_[LENGTH];
 };
 
-static_assert(sizeof(JobID) == JobID::length + sizeof(size_t),
+static_assert(sizeof(JobID) == JobID::LENGTH + sizeof(size_t),
               "JobID size is not as expected");
-static_assert(sizeof(ActorID) == ActorID::length + sizeof(size_t),
+static_assert(sizeof(ActorID) == ActorID::LENGTH + sizeof(size_t),
               "ActorID size is not as expected");
-static_assert(sizeof(TaskID) == TaskID::length + sizeof(size_t),
+static_assert(sizeof(TaskID) == TaskID::LENGTH + sizeof(size_t),
               "TaskID size is not as expected");
-//static_assert(sizeof(ObjectID) == sizeof(int32_t) + sizeof(TaskID),
-//              "ObjectID size is not as expected");
-static_assert(sizeof(ObjectID) == ObjectID::length + sizeof(size_t),
+static_assert(sizeof(ObjectID) == ObjectID::LENGTH + sizeof(size_t),
               "ObjectID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);

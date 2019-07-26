@@ -464,7 +464,6 @@ class ActorHandle(object):
                  method_decorators,
                  method_signatures,
                  method_num_return_vals,
-                 # TODO(qwang): This arg must be refine.
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
                  actor_job_id,
