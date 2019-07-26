@@ -63,14 +63,14 @@ TEST(ObjectIDTest, TestObjectID) {
     // test for put
     TestPutObjectId(default_task_id, 1);
     TestPutObjectId(default_task_id, 2);
-    TestPutObjectId(default_task_id, ObjectID::MAX_TASK_PUTS);
+    TestPutObjectId(default_task_id, ObjectID::MAX_OBJECT_INDEX);
   }
 
   {
     // test for return
     TestReturnObjectId(default_task_id, 1);
     TestReturnObjectId(default_task_id, 2);
-    TestReturnObjectId(default_task_id, ObjectID::MAX_TASK_RETURNS);
+    TestReturnObjectId(default_task_id, ObjectID::MAX_OBJECT_INDEX);
   }
 
   {

@@ -174,7 +174,7 @@ TaskID ObjectID::TaskId() const {
 }
 
 ObjectID ObjectID::ForPut(const TaskID &task_id, uint32_t put_index) {
-  RAY_CHECK(put_index >= 1 && put_index <= MAX_TASK_PUTS) << "index=" << put_index;
+  RAY_CHECK(put_index >= 1 && put_index <= MAX_OBJECT_INDEX) << "index=" << put_index;
 
   uint16_t flags = 0x0000;
   object_id_helper::SetIsTaskFlag(&flags, true);
@@ -195,7 +195,7 @@ uint32_t ObjectID::ObjectIndex() const {
 }
 
 ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, uint32_t return_index, TransportType transport_type) {
-  RAY_CHECK(return_index >= 1 && return_index <= MAX_TASK_RETURNS)
+  RAY_CHECK(return_index >= 1 && return_index <= MAX_OBJECT_INDEX)
       << "index=" << return_index;
 
   uint16_t flags = 0x0000;

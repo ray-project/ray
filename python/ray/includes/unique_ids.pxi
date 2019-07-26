@@ -36,7 +36,6 @@ def check_id(b, size=kUniqueIDSize):
 
 cdef extern from "ray/common/constants.h" nogil:
     cdef int64_t kUniqueIDSize
-    cdef int64_t kMaxTaskPuts
 
 
 cdef class BaseID:

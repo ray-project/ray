@@ -116,6 +116,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
 
         @staticmethod
+        int64_t MaxObjectIndex()
+
+        @staticmethod
         CObjectID FromBinary(const c_string &binary)
 
         @staticmethod

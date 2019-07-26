@@ -222,23 +222,14 @@ private:
  public:
   /// The maximum number of objects that can be returned by a task when finishing
   /// execution. An ObjectID's bytes are split into the task ID itself and the
-  /// index of the object's creation. A positive index indicates an object
-  /// returned by the task, so the maximum number of objects that a task can
-  /// return is the maximum positive value for an integer with bit-width
-  /// `kObjectIdIndexSize`.
-  static constexpr int64_t MAX_TASK_RETURNS = ((int64_t)1 << kObjectIdIndexSize) - 1;
-
-  /// The maximum number of objects that can be put by a task during execution.
-  /// An ObjectID's bytes are split into the task ID itself and the index of the
-  /// object's creation. A negative index indicates an object put by the task
-  /// during execution, so the maximum number of objects that a task can put is
-  /// the maximum negative value for an integer with bit-width
-  /// `kObjectIdIndexSize`.
-  static constexpr int64_t MAX_TASK_PUTS = ((int64_t)1 << kObjectIdIndexSize) - 1;
+  /// index of the object's creation.
+  static constexpr int64_t MAX_OBJECT_INDEX = ((int64_t) 1 << kObjectIdIndexSize) - 1;
 
   static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + FLAGS_BYTES_LENGTH + TaskID::LENGTH;
 
   ObjectID() : BaseID() {}
+
+  static uint64_t MaxObjectIndex() { return MAX_OBJECT_INDEX; }
 
   static size_t Size() { return LENGTH; }
 
