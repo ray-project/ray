@@ -16,9 +16,7 @@ def train_example(num_replicas=1, use_gpu=False):
         optimizer_creator,
         num_replicas=num_replicas,
         resources_per_replica=Resources(
-            num_cpus=1,
-            num_gpus=int(use_gpu),
-            resources={}))
+            num_cpus=1, num_gpus=int(use_gpu), resources={}))
     trainer1.train()
     trainer1.shutdown()
 
