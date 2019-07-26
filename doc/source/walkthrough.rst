@@ -4,8 +4,8 @@ Walkthrough
 This walkthrough will overview the core concepts of Ray:
 
    1. Launching a remote function
-   2. Fetching results
-   3. Using remote classes.
+   2. Fetching results.
+   3. Using remote classes (actors).
 
 Suppose we've already started Ray.
 
@@ -140,9 +140,6 @@ When an actor is instantiated, the following events happen.
 2. A ``Counter`` object is created on that worker and the ``Counter``
    constructor is run.
 
-Using an actor
---------------
-
 We can interact with the actor by calling its methods with the ``.remote`` operator.
 
 .. code-block:: python
@@ -169,3 +166,6 @@ one another, as shown below.
   # and share state.
   results = ray.get([counters[0].increment.remote() for _ in range(5)])
   print(results)  # prints [2, 3, 4, 5, 6]
+
+
+To learn more about Ray's API and advanced usage, take a look at the Advanced Usage guide.

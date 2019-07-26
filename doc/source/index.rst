@@ -35,10 +35,10 @@ Cluster Quick Start
 -------------------
 
 Ray comes with an autoscaler. To launch a Ray cluster, either privately, on AWS, or on GCP, `follow these instructions <autoscaling.html>`_.
-TODO: Add text that showcases ease of launching a ray script..
 
-``ray submit example.py --start``
+To launch a Ray cluster on AWS in 1 line of code, you can download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__:
 
+``ray submit [CLUSTER.YAML] example.py --start``
 
 Ray Ecosystem
 -------------
@@ -68,18 +68,18 @@ Other projects in development:
    :maxdepth: 1
    :caption: Tutorial
 
-   tutorial.rst
-   actors.rst
+   walkthrough.rst
    resources.rst
+   serialization.rst
    examples.rst
 
 .. toctree::
    :maxdepth: 1
    :caption: Cluster Setup
 
-   deploy-on-kubernetes.rst
    autoscaling.rst
    using-ray-on-a-cluster.rst
+   deploy-on-kubernetes.rst
 
 .. toctree::
    :maxdepth: 1

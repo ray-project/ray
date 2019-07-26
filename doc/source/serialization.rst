@@ -1,5 +1,5 @@
-Serialization in the Object Store
-=================================
+Serialization
+=============
 
 This document describes what Python objects Ray can and cannot serialize into
 the object store. Once an object is placed in the object store, it is immutable.
