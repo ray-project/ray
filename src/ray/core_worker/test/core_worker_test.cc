@@ -173,7 +173,7 @@ class CoreWorkerTest : public ::testing::Test {
                         bool is_direct_call);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
-  // and as long as we wait for actor reconstructionbefore submitting new tasks,
+  // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
   void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
                    bool is_direct_call);
