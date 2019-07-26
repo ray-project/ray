@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import OrderedDict
-
+import logging
 import gym
 
 from ray.rllib.models.tf.misc import linear, normc_initializer
@@ -12,6 +12,7 @@ from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 class Model(object):
@@ -26,6 +27,10 @@ class Model(object):
                  state_in=None,
                  seq_lens=None):
         assert isinstance(input_dict, dict), input_dict
+
+        logger.warning("rllib.models.Model is deprecated, consider using "
+                       "rllib.models.tf.tf_modelv2.TFModelV2 instead for "
+                       "Keras compatibility and better RNN support.")
 
         # Default attribute values for the non-RNN case
         self.state_init = []
