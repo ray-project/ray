@@ -94,7 +94,7 @@ class TFPolicy(Policy):
             prev_reward_input (Tensor): placeholder for previous rewards
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
-                recurrent_tf_modelv2.py for more information.
+                policy/rnn_sequencing.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
