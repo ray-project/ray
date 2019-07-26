@@ -61,9 +61,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                          const rpc::ErrorType &error_type);
 
-  /// Handle the case that an actor becomes alive.
+  /// Create connection to actor and send all pending tasks.
   /// Note that this function doesn't take lock, the caller is expected to hold
-  /// `rpc_clients_mutex_` before calling this function.
+  /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
   /// \param[in] ip_address The ip address of the node that the actor is running on.
@@ -71,6 +71,12 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return Void.
   void ConnectAndSendPendingTasks(const ActorID &actor_id, std::string ip_address,
                                   int port);
+
+  /// Whether the specified actor is alive.
+  ///
+  /// \param[in] actor_id The actor ID.
+  /// \return Whether this actor is alive.
+  bool IsActorAlive(const ActorID &actor_id) const;
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
@@ -81,8 +87,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
   rpc::ClientCallManager client_call_manager_;
 
-  /// Mutex to proect `rpc_clients_` below.
-  std::mutex rpc_clients_mutex_;
+  /// Mutex to proect the various maps below.
+  mutable std::mutex mutex_;
 
   /// Map from actor id to actor state. This currently includes all actors in the system.
   ///
@@ -104,6 +110,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
+
+  friend class CoreWorkerTest;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,

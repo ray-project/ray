@@ -41,7 +41,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
-  std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+  std::unique_lock<std::mutex> guard(mutex_);
   auto iter = actor_states_.find(actor_id);
   if (iter == actor_states_.end() ||
       iter->second.state_ == ActorTableData::RECONSTRUCTING) {
@@ -76,7 +76,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &actor_data) {
-    std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
+    std::unique_lock<std::mutex> guard(mutex_);
     actor_states_.erase(actor_id);
     actor_states_.emplace(
         actor_id,
@@ -162,6 +162,13 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
     store_provider_->Put(RayObject(nullptr, meta_buffer), object_id);
   }
+}
+
+bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
+  std::unique_lock<std::mutex> guard(mutex_);
+  auto iter = actor_states_.find(actor_id);
+  return (iter != actor_states_.end() &&
+      iter->second.state_ == ActorTableData::ALIVE);
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(

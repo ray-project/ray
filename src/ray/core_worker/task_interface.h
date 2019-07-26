@@ -191,6 +191,8 @@ class CoreWorkerTaskInterface {
   /// All the task submitters supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
       task_submitters_;
+
+  friend class CoreWorkerTest;
 };
 
 }  // namespace ray

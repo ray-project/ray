@@ -3,7 +3,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
-#include "ray/core_worker/test/constants.h"
+#include "ray/core_worker/test/util.h"
 
 using namespace std::placeholders;
 
@@ -38,31 +38,6 @@ class MockWorker {
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
-
-    if (task_info.task_type == TaskType::ACTOR_CREATION_TASK &&
-        ray_function.function_descriptor.size() == 1 &&
-        ray_function.function_descriptor[0] == c_test_actor_failover_str) {
-      // This is an actor creation task, and the caller passes a list of object IDs
-      // to this mock worker, which will check if all the objects exist in store,
-      // if it find an object ID that doesn't exist, it will call `Put` to add it
-      // to store, and break. This is used to test actor failover scenario.
-      RAY_CHECK(args.size() > 0);
-      for (const auto &arg : args) {
-        std::string object_id_str(reinterpret_cast<char *>(arg->GetData()->Data()),
-                                  arg->GetData()->Size());
-        auto object_id = ObjectID::FromBinary(object_id_str);
-
-        std::vector<std::shared_ptr<ray::RayObject>> results;
-        RAY_CHECK_OK(worker_.Objects().Get({object_id}, 0, &results));
-
-        if (results.empty() || results[0] == nullptr) {
-          uint8_t array[] = {1};
-          auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-          RAY_CHECK_OK(worker_.Objects().Put(RayObject(buffer, nullptr), object_id));
-          break;
-        }
-      }
-    }
 
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;

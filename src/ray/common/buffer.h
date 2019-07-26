@@ -23,7 +23,11 @@ class Buffer {
   virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
-    return this->Data() == rhs.Data() && this->Size() == rhs.Size();
+    if (this->Size() != rhs.Size()) {
+      return false;
+    }
+
+    return this->Size() == 0 || memcmp(Data(), rhs.Data(), Size()) == 0;
   }
 };
 
