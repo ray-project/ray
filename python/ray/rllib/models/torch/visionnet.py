@@ -16,8 +16,8 @@ class VisionNetwork(nn.Module, TorchModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super(VisionNetwork, self).__init__(obs_space, action_space,
-                                            num_outputs, model_config, name)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
         nn.Module.__init__(self)
 
         filters = model_config.get("conv_filters")
