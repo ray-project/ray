@@ -37,7 +37,21 @@ TensorFlow Models
 
     TFModelV2 replaces the previous ``rllib.models.Model`` class, which did not support Keras-style reuse of variables. The ``rllib.models.Model`` class is deprecated and should not be used.
 
-Custom TF models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/tf/tf_modelv2.py>`__ to implement the ``__init__()`` and ``forward()`` methods. Forward takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), optional RNN state, and returns the model output of size ``num_outputs`` and the new state. You can also override extra methods of the model such as ``value_function`` to implement a custom value branch. Additional supervised / self-supervised losses can be added via the ``custom_loss`` method. The model can then be registered and used in place of a built-in model:
+Custom TF models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/tf/tf_modelv2.py>`__ to implement the ``__init__()`` and ``forward()`` methods. Forward takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), optional RNN state, and returns the model output of size ``num_outputs`` and the new state. You can also override extra methods of the model such as ``value_function`` to implement a custom value branch. Additional supervised / self-supervised losses can be added via the ``custom_loss`` method:
+
+.. autoclass:: ray.rllib.models.tf.tf_modelv2.TFModelV2
+
+    .. automethod:: __init__
+    .. automethod:: forward
+    .. automethod:: value_function
+    .. automethod:: custom_loss
+    .. automethod:: metrics
+    .. automethod:: update_ops
+    .. automethod:: register_variables
+    .. automethod:: variables
+    .. automethod:: trainable_variables
+
+Once implemented, the model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -47,90 +61,9 @@ Custom TF models should subclass `TFModelV2 <https://github.com/ray-project/ray/
     from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 
     class MyModelClass(TFModelV2):
-        def __init__(self, obs_space, action_space, num_outputs, model_config,
-                     name):
-            """Initialize the model.
-
-            This method should create any variables used by the model.
-            """
-            super(MyModelModel, self).__init__(obs_space, action_space,
-                                               num_outputs, model_config, name)
-            input_layer = tf.keras.layers.Input(...)
-            hidden_layer = tf.keras.layers.Dense(...)(input_layer)
-            output_layer = tf.keras.layers.Dense(...)(hidden_layer)
-            value_layer = tf.keras.layers.Dense(...)(hidden_layer)
-            self.base_model = tf.keras.Model(input_layer, [output_layer, value_layer])
-            self.register_variables(self.base_model.variables)
-
-        def forward(self, input_dict, state, seq_lens):
-            """Call the model with the given input tensors and state.
-
-            Any complex observations (dicts, tuples, etc.) will be unpacked by
-            __call__ before being passed to forward(). To access the flattened
-            observation tensor, refer to input_dict["obs_flat"].
-
-            This method can be called any number of times. In eager execution,
-            each call to forward() will eagerly evaluate the model. In symbolic
-            execution, each call to forward creates a computation graph that
-            operates over the variables of this model (i.e., shares weights).
-
-            Custom models should override this instead of __call__.
-
-            Arguments:
-                input_dict (dict): dictionary of input tensors, including "obs",
-                    "obs_flat", "prev_action", "prev_reward", "is_training"
-                state (list): list of state tensors with sizes matching those
-                    returned by get_initial_state + the batch dimension
-                seq_lens (Tensor): 1d tensor holding input sequence lengths
-
-            Returns:
-                (outputs, state): The model output tensor of size
-                    [BATCH, num_outputs]
-            """
-            model_out, self._value_out = self.base_model(input_dict["obs"])
-            return model_out, state
-
-        def value_function(self):
-            """Return the value function estimate for the most recent forward pass.
-
-            Returns:
-                value estimate tensor of shape [BATCH].
-            """
-            return self._value_out
-
-        def custom_loss(self, policy_loss, loss_inputs):
-            """Override to customize the loss function used to optimize this model.
-
-            This can be used to incorporate self-supervised losses (by defining
-            a loss over existing input and output tensors of this model), and
-            supervised losses (by defining losses over a variable-sharing copy of
-            this model's layers).
-
-            You can find an runnable example in examples/custom_loss.py.
-
-            Arguments:
-                policy_loss (Tensor): scalar policy loss from the policy.
-                loss_inputs (dict): map of input placeholders for rollout data.
-
-            Returns:
-                Scalar tensor for the customized loss for this model.
-            """
-            return policy_loss
-
-        def metrics(self):
-            """Override to return custom metrics from your model.
-
-            The stats will be reported as part of the learner stats, i.e.,
-                info:
-                    learner:
-                        model:
-                            key1: metric1
-                            key2: metric2
-
-            Returns:
-                Dict of string keys to scalar tensors.
-            """
-            return {}
+        def __init__(self, obs_space, action_space, num_outputs, model_config, name): ...
+        def forward(self, input_dict, state, seq_lens): ...
+        def value_function(self): ...
 
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 
@@ -149,53 +82,11 @@ Recurrent Models
 
 Instead of using the ``use_lstm: True`` option, it can be preferable use a custom recurrent model. This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input. For a RNN model it is preferred to subclass ``RecurrentTFModelV2`` to implement ``__init__()``, ``get_initial_state()``, and ``forward_rnn()``. You can check out the `custom_keras_rnn_model.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_rnn_model.py>`__ model as an example to implement your own model:
 
-.. code-block:: python
+.. autoclass:: ray.rllib.models.tf.recurrent_tf_modelv2.RecurrentTFModelV2
 
-    class MyKerasRNN(RecurrentTFModelV2):
-        def __init__(self,
-                     obs_space,
-                     action_space,
-                     num_outputs,
-                     model_config,
-                     name,
-                     cell_size=64):
-            super(MyKerasRNN, self).__init__(obs_space, action_space, num_outputs,
-                                             model_config, name)
-            self.cell_size = cell_size
-
-            # Define input layers
-            input_layer = tf.keras.layers.Input(shape=(None, obs_space.shape[0]))
-            state_in_h = tf.keras.layers.Input(shape=(cell_size, ))
-            state_in_c = tf.keras.layers.Input(shape=(cell_size, ))
-            seq_in = tf.keras.layers.Input(shape=())
-
-            # Send to LSTM cell
-            lstm_out, state_h, state_c = tf.keras.layers.LSTM(
-                cell_size, return_sequences=True, return_state=True, name="lstm")(
-                    inputs=input_layer,
-                    mask=tf.sequence_mask(seq_in),
-                    initial_state=[state_in_h, state_in_c])
-            output_layer = tf.keras.layers.Dense(...)(lstm_out)
-
-            # Create the RNN model
-            self.rnn_model = tf.keras.Model(
-                inputs=[input_layer, seq_in, state_in_h, state_in_c],
-                outputs=[output_layer, state_h, state_c])
-            self.register_variables(self.rnn_model.variables)
-            self.rnn_model.summary()
-
-        @override(RecurrentTFModelV2)
-        def forward_rnn(self, inputs, state, seq_lens):
-            model_out, h, c = self.rnn_model([inputs, seq_lens] + state)
-            return model_out, [h, c]
-
-        @override(ModelV2)
-        def get_initial_state(self):
-            return [
-                np.zeros(self.cell_size, np.float32),
-                np.zeros(self.cell_size, np.float32),
-            ]
-
+    .. automethod:: __init__
+    .. automethod:: forward_rnn
+    .. automethod:: get_initial_state
 
 Batch Normalization
 ~~~~~~~~~~~~~~~~~~~
@@ -209,49 +100,28 @@ PyTorch Models
 
 Similarly, you can create and register custom PyTorch models for use with PyTorch-based algorithms (e.g., A2C, PG, QMIX). See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/qmix/model.py>`__ torch models.
 
+.. autoclass:: ray.rllib.models.torch.torch_modelv2.TorchModelV2
+
+    .. automethod:: __init__
+    .. automethod:: forward
+    .. automethod:: value_function
+    .. automethod:: custom_loss
+    .. automethod:: metrics
+    .. automethod:: parameters
+    .. automethod:: get_initial_state
+
+Once implemented, the model can then be registered and used in place of a built-in model:
+
 .. code-block:: python
 
     import ray
     from ray.rllib.agents import a3c
     from ray.rllib.models import ModelCatalog
-    from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
-    class CustomTorchModel(TorchModelV2):
-
-        def __init__(self, obs_space, action_space, num_outputs, model_config,
-                     name):
-            super(CustomTorchModel, self).__init__(
-                obs_space, action_space, num_outputs, model_config, name)
-            ...  # setup hidden layers
-
-        def forward(self, input_dict, state, seq_lens):
-            """Call the model with the given input tensors and state.
-
-            Any complex observations (dicts, tuples, etc.) will be unpacked by
-            __call__ before being passed to forward(). To access the flattened
-            observation tensor, refer to input_dict["obs_flat"].
-
-            This method can be called any number of times. In eager execution,
-            each call to forward() will eagerly evaluate the model. In symbolic
-            execution, each call to forward creates a computation graph that
-            operates over the variables of this model (i.e., shares weights).
-
-            Custom models should override this instead of __call__.
-
-            Arguments:
-                input_dict (dict): dictionary of input tensors, including "obs",
-                    "obs_flat", "prev_action", "prev_reward", "is_training"
-                state (list): list of state tensors with sizes matching those
-                    returned by get_initial_state + the batch dimension
-                seq_lens (Tensor): 1d tensor holding input sequence lengths
-
-            Returns:
-                (outputs, state): The model output tensor of size
-                    [BATCH, num_outputs]
-            """
-            obs = input_dict["obs"]
-            ...
-            return logits, state
+    class CustomTorchModel(nn.Module, TorchModelV2):
+        def __init__(self, obs_space, action_space, num_outputs, model_config, name): ...
+        def forward(self, input_dict, state, seq_lens): ...
+        def value_function(self): ...
 
     ModelCatalog.register_custom_model("my_model", CustomTorchModel)
 

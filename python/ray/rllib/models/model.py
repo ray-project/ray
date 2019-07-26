@@ -28,10 +28,6 @@ class Model(object):
                  seq_lens=None):
         assert isinstance(input_dict, dict), input_dict
 
-        logger.warning("rllib.models.Model is deprecated, consider using "
-                       "rllib.models.tf.tf_modelv2.TFModelV2 instead for "
-                       "Keras compatibility and better RNN support.")
-
         # Default attribute values for the non-RNN case
         self.state_init = []
         self.state_in = state_in or []

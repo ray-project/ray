@@ -11,13 +11,14 @@ from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
 
 
-class VisionNetwork(TorchModelV2):
+class VisionNetwork(nn.Module, TorchModelV2):
     """Generic vision network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super(VisionNetwork, self).__init__(obs_space, action_space,
                                             num_outputs, model_config, name)
+        nn.Module.__init__(self)
 
         filters = model_config.get("conv_filters")
         if not filters:
