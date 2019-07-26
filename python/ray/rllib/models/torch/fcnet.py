@@ -14,7 +14,7 @@ from ray.rllib.utils.annotations import override
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(nn.Module, TorchModelV2):
+class FullyConnectedNetwork(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,

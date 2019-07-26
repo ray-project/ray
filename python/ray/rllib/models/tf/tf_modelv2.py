@@ -20,7 +20,8 @@ class TFModelV2(ModelV2):
                  name):
         """Initialize a TFModelV2.
 
-        Here is an example implementation for a subclass ``MyModelClass``::
+        Here is an example implementation for a subclass
+        ``MyModelClass(TFModelV2)``::
 
             def __init__(self, *args, **kwargs):
                 super(MyModelClass, self).__init__(*args, **kwargs)

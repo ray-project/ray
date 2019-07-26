@@ -134,7 +134,7 @@ class InvalidModel2(Model):
         return tf.constant(0), tf.constant(0)
 
 
-class TorchSpyModel(nn.Module, TorchModelV2):
+class TorchSpyModel(TorchModelV2, nn.Module):
     capture_index = 0
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,

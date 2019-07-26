@@ -22,7 +22,8 @@ class RecurrentTFModelV2(TFModelV2):
                  name):
         """Initialize a TFModelV2.
 
-        Here is an example implementation for a subclass ``MyRNNClass``::
+        Here is an example implementation for a subclass
+        ``MyRNNClass(RecurrentTFModelV2)``::
 
             def __init__(self, *args, **kwargs):
                 super(MyModelClass, self).__init__(*args, **kwargs)

@@ -107,16 +107,18 @@ Similarly, you can create and register custom PyTorch models for use with PyTorc
     .. automethod:: value_function
     .. automethod:: custom_loss
     .. automethod:: metrics
-    .. automethod:: parameters
     .. automethod:: get_initial_state
 
 Once implemented, the model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
+    import torch.nn as nn
+
     import ray
     from ray.rllib.agents import a3c
     from ray.rllib.models import ModelCatalog
+    from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
     class CustomTorchModel(nn.Module, TorchModelV2):
         def __init__(self, obs_space, action_space, num_outputs, model_config, name): ...

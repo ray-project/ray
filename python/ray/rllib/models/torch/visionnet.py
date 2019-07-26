@@ -11,7 +11,7 @@ from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
 
 
-class VisionNetwork(nn.Module, TorchModelV2):
+class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,

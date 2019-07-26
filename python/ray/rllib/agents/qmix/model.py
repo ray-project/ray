@@ -10,7 +10,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 
 
-class RNNModel(nn.Module, TorchModelV2):
+class RNNModel(TorchModelV2, nn.Module):
     """The default RNN model for QMIX."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
