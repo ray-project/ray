@@ -75,6 +75,7 @@ ray::Status RayletClient::Disconnect() {
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   RETURN_IF_DISCONNECTED(is_connected_);
   SubmitTaskRequest submit_task_request;
+  submit_task_request.set_worker_id(worker_id_.Binary());
   submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   grpc::ClientContext context;

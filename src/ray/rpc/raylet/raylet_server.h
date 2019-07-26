@@ -14,6 +14,8 @@ namespace rpc {
 /// `src/ray/protobuf/raylet.proto`.
 class RayletServiceHandler {
  public:
+  virtual bool PreprocessRequest(const ::google::protobuf::Message &request) = 0;
+  /// Handle a `RegisterClient` request.
   virtual void HandleRegisterClientRequest(const RegisterClientRequest &request,
                                            RegisterClientReply *reply,
                                            SendReplyCallback send_reply_callback) = 0;
@@ -112,7 +114,8 @@ class RayletGrpcService : public GrpcService {
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, SubmitTaskRequest,
                                   SubmitTaskReply>(
             service_, &RayletService::AsyncService::RequestSubmitTask, service_handler_,
-            &RayletServiceHandler::HandleSubmitTaskRequest, cq, main_service_));
+            &RayletServiceHandler::HandleSubmitTaskRequest, cq, main_service_,
+            preprocess_request_function_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(submit_task_call_factory), 20);
 
@@ -122,7 +125,7 @@ class RayletGrpcService : public GrpcService {
                                   DisconnectClientRequest, DisconnectClientReply>(
             service_, &RayletService::AsyncService::RequestDisconnectClient,
             service_handler_, &RayletServiceHandler::HandleDisconnectClientRequest, cq,
-            main_service_));
+            main_service_, preprocess_request_function_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(disconnect_client_call_factory), 10);
 
@@ -131,7 +134,8 @@ class RayletGrpcService : public GrpcService {
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, GetTaskRequest,
                                   GetTaskReply>(
             service_, &RayletService::AsyncService::RequestGetTask, service_handler_,
-            &RayletServiceHandler::HandleGetTaskRequest, cq, main_service_));
+            &RayletServiceHandler::HandleGetTaskRequest, cq, main_service_,
+            preprocess_request_function_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(get_task_call_factory), 20);
 
@@ -140,7 +144,8 @@ class RayletGrpcService : public GrpcService {
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, TaskDoneRequest,
                                   TaskDoneReply>(
             service_, &RayletService::AsyncService::RequestTaskDone, service_handler_,
-            &RayletServiceHandler::HandleTaskDoneRequest, cq, main_service_));
+            &RayletServiceHandler::HandleTaskDoneRequest, cq, main_service_,
+            preprocess_request_function_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(task_done_call_factory), 20);
 
@@ -150,7 +155,7 @@ class RayletGrpcService : public GrpcService {
                                   FetchOrReconstructRequest, FetchOrReconstructReply>(
             service_, &RayletService::AsyncService::RequestFetchOrReconstruct,
             service_handler_, &RayletServiceHandler::HandleFetchOrReconstructRequest, cq,
-            main_service_));
+            main_service_, preprocess_request_function_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(fetch_or_reconstruct_call_factory), 10);
 
@@ -245,11 +250,17 @@ class RayletGrpcService : public GrpcService {
         std::move(heartbeat_call_factory), 10);
   }
 
+  void RegisterPreprocessFunction() override {
+    preprocess_request_function_ = &RayletServiceHandler::PreprocessRequest;
+  }
+
  private:
   /// The grpc async service object.
   RayletService::AsyncService service_;
   /// The service handler that actually handle the requests.
   RayletServiceHandler &service_handler_;
+  /// The pointer to the preprocessor of this service.
+  PreprocessRequestFunction<RayletServiceHandler> preprocess_request_function_ = nullptr;
 };
 
 }  // namespace rpc

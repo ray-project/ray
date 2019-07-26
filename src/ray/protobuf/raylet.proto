@@ -27,7 +27,8 @@ message RegisterClientReply {
 }
 
 message SubmitTaskRequest {
-  TaskSpec task_spec = 1;
+  bytes worker_id = 1;
+  TaskSpec task_spec = 2;
 }
 message SubmitTaskReply {
 }

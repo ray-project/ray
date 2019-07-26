@@ -95,6 +95,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
+  /// Preprocess each request from the raylet client.
+  /// Handling three common parts for requests, print log, check heartbeat & check worker
+  /// being killed.
+  bool PreprocessRequest(const ::google::protobuf::Message &request) override;
   /// Implementation of node manager grpc service.
 
   /// Handle a `ForwardTask` request.
@@ -538,6 +542,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
+
+  std::pair<std::shared_ptr<Worker>, bool> GetWorker(const WorkerID &worker_id);
 
   // GCS client ID for this node.
   ClientID client_id_;

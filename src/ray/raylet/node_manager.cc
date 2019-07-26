@@ -1,6 +1,7 @@
 #include "ray/raylet/node_manager.h"
 
 #include <fstream>
+#include <sstream>
 
 #include "ray/common/status.h"
 
@@ -736,6 +737,63 @@ void NodeManager::DispatchTasks(
   local_queues_.MoveTasks(assigned_task_ids, TaskState::READY, TaskState::RUNNING);
 }
 
+std::pair<std::shared_ptr<Worker>, bool> NodeManager::GetWorker(
+    const WorkerID &worker_id) {
+  bool is_worker = true;
+  auto worker = worker_pool_.GetRegisteredWorker(worker_id);
+  if (!worker) {
+    is_worker = false;
+    worker = worker_pool_.GetRegisteredDriver(worker_id);
+    if (!worker) {
+      return std::make_pair(nullptr, true);
+    }
+  }
+  return std::make_pair(worker, is_worker);
+}
+
+bool NodeManager::PreprocessRequest(const ::google::protobuf::Message &request) {
+  const auto descriptor = request.GetDescriptor();
+  const auto worker_id_field = descriptor->FindFieldByName("worker_id");
+
+  std::ostringstream debug_string;
+  // std::string type = request.GetTypeName();
+  debug_string << "Received a " << descriptor->name() << " request.";
+  if (!worker_id_field) {
+    RAY_LOG(INFO) << debug_string.str();
+    return true;
+  }
+  std::string worker_id_str;
+  const auto reflection = request.GetReflection();
+  worker_id_str = reflection->GetString(request, worker_id_field);
+  WorkerID worker_id = WorkerID::FromBinary(worker_id_str);
+  debug_string << " Worker id " << worker_id.Hex() << ".";
+  // NOTE(Joey Jiang): We check heartbeat actively because the heartbeats' callback won't
+  // be invoked until all the post requests in the grpc server have been finished.
+  // The raylet might be marked as dead due to missing heartbeats when too many requests
+  // are sent to this raylet.
+
+  auto rt = GetWorker(worker_id);
+  auto worker = rt.first;
+  // Worker process has been killed, we should discard this request.
+  if (!worker) {
+    debug_string << " Worker is not found in worker pool, request will be discarded.";
+    RAY_LOG(INFO) << debug_string.str();
+    return false;
+  }
+  debug_string << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
+               << std::to_string(worker->Pid()) << ".";
+
+  // The worker process is being killing, we should discard this request.
+  if (worker->IsBeingKilled()) {
+    debug_string << " Worker process is being killed, request will be discarded.";
+    RAY_LOG(INFO) << debug_string.str();
+    return false;
+  }
+
+  RAY_LOG(INFO) << debug_string.str();
+  return true;
+}
+
 void NodeManager::HandleRegisterClientRequest(
     const rpc::RegisterClientRequest &request, rpc::RegisterClientReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -821,14 +879,8 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
-  RAY_LOG(DEBUG) << "Received a GetTaskRequest, worker id " << worker_id << " pid "
-                 << worker->Pid();
-  if (!worker || worker->IsBeingKilled()) {
-    send_reply_callback(Status::Invalid("WorkerBeingKilled"), nullptr, nullptr);
-    return;
-  }
-  RAY_CHECK(!worker->UsePush());
 
+  RAY_CHECK(!worker->UsePush());
   // Reply would be sent when assigned a task to the worker successfully.
   worker->SetGetTaskReplyAndCallback(reply, std::move(send_reply_callback));
   HandleWorkerAvailable(worker_id);
@@ -838,8 +890,6 @@ void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
                                         rpc::TaskDoneReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  RAY_LOG(DEBUG) << "Received a TaskDoneRequest from worker " << worker_id;
-
   auto worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker && worker->UsePush());
   HandleWorkerAvailable(worker_id);
@@ -850,50 +900,37 @@ void NodeManager::HandleDisconnectClientRequest(
     const rpc::DisconnectClientRequest &request, rpc::DisconnectClientReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  RAY_LOG(DEBUG) << "Received a DisconnectClientRequest from worker " << worker_id;
-
   ProcessDisconnectClientMessage(worker_id, true);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
                                                  bool intentional_disconnect) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
-  bool is_worker = false, is_driver = false;
-  if (worker) {
-    // The client is a worker.
-    is_worker = true;
-  } else {
-    worker = worker_pool_.GetRegisteredDriver(worker_id);
-    if (worker) {
-      // The client is a driver.
-      is_driver = true;
-    } else {
-      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                    << "been disconnected.";
-      return;
-    }
+  auto rt = GetWorker(worker_id);
+  auto worker = rt.first;
+  if (!worker) {
+    RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
+                  << "been disconnected.";
+    return;
   }
-  RAY_CHECK(!(is_worker && is_driver));
+  bool is_worker = rt.second;
 
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
-  if (worker) {
-    if (is_worker && worker->IsBeingKilled()) {
-      // Don't need to unblock the client if it's a worker and have sent kill signal to
-      // it. Because in this case, its task is already cleaned up.
-      RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
-    } else {
-      // Clean up any open ray.get calls that the worker made.
-      while (!worker->GetBlockedTaskIds().empty()) {
-        // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
-        // not safe to pass in the iterator directly.
-        const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        HandleTaskUnblocked(worker_id, task_id);
-      }
-      // Clean up any open ray.wait calls that the worker made.
-      task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+  if (is_worker && worker->IsBeingKilled()) {
+    // Don't need to unblock the client if it's a worker and have sent kill signal to
+    // it. Because in this case, its task is already cleaned up.
+    RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
+  } else {
+    // Clean up any open ray.get calls that the worker made.
+    while (!worker->GetBlockedTaskIds().empty()) {
+      // NOTE(swang): HandleTaskUnblocked will modify the worker, so it is
+      // not safe to pass in the iterator directly.
+      const TaskID task_id = *worker->GetBlockedTaskIds().begin();
+      HandleTaskUnblocked(worker_id, task_id);
     }
+    // Clean up any open ray.wait calls that the worker made.
+    task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
   }
 
   if (is_worker) {
@@ -953,7 +990,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
 
     // Since some resources may have been released, we can try to dispatch more tasks.
     DispatchTasks(local_queues_.GetReadyTasksWithResources());
-  } else if (is_driver) {
+  } else {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
     const auto driver_id = ComputeDriverIdFromJob(job_id);
@@ -976,8 +1013,6 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
 void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a SubmitTaskRequest.";
-
   rpc::Task task;
   task.mutable_task_spec()->CopyFrom(request.task_spec());
 
@@ -990,7 +1025,6 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
 void NodeManager::HandleFetchOrReconstructRequest(
     const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a FetchOrReconstructRequest.";
   const auto &object_ids = request.object_ids();
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < object_ids.size(); ++i) {
