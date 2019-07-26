@@ -35,6 +35,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "replay_proportion": 0.0,
     "replay_buffer_num_slots": 100,
     "learner_queue_size": 16,
+    "learner_queue_timeout": 300,
     "max_sample_requests_in_flight_per_worker": 2,
     "broadcast_interval": 1,
     "grad_clip": 40.0,
