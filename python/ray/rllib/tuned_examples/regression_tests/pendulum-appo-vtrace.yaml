@@ -6,7 +6,7 @@ pendulum-appo-vt:
         timesteps_total: 500000
     config:
         vtrace: False
-        num_gpus: 1
+        num_gpus: 0
         num_workers: 1
         lambda: 0.1
         gamma: 0.95
