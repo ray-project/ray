@@ -7,12 +7,16 @@ This walkthrough will overview the core concepts of Ray:
    2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
    3. Using remote classes (actors) [``ray.remote``]
 
-Suppose we've already started Ray.
+With Ray, your code will work on a single machine and can be easily scaled to a large cluster. Suppose we've already downloaded Ray.
 
 .. code-block:: python
 
   import ray
+
+  # Start ray. You can simply call `ray.init(redis_address=<cluster-redis-address>)` if you're connecting to an existing cluster
   ray.init()
+
+To start a Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__. You can stop ray by calling ``ray.shutdown()``.
 
 Remote functions (Tasks)
 ------------------------
@@ -145,7 +149,7 @@ works as follows.
 Remote Classes (Actors)
 -----------------------
 
-Actors extend the Ray API from functions (tasks) to classes. The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors.  An actor is essentially a stateful worker.
+Actors extend the Ray API from functions (tasks) to classes. The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors.  An actor is essentially a stateful worker; underneath the hood is a separate Python process.
 
 .. code-block:: python
 
@@ -168,8 +172,7 @@ To actually create an actor, we can instantiate this class by calling ``Counter.
 When an actor is instantiated, the following events happen.
 
 1. A node in the cluster is chosen and a worker process is created on that node
-   (by the raylet on that node) for the purpose of running methods
-   called on the actor.
+   for the purpose of running methods called on the actor.
 2. A ``Counter`` object is created on that worker and the ``Counter``
    constructor is run.
 

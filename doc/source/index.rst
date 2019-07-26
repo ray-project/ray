@@ -69,6 +69,7 @@ Other projects in development:
    :caption: Tutorial
 
    walkthrough.rst
+   advanced.rst
    resources.rst
    serialization.rst
    examples.rst
