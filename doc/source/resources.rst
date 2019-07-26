@@ -1,11 +1,19 @@
 Specifying Resources
 ====================
 
-Often times, you might want to load balance your Ray program, not placing all functions and actors on one machine. This is especially important with GPUs, where one actor may require an entire GPU to complete its task.
+Often times, you might want to load balance your Ray program, not placing all functions and actors on one machine.
+This is especially important with GPUs, where one actor may require an entire GPU to complete its task.
 
 When calling ``ray.init()`` without connecting to an existing Ray cluster, Ray will automatically detect the available GPUs and CPUs on the machine.
 
-To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and ``num_gpus`` arguments into the remote decorator. Note that Ray supports **fractional** resource requirements.
+To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and ``num_gpus`` arguments into the remote decorator.
+The task will only run on a machine if there are enough CPU and GPU (and other custom) resources available to execute the task.
+
+Notes:
+
+ * Ray supports **fractional** resource requirements.
+ * If specifying CPUs, Ray does not enforce isolation (i.e., your task is expected to honor its request.)
+ * If specifying GPUs, Ray does provide isolation in forms of visible devices (``CUDA_VISIBLE_DEVICES``)
 
 .. code-block:: python
 
@@ -20,13 +28,6 @@ To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and ``num_gp
 The ``f`` tasks will be scheduled on machines that have at least 4 CPUs and 2
 GPUs, and when one of the ``f`` tasks executes, 4 CPUs and 2 GPUs will be
 reserved for the duration of the task. We will cover how available resources are determined in the Ray cluster below.
-
-**Differences between CPU and GPU Requirements**: Note that there is different behavior between CPUs and GPUs.
-
-.. note::
-
-  FIXME
-
 
 The IDs of the GPUs that are reserved for the task can
 be accessed with ``ray.get_gpu_ids()``. Ray will automatically set the
@@ -57,7 +58,7 @@ To specify that an **actor** requires GPUs, do the following.
 
 .. note::
 
-    FIXME : When an ``Actor`` instance is created, it will be placed on a node that has at least 1 GPU, and the GPU will be reserved for the actor for the duration of the actor's lifetime (even if the actor is not executing tasks). The GPU resources will be released when the actor terminates. Note that currently **only GPU resources are used for actor placement**.
+    TODO : When an ``Actor`` instance is created, it will be placed on a node that has at least 1 GPU, and the GPU will be reserved for the actor for the duration of the actor's lifetime (even if the actor is not executing tasks). The GPU resources will be released when the actor terminates. Note that currently **only GPU resources are used for actor placement**.
 
 Cluster Resources
 -----------------
