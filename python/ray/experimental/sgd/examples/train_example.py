@@ -7,9 +7,6 @@ import os
 import pytest
 import tempfile
 import torch
-import torch.distributed as dist
-
-from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, Resources
 
 from ray.experimental.sgd.tests.pytorch_utils import (
@@ -20,7 +17,9 @@ def train_example(num_replicas):
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=num_replicas)
+        num_replicas=num_replicas,
+        resources_per_replica=Resources(
+            num_cpus=1, num_gpus=1, resources={}))
     trainer1.train()
 
     filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
@@ -42,4 +41,4 @@ if __name__ == '__main__':
 
     import ray
     ray.init(redis_address=args.redis_address)
-    train_example(num_replicas)
+    train_example(num_replicas=8)
