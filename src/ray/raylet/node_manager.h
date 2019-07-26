@@ -287,7 +287,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param task_spec Task specification of the actor creation task that created the
   /// actor.
-  ActorTableData CreateActorTableDataFromCreationTask(const TaskSpecification &task_spec);
+  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
+      const TaskSpecification &task_spec);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -296,11 +297,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Helper function for handling worker to finish its assigned actor task
   /// or actor creation task. Gets invoked when tasks's parent actor is known.
   ///
-  /// \param actor_id The actor id corresponding to the actor (creation) task.
-  /// \param actor_handle_id The actor id corresponding to the actor (creation) task.
-  /// \param new_actor_data The struct which will be used to register the task.
+  /// \param parent_actor_id The actor id corresponding to the actor which creates
+  /// the new actor.
+  /// \param task_spec Task specification of the actor creation task that created the
+  /// actor.
   /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
-  /// \param dummy_object Dummy object corresponding to the actor creation task.
   /// \return Void.
   void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                        const TaskSpecification &task_spec,
