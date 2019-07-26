@@ -22,6 +22,7 @@ class TorchModelV2(ModelV2):
 
             def __init__(self, *args, **kwargs):
                 super(MyModelClass, self).__init__(*args, **kwargs)
+                nn.Module.__init__(self)
                 self._hidden_layers = nn.Sequential(...)
                 self._logits = ...
                 self._value_branch = ...
