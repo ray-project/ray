@@ -69,14 +69,14 @@ class PyTorchTrainer(object):
             resources_per_replica = Resources(cpu=1, gpu=0)
 
         if backend == "auto":
-            backend = "nccl" if resources_per_replica.num_gpus > 0 else "gloo"
+            backend = "nccl" if resources_per_replica.gpu > 0 else "gloo"
 
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=resources_per_replica.num_cpus,
-                num_gpus=resources_per_replica.num_gpus,
-                resources=resources_per_replica.resources)(PyTorchRunner)
+                num_cpus=resources_per_replica.cpu,
+                num_gpus=resources_per_replica.gpu,
+                resources=resources_per_replica.custom_resources)(PyTorchRunner)
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, optimizer_creator,
@@ -87,9 +87,9 @@ class PyTorchTrainer(object):
         else:
             # Geneate actor class
             Runner = ray.remote(
-                num_cpus=resources_per_replica.num_cpus,
-                num_gpus=resources_per_replica.num_gpus,
-                resources=resources_per_replica.resources)(
+                num_cpus=resources_per_replica.cpu,
+                num_gpus=resources_per_replica.gpu,
+                resources=resources_per_replica.custom_resources)(
                     DistributedPyTorchRunner)
             # Compute batch size per replica
             batch_size_per_replica = batch_size // num_replicas

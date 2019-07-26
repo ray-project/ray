@@ -11,7 +11,6 @@ import uuid
 import time
 import tempfile
 import os
-from numbers import Number
 
 # For compatibility under py2 to consider unicode as str
 from six import string_types
@@ -163,7 +162,7 @@ class Trial(object):
                 if resources:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
-                        "by its `default_resource_request()` method. Please "
+                    "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources

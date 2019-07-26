@@ -6,6 +6,8 @@ from collections import namedtuple
 import logging
 import json
 
+from numbers import Number
+
 logger = logging.getLogger(__name__)
 
 class Resources(
