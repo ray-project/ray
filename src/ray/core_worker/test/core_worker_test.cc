@@ -8,6 +8,9 @@
 #include "ray/core_worker/test/constants.h"
 #include "ray/rpc/raylet/raylet_client.h"
 
+#include "src/ray/protobuf/direct_actor.grpc.pb.h"
+#include "src/ray/protobuf/direct_actor.pb.h"
+
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
@@ -514,6 +517,104 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   auto data = by_value.GetValue();
   ASSERT_TRUE(data != nullptr);
   ASSERT_EQ(*data, *buffer);
+}
+
+// Performance batchmark for `PushTaskRequest` creation.
+TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
+  // Create a dummy actor handle, and then create a number of `TaskSpec`
+  // to benchmark performance.
+  uint8_t array[] = {1, 2, 3};
+  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));  
+  RayFunction function{ray::Language::PYTHON, {}};
+  std::vector<TaskArg> args;
+  args.emplace_back(TaskArg::PassByValue(buffer));
+
+  std::unordered_map<std::string, double> resources;
+  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+
+  ActorHandle actor_handle(ActorID::FromRandom(), ActorHandleID::Nil(), function.language,
+    true, function.function_descriptor);
+
+  // Manually create `num_tasks` task specs, and for each of them create a `PushTaskRequest`,
+  // this is to batch performance of TaskSpec creation/copy/destruction.
+  const auto num_tasks = 10000 * 10;
+  RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
+  for (int i = 0; i < num_tasks; i++) {
+    TaskOptions options{1, resources};
+    std::vector<ObjectID> return_ids;
+    auto num_returns = options.num_returns;
+  
+    TaskSpecBuilder builder;
+    builder.SetCommonTaskSpec(
+        function.language, function.function_descriptor, JobID::FromInt(1),
+        TaskID::FromRandom(), 0, num_returns,
+        resources, resources);
+    // Set task arguments.
+    for (const auto &arg : args) {
+      if (arg.IsPassedByReference()) {
+        builder.AddByRefArg(arg.GetReference());
+      } else {
+        builder.AddByValueArg(arg.GetValue()->Data(), arg.GetValue()->Size());
+      }
+    }
+
+    const auto actor_creation_dummy_object_id =
+        ObjectID::FromBinary(actor_handle.ActorID().Binary());
+    builder.SetActorTaskSpec(
+        actor_handle.ActorID(), actor_handle.ActorHandleID(),
+        actor_creation_dummy_object_id,
+        /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
+        0, {});
+       
+    const auto &task_spec = builder.Build();
+
+    RAY_CHECK(task_spec.IsActorTask());
+    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+  
+  }
+  RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests";
+}
+
+TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
+  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+
+  std::unique_ptr<ActorHandle> actor_handle;
+
+  // Test creating actor.
+  uint8_t array[] = {1, 2, 3};
+  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
+
+  RayFunction func{ray::Language::PYTHON, {}};
+  std::vector<TaskArg> args;
+  args.emplace_back(TaskArg::PassByValue(buffer));
+
+  std::unordered_map<std::string, double> resources;
+  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+
+  // Create an actor.
+  RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
+
+  sleep(2);
+
+  // Test submitting some tasks with by-value args for that actor.
+  const int num_tasks = 10000 * 10;
+  RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
+  for (int i = 0; i < num_tasks; i++) {
+    // Create arguments with PassByRef and PassByValue.
+    std::vector<TaskArg> args;
+    args.emplace_back(TaskArg::PassByValue(buffer));
+
+    TaskOptions options{1, resources};
+    std::vector<ObjectID> return_ids;
+    RayFunction func{ray::Language::PYTHON, {}};
+
+    RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
+                                                &return_ids));
+    RAY_CHECK(return_ids.size() == 1);
+  }
+  RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks";
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {

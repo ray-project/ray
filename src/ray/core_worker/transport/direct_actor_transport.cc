@@ -39,8 +39,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   const auto num_returns = task_spec.NumReturns();
 
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-  request->set_task_id(task_spec.TaskId().Binary());
-  request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(rpc_clients_mutex_);
   auto iter = actor_states_.find(actor_id);
@@ -52,9 +51,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // actor handle (e.g. from unpickling), in that case it might be desirable
     // to have a timeout to mark it as invalid if it doesn't show up in the
     // specified time.
-    auto pending_request = std::unique_ptr<PendingTaskRequest>(
-        new PendingTaskRequest(task_id, num_returns, std::move(request)));
-    pending_requests_[actor_id].emplace_back(std::move(pending_request));
+    pending_requests_[actor_id].emplace_back(std::move(request));
     return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
@@ -116,7 +113,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   while (!requests.empty()) {
     const auto &request = *requests.front();
     auto status =
-        PushTask(*client, *request.request_, request.task_id_, request.num_returns_);
+        PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()), request.task_spec().num_returns());
     requests.pop_front();
   }
 }

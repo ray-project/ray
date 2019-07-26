@@ -14,10 +14,8 @@ message ReturnObject {
 }
 
 message PushTaskRequest {
-  // The ID of the task to be pushed.
-  bytes task_id = 1;
   // The task to be pushed.
-  TaskSpec task_spec = 2;
+  TaskSpec task_spec = 1;
 }
 
 message PushTaskReply {

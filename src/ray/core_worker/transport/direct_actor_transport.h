@@ -14,18 +14,6 @@ namespace ray {
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
-/// Task request that is pending to submit because actor is not created yet,
-/// or is being reconstructed.
-struct PendingTaskRequest {
-  PendingTaskRequest(const TaskID &task_id, int num_returns,
-                     std::unique_ptr<rpc::PushTaskRequest> request)
-      : task_id_(task_id), num_returns_(num_returns), request_(std::move(request)) {}
-
-  TaskID task_id_;
-  int num_returns_;
-  std::unique_ptr<rpc::PushTaskRequest> request_;
-};
-
 /// The state data for an actor.
 struct ActorStateData {
   ActorStateData(gcs::ActorTableData::ActorState state, const std::string &ip, int port)
@@ -111,7 +99,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<PendingTaskRequest>>>
+  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_;
 
   /// The store provider.
