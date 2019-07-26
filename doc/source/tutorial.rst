@@ -13,24 +13,6 @@ Ray is a fast and simple framework for building and running distributed applicat
 The same code can be run on a single machine to achieve efficient multiprocessing,
 and it can be used on a cluster for large computations.
 
-When using Ray, several processes are involved.
-
-- Multiple **worker** processes execute tasks and store results in object
-  stores. Each worker is a separate process.
-- One **object store** per node stores immutable objects in shared memory and
-  allows workers to efficiently share objects on the same node with minimal
-  copying and deserialization.
-- One **raylet** per node assigns tasks to workers on the same node.
-- A **driver** is the Python process that the user controls. For example, if the
-  user is running a script or using a Python shell, then the driver is the Python
-  process that runs the script or the shell. A driver is similar to a worker in
-  that it can submit tasks to its raylet and get objects from the object
-  store, but it is different in that the raylet will not assign tasks to
-  the driver to be executed.
-- A **Redis server** maintains much of the system's state. For example, it keeps
-  track of which objects live on which machines and of the task specifications
-  (but not data). It can also be queried directly for debugging purposes.
-
 Starting Ray
 ------------
 

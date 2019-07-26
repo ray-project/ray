@@ -1,8 +1,7 @@
 An Overview of the Internals
 ============================
 
-In this document, we trace through in more detail what happens at the system
-level when certain API calls are made.
+In this document, we overview the internal architecture of Ray.
 
 Connecting to Ray
 -----------------
@@ -31,6 +30,28 @@ this case, no new processes will be started when ``ray.init`` is called, and
 similarly the processes will continue running when the script exits. In this
 case, all processes except workers that correspond to actors are shared between
 different driver processes.
+
+
+Ray Processes
+-------------
+
+When using Ray, several processes are involved.
+
+- Multiple **worker** processes execute tasks and store results in object
+  stores. Each worker is a separate process.
+- One **object store** per node stores immutable objects in shared memory and
+  allows workers to efficiently share objects on the same node with minimal
+  copying and deserialization.
+- One **raylet** per node assigns tasks to workers on the same node.
+- A **driver** is the Python process that the user controls. For example, if the
+  user is running a script or using a Python shell, then the driver is the Python
+  process that runs the script or the shell. A driver is similar to a worker in
+  that it can submit tasks to its raylet and get objects from the object
+  store, but it is different in that the raylet will not assign tasks to
+  the driver to be executed.
+- A **Redis server** maintains much of the system's state. For example, it keeps
+  track of which objects live on which machines and of the task specifications
+  (but not data). It can also be queried directly for debugging purposes.
 
 Defining a remote function
 --------------------------

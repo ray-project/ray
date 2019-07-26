@@ -66,12 +66,13 @@ Other projects in development:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Tutorial
+   :caption: Using Ray
 
    walkthrough.rst
    advanced.rst
    resources.rst
    serialization.rst
+   configure.rst
    examples.rst
 
 .. toctree::
@@ -134,20 +135,20 @@ Other projects in development:
 
    package-ref.rst
 
-..    :maxdepth: 1
-..    :caption: Examples
+   :maxdepth: 1
+   :caption: Examples
 
-..    example-rl-pong.rst
-..    example-policy-gradient.rst
-..    example-parameter-server.rst
-..    example-newsreader.rst
-..    example-resnet.rst
-..    example-a3c.rst
-..    example-lbfgs.rst
-..    example-evolution-strategies.rst
-..    example-cython.rst
-..    example-streaming.rst
-..    using-ray-with-tensorflow.rst
+   example-rl-pong.rst
+   example-policy-gradient.rst
+   example-parameter-server.rst
+   example-newsreader.rst
+   example-resnet.rst
+   example-a3c.rst
+   example-lbfgs.rst
+   example-evolution-strategies.rst
+   example-cython.rst
+   example-streaming.rst
+   using-ray-with-tensorflow.rst
 
 .. toctree::
    :maxdepth: 1

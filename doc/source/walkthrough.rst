@@ -21,7 +21,7 @@ To start a Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html
 Remote functions (Tasks)
 ------------------------
 
-The standard way to turn a Python function into a remote function is to add the ``@ray.remote`` decorator. Here is an example.
+Ray enables arbitrary Python functions to be executed asynchronously. These asynchronous Ray functions are called "remote functions". The standard way to turn a Python function into a remote function is to add the ``@ray.remote`` decorator. Here is an example.
 
 .. code:: python
 
@@ -68,9 +68,7 @@ This causes a few things changes in behavior:
        for _ in range(4):
            remote_function.remote()
 
-**Object IDs** can also be passed into remote functions. When the
-function actually gets executed, **the argument will be a retrieved as a
-regular Python object**.
+**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**.
 
 .. code:: python
 
