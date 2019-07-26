@@ -17,7 +17,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="SimpleQ")  # Try PG, PPO, DQN
+parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
 parser.add_argument("--stop", type=int, default=200)
 
 
