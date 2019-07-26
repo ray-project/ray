@@ -175,7 +175,7 @@ class Cluster(object):
         while time.time() - start_time < timeout:
             clients = ray.state._parse_client_table(redis_client)
             live_clients = [
-                client for client in clients if client["IsInsertion"]
+                client for client in clients if client["Alive"]
             ]
 
             expected = len(self.list_all_nodes())

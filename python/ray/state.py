@@ -52,7 +52,7 @@ def _parse_client_table(redis_client):
 
         node_id = ray.utils.binary_to_hex(item.node_id)
 
-        if node_info.state == GcsNodeInfo.GcsNodeState.Value("ALIVE"):
+        if item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"):
             ordered_node_ids.append(node_id)
             node_info[node_id] = {
                 "NodeID": node_id,
