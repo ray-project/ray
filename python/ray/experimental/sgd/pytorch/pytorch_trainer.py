@@ -13,7 +13,7 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
 from ray.experimental.sgd.pytorch import utils
-from ray.tune.trial import Resources
+from ray.tune.resources import Resources
 
 logger = logging.getLogger(__name__)
 

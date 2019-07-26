@@ -14,7 +14,7 @@ from ray.experimental.sgd.pytorch import PyTorchTrainer
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
-from ray.tune.trial import Resources
+from ray.tune.resource import Resources
 
 
 @pytest.mark.parametrize(  # noqa: F811

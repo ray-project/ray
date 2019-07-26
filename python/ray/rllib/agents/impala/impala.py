@@ -10,7 +10,7 @@ from ray.rllib.optimizers import AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources
+from ray.tune.resources import Resources
 
 # yapf: disable
 # __sphinx_doc_begin__
