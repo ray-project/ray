@@ -26,14 +26,17 @@ class LearnerThread(threading.Thread):
     """
 
     def __init__(self, local_worker, minibatch_buffer_size, num_sgd_iter,
-                 learner_queue_size):
+                 learner_queue_size, learner_queue_timeout):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
         self.local_worker = local_worker
         self.inqueue = queue.Queue(maxsize=learner_queue_size)
         self.outqueue = queue.Queue()
         self.minibatch_buffer = MinibatchBuffer(
-            self.inqueue, minibatch_buffer_size, num_sgd_iter)
+            inqueue=self.inqueue,
+            size=minibatch_buffer_size,
+            timeout=learner_queue_timeout,
+            num_passes=num_sgd_iter)
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()

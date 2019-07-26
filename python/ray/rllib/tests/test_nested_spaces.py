@@ -19,7 +19,7 @@ from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
-from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
@@ -133,16 +133,18 @@ class InvalidModel2(Model):
         return tf.constant(0), tf.constant(0)
 
 
-class TorchSpyModel(TorchModel):
+class TorchSpyModel(TorchModelV2):
     capture_index = 0
 
-    def __init__(self, obs_space, num_outputs, options):
-        TorchModel.__init__(self, obs_space, num_outputs, options)
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super(TorchSpyModel, self).__init__(obs_space, action_space,
+                                            num_outputs, model_config, name)
         self.fc = FullyConnectedNetwork(
             obs_space.original_space.spaces["sensors"].spaces["position"],
-            num_outputs, options)
+            action_space, num_outputs, model_config, name)
 
-    def _forward(self, input_dict, hidden_state):
+    def forward(self, input_dict, state, seq_lens):
         pos = input_dict["obs"]["sensors"]["position"].numpy()
         front_cam = input_dict["obs"]["sensors"]["front_cam"][0].numpy()
         task = input_dict["obs"]["inner_state"]["job_status"]["task"].numpy()
@@ -153,7 +155,10 @@ class TorchSpyModel(TorchModel):
         TorchSpyModel.capture_index += 1
         return self.fc({
             "obs": input_dict["obs"]["sensors"]["position"]
-        }, hidden_state)
+        }, state, seq_lens)
+
+    def value_function(self):
+        return self.fc.value_function()
 
 
 class DictSpyModel(Model):

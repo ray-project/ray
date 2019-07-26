@@ -10,6 +10,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
+# TODO(ekl) rewrite this using ModelV2
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 

@@ -688,7 +688,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(Exception, match=r".*Connection closed unexpectedly.*"):
+    with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(nonexistent_id)
     thread.join()
 

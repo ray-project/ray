@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import torch.nn as nn
 
-from ray.rllib.models.torch.model import TorchModel
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, SlimFC, \
     _get_activation_fn
 from ray.rllib.utils.annotations import override
@@ -14,13 +14,16 @@ from ray.rllib.utils.annotations import override
 logger = logging.getLogger(__name__)
 
 
-class FullyConnectedNetwork(TorchModel):
+class FullyConnectedNetwork(TorchModelV2):
     """Generic fully connected network."""
 
-    def __init__(self, obs_space, num_outputs, options):
-        TorchModel.__init__(self, obs_space, num_outputs, options)
-        hiddens = options.get("fcnet_hiddens")
-        activation = _get_activation_fn(options.get("fcnet_activation"))
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super(FullyConnectedNetwork, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name)
+
+        hiddens = model_config.get("fcnet_hiddens")
+        activation = _get_activation_fn(model_config.get("fcnet_activation"))
         logger.debug("Constructing fcnet {} {}".format(hiddens, activation))
         layers = []
         last_layer_size = np.product(obs_space.shape)
@@ -45,13 +48,17 @@ class FullyConnectedNetwork(TorchModel):
             out_size=1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
+        self._cur_value = None
 
-    @override(nn.Module)
-    def forward(self, input_dict, hidden_state):
-        # Note that we override forward() and not _forward() to get the
-        # flattened obs here.
-        obs = input_dict["obs"]
+    @override(TorchModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        obs = input_dict["obs_flat"]
         features = self._hidden_layers(obs.reshape(obs.shape[0], -1))
         logits = self._logits(features)
-        value = self._value_branch(features).squeeze(1)
-        return logits, features, value, hidden_state
+        self._cur_value = self._value_branch(features).squeeze(1)
+        return logits, state
+
+    @override(TorchModelV2)
+    def value_function(self):
+        assert self._cur_value is not None, "must call forward() first"
+        return self._cur_value

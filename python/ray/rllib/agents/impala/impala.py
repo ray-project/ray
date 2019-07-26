@@ -54,6 +54,10 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_num_slots": 0,
     # max queue size for train batches feeding into the learner
     "learner_queue_size": 16,
+    # wait for train batches to be available in minibatch buffer queue
+    # this many seconds. This may need to be increased e.g. when training
+    # with a slow environment
+    "learner_queue_timeout": 300,
     # level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to
@@ -126,6 +130,8 @@ def make_aggregators_and_optimizer(workers, config):
         num_sgd_iter=config["num_sgd_iter"],
         minibatch_buffer_size=config["minibatch_buffer_size"],
         num_aggregation_workers=config["num_aggregation_workers"],
+        learner_queue_size=config["learner_queue_size"],
+        learner_queue_timeout=config["learner_queue_timeout"],
         **config["optimizer"])
 
     if aggregators:
