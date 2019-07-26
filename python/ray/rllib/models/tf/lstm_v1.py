@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib.models.model import Model
 from ray.rllib.models.tf.misc import linear, normc_initializer
-from ray.rllib.models.tf.recurrent_tf_modelv2 import add_time_dimension
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 

@@ -9,9 +9,9 @@ import unittest
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences, \
+    add_time_dimension
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.recurrent_tf_modelv2 import add_time_dimension
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.model import Model
 from ray.tune.registry import register_env
