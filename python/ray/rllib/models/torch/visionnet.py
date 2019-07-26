@@ -7,7 +7,7 @@ import torch.nn as nn
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
-from ray.rllib.models.visionnet import _get_filter_config
+from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
 
 
