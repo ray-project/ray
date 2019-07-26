@@ -37,6 +37,22 @@ class TreeAggregator(Aggregator):
                  train_batch_size=500,
                  sample_batch_size=50,
                  broadcast_interval=5):
+        """Initialize a tree aggregator.
+
+        Arguments:
+            workers (WorkerSet): set of all workers
+            num_aggregation_workers (int): number of intermediate actors to
+                use for data aggregation
+            max_sample_request_in_flight_per_worker (int): max queue size per
+                worker
+            replay_proportion (float): ratio of replay to sampled outputs
+            replay_buffer_num_slots (int): max number of sample batches to
+                store in the replay buffer
+            train_batch_size (int): size of batches to learn on
+            sample_batch_size (int): size of batches to sample from workers
+            broadcast_interval (int): max number of workers to send the
+                same set of weights to
+        """
         self.workers = workers
         self.num_aggregation_workers = num_aggregation_workers
         self.max_sample_requests_in_flight_per_worker = \

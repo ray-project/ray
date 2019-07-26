@@ -18,7 +18,7 @@ class MinibatchBuffer(object):
            inqueue: Queue to populate the internal ring buffer from.
            size: Max number of data items to buffer.
            num_passes: Max num times each data item should be emitted.
-       """
+        """
         self.inqueue = inqueue
         self.size = size
         self.max_ttl = num_passes
