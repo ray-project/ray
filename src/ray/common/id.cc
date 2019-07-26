@@ -27,6 +27,18 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
+/// A helper function to fill random bytes into the `data`.
+template <typename T>
+void FillRandom(T *data) {
+  RAY_CHECK(data != nullptr);
+  static std::mutex random_engine_mutex;
+  static std::mt19937 generator = RandomlySeededMersenneTwister();
+  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
+  for (int i = 0; i < data->size(); i++) {
+    (*data)[i] = static_cast<uint8_t>(dist(generator));
+  }
+}
+
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
   std::vector<uint8_t> data(WorkerID::Size(), 0);
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
@@ -107,14 +119,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
 
 ActorID ActorID::FromRandom(const JobID &job_id) {
   std::string data(unique_bytes_length, 0);
-  // TODO(qwang): extra this to a helper.
-  static std::mutex random_engine_mutex;
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < unique_bytes_length; i++) {
-    data[i] = static_cast<uint8_t>(dist(generator));
-  }
-
+  FillRandom(&data);
   std::copy_n(job_id.Data(), JobID::length, std::back_inserter(data));
   RAY_CHECK(data.size() == length);
   return ActorID::FromBinary(data);
@@ -128,14 +133,7 @@ JobID ActorID::JobId() const {
 
 TaskID TaskID::FromRandom(const ActorID &actor_id) {
   std::string data(unique_bytes_length, 0);
-  // TODO(qwang): extra this to a helper.
-  static std::mutex random_engine_mutex;
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < unique_bytes_length; i++) {
-    data[i] = static_cast<uint8_t>(dist(generator));
-  }
-
+  FillRandom(&data);
   std::copy_n(actor_id.Data(), ActorID::length, std::back_inserter(data));
   return TaskID::FromBinary(data);
 }
@@ -198,13 +196,7 @@ ObjectID ObjectID::FromRandom(TransportType transport) {
   // Assign flag bytes to binary.
 
   std::vector<uint8_t> task_id_bytes(TaskID::length, 0x0);
-  // TODO(qwang): extra this to a helper.
-  static std::mutex random_engine_mutex;
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < task_id_bytes.size(); i++) {
-    task_id_bytes[i] = static_cast<char>(dist(generator));
-  }
+  FillRandom(&task_id_bytes);
 
   ObjectID ret = ObjectID::Nil();
   std::memcpy(ret.id_, task_id_bytes.data(), TaskID::length);
