@@ -409,7 +409,7 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.ssh_cmd(cmd, allocate_tty=True, port_forward=port_forward)
+        updater.ssh_cmd(cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):
