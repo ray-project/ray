@@ -379,7 +379,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             cmd,
             screen,
             tmux,
-            expect_error=True,
+            expect_error=stop,
             port_forward=port_forward)
 
         if tmux or screen:
