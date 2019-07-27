@@ -35,6 +35,8 @@ class Logger(object):
         logdir: Directory for all logger creators to log to.
     """
 
+    LOG_FILE_PATTERNS = ()
+
     def __init__(self, config, logdir):
         self.config = config
         self.logdir = logdir
@@ -70,6 +72,8 @@ class NoopLogger(Logger):
 
 
 class JsonLogger(Logger):
+    LOG_FILE_PATTERNS = ("*/result.json", )
+
     def _init(self):
         self.update_config(self.config)
         local_file = os.path.join(self.logdir, "result.json")
@@ -122,6 +126,8 @@ def to_tf_values(result, path):
 
 
 class TFLogger(Logger):
+    LOG_FILE_PATTERNS = ("*/events.out.tfevents.*.*", )
+
     def _init(self):
         try:
             global tf, use_tf150_api
@@ -164,6 +170,8 @@ class TFLogger(Logger):
 
 
 class CSVLogger(Logger):
+    LOG_FILE_PATTERNS = ("*/progress.csv", )
+
     def _init(self):
         """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
