@@ -1,4 +1,4 @@
-Profiling for Ray Developers
+How-to: Profile Ray programs
 ============================
 
 This document details, for Ray developers, how to use ``pprof`` to profile Ray
