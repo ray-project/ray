@@ -56,8 +56,6 @@ def log_sync_template(exclude_patterns=()):
         "{{target}}",
     ))
 
-    print(f"got log_sync_command: {log_sync_command}")
-
     return log_sync_command
 
 
