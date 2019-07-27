@@ -125,3 +125,5 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
+
+AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
