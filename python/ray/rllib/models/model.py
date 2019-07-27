@@ -3,51 +3,20 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import OrderedDict
-
+import logging
 import gym
 
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
-# Deprecated: use TFModelV2 instead
 class Model(object):
-    """Defines an abstract network model for use with RLlib.
-
-    This class is deprecated: please use TFModelV2 instead.
-
-    Models convert input tensors to a number of output features. These features
-    can then be interpreted by ActionDistribution classes to determine
-    e.g. agent action values.
-
-    The last layer of the network can also be retrieved if the algorithm
-    needs to further post-processing (e.g. Actor and Critic networks in A3C).
-
-    Attributes:
-        input_dict (dict): Dictionary of input tensors, including "obs",
-            "prev_action", "prev_reward", "is_training".
-        outputs (Tensor): The output vector of this model, of shape
-            [BATCH_SIZE, num_outputs].
-        last_layer (Tensor): The feature layer right before the model output,
-            of shape [BATCH_SIZE, f].
-        state_init (list): List of initial recurrent state tensors (if any).
-        state_in (list): List of input recurrent state tensors (if any).
-        state_out (list): List of output recurrent state tensors (if any).
-        seq_lens (Tensor): The tensor input for RNN sequence lengths. This
-            defaults to a Tensor of [1] * len(batch) in the non-RNN case.
-
-    If `options["free_log_std"]` is True, the last half of the
-    output layer will be free variables that are not dependent on
-    inputs. This is often used if the output of the network is used
-    to parametrize a probability distribution. In this case, the
-    first half of the parameters can be interpreted as a location
-    parameter (like a mean) and the second half can be interpreted as
-    a scale parameter (like a standard deviation).
-    """
+    """This class is deprecated, please use TFModelV2 instead."""
 
     def __init__(self,
                  input_dict,

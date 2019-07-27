@@ -10,13 +10,14 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 
 
-class RNNModel(TorchModelV2):
+class RNNModel(TorchModelV2, nn.Module):
     """The default RNN model for QMIX."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super(RNNModel, self).__init__(obs_space, action_space, num_outputs,
-                                       model_config, name)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
         self.obs_size = _get_size(obs_space)
         self.rnn_hidden_dim = model_config["lstm_cell_size"]
         self.fc1 = nn.Linear(self.obs_size, self.rnn_hidden_dim)

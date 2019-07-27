@@ -8,7 +8,8 @@ import random
 import ray
 from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.models import FullyConnectedNetwork, Model, ModelCatalog
+from ray.rllib.models import Model, ModelCatalog
+from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf

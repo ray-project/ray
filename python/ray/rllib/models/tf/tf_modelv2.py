@@ -18,6 +18,22 @@ class TFModelV2(ModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
+        """Initialize a TFModelV2.
+
+        Here is an example implementation for a subclass
+        ``MyModelClass(TFModelV2)``::
+
+            def __init__(self, *args, **kwargs):
+                super(MyModelClass, self).__init__(*args, **kwargs)
+                input_layer = tf.keras.layers.Input(...)
+                hidden_layer = tf.keras.layers.Dense(...)(input_layer)
+                output_layer = tf.keras.layers.Dense(...)(hidden_layer)
+                value_layer = tf.keras.layers.Dense(...)(hidden_layer)
+                self.base_model = tf.keras.Model(
+                    input_layer, [output_layer, value_layer])
+                self.register_variables(self.base_model.variables)
+        """
+
         ModelV2.__init__(
             self,
             obs_space,
@@ -27,6 +43,52 @@ class TFModelV2(ModelV2):
             name,
             framework="tf")
         self.var_list = []
+
+    def forward(self, input_dict, state, seq_lens):
+        """Call the model with the given input tensors and state.
+
+        Any complex observations (dicts, tuples, etc.) will be unpacked by
+        __call__ before being passed to forward(). To access the flattened
+        observation tensor, refer to input_dict["obs_flat"].
+
+        This method can be called any number of times. In eager execution,
+        each call to forward() will eagerly evaluate the model. In symbolic
+        execution, each call to forward creates a computation graph that
+        operates over the variables of this model (i.e., shares weights).
+
+        Custom models should override this instead of __call__.
+
+        Arguments:
+            input_dict (dict): dictionary of input tensors, including "obs",
+                "obs_flat", "prev_action", "prev_reward", "is_training"
+            state (list): list of state tensors with sizes matching those
+                returned by get_initial_state + the batch dimension
+            seq_lens (Tensor): 1d tensor holding input sequence lengths
+
+        Returns:
+            (outputs, state): The model output tensor of size
+                [BATCH, num_outputs]
+
+        Sample implementation for the ``MyModelClass`` example::
+
+            def forward(self, input_dict, state, seq_lens):
+                model_out, self._value_out = self.base_model(input_dict["obs"])
+                return model_out, state
+        """
+        raise NotImplementedError
+
+    def value_function(self):
+        """Return the value function estimate for the most recent forward pass.
+
+        Returns:
+            value estimate tensor of shape [BATCH].
+
+        Sample implementation for the ``MyModelClass`` example::
+
+            def value_function(self):
+                return self._value_out
+        """
+        raise NotImplementedError
 
     def update_ops(self):
         """Return the list of update ops for this model.

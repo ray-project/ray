@@ -3,14 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.models.model import Model
-from ray.rllib.models.misc import normc_initializer, get_activation_fn
+from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
 
-# TODO(ekl) rewrite this using ModelV2
+# Deprecated: see as an alternative models/tf/fcnet_v2.py
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 

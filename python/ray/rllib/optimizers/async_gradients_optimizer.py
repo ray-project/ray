@@ -19,6 +19,13 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
     """
 
     def __init__(self, workers, grads_per_step=100):
+        """Initialize an async gradients optimizer.
+
+        Arguments:
+            grads_per_step (int): The number of gradients to collect and apply
+                per each call to step(). This number should be sufficiently
+                high to amortize the overhead of calling step().
+        """
         PolicyOptimizer.__init__(self, workers)
 
         self.apply_timer = TimerStat()
