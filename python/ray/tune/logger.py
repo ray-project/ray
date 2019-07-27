@@ -14,8 +14,10 @@ import numpy as np
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.syncer import get_log_syncer
-from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
-    TIMESTEPS_TOTAL
+from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
+                             TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
+                             EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
+                             EXPR_RESULT_FILE)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ class NoopLogger(Logger):
 class JsonLogger(Logger):
     def _init(self):
         self.update_config(self.config)
-        local_file = os.path.join(self.logdir, "result.json")
+        local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
         self.local_out = open(local_file, "a")
 
     def on_result(self, result):
@@ -91,7 +93,7 @@ class JsonLogger(Logger):
 
     def update_config(self, config):
         self.config = config
-        config_out = os.path.join(self.logdir, "params.json")
+        config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(
                 self.config,
@@ -99,7 +101,7 @@ class JsonLogger(Logger):
                 indent=2,
                 sort_keys=True,
                 cls=_SafeFallbackEncoder)
-        config_pkl = os.path.join(self.logdir, "params.pkl")
+        config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
 
@@ -150,7 +152,7 @@ class TFLogger(Logger):
         t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
         self._file_writer.add_summary(train_stats, t)
         iteration_value = to_tf_values({
-            "training_iteration": result[TRAINING_ITERATION]
+            TRAINING_ITERATION: result[TRAINING_ITERATION]
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
         self._file_writer.add_summary(iteration_stats, t)
@@ -167,7 +169,7 @@ class CSVLogger(Logger):
     def _init(self):
         """CSV outputted with Headers as first set of results."""
         # Note that we assume params.json was already created by JsonLogger
-        progress_file = os.path.join(self.logdir, "progress.csv")
+        progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
         self._continuing = os.path.exists(progress_file)
         self._file = open(progress_file, "a")
         self._csv_out = None
