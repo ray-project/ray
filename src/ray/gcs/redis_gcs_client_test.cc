@@ -104,7 +104,7 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
 }
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  const auto task_id = TaskID::FromRandom();
+  const auto task_id = TaskID::FromRandom(ActorID::Nil());
   const auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
@@ -151,7 +151,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 
 void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   // Append some entries to the log at an object ID.
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = TaskID::FromRandom(ActorID::Nil());
   std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
   for (auto &node_manager_id : node_manager_ids) {
     auto data = std::make_shared<TaskReconstructionData>();
@@ -196,7 +196,7 @@ TEST_F(TestGcsWithAsio, TestLogLookup) {
 
 void TestTableLookupFailure(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = TaskID::FromRandom(ActorID::Nil());
 
   // Check that the lookup does not return data.
   auto lookup_callback = [](gcs::RedisGcsClient *client, const TaskID &id,
@@ -222,7 +222,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
 
 void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = TaskID::FromRandom(ActorID::Nil());
   std::vector<std::string> node_manager_ids = {"A", "B"};
   std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
   for (const auto &node_manager_id : node_manager_ids) {
@@ -352,7 +352,7 @@ void TestDeleteKeysFromLog(
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::FromRandom();
+    task_id = TaskID::FromRandom(ActorID::Nil());
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
@@ -400,7 +400,7 @@ void TestDeleteKeysFromTable(const JobID &job_id,
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::FromRandom();
+    task_id = TaskID::FromRandom(ActorID::Nil());
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
@@ -521,7 +521,7 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   std::vector<std::shared_ptr<TaskTableData>> task_vector;
   auto AppendTaskData = [&task_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      task_vector.push_back(CreateTaskTableData(TaskID::FromRandom()));
+      task_vector.push_back(CreateTaskTableData(TaskID::FromRandom(ActorID::Nil())));
     }
   };
   AppendTaskData(1);
@@ -703,10 +703,10 @@ void TestTableSubscribeId(const JobID &job_id,
   int num_modifications = 3;
 
   // Add a table entry.
-  TaskID task_id1 = TaskID::FromRandom();
+  TaskID task_id1 = TaskID::FromRandom(ActorID::Nil());
 
   // Add a table entry at a second key.
-  TaskID task_id2 = TaskID::FromRandom();
+  TaskID task_id2 = TaskID::FromRandom(ActorID::Nil());
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
@@ -927,7 +927,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
 void TestTableSubscribeCancel(const JobID &job_id,
                               std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a table entry.
-  const auto task_id = TaskID::FromRandom();
+  const auto task_id = TaskID::FromRandom(ActorID::Nil());
   const int num_modifications = 3;
   const auto data = CreateTaskTableData(task_id, 0);
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));

@@ -402,12 +402,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     ActorId actorCreationId = ActorId.NIL;
     TaskId taskId = null;
     if (isActorCreationTask) {
-      actorCreationId = ActorId.fromRandom(workerContext.getCurrentJobId());
-      taskId = TaskId.fromRandom(actorCreationId);
+      actorCreationId = ActorId.generateActorId(workerContext.getCurrentJobId());
+      taskId = TaskId.generateTaskId(actorCreationId);
     } else if (isActorTask) {
-      taskId = TaskId.fromRandom(actor.getId());
+      taskId = TaskId.generateTaskId(actor.getId());
     } else {
-      taskId = TaskId.fromRandom(ActorId.NIL);
+      taskId = TaskId.generateTaskId(ActorId.NIL);
     }
 
     int numReturns = actor.getId().isNil() ? 1 : 2;

@@ -17,7 +17,8 @@ ActorHandle::ActorHandle(
   *inner_.mutable_actor_creation_task_function_descriptor() = {
       actor_creation_task_function_descriptor.begin(),
       actor_creation_task_function_descriptor.end()};
-  inner_.set_actor_cursor(actor_id.Data(), actor_id.Size());
+  const auto & actor_cursor = ObjectID::GenerateActorDummyObjectId(actor_id);
+  inner_.set_actor_cursor(actor_cursor.Data(), actor_cursor.Size());
   inner_.set_is_direct_call(is_direct_call);
 }
 
@@ -156,7 +157,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   BuildCommonTaskSpec(builder, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.resources, &return_ids);
 
-  const ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
+  const ActorID actor_id = return_ids[0].TaskId().ActorId();
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    {});
 
@@ -185,7 +186,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
   const auto actor_creation_dummy_object_id =
-      ObjectID::FromBinary(actor_handle.ActorID().Binary());
+      ObjectID::GenerateActorDummyObjectId(actor_handle.ActorID());
   builder.SetActorTaskSpec(
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
       actor_creation_dummy_object_id,

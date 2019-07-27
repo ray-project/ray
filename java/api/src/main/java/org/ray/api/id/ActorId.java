@@ -11,7 +11,7 @@ public class ActorId extends BaseId implements Serializable {
 
   public static final int LENGTH = UNIQUE_BYTES_LENGTH + JobId.LENGTH;
 
-  public static final ActorId NIL = genNil();
+  public static final ActorId NIL = nil();
 
   private ActorId(byte[] id) {
     super(id);
@@ -21,7 +21,7 @@ public class ActorId extends BaseId implements Serializable {
     return new ActorId(byteBuffer2Bytes(bb));
   }
 
-  public static ActorId fromRandom(JobId jobId) {
+  public static ActorId generateActorId(JobId jobId) {
     byte[] uniqueBytes = new byte[ActorId.UNIQUE_BYTES_LENGTH];
     new Random().nextBytes(uniqueBytes);
 
@@ -37,7 +37,7 @@ public class ActorId extends BaseId implements Serializable {
   /**
    * Generate a nil JobId.
    */
-  private static ActorId genNil() {
+  private static ActorId nil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
     return new ActorId(b);

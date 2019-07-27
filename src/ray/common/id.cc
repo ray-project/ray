@@ -27,6 +27,53 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
+namespace {
+
+constexpr uint8_t kCreatedByTaskBitsOffset = 15;
+constexpr uint8_t kObjectTypeBitsOffset = 14;
+constexpr uint8_t kTransportTypeBitsOffset = 11;
+
+constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask =  0x1 << kCreatedByTaskBitsOffset;
+constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffset;
+constexpr ObjectIDFlagsType kTransportTypeFlagBitMask = 0x7 << kTransportTypeBitsOffset;
+
+/// The implementations of helper functions.
+inline void SetCreatedByTaskFlag(bool is_task, ObjectIDFlagsType *flags) {
+  ObjectIDFlagsType is_task_bits;
+  if (is_task) {
+    is_task_bits = (0x1 << kCreatedByTaskBitsOffset);
+  } else {
+    is_task_bits = (0x0 << kCreatedByTaskBitsOffset);
+  }
+  *flags = (*flags bitor is_task_bits);
+}
+
+inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) {
+  const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(object_type) << kObjectTypeBitsOffset;
+  *flags = (*flags bitor object_type_bits);
+}
+
+inline void SetTransportTypeFlag(uint8_t transport_type, ObjectIDFlagsType *flags) {
+  const ObjectIDFlagsType transport_type_bits = static_cast<ObjectIDFlagsType>(transport_type) << kTransportTypeBitsOffset;
+  *flags = (*flags bitor transport_type_bits);
+}
+
+inline bool CreatedByTask(ObjectIDFlagsType flags) {
+  return ((flags bitand kCreatedByTaskFlagBitMask) >> kCreatedByTaskBitsOffset) != 0x0;
+}
+
+inline ObjectType GetObjectType(ObjectIDFlagsType flags) {
+  const ObjectIDFlagsType object_type = (flags bitand kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
+  return static_cast<ObjectType>(object_type);
+}
+
+inline uint8_t GetTransportType(ObjectIDFlagsType flags) {
+  const ObjectIDFlagsType transport_type = (flags bitand kTransportTypeFlagBitMask) >> kTransportTypeBitsOffset;
+  return static_cast<uint8_t>(transport_type);
+}
+
+} // namespace
+
 /// A helper function to fill random bytes into the `data`.
 template <typename T>
 void FillRandom(T *data) {
@@ -53,6 +100,12 @@ ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
   return ObjectID::FromBinary(from.substr(0, ObjectID::LENGTH));
 }
 
+ObjectID ObjectID::GenerateActorDummyObjectId(const ActorID &actor_id) {
+  const auto dummy_task_id = TaskID::FromRandom(actor_id);
+  return ObjectID::ForTaskReturn(dummy_task_id, 1);
+
+}
+
 plasma::UniqueID ObjectID::ToPlasmaId() const {
   constexpr size_t plasma_id_length = kUniqueIDSize;
   static_assert(ObjectID::LENGTH <= plasma_id_length,
@@ -65,31 +118,29 @@ plasma::UniqueID ObjectID::ToPlasmaId() const {
 }
 
 ObjectID::ObjectID(const plasma::UniqueID &from) {
+  RAY_CHECK(from.size() <= ObjectID::Size()) << "Out of size.";
   std::memcpy(this->MutableData(), from.data(), ObjectID::Size());
 }
 
-bool ObjectID::IsTask() const {
-  uint16_t flags;
+ObjectIDFlagsType ObjectID::GetFlags() const {
+  ObjectIDFlagsType flags;
   std::memcpy(&flags, id_ + TaskID::LENGTH, sizeof(flags));
-  return object_id_helper::IsTask(flags);
+  return flags;
+}
+bool ObjectID::CreatedByTask() const {
+  return ::ray::CreatedByTask(this->GetFlags());
 }
 
 bool ObjectID::IsPutObject() const {
-  uint16_t flags;
-  std::memcpy(&flags, id_ + TaskID::LENGTH, sizeof(flags));
-  return object_id_helper::GetObjectType(flags) == ObjectType::PUT_OBJECT;
+  return ::ray::GetObjectType(this->GetFlags()) == ObjectType::PUT_OBJECT;
 }
 
 bool ObjectID::IsReturnObject() const {
-  uint16_t flags;
-  std::memcpy(&flags, id_ + TaskID::LENGTH, sizeof(flags));
-  return object_id_helper::GetObjectType(flags) == ObjectType::RETURN_OBJECT;
+  return ::ray::GetObjectType(this->GetFlags()) == ObjectType::RETURN_OBJECT;
 }
 
-TransportType ObjectID::GetTransportType() const {
-  uint16_t flags;
-  std::memcpy(&flags, id_ + TaskID::LENGTH, sizeof(flags));
-  return object_id_helper::GetTransportType(flags);
+uint8_t ObjectID::GetTransportType() const {
+  return ::ray::GetTransportType(this->GetFlags());
 }
 
 // This code is from https://sites.google.com/site/murmurhash/
@@ -155,11 +206,20 @@ JobID ActorID::JobId() const {
       std::string(reinterpret_cast<const char *>(this->Data() + UNIQUE_BYTES_LENGTH), JobID::LENGTH));
 }
 
+TaskID TaskID::FromRandom() {
+  return FromRandom(ActorID::Nil());
+}
+
 TaskID TaskID::FromRandom(const ActorID &actor_id) {
   std::string data(UNIQUE_BYTES_LENGTH, 0);
   FillRandom(&data);
   std::copy_n(actor_id.Data(), ActorID::LENGTH, std::back_inserter(data));
   return TaskID::FromBinary(data);
+}
+
+ActorID TaskID::ActorId() const {
+  return ActorID::FromBinary(
+      std::string(reinterpret_cast<const char *>(id_), ActorID::Size()));
 }
 
 TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
@@ -169,61 +229,63 @@ TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
 }
 
 TaskID ObjectID::TaskId() const {
+  if (!CreatedByTask()) {
+    // TODO(qwang): Should be RAY_CHECK here.
+    RAY_LOG(WARNING) << "Shouldn't call this on a non-task object id: " << this->Hex();
+  }
   return TaskID::FromBinary(
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, uint32_t put_index) {
+ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= MAX_OBJECT_INDEX) << "index=" << put_index;
 
-  uint16_t flags = 0x0000;
-  object_id_helper::SetIsTaskFlag(&flags, true);
-  object_id_helper::SetObjectTypeFlag(&flags, ObjectType::PUT_OBJECT);
-  object_id_helper::SetTransportTypeFlag(&flags, TransportType::STANDARD);
+  ObjectIDFlagsType flags = 0x0000;
+  SetCreatedByTaskFlag(true, &flags);
+  SetObjectTypeFlag(ObjectType::PUT_OBJECT, &flags);
 
-  ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.Binary().c_str(), TaskID::LENGTH);
-  std::memcpy(object_id.id_ + TaskID::LENGTH, &flags, sizeof(flags));
-  std::memcpy(object_id.id_ + TaskID::LENGTH + FLAGS_BYTES_LENGTH, &put_index, sizeof(put_index));
-  return object_id;
+  // Use a default transport_type 0.
+  SetTransportTypeFlag(0, &flags);
+
+  return GenerateObjectId(task_id.Binary(), flags, put_index);
 }
 
-uint32_t ObjectID::ObjectIndex() const {
-  uint32_t index;
+ObjectIDIndexType ObjectID::ObjectIndex() const {
+  ObjectIDIndexType index;
   std::memcpy(&index, id_ + TaskID::LENGTH + FLAGS_BYTES_LENGTH, sizeof(index));
   return index;
 }
 
-ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, uint32_t return_index, TransportType transport_type) {
+ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index, uint8_t transport_type) {
   RAY_CHECK(return_index >= 1 && return_index <= MAX_OBJECT_INDEX)
       << "index=" << return_index;
 
-  uint16_t flags = 0x0000;
-  object_id_helper::SetIsTaskFlag(&flags, true);
-  object_id_helper::SetObjectTypeFlag(&flags, ObjectType::RETURN_OBJECT);
-  object_id_helper::SetTransportTypeFlag(&flags, transport_type);
+  ObjectIDFlagsType flags = 0x0000;
+  SetCreatedByTaskFlag(true, &flags);
+  SetObjectTypeFlag(ObjectType::RETURN_OBJECT, &flags);
+  SetTransportTypeFlag(transport_type, &flags);
 
-  ObjectID object_id;
-  std::memcpy(object_id.id_, task_id.Binary().c_str(), TaskID::LENGTH);
-  std::memcpy(object_id.id_ + TaskID::LENGTH, &flags, sizeof(flags));
-  std::memcpy(object_id.id_ + TaskID::LENGTH + FLAGS_BYTES_LENGTH, &return_index, sizeof(return_index));
-  return object_id;
+  return GenerateObjectId(task_id.Binary(), flags, return_index);
 }
 
-ObjectID ObjectID::FromRandom(TransportType transport) {
-  uint16_t flags = 0x0000;
-  object_id_helper::SetIsTaskFlag(&flags, false);
-  object_id_helper::SetTransportTypeFlag(&flags, transport);
-
+ObjectID ObjectID::FromRandom() {
+  ObjectIDFlagsType flags = 0x0000;
+  SetCreatedByTaskFlag(false, &flags);
+  // No need to set transport type for a random object id.
   // No need to assign put_index/return_index bytes.
-  // Assign flag bytes to binary.
-
   std::vector<uint8_t> task_id_bytes(TaskID::LENGTH, 0x0);
   FillRandom(&task_id_bytes);
 
+  return GenerateObjectId(
+      std::string(reinterpret_cast<const char *>(task_id_bytes.data()), task_id_bytes.size()), flags);
+}
+
+ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary, ObjectIDFlagsType flags, ObjectIDIndexType object_index) {
+  RAY_CHECK(task_id_binary.size() == TaskID::Size());
   ObjectID ret = ObjectID::Nil();
-  std::memcpy(ret.id_, task_id_bytes.data(), TaskID::LENGTH);
+  std::memcpy(ret.id_, task_id_binary.c_str(), TaskID::LENGTH);
   std::memcpy(ret.id_ + TaskID::LENGTH, &flags, sizeof(flags));
+  std::memcpy(ret.id_ + TaskID::LENGTH + FLAGS_BYTES_LENGTH, &object_index, sizeof(object_index));
   return ret;
 }
 

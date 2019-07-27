@@ -13,7 +13,7 @@ public class RaySerializerTest {
 
   @Test
   public void testSerializePyActor() {
-    final ActorId pyActorId = ActorId.fromRandom(JobId.fromInt(1));
+    final ActorId pyActorId = ActorId.generateActorId(JobId.fromInt(1));
     RayPyActor pyActor = new RayPyActorImpl(pyActorId, "test", "RaySerializerTest");
     byte[] bytes = Serializer.encode(pyActor);
     RayPyActor result = Serializer.decode(bytes);

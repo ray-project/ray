@@ -31,7 +31,7 @@ public class TaskId extends BaseId implements Serializable {
     return new TaskId(byteBuffer2Bytes(bb));
   }
 
-  public static TaskId fromRandom(ActorId actorId) {
+  public static TaskId generateTaskId(ActorId actorId) {
     byte[] uniqueBytes = new byte[TaskId.UNIQUE_BYTES_LENGTH];
     new Random().nextBytes(uniqueBytes);
 

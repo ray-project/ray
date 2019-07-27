@@ -28,84 +28,12 @@ class JobID;
 WorkerID ComputeDriverIdFromJob(const JobID &job_id);
 
 enum class ObjectType : uint8_t {
-  PUT_OBJECT,
-  RETURN_OBJECT,
+  PUT_OBJECT = 0x0,
+  RETURN_OBJECT = 0x1,
 };
 
-enum class TransportType : uint8_t {
-  STANDARD,
-  DIRECT_ACTOR_CALL,
-};
-
-namespace object_id_helper {
-
-constexpr uint8_t is_task_offset_bits = 15;
-constexpr uint8_t object_type_offset_bits = 14;
-constexpr uint8_t transport_type_offset_bits = 11;
-
-/// A helper function to set object ids flags.
-inline void SetIsTaskFlag(uint16_t *flags, bool is_task) {
-  uint16_t is_task_bits;
-  if (is_task) {
-    is_task_bits = (0x1 << is_task_offset_bits);
-  } else {
-    is_task_bits = (0x0 << is_task_offset_bits);
-  }
-  *flags = (*flags bitor is_task_bits);
-}
-
-inline bool IsTask(uint16_t flags) {
-  return (flags & (0x1 << is_task_offset_bits)) != 0;
-}
-
-inline ObjectType GetObjectType(uint16_t flags) {
-  uint16_t object_type = ((flags >> object_type_offset_bits) & 0x1);
-  if (object_type == 0x0) {
-    return ObjectType::PUT_OBJECT;
-  } else if (object_type == 0x1) {
-    return ObjectType::RETURN_OBJECT;
-  } else {
-    RAY_LOG(FATAL) << "Shouldn't reach here.";
-  }
-}
-
-inline TransportType GetTransportType(uint16_t flags) {
-  uint16_t type = ((flags >> transport_type_offset_bits) & 0x7);
-
-  if (type == 0x0) {
-    return TransportType::STANDARD;
-  } else if (type == 0x1) {
-    return TransportType::DIRECT_ACTOR_CALL;
-  } else {
-    RAY_LOG(FATAL) << "Shouldn't reach here.";
-  }
-}
-
-inline void SetObjectTypeFlag(uint16_t *flags, ObjectType object_type) {
-  uint16_t object_type_bits;
-  if (object_type == ObjectType::PUT_OBJECT) {
-    object_type_bits = (0x0 << object_type_offset_bits);
-  } else if (object_type == ObjectType::RETURN_OBJECT) {
-    object_type_bits = (0x1 << object_type_offset_bits);
-  } else {
-    RAY_LOG(FATAL) << "Shouldn't be reachable here.";
-  }
-  *flags = (*flags bitor object_type_bits);
-}
-
-inline void SetTransportTypeFlag(uint16_t *flags, TransportType transport_type) {
-  uint16_t transport_type_bits;
-  if (transport_type == TransportType::STANDARD) {
-    transport_type_bits = (0x0 << transport_type_offset_bits);
-  } else if (transport_type == TransportType::DIRECT_ACTOR_CALL) {
-    transport_type_bits = (0x1 << transport_type_offset_bits);
-  } else {
-    RAY_LOG(FATAL) << "Shouldn't be reachable here.";
-  }
-  *flags = (*flags bitor transport_type_bits);
-}
-
-} // namespace object_id_helper
+using ObjectIDFlagsType = uint16_t;
+using ObjectIDIndexType = uint32_t;
 
 // Declaration.
 std::mt19937 RandomlySeededMersenneTwister();
@@ -206,7 +134,15 @@ class TaskID : public BaseID<TaskID> {
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
+  /// Generate TaskID randomly.
+  /// Note that the ActorID of this task should be NIL.
+  static TaskID FromRandom();
+
+  /// Generate TaskID from the given actor id.
   static TaskID FromRandom(const ActorID &actor_id);
+
+  /// Get the id of the actor to which this task belongs.
+  ActorID ActorId() const;
 
  private:
   uint8_t id_[LENGTH];
@@ -215,25 +151,29 @@ class TaskID : public BaseID<TaskID> {
 // TODO(qwang): Add complete designing to describe structure of ID.
 class ObjectID : public BaseID<ObjectID> {
 private:
-  static constexpr size_t UNIQUE_BYTES_LENGTH = 4;
+  static constexpr size_t INDEX_BYTES_LENGTH = sizeof(ObjectIDIndexType);
 
-  static constexpr size_t FLAGS_BYTES_LENGTH = 2;
+  static constexpr size_t FLAGS_BYTES_LENGTH = sizeof(ObjectIDFlagsType);
 
  public:
-  /// The maximum number of objects that can be returned by a task when finishing
-  /// execution. An ObjectID's bytes are split into the task ID itself and the
-  /// index of the object's creation.
+  /// The maximum number of objects that can be returned or put by a task.
   static constexpr int64_t MAX_OBJECT_INDEX = ((int64_t) 1 << kObjectIdIndexSize) - 1;
 
-  static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + FLAGS_BYTES_LENGTH + TaskID::LENGTH;
+  static constexpr size_t LENGTH = INDEX_BYTES_LENGTH + FLAGS_BYTES_LENGTH + TaskID::LENGTH;
 
   ObjectID() : BaseID() {}
 
+  /// The maximum index of object. It also means the number of objects(put or return)
+  /// of one task.
   static uint64_t MaxObjectIndex() { return MAX_OBJECT_INDEX; }
 
   static size_t Size() { return LENGTH; }
 
+  /// Generate ObjectID by the given binary string of a plasma id.
   static ObjectID FromPlasmaIdBinary(const std::string &from);
+
+  /// Generate an random actor cursor object id by the given actor.
+  static ObjectID GenerateActorDummyObjectId(const ActorID &actor_id);
 
   plasma::ObjectID ToPlasmaId() const;
 
@@ -244,26 +184,26 @@ private:
   /// \return The index of object creation according to the task that created
   /// this object. This is positive if the task returned the object and negative
   /// if created by a put.
-  uint32_t ObjectIndex() const;
+  ObjectIDIndexType ObjectIndex() const;
 
   /// Compute the task ID of the task that created the object.
   ///
   /// \return The task ID of the task that created this object.
   TaskID TaskId() const;
 
-  /// Whether this object is generated from a task.
+  /// Whether this object is created by a task.
   ///
-  /// \return True if this object is generated from a task, otherwise false.
-  bool IsTask() const;
+  /// \return True if this object is created by a task, otherwise false.
+  bool CreatedByTask() const;
 
-  /// Whether this object is a `PUT_OBJECT`.
+  /// Whether this object was created through `ray.put`.
   bool IsPutObject() const;
 
-  /// Whether this object is a `RETURN_OBJECT`.
+  /// Whether this object was created as a return object of a task.
   bool IsReturnObject() const;
 
   /// Get the transport type of this object.
-  TransportType GetTransportType() const;
+  uint8_t GetTransportType() const;
 
   /// Compute the object ID of an object put by the task.
   ///
@@ -271,23 +211,33 @@ private:
   /// \param index What index of the object put in the task.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, uint32_t put_index);
+  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param return_index What index of the object returned by in the task.
-  /// \param
+  /// \param transport_type Which type of the transport that is used to
+  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, uint32_t return_index,
-                                TransportType transport = TransportType::STANDARD);
+  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index,
+                                uint8_t transport_type = 0);
 
   /// Create an object id randomly.
-  /// \param transport_type The transport type of this object.
+  ///
+  /// \param transport_type Which type of the transport that is used to
+  ///        transfer this object.
   ///
   /// \return A random object id.
-  static ObjectID FromRandom(TransportType transport_type = TransportType::STANDARD);
+  static ObjectID FromRandom();
+
+ private:
+  /// A helper method to generate an ObjectID.
+  static ObjectID GenerateObjectId(const std::string &task_id_binary, ObjectIDFlagsType flags, ObjectIDIndexType object_index = 0);
+
+ /// Get the flags out of this object id.
+ ObjectIDFlagsType GetFlags() const;
 
  private:
   uint8_t id_[LENGTH];
