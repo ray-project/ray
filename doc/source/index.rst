@@ -28,7 +28,7 @@ Ray is easy to install: ``pip install ray``
 
     ray.init()
 
-    asdfasdfasdf
+    TODO
 
 
 Cluster Quick Start
@@ -84,12 +84,11 @@ The following are good places to discuss Ray.
    walkthrough.rst
    actors.rst
    using-ray-with-gpus.rst
-   serialization.rst
-   configure.rst
    user-profiling.rst
+   configure.rst
+   serialization.rst
    advanced.rst
    troubleshooting.rst
-   security.rst
    package-ref.rst
    examples.rst
 
@@ -150,7 +149,6 @@ The following are good places to discuss Ray.
    example-a3c.rst
    example-lbfgs.rst
    example-evolution-strategies.rst
-   example-cython.rst
    example-streaming.rst
    using-ray-with-tensorflow.rst
 

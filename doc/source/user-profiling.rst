@@ -1,5 +1,5 @@
-Profiling for Ray Users
-=======================
+How-to: Profile Ray programs
+============================
 
 This document is intended for users of Ray who want to know how to evaluate
 the performance of their code while running on Ray. Profiling the
