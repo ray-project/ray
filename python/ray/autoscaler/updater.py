@@ -54,6 +54,7 @@ class NodeUpdater(object):
                  setup_commands,
                  runtime_hash,
                  process_runner=subprocess,
+                 exit_on_update_fail=False,
                  use_internal_ip=False):
 
         ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
@@ -75,6 +76,7 @@ class NodeUpdater(object):
         }
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
+        self.exit_on_update_fail = exit_on_update_fail
         self.runtime_hash = runtime_hash
 
     def get_node_ip(self):
@@ -113,7 +115,7 @@ class NodeUpdater(object):
         #   persistent sessions later on.
         with open("/dev/null", "w") as redirect:
             try:
-                subprocess.check_call(
+                self.process_runner.check_call(
                     ["mkdir", "-p", self.ssh_control_path],
                     stdout=redirect,
                     stderr=redirect)
@@ -121,7 +123,7 @@ class NodeUpdater(object):
                 logger.warning(e)
 
             try:
-                subprocess.check_call(
+                self.process_runner.check_call(
                     ["chmod", "0700", self.ssh_control_path],
                     stdout=redirect,
                     stderr=redirect)
@@ -226,19 +228,19 @@ class NodeUpdater(object):
         m = "{}: Initialization commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.initialization_commands:
-                self.ssh_cmd(cmd, exit_on_fail=True)
+                self.ssh_cmd(cmd, exit_on_fail=self.exit_on_update_fail)
 
         m = "{}: Setup commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
             for cmd in self.setup_commands:
-                self.ssh_cmd(cmd, exit_on_fail=True)
+                self.ssh_cmd(cmd, exit_on_fail=self.exit_on_update_fail)
 
     def rsync_up(self, source, target, redirect=None):
         logger.info("NodeUpdater: "
                     "{}: Syncing {} to {}...".format(self.node_id, source,
                                                      target))
         self.set_ssh_ip_if_required()
-        subprocess.check_call(
+        self.process_runner.check_call(
             [
                 "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
                     self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
@@ -252,7 +254,7 @@ class NodeUpdater(object):
                     "{}: Syncing {} from {}...".format(self.node_id, source,
                                                        target))
         self.set_ssh_ip_if_required()
-        subprocess.check_call(
+        self.process_runner.check_call(
             [
                 "rsync", "-e", " ".join(["ssh"] + get_default_ssh_options(
                     self.ssh_private_key, 120, self.ssh_control_path)), "-avz",
@@ -296,7 +298,7 @@ class NodeUpdater(object):
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ]
         try:
-            subprocess.check_call(
+            self.process_runner.check_call(
                 final_cmd,
                 stdout=redirect or sys.stdout,
                 stderr=redirect or sys.stderr)
