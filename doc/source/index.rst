@@ -142,13 +142,11 @@ The following are good places to discuss Ray.
    :caption: Examples
 
    example-rl-pong.rst
-   example-policy-gradient.rst
    example-parameter-server.rst
    example-newsreader.rst
    example-resnet.rst
    example-a3c.rst
    example-lbfgs.rst
-   example-evolution-strategies.rst
    example-streaming.rst
    using-ray-with-tensorflow.rst
 
