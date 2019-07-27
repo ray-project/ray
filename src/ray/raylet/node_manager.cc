@@ -356,8 +356,7 @@ void NodeManager::Heartbeat() {
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
       RAY_LOG(INFO) << "Timer has been cancelled. Maybe the timer was delayed due to "
-                       "lots of post events"
-                    << " and we have reset the heartbeat.";
+                       "lots of post events and we have reset the heartbeat.";
       return;
     }
     Heartbeat();
@@ -1072,7 +1071,7 @@ void NodeManager::HandleFetchOrReconstructRequest(
 void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
                                     rpc::WaitReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a WaitRequest.";
+  PREPROCESS_REQUEST(WaitRequest);
   // Read the data.
   std::vector<ObjectID> object_ids = IdVectorFromProtobuf<ObjectID>(request.object_ids());
   int64_t wait_ms = request.timeout();
@@ -1090,7 +1089,6 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
   }
 
   const TaskID &current_task_id = TaskID::FromBinary(request.task_id());
-  const WorkerID &worker_id = WorkerID::FromBinary(request.worker_id());
   bool client_blocked = !required_object_ids.empty();
   if (client_blocked) {
     HandleTaskBlocked(worker_id, required_object_ids, current_task_id, /*ray_get=*/false);
@@ -1132,12 +1130,12 @@ void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
 void NodeManager::HandlePrepareActorCheckpointRequest(
     const rpc::PrepareActorCheckpointRequest &request,
     rpc::PrepareActorCheckpointReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  PREPROCESS_REQUEST(PrepareActorCheckpointRequest);
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Preparing checkpoint for actor " << actor_id;
   const auto &actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
 
-  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
@@ -1243,9 +1241,8 @@ void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &reques
 void NodeManager::HandleNotifyUnblockedRequest(
     const rpc::NotifyUnblockedRequest &request, rpc::NotifyUnblockedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a NotifyUnblockedRequest.";
+  PREPROCESS_REQUEST(NotifyUnblockedRequest);
   const TaskID current_task_id = TaskID::FromBinary(request.task_id());
-  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
 
   HandleTaskUnblocked(worker_id, current_task_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);

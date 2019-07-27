@@ -96,8 +96,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
   /// Preprocess each request from the raylet client.
-  /// Handling three common parts for requests, including print log, checking heartbeat
-  /// and checking worker being killed.
+  /// Handling three common parts for requests. Printing log, checking heartbeat
+  /// and checking worker being killed are included.
   ///
   /// \param Request Request template type.
   /// \param worker_id The worker id.
