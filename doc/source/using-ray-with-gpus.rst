@@ -16,8 +16,7 @@ the number of GPUs as follows.
 
   ray.init(num_gpus=4)
 
-If you don't pass in the ``num_gpus`` argument, Ray will assume that there are 0
-GPUs on the machine.
+If you don't pass in the ``num_gpus`` argument, Ray will automatically detect the number of GPUs available.
 
 If you are starting Ray with the ``ray start`` command, you can indicate the
 number of GPUs on the machine with the ``--num-gpus`` argument.
