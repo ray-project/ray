@@ -117,7 +117,6 @@ def make_aggregators_and_optimizer(workers, config):
     optimizer = AsyncSamplesOptimizer(
         workers,
         lr=config["lr"],
-        num_envs_per_worker=config["num_envs_per_worker"],
         num_gpus=config["num_gpus"],
         sample_batch_size=config["sample_batch_size"],
         train_batch_size=config["train_batch_size"],

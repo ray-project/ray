@@ -9,8 +9,8 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
-from ray.rllib.models.fcnet import FullyConnectedNetwork
-from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
+from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()

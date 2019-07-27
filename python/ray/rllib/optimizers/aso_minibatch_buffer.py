@@ -19,7 +19,7 @@ class MinibatchBuffer(object):
            size: Max number of data items to buffer.
            timeout: Queue timeout
            num_passes: Max num times each data item should be emitted.
-       """
+        """
         self.inqueue = inqueue
         self.size = size
         self.timeout = timeout
