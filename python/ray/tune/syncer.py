@@ -229,7 +229,10 @@ def get_syncer(local_dir, remote_dir=None, sync_function=None):
     return _syncers[key]
 
 
-def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
+def get_log_syncer(local_dir,
+                   remote_dir=None,
+                   sync_function=None,
+                   exclude_patterns=()):
     """Returns a Syncer depending on given args.
 
     This syncer is in charge of syncing the local_dir with remote local_dir.
@@ -252,7 +255,7 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
         sync_cls = _get_sync_cls(sync_function)
     else:
         sync_cls = CommandSyncer
-        sync_function = log_sync_template()
+        sync_function = log_sync_template(exclude_patterns=exclude_patterns)
 
     if not remote_dir or sync_function is None:
         sync_cls = BaseSyncer

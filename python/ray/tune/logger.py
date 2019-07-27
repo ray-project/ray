@@ -229,10 +229,14 @@ class UnifiedLogger(Logger):
             except Exception:
                 logger.warning("Could not instantiate {} - skipping.".format(
                     str(cls)))
+        log_syncer_exclude_patterns = sum((
+            tuple(logger.LOG_FILE_PATTERNS) for logger in self._loggers), ())
+
         self._log_syncer = get_log_syncer(
             self.logdir,
             remote_dir=self.logdir,
-            sync_function=self._sync_function)
+            sync_function=self._sync_function,
+            exclude_patterns=log_syncer_exclude_patterns)
 
     def on_result(self, result):
         for _logger in self._loggers:
