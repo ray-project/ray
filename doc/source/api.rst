@@ -1,5 +1,5 @@
-The Ray API
-===========
+Ray Package Reference
+=====================
 
 .. autofunction:: ray.init
 

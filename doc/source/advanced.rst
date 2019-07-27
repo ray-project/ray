@@ -44,48 +44,18 @@ definitions of ``g`` and ``h`` because as soon as ``g`` is defined, it
 will be pickled and shipped to the workers, and so if ``f`` hasn't been
 defined yet, the definition will be incomplete.
 
+Circular Dependencies
+---------------------
 
-Passing Around Actor Handles (Experimental)
--------------------------------------------
-
-Actor handles can be passed into other tasks. To see an example of this, take a
-look at the `asynchronous parameter server example`_. To illustrate this with
-a simple example, consider a simple actor definition. This functionality is
-currently **experimental** and subject to the limitations described below.
+Consider the following remote function.
 
 .. code-block:: python
 
-  @ray.remote
-  class Counter(object):
-      def __init__(self):
-          self.counter = 0
+  @ray.remote(num_cpus=1, num_gpus=1)
+  def g():
+      return ray.get(f.remote())
 
-      def inc(self):
-          self.counter += 1
-
-      def get_counter(self):
-          return self.counter
-
-We can define remote functions (or actor methods) that use actor handles.
-
-.. code-block:: python
-
-  @ray.remote
-  def f(counter):
-      while True:
-          counter.inc.remote()
-
-If we instantiate an actor, we can pass the handle around to various tasks.
-
-.. code-block:: python
-
-  counter = Counter.remote()
-
-  # Start some tasks that use the actor.
-  [f.remote(counter) for _ in range(4)]
-
-  # Print the counter value.
-  for _ in range(10):
-      print(ray.get(counter.get_counter.remote()))
-
-.. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/latest/example-parameter-server.html
+When a ``g`` task is executing, it will release its CPU resources when it gets
+blocked in the call to ``ray.get``. It will reacquire the CPU resources when
+``ray.get`` returns. It will retain its GPU resources throughout the lifetime of
+the task because the task will most likely continue to use GPU memory.

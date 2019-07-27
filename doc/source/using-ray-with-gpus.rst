@@ -1,5 +1,5 @@
-Using Ray with GPUs
-===================
+How-to: Using Ray with GPUs
+===========================
 
 GPUs are critical for many machine learning applications. Ray enables remote
 functions and actors to specify their GPU requirements in the ``ray.remote``

@@ -83,11 +83,40 @@ This causes a few things changes in behavior:
 
 Note the following behavior when creating these dependencies:
 
--  The second task will not be executed until the first task has
-   finished executing.
--  If the two tasks are scheduled on different machines, the output of
-   the first task (the value corresponding to ``x1_id``) will be copied
-   over the network to the machine where the second task is scheduled.
+  -  The second task will not be executed until the first task has
+     finished executing.
+  -  If the two tasks are scheduled on different machines, the output of
+     the first task (the value corresponding to ``x1_id``) will be copied
+     over the network to the machine where the second task is scheduled.
+
+Often times, you might want to load balance your Ray program, not placing all functions and actors on one machine. When calling ``ray.init()`` without connecting to an existing Ray cluster, Ray will automatically detect the available GPUs and CPUs on the machine.
+
+To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and ``num_gpus`` arguments into the remote decorator. The task will only run on a machine if there are enough CPU and GPU (and other custom) resources available to execute the task. Ray can also handle custom resources.
+
+.. note::
+
+    * If specifying CPUs, Ray does not enforce isolation (i.e., your task is expected to honor its request.)
+    * If specifying GPUs, Ray does provide isolation in forms of visible devices (setting the environment variable ``CUDA_VISIBLE_DEVICES``).
+
+.. code-block:: python
+
+  @ray.remote(num_cpus=4, num_gpus=2)
+  def f():
+      return 1
+
+Below are more examples of resource specifications:
+
+.. code-block:: python
+
+  # Ray also supports fractional resource requirements
+  @ray.remote(num_gpus=0.5)
+  def h():
+      return 1
+
+  # Ray support custom resources too.
+  @ray.remote(resources={'Resource2': 1})
+  def f():
+      return 1
 
 Further, remote function can return multiple object IDs.
 
@@ -123,9 +152,11 @@ Object IDs can be created in multiple ways.
     >>> ray.get(obj_id)
     6
 
-We assume that remote objects are immutable. That is, their values cannot be
-changed after creation. This allows remote objects to be replicated in multiple
-object stores without needing to synchronize the copies.
+.. important::
+
+    We assume that remote objects are immutable. That is, their values cannot be
+    changed after creation. This allows remote objects to be replicated in multiple
+    object stores without needing to synchronize the copies.
 
 
 Fetching Results
@@ -160,7 +191,7 @@ Actors extend the Ray API from functions (tasks) to classes. The ``ray.remote`` 
           self.value += 1
           return self.value
 
-To actually create an actor, we can instantiate this class by calling ``Counter.remote()``.
+To actually create an actor, we can instantiate this class as follows:
 
 .. code-block:: python
 
@@ -169,22 +200,26 @@ To actually create an actor, we can instantiate this class by calling ``Counter.
 
 When an actor is instantiated, the following events happen.
 
-1. A node in the cluster is chosen and a worker process is created on that node
-   for the purpose of running methods called on the actor.
-2. A ``Counter`` object is created on that worker and the ``Counter``
-   constructor is run.
+1. A worker python process is started on a node of the cluster.
+2. A ``Counter`` object is instantiated on that worker.
 
-We can interact with the actor by calling its methods with the ``.remote`` operator.
+You can specify resource requirements in Actors too (see the `Actors section <actors.html>`__ for more details.)
 
 .. code-block:: python
 
-  a1.increment.remote()  # ray.get returns 1
-  a2.increment.remote()  # ray.get returns 1
+  @ray.remote(num_cpus=2, num_gpus=0.5)
+  class Actor(object):
+      pass
 
-We can then call ``ray.get`` on the object ID to retrieve the actual value.
+We can interact with the actor by calling its methods with the ``.remote`` operator. We can then call ``ray.get`` on the object ID to retrieve the actual value.
 
-Since these two tasks run on different actors, they can be executed in parallel.  On the other hand, methods called on the same ``Counter`` actor are executed serially in the order that they are called. They can thus share state with
-one another, as shown below.
+.. code-block:: python
+
+  obj_id = a1.increment.remote()
+  ray.get(obj_id) == 1
+
+
+Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
 
 .. code-block:: python
 
@@ -202,4 +237,4 @@ one another, as shown below.
   print(results)  # prints [2, 3, 4, 5, 6]
 
 
-To learn more about Ray's API and advanced usage, take a look at the Advanced Usage guide.
+To learn more about Ray Actors, see the `Actors section <actors.html>`__.

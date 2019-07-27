@@ -69,10 +69,11 @@ Other projects in development:
    :caption: Using Ray
 
    walkthrough.rst
-   advanced.rst
-   resources.rst
+   actors.rst
+   using-ray-with-gpus.rst
    serialization.rst
    configure.rst
+   advanced.rst
    examples.rst
 
 .. toctree::
