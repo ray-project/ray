@@ -458,7 +458,10 @@ class Worker(object):
                             job_id=self.current_job_id)
                     warning_sent = True
 
-    def _retrieve_and_deserialize(self, object_ids, data_metadata_pairs, error_timeout=10):
+    def _retrieve_and_deserialize(self,
+                                  object_ids,
+                                  data_metadata_pairs,
+                                  error_timeout=10):
         start_time = time.time()
         serialization_context = self.get_serialization_context(
             self.current_job_id)
@@ -469,8 +472,9 @@ class Worker(object):
             object_id = object_ids[i]
             data, metadata = data_metadata_pairs[i]
             try:
-                results.append(self._deserialize_object_from_arrow(
-                    data, metadata, object_id, serialization_context))
+                results.append(
+                    self._deserialize_object_from_arrow(
+                        data, metadata, object_id, serialization_context))
                 i += 1
             except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
@@ -548,10 +552,12 @@ class Worker(object):
 
         CORE_WORKER_GET = True
         if CORE_WORKER_GET:
-            data_metadata_pairs = self.core_worker.get_objects(object_ids, self.current_task_id)
+            data_metadata_pairs = self.core_worker.get_objects(
+                object_ids, self.current_task_id)
             assert len(data_metadata_pairs) == len(object_ids)
 
-            final_results = self._retrieve_and_deserialize(object_ids, data_metadata_pairs)
+            final_results = self._retrieve_and_deserialize(
+                object_ids, data_metadata_pairs)
 
             assert len(final_results) == len(object_ids)
             return final_results

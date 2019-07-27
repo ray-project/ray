@@ -10,18 +10,18 @@ if "pyarrow" in sys.modules:
                       "requires a specific version of pyarrow (which is "
                       "packaged along with Ray).")
 
-# Add the directory containing pyarrow to the Python path so that we find the
-# pyarrow version packaged with ray and not a pre-existing pyarrow.
-pyarrow_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
-sys.path.insert(0, pyarrow_path)
-
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the
 # initialization of grpc if we import pyarrow at first.
 # NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
 # details.
 import ray._raylet
+
+# Add the directory containing pyarrow to the Python path so that we find the
+# pyarrow version packaged with ray and not a pre-existing pyarrow.
+pyarrow_path = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
+sys.path.insert(0, pyarrow_path)
 
 # See https://github.com/ray-project/ray/issues/131.
 helpful_message = """
@@ -33,6 +33,11 @@ If you are using Anaconda, try fixing this problem by running:
 
 try:
     import pyarrow  # noqa: F401
+
+    # pyarrow is not imported inside of _raylet because of the issue described
+    # above. In order for Cython to compile _raylet, pyarrow is set to None
+    # in _raylet instead, so we give _raylet a real reference to it here.
+    ray._raylet.pyarrow = pyarrow
 except ImportError as e:
     if ((hasattr(e, "msg") and isinstance(e.msg, str)
          and ("libstdc++" in e.msg or "CXX" in e.msg))):

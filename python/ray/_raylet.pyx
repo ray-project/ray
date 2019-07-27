@@ -44,7 +44,11 @@ from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError
 from ray.utils import decode
 
-import pyarrow
+# pyarrow cannot be imported until after _raylet finishes initializing.
+# Unfortunately, Cython won't compile if 'pyarrow' is undefined, so we
+# "forward declare" it here and then replace it with a reference to the
+# imported package from ray/__init__.py.
+pyarrow = None
 
 cimport cpython
 
