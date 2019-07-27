@@ -25,7 +25,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--redis-address",
-        required=True,
+        required=False,
         type=str,
         help="the address to use for Redis")
     parser.add_argument(
