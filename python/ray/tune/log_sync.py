@@ -17,13 +17,14 @@ logger = logging.getLogger(__name__)
 _log_sync_warned = False
 
 
-def log_sync_template():
+def log_sync_template(exclude_patterns=()):
     """Syncs the local_dir between driver and worker if possible.
 
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.
 
     """
+
     if not distutils.spawn.find_executable("rsync"):
         logger.error("Log sync requires rsync to be installed.")
         return
@@ -36,9 +37,28 @@ def log_sync_template():
             _log_sync_warned = True
         return
 
-    return ("""rsync -savz -e "ssh -i {ssh_key} -o ConnectTimeout=120s """
-            """-o StrictHostKeyChecking=no" {{source}} {{target}}"""
-            ).format(ssh_key=quote(ssh_key))
+    log_sync_command = " ".join((
+        "rsync",
+        "-savz",
+        *[
+            "--exclude {}".format(quote(exclude_pattern))
+            for exclude_pattern in exclude_patterns
+        ],
+        "-e",
+        quote(
+            " ".join((
+                "ssh",
+                "-i {}".format(quote(ssh_key)),
+                "-o ConnectTimeout=120s",
+                "-o StrictHostKeyChecking=no",
+            ))),
+        "{{source}}",
+        "{{target}}",
+    ))
+
+    print(f"got log_sync_command: {log_sync_command}")
+
+    return log_sync_command
 
 
 class NodeSyncMixin():
