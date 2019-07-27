@@ -157,7 +157,7 @@ install:
   - ./bazel-bin/id_test
   # worker pool test
   - ./ci/suppress_output bazel build //:worker_pool_test -c opt
-  - ./bazel-bin/id_test
+  - ./bazel-bin/worker_pool_test
 
   # core worker test.
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
