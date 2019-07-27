@@ -12,12 +12,14 @@ import numpy as np
 import time
 
 import ray
-from ray.rllib.agents import Agent, with_common_config
+from ray.rllib.agents import Trainer, with_common_config
 
 from ray.rllib.agents.ars import optimizers
 from ray.rllib.agents.ars import policies
 from ray.rllib.agents.ars import utils
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -87,7 +89,7 @@ class Worker(object):
 
     @property
     def filters(self):
-        return {"default": self.policy.get_filter()}
+        return {DEFAULT_POLICY_ID: self.policy.get_filter()}
 
     def sync_filters(self, new_filters):
         for k in self.filters:
@@ -107,7 +109,7 @@ class Worker(object):
             self.env,
             timestep_limit=timestep_limit,
             add_noise=add_noise,
-            offset=self.config['offset'])
+            offset=self.config["offset"])
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -156,46 +158,45 @@ class Worker(object):
             eval_lengths=eval_lengths)
 
 
-class ARSAgent(Agent):
+class ARSTrainer(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
-    _agent_name = "ARS"
+    _name = "ARS"
     _default_config = DEFAULT_CONFIG
 
-    @override(Agent)
-    def _init(self):
-        env = self.env_creator(self.config["env_config"])
+    @override(Trainer)
+    def _init(self, config, env_creator):
+        env = env_creator(config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
             self.sess, env.action_space, env.observation_space, preprocessor,
-            self.config["observation_filter"], self.config["model"])
-        self.optimizer = optimizers.SGD(self.policy,
-                                        self.config["sgd_stepsize"])
+            config["observation_filter"], config["model"])
+        self.optimizer = optimizers.SGD(self.policy, config["sgd_stepsize"])
 
-        self.rollouts_used = self.config["rollouts_used"]
-        self.num_rollouts = self.config["num_rollouts"]
-        self.report_length = self.config["report_length"]
+        self.rollouts_used = config["rollouts_used"]
+        self.num_rollouts = config["num_rollouts"]
+        self.report_length = config["report_length"]
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote(config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
         self.workers = [
-            Worker.remote(self.config, self.env_creator, noise_id)
-            for _ in range(self.config["num_workers"])
+            Worker.remote(config, env_creator, noise_id)
+            for _ in range(config["num_workers"])
         ]
 
         self.episodes_so_far = 0
         self.reward_list = []
         self.tstart = time.time()
 
-    @override(Agent)
+    @override(Trainer)
     def _train(self):
         config = self.config
 
@@ -271,7 +272,7 @@ class ARSAgent(Agent):
 
         # Now sync the filters
         FilterManager.synchronize({
-            "default": self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.get_filter()
         }, self.workers)
 
         info = {
@@ -291,13 +292,13 @@ class ARSAgent(Agent):
 
         return result
 
-    @override(Agent)
+    @override(Trainer)
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    @override(Agent)
+    @override(Trainer)
     def compute_action(self, observation):
         return self.policy.compute(observation, update=True)[0]
 
@@ -312,7 +313,7 @@ class ARSAgent(Agent):
                 worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
             # Get the results of the rollouts.
-            for result in ray.get(rollout_ids):
+            for result in ray_get_and_free(rollout_ids):
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
@@ -335,5 +336,5 @@ class ARSAgent(Agent):
         self.policy.set_weights(state["weights"])
         self.policy.set_filter(state["filter"])
         FilterManager.synchronize({
-            "default": self.policy.get_filter()
+            DEFAULT_POLICY_ID: self.policy.get_filter()
         }, self.workers)

@@ -1,31 +1,24 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import java.nio.ByteBuffer;
+import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.config.RunMode;
+import org.ray.runtime.generated.Common.WorkerType;
+import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.TaskSpec;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+/**
+ * This is a wrapper class for worker context of core worker.
+ */
 public class WorkerContext {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(WorkerContext.class);
-
-  private UniqueId workerId;
-
-  private ThreadLocal<UniqueId> currentTaskId;
-
   /**
-   * Number of objects that have been put from current task.
+   * The native pointer of worker context of core worker.
    */
-  private ThreadLocal<Integer> putIndex;
-
-  /**
-   * Number of tasks that have been submitted from current task.
-   */
-  private ThreadLocal<Integer> taskIndex;
-
-  private UniqueId currentDriverId;
+  private final long nativeWorkerContextPointer;
 
   private ClassLoader currentClassLoader;
 
@@ -34,30 +27,28 @@ public class WorkerContext {
    */
   private long mainThreadId;
 
+  /**
+   * The run-mode of this worker.
+   */
+  private RunMode runMode;
 
-  public WorkerContext(WorkerMode workerMode, UniqueId driverId) {
+  public WorkerContext(WorkerType workerType, JobId jobId, RunMode runMode) {
+    this.nativeWorkerContextPointer = nativeCreateWorkerContext(workerType.getNumber(), jobId.getBytes());
     mainThreadId = Thread.currentThread().getId();
-    taskIndex = ThreadLocal.withInitial(() -> 0);
-    putIndex = ThreadLocal.withInitial(() -> 0);
-    currentTaskId = ThreadLocal.withInitial(UniqueId::randomId);
+    this.runMode = runMode;
     currentClassLoader = null;
-    if (workerMode == WorkerMode.DRIVER) {
-      workerId = driverId;
-      currentTaskId.set(UniqueId.randomId());
-      currentDriverId = driverId;
-    } else {
-      workerId = UniqueId.randomId();
-      this.currentTaskId.set(UniqueId.NIL);
-      this.currentDriverId = UniqueId.NIL;
-    }
+  }
+
+  public long getNativeWorkerContext() {
+    return nativeWorkerContextPointer;
   }
 
   /**
    * @return For the main thread, this method returns the ID of this worker's current running task;
-   *     for other threads, this method returns a random ID.
+   * for other threads, this method returns a random ID.
    */
-  public UniqueId getCurrentTaskId() {
-    return currentTaskId.get();
+  public TaskId getCurrentTaskId() {
+    return new TaskId(nativeGetCurrentTaskId(nativeWorkerContextPointer));
   }
 
   /**
@@ -65,16 +56,16 @@ public class WorkerContext {
    * be called from the main thread.
    */
   public void setCurrentTask(TaskSpec task, ClassLoader classLoader) {
-    Preconditions.checkState(
-        Thread.currentThread().getId() == mainThreadId,
-        "This method should only be called from the main thread."
-    );
+    if (runMode == RunMode.CLUSTER) {
+      Preconditions.checkState(
+          Thread.currentThread().getId() == mainThreadId,
+          "This method should only be called from the main thread."
+      );
+    }
 
     Preconditions.checkNotNull(task);
-    this.currentTaskId.set(task.taskId);
-    this.currentDriverId = task.driverId;
-    taskIndex.set(0);
-    putIndex.set(0);
+    byte[] taskSpec = RayletClientImpl.convertTaskSpecToProtobuf(task);
+    nativeSetCurrentTask(nativeWorkerContextPointer, taskSpec);
     currentClassLoader = classLoader;
   }
 
@@ -82,38 +73,67 @@ public class WorkerContext {
    * Increment the put index and return the new value.
    */
   public int nextPutIndex() {
-    putIndex.set(putIndex.get() + 1);
-    return putIndex.get();
+    return nativeGetNextPutIndex(nativeWorkerContextPointer);
   }
 
   /**
    * Increment the task index and return the new value.
    */
   public int nextTaskIndex() {
-    taskIndex.set(taskIndex.get() + 1);
-    return taskIndex.get();
+    return nativeGetNextTaskIndex(nativeWorkerContextPointer);
   }
 
   /**
    * @return The ID of the current worker.
    */
   public UniqueId getCurrentWorkerId() {
-    return workerId;
+    return new UniqueId(nativeGetCurrentWorkerId(nativeWorkerContextPointer));
   }
 
   /**
-   * @return If this worker is a driver, this method returns the driver ID; Otherwise, it returns
-   *     the driver ID of the current running task.
+   * The ID of the current job.
    */
-  public UniqueId getCurrentDriverId() {
-    return currentDriverId;
+  public JobId getCurrentJobId() {
+    return JobId.fromByteBuffer(nativeGetCurrentJobId(nativeWorkerContextPointer));
   }
 
   /**
-   * @return The class loader which is associated with the current driver.
+   * @return The class loader which is associated with the current job.
    */
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;
   }
 
+  /**
+   * Get the current task.
+   */
+  public TaskSpec getCurrentTask() {
+    byte[] bytes = nativeGetCurrentTask(nativeWorkerContextPointer);
+    if (bytes == null) {
+      return null;
+    }
+    return RayletClientImpl.parseTaskSpecFromProtobuf(bytes);
+  }
+
+  public void destroy() {
+    nativeDestroy(nativeWorkerContextPointer);
+  }
+
+  private static native long nativeCreateWorkerContext(int workerType, byte[] jobId);
+
+  private static native byte[] nativeGetCurrentTaskId(long nativeWorkerContextPointer);
+
+  private static native void nativeSetCurrentTask(long nativeWorkerContextPointer, byte[] taskSpec);
+
+  private static native byte[] nativeGetCurrentTask(long nativeWorkerContextPointer);
+
+  private static native ByteBuffer nativeGetCurrentJobId(long nativeWorkerContextPointer);
+
+  private static native byte[] nativeGetCurrentWorkerId(long nativeWorkerContextPointer);
+
+  private static native int nativeGetNextTaskIndex(long nativeWorkerContextPointer);
+
+  private static native int nativeGetNextPutIndex(long nativeWorkerContextPointer);
+
+  private static native void nativeDestroy(long nativeWorkerContextPointer);
 }

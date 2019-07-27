@@ -1,3 +1,6 @@
-from ray.rllib.agents.es.es import (ESAgent, DEFAULT_CONFIG)
+from ray.rllib.agents.es.es import (ESTrainer, DEFAULT_CONFIG)
+from ray.rllib.utils import renamed_agent
 
-__all__ = ["ESAgent", "DEFAULT_CONFIG"]
+ESAgent = renamed_agent(ESTrainer)
+
+__all__ = ["ESAgent", "ESTrainer", "DEFAULT_CONFIG"]

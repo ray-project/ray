@@ -13,19 +13,43 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxReconstructions;
 
-  public ActorCreationOptions() {
-    super();
-    this.maxReconstructions = NO_RECONSTRUCTION;
-  }
+  public final String jvmOptions;
 
-  public ActorCreationOptions(Map<String, Double> resources) {
-    super(resources);
-    this.maxReconstructions = NO_RECONSTRUCTION;
-  }
-
-
-  public ActorCreationOptions(Map<String, Double> resources, int maxReconstructions) {
+  private ActorCreationOptions(Map<String, Double> resources,
+                               int maxReconstructions,
+                               String jvmOptions) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
+    this.jvmOptions = jvmOptions;
   }
+
+  /**
+   *  The inner class for building ActorCreationOptions.
+   */
+  public static class Builder {
+
+    private Map<String, Double> resources = new HashMap<>();
+    private int maxReconstructions = NO_RECONSTRUCTION;
+    private String jvmOptions = "";
+
+    public Builder setResources(Map<String, Double> resources) {
+      this.resources = resources;
+      return this;
+    }
+
+    public Builder setMaxReconstructions(int maxReconstructions) {
+      this.maxReconstructions = maxReconstructions;
+      return this;
+    }
+
+    public Builder setJvmOptions(String jvmOptions) {
+      this.jvmOptions = jvmOptions;
+      return this;
+    }
+
+    public ActorCreationOptions createActorCreationOptions() {
+      return new ActorCreationOptions(resources, maxReconstructions, jvmOptions);
+    }
+  }
+
 }

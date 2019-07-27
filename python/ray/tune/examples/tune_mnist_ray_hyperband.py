@@ -27,11 +27,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import time
 
 import ray
-from ray.tune import grid_search, run_experiments, register_trainable, \
-    Trainable, sample_from
+from ray import tune
+from ray.tune import Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -55,32 +56,32 @@ def setupCNN(x):
     # Reshape to use within a convolutional neural net.
     # Last dimension is for "features" - there is only one here, since images
     # are grayscale -- it would be 3 for an RGB image, 4 for RGBA, etc.
-    with tf.name_scope('reshape'):
+    with tf.name_scope("reshape"):
         x_image = tf.reshape(x, [-1, 28, 28, 1])
 
     # First convolutional layer - maps one grayscale image to 32 feature maps.
-    with tf.name_scope('conv1'):
+    with tf.name_scope("conv1"):
         W_conv1 = weight_variable([5, 5, 1, 32])
         b_conv1 = bias_variable([32])
         h_conv1 = activation_fn(conv2d(x_image, W_conv1) + b_conv1)
 
     # Pooling layer - downsamples by 2X.
-    with tf.name_scope('pool1'):
+    with tf.name_scope("pool1"):
         h_pool1 = max_pool_2x2(h_conv1)
 
     # Second convolutional layer -- maps 32 feature maps to 64.
-    with tf.name_scope('conv2'):
+    with tf.name_scope("conv2"):
         W_conv2 = weight_variable([5, 5, 32, 64])
         b_conv2 = bias_variable([64])
         h_conv2 = activation_fn(conv2d(h_pool1, W_conv2) + b_conv2)
 
     # Second pooling layer.
-    with tf.name_scope('pool2'):
+    with tf.name_scope("pool2"):
         h_pool2 = max_pool_2x2(h_conv2)
 
     # Fully connected layer 1 -- after 2 round of downsampling, our 28x28 image
     # is down to 7x7x64 feature maps -- maps this to 1024 features.
-    with tf.name_scope('fc1'):
+    with tf.name_scope("fc1"):
         W_fc1 = weight_variable([7 * 7 * 64, 1024])
         b_fc1 = bias_variable([1024])
 
@@ -89,12 +90,12 @@ def setupCNN(x):
 
     # Dropout - controls the complexity of the model, prevents co-adaptation of
     # features.
-    with tf.name_scope('dropout'):
+    with tf.name_scope("dropout"):
         keep_prob = tf.placeholder(tf.float32)
         h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
     # Map the 1024 features to 10 classes, one for each digit
-    with tf.name_scope('fc2'):
+    with tf.name_scope("fc2"):
         W_fc2 = weight_variable([1024, 10])
         b_fc2 = bias_variable([10])
 
@@ -104,13 +105,13 @@ def setupCNN(x):
 
 def conv2d(x, W):
     """conv2d returns a 2d convolution layer with full stride."""
-    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding="SAME")
 
 
 def max_pool_2x2(x):
     """max_pool_2x2 downsamples a feature map by 2X."""
     return tf.nn.max_pool(
-        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
 
 def weight_variable(shape):
@@ -148,23 +149,23 @@ class TrainMNIST(Trainable):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y_ = tf.placeholder(tf.float32, [None, 10])
 
-        activation_fn = getattr(tf.nn, config['activation'])
+        activation_fn = getattr(tf.nn, config.get("activation", "relu"))
 
         # Build the graph for the deep net
         y_conv, self.keep_prob = setupCNN(self.x)
 
-        with tf.name_scope('loss'):
+        with tf.name_scope("loss"):
             cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
                 labels=self.y_, logits=y_conv)
         cross_entropy = tf.reduce_mean(cross_entropy)
 
-        with tf.name_scope('adam_optimizer'):
+        with tf.name_scope("adam_optimizer"):
             train_step = tf.train.AdamOptimizer(
-                config['learning_rate']).minimize(cross_entropy)
+                config.get("learning_rate", 1e-4)).minimize(cross_entropy)
 
         self.train_step = train_step
 
-        with tf.name_scope('accuracy'):
+        with tf.name_scope("accuracy"):
             correct_prediction = tf.equal(
                 tf.argmax(y_conv, 1), tf.argmax(self.y_, 1))
             correct_prediction = tf.cast(correct_prediction, tf.float32)
@@ -172,8 +173,7 @@ class TrainMNIST(Trainable):
 
         self.sess = tf.Session()
         self.sess.run(tf.global_variables_initializer())
-        self.iterations = 0
-        self.saver = tf.train.Saver()
+        self.saver = tf.train.Saver(save_relative_paths=True)
 
     def _train(self):
         for i in range(10):
@@ -194,46 +194,48 @@ class TrainMNIST(Trainable):
                 self.y_: batch[1],
                 self.keep_prob: 1.0
             })
-
-        self.iterations += 1
         return {"mean_accuracy": train_accuracy}
 
     def _save(self, checkpoint_dir):
-        return self.saver.save(
-            self.sess, checkpoint_dir + "/save", global_step=self.iterations)
+        path = self.saver.save(self.sess, os.path.join(checkpoint_dir, "save"))
+        return path
 
-    def _restore(self, path):
-        return self.saver.restore(self.sess, path)
+    def _restore(self, checkpoint_path):
+        self.saver.restore(self.sess, checkpoint_path)
 
 
 # !!! Example of using the ray.tune Python API !!!
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--smoke-test', action='store_true', help='Finish quickly for testing')
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-
-    register_trainable("my_class", TrainMNIST)
     mnist_spec = {
-        'run': 'my_class',
-        'stop': {
-            'mean_accuracy': 0.99,
-            'time_total_s': 600,
+        "stop": {
+            "mean_accuracy": 0.99,
+            "time_total_s": 600,
         },
-        'config': {
-            'learning_rate': sample_from(
+        "config": {
+            "learning_rate": sample_from(
                 lambda spec: 10**np.random.uniform(-5, -3)),
-            'activation': grid_search(['relu', 'elu', 'tanh']),
+            "activation": "relu",
         },
         "num_samples": 10,
     }
 
     if args.smoke_test:
-        mnist_spec['stop']['training_iteration'] = 2
-        mnist_spec['num_samples'] = 2
+        mnist_spec["stop"]["training_iteration"] = 20
+        mnist_spec["num_samples"] = 1
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="training_iteration", reward_attr="mean_accuracy", max_t=10)
+        time_attr="training_iteration",
+        metric="mean_accuracy",
+        mode="max",
+        max_t=10)
 
-    run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)
+    tune.run(
+        TrainMNIST,
+        name="mnist_hyperband_test",
+        scheduler=hyperband,
+        **mnist_spec)

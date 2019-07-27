@@ -18,16 +18,17 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     is when using multiple brackets, trial allocation to bracket is done
     randomly with over a softmax probability.
 
-    See https://openreview.net/forum?id=S1Y7OOlRZ
+    See https://arxiv.org/abs/1810.05934
 
     Args:
         time_attr (str): A training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The training result objective value attribute. As
-            with `time_attr`, this may refer to any objective value. Stopping
+        metric (str): The training result objective value attribute. Stopping
             procedures will use this attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
         max_t (float): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
         grace_period (float): Only stop trials at least this old in time.
@@ -39,17 +40,29 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr='training_iteration',
-                 reward_attr='episode_reward_mean',
+                 time_attr="training_iteration",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  max_t=100,
                  grace_period=10,
-                 reduction_factor=3,
-                 brackets=3):
+                 reduction_factor=4,
+                 brackets=1):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
         assert reduction_factor > 1, "Reduction Factor not valid!"
         assert brackets > 0, "brackets must be positive!"
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
         self._max_t = max_t
@@ -63,7 +76,11 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         ]
         self._counter = 0  # for
         self._num_stopped = 0
-        self._reward_attr = reward_attr
+        self._metric = metric
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
         self._time_attr = time_attr
 
     def on_trial_add(self, trial_runner, trial):
@@ -80,7 +97,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         else:
             bracket = self._trial_info[trial.trial_id]
             action = bracket.on_result(trial, result[self._time_attr],
-                                       result[self._reward_attr])
+                                       self._metric_op * result[self._metric])
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
@@ -88,7 +105,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     def on_trial_complete(self, trial_runner, trial, result):
         bracket = self._trial_info[trial.trial_id]
         bracket.on_result(trial, result[self._time_attr],
-                          result[self._reward_attr])
+                          self._metric_op * result[self._metric])
         del self._trial_info[trial.trial_id]
 
     def on_trial_remove(self, trial_runner, trial):
@@ -151,7 +168,9 @@ class _Bracket():
         return "Bracket: " + iters
 
 
-if __name__ == '__main__':
+ASHAScheduler = AsyncHyperBandScheduler
+
+if __name__ == "__main__":
     sched = AsyncHyperBandScheduler(
         grace_period=1, max_t=10, reduction_factor=2)
     print(sched.debug_string())

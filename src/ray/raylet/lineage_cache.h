@@ -4,32 +4,35 @@
 #include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
 
-// clang-format off
-#include "ray/common/common_protocol.h"
-#include "ray/raylet/task.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
+#include "ray/common/task/task.h"
 #include "ray/gcs/tables.h"
-#include "ray/id.h"
-#include "ray/status.h"
-// clang-format on
 
 namespace ray {
 
 namespace raylet {
 
+using rpc::TaskTableData;
+
 /// The status of a lineage cache entry according to its status in the GCS.
+/// Tasks can only transition to a higher GcsStatus (e.g., an UNCOMMITTED state
+/// can become COMMITTING but not vice versa). If a task is evicted from the
+/// local cache, it implicitly goes back to state `NONE`, after which it may be
+/// added to the local cache again (e.g., if it is forwarded to us again).
 enum class GcsStatus {
   /// The task is not in the lineage cache.
   NONE = 0,
-  /// The task is being executed or created on a remote node.
-  UNCOMMITTED_REMOTE,
-  /// The task is waiting to be executed or created locally.
-  UNCOMMITTED_WAITING,
-  /// The task has started execution, but the entry has not been written to the
-  /// GCS yet.
-  UNCOMMITTED_READY,
-  /// The task has been written to the GCS and we are waiting for an
-  /// acknowledgement of the commit.
+  /// The task is uncommitted. Unless there is a failure, we will expect a
+  /// different node to commit this task.
+  UNCOMMITTED,
+  /// We flushed this task and are waiting for the commit acknowledgement.
   COMMITTING,
+  // TODO(swang): Add a COMMITTED state for tasks for which we received a
+  // commit acknowledgement, but which we cannot evict yet (due to an ancestor
+  // that has not been evicted). This is to allow a performance optimization
+  // that avoids unnecessary subscribes when we receive tasks that were
+  // already COMMITTED at the sender.
 };
 
 /// \class LineageEntry
@@ -132,12 +135,6 @@ class Lineage {
   /// Construct an empty Lineage.
   Lineage();
 
-  /// Construct a Lineage from a ForwardTaskRequest.
-  ///
-  /// \param task_request The request to construct the lineage from. All
-  /// uncommitted tasks in the request will be added to the lineage.
-  Lineage(const protocol::ForwardTaskRequest &task_request);
-
   /// Get an entry from the lineage.
   ///
   /// \param entry_id The ID of the entry to get.
@@ -167,15 +164,6 @@ class Lineage {
   ///
   /// \return A const reference to the lineage entries.
   const std::unordered_map<const TaskID, LineageEntry> &GetEntries() const;
-
-  /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
-  ///
-  /// \param entry_id The task ID to include in the ForwardTaskRequest
-  /// flatbuffer.
-  /// \return An offset to the serialized lineage. The serialization includes
-  /// all task and object entries in the lineage.
-  flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
-      flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
   /// Return the IDs of tasks in the lineage that are dependent on the given
   /// task.
@@ -217,40 +205,33 @@ class LineageCache {
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
   LineageCache(const ClientID &client_id,
-               gcs::TableInterface<TaskID, protocol::Task> &task_storage,
+               gcs::TableInterface<TaskID, TaskTableData> &task_storage,
                gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
 
-  /// Add a task that is waiting for execution and its uncommitted lineage.
-  /// These entries will not be written to the GCS until set to ready.
+  /// Asynchronously commit a task to the GCS.
   ///
-  /// \param task The waiting task to add.
+  /// \param task The task to commit. It will be moved to the COMMITTING state.
+  /// \return Whether the task was successfully committed. This can fail if the
+  /// task was already in the COMMITTING state.
+  bool CommitTask(const Task &task);
+
+  /// Flush all tasks in the local cache that are not already being
+  /// committed. This is equivalent to all tasks in the UNCOMMITTED
+  /// state.
+  ///
+  /// \return Void.
+  void FlushAllUncommittedTasks();
+
+  /// Add a task and its (estimated) uncommitted lineage to the local cache. We
+  /// will subscribe to commit notifications for all uncommitted tasks to
+  /// determine when it is safe to evict the lineage from the local cache.
+  ///
+  /// \param task_id The ID of the uncommitted task to add.
   /// \param uncommitted_lineage The task's uncommitted lineage. These are the
   /// tasks that the given task is data-dependent on, but that have not
-  /// been made durable in the GCS, as far the task's submitter knows.
-  /// \return Whether the task was successfully marked as waiting to be
-  /// committed. This will return false if the task is already waiting to be
-  /// committed (UNCOMMITTED_WAITING), ready to be committed
-  /// (UNCOMMITTED_READY), or committing (COMMITTING).
-  bool AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
-
-  /// Add a task that is ready for GCS writeback. This overwrites the task’s
-  /// mutable fields in the execution specification.
-  ///
-  /// \param task The task to set as ready.
-  /// \return Whether the task was successfully marked as ready to be
-  /// committed. This will return false if the task is already ready to be
-  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool AddReadyTask(const Task &task);
-
-  /// Remove a task that was waiting for execution. Its uncommitted lineage
-  /// will remain unchanged.
-  ///
-  /// \param task_id The ID of the waiting task to remove.
-  /// \return Whether the task was successfully removed. This will return false
-  /// if the task is not waiting to be committed. Then, the waiting task has
-  /// already been removed (UNCOMMITTED_REMOTE), or if it's ready to be
-  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool RemoveWaitingTask(const TaskID &task_id);
+  /// been committed to the GCS. This must contain the given task ID.
+  /// \return Void.
+  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage);
 
   /// Mark a task as having been explicitly forwarded to a node.
   /// The lineage of the task is implicitly assumed to have also been forwarded.
@@ -263,7 +244,8 @@ class LineageCache {
   /// The uncommitted lineage consists of all tasks in the given task's lineage
   /// that have not been committed in the GCS, as far as we know.
   ///
-  /// \param task_id The ID of the task to get the uncommitted lineage for.
+  /// \param task_id The ID of the task to get the uncommitted lineage for. If
+  /// the task is not found, then the returned lineage will be empty.
   /// \param node_id The ID of the receiving node.
   /// \return The uncommitted, unforwarded lineage of the task. The returned lineage
   /// includes the entry for the requested entry_id.
@@ -279,7 +261,7 @@ class LineageCache {
   ///
   /// \param task_id The ID of the task to get.
   /// \return A const reference to the task data.
-  const Task &GetTask(const TaskID &task_id) const;
+  const Task &GetTaskOrDie(const TaskID &task_id) const;
 
   /// Get whether the lineage cache contains the task.
   ///
@@ -297,6 +279,9 @@ class LineageCache {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   FRIEND_TEST(LineageCacheTest, BarReturnsZeroOnNull);
   /// Flush a task that is in UNCOMMITTED_READY state.
@@ -312,15 +297,12 @@ class LineageCache {
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
-  /// Add a task and its uncommitted lineage to the local stash.
-  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage,
-                             std::unordered_set<TaskID> &subscribe_tasks);
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
   ClientID client_id_;
   /// The durable storage system for task information.
-  gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
+  gcs::TableInterface<TaskID, TaskTableData> &task_storage_;
   /// The pubsub storage system for task information. This can be used to
   /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;

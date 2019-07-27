@@ -1,8 +1,7 @@
 package org.ray.api.test;
 
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.config.RunMode;
-import org.ray.runtime.config.WorkerMode;
+import org.ray.runtime.generated.Common.WorkerType;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -11,26 +10,13 @@ public class RayConfigTest {
   @Test
   public void testCreateRayConfig() {
     try {
-      System.setProperty("ray.home", "/path/to/ray");
-      System.setProperty("ray.driver.resource-path", "path/to/ray/driver/resource/path");
+      System.setProperty("ray.job.resource-path", "path/to/ray/job/resource/path");
       RayConfig rayConfig = RayConfig.create();
-
-      Assert.assertEquals("/path/to/ray", rayConfig.rayHome);
-      Assert.assertEquals(WorkerMode.DRIVER, rayConfig.workerMode);
-      Assert.assertEquals(RunMode.CLUSTER, rayConfig.runMode);
-
-      System.setProperty("ray.home", "");
-      rayConfig = RayConfig.create();
-
-      Assert.assertEquals(System.getProperty("user.dir"), rayConfig.rayHome);
-      Assert.assertEquals(System.getProperty("user.dir") +
-          "/build/src/ray/thirdparty/redis/src/redis-server", rayConfig.redisServerExecutablePath);
-
-      Assert.assertEquals("path/to/ray/driver/resource/path", rayConfig.driverResourcePath);
+      Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
+      Assert.assertEquals("path/to/ray/job/resource/path", rayConfig.jobResourcePath);
     } finally {
-      //unset the system property
-      System.clearProperty("ray.home");
-      System.clearProperty("ray.driver.resource-path");
+      // Unset system properties.
+      System.clearProperty("ray.job.resource-path");
     }
 
   }

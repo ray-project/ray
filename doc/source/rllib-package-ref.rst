@@ -1,22 +1,11 @@
 RLlib Package Reference
 =======================
 
-ray.rllib.agents
+ray.rllib.policy
 ----------------
 
-.. automodule:: ray.rllib.agents
+.. automodule:: ray.rllib.policy
     :members:
-    
-.. autoclass:: ray.rllib.agents.a3c.A2CAgent
-.. autoclass:: ray.rllib.agents.a3c.A3CAgent
-.. autoclass:: ray.rllib.agents.ddpg.ApexDDPGAgent
-.. autoclass:: ray.rllib.agents.ddpg.DDPGAgent
-.. autoclass:: ray.rllib.agents.dqn.ApexAgent
-.. autoclass:: ray.rllib.agents.dqn.DQNAgent
-.. autoclass:: ray.rllib.agents.es.ESAgent
-.. autoclass:: ray.rllib.agents.pg.PGAgent
-.. autoclass:: ray.rllib.agents.impala.ImpalaAgent
-.. autoclass:: ray.rllib.agents.ppo.PPOAgent
 
 ray.rllib.env
 -------------

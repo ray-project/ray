@@ -2,10 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.ppo.appo_policy_graph import AsyncPPOPolicyGraph
-from ray.rllib.agents.agent import with_base_config
+from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
+from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
-from ray.rllib.utils.annotations import override
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -35,6 +34,8 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "num_sgd_iter": 1,
     "replay_proportion": 0.0,
     "replay_buffer_num_slots": 100,
+    "learner_queue_size": 16,
+    "learner_queue_timeout": 300,
     "max_sample_requests_in_flight_per_worker": 2,
     "broadcast_interval": 1,
     "grad_clip": 40.0,
@@ -45,19 +46,14 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "momentum": 0.0,
     "epsilon": 0.1,
     "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
+    "entropy_coeff": 0.01,
+    "entropy_coeff_schedule": None,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
-
-class APPOAgent(impala.ImpalaAgent):
-    """PPO surrogate loss with IMPALA-architecture."""
-
-    _agent_name = "APPO"
-    _default_config = DEFAULT_CONFIG
-    _policy_graph = AsyncPPOPolicyGraph
-
-    @override(impala.ImpalaAgent)
-    def _get_policy_graph(self):
-        return AsyncPPOPolicyGraph
+APPOTrainer = impala.ImpalaTrainer.with_updates(
+    name="APPO",
+    default_config=DEFAULT_CONFIG,
+    default_policy=AsyncPPOTFPolicy,
+    get_policy_class=lambda _: AsyncPPOTFPolicy)

@@ -27,10 +27,10 @@ def PublicAPI(obj):
     can expect these APIs to remain stable across RLlib releases.
 
     Subclasses that inherit from a ``@PublicAPI`` base class can be
-    assumed part of the RLlib public API as well (e.g., all agent classes
-    are in public API because Agent is ``@PublicAPI``).
+    assumed part of the RLlib public API as well (e.g., all trainer classes
+    are in public API because Trainer is ``@PublicAPI``).
 
-    In addition, you can assume all agent configurations are part of their
+    In addition, you can assume all trainer configurations are part of their
     public API as well.
     """
 

@@ -1,68 +1,72 @@
 #ifndef COMMON_PROTOCOL_H
 #define COMMON_PROTOCOL_H
 
-#include "ray/gcs/format/gcs_generated.h"
-
+#include <flatbuffers/flatbuffers.h>
 #include <unordered_map>
 
-#include "ray/id.h"
+#include "ray/common/id.h"
+#include "ray/util/logging.h"
 
-/// Convert an object ID to a flatbuffer string.
+/// Convert an unique ID to a flatbuffer string.
 ///
 /// @param fbb Reference to the flatbuffer builder.
-/// @param object_id The object ID to be converted.
-/// @return The flatbuffer string contining the object ID.
+/// @param id The ID to be converted.
+/// @return The flatbuffer string containing the ID.
+template <typename ID>
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-                                                    ray::ObjectID object_id);
+                                                    ID id);
 
-/// Convert a flatbuffer string to an object ID.
+/// Convert a flatbuffer string to an unique ID.
 ///
 /// @param string The flatbuffer string.
-/// @return The object ID.
-ray::ObjectID from_flatbuf(const flatbuffers::String &string);
+/// @return The ID.
+template <typename ID>
+ID from_flatbuf(const flatbuffers::String &string);
 
-/// Convert a flatbuffer vector of strings to a vector of object IDs.
+/// Convert a flatbuffer vector of strings to a vector of unique IDs.
 ///
 /// @param vector The flatbuffer vector.
-/// @return The vector of object IDs.
-const std::vector<ray::ObjectID> from_flatbuf(
+/// @return The vector of IDs.
+template <typename ID>
+const std::vector<ID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
 
 /// Convert a flatbuffer of string that concatenated
-/// object IDs to a vector of object IDs.
+/// unique IDs to a vector of unique IDs.
 ///
 /// @param vector The flatbuffer vector.
-/// @return The vector of object IDs.
-const std::vector<ray::ObjectID> object_ids_from_flatbuf(
-    const flatbuffers::String &string);
+/// @return The vector of IDs.
+template <typename ID>
+const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string);
 
-/// Convert a vector of object IDs to a flatbuffer string.
+/// Convert a vector of unique IDs to a flatbuffer string.
 /// The IDs are concatenated to a string with binary.
 ///
 /// @param fbb Reference to the flatbuffer builder.
-/// @param object_ids The vector of object IDs.
+/// @param ids The vector of IDs.
 /// @return Flatbuffer string of concatenated IDs.
-flatbuffers::Offset<flatbuffers::String> object_ids_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ray::ObjectID> &object_ids);
+template <typename ID>
+flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids);
 
-/// Convert an array of object IDs to a flatbuffer vector of strings.
+/// Convert an array of unique IDs to a flatbuffer vector of strings.
 ///
 /// @param fbb Reference to the flatbuffer builder.
-/// @param object_ids Array of object IDs.
-/// @param num_objects Number of elements in the array.
+/// @param ids Array of unique IDs.
+/// @param num_ids Number of elements in the array.
 /// @return Flatbuffer vector of strings.
+template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ray::ObjectID object_ids[],
-           int64_t num_objects);
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ID ids[], int64_t num_ids);
 
-/// Convert a vector of object IDs to a flatbuffer vector of strings.
+/// Convert a vector of unique IDs to a flatbuffer vector of strings.
 ///
 /// @param fbb Reference to the flatbuffer builder.
-/// @param object_ids Vector of object IDs.
+/// @param ids Vector of IDs.
 /// @return Flatbuffer vector of strings.
+template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           const std::vector<ray::ObjectID> &object_ids);
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids);
 
 /// Convert a flatbuffer string to a std::string.
 ///
@@ -71,28 +75,81 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 /// @return The std::string version of the flatbuffer string.
 std::string string_from_flatbuf(const flatbuffers::String &string);
 
-/// Convert a std::unordered_map to a flatbuffer vector of pairs.
-///
-/// @param fbb Reference to the flatbuffer builder.
-/// @param resource_map A mapping from resource name to resource quantity.
-/// @return A flatbuffer vector of ResourcePair objects.
-flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ResourcePair>>>
-map_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-               const std::unordered_map<std::string, double> &resource_map);
-
-/// Convert a flatbuffer vector of ResourcePair objects to a std::unordered map
-/// from resource name to resource quantity.
-///
-/// @param fbb Reference to the flatbuffer builder.
-/// @param resource_vector The flatbuffer object.
-/// @return A map from resource name to resource quantity.
-const std::unordered_map<std::string, double> map_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<ResourcePair>> &resource_vector);
-
 std::vector<std::string> string_vec_from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &flatbuf_vec);
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
                       const std::vector<std::string> &string_vector);
+
+template <typename ID>
+flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                                                    ID id) {
+  return fbb.CreateString(reinterpret_cast<const char *>(id.Data()), id.Size());
+}
+
+template <typename ID>
+ID from_flatbuf(const flatbuffers::String &string) {
+  RAY_CHECK(string.size() == ID::Size());
+  return ID::FromBinary(string.str());
+}
+
+template <typename ID>
+const std::vector<ID> from_flatbuf(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
+  std::vector<ID> ids;
+  for (int64_t i = 0; i < vector.Length(); i++) {
+    ids.push_back(from_flatbuf<ID>(*vector.Get(i)));
+  }
+  return ids;
+}
+
+template <typename ID>
+const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string) {
+  const auto &ids = string_from_flatbuf(string);
+  std::vector<ID> ret;
+  size_t id_size = ID::Size();
+  RAY_CHECK(ids.size() % id_size == 0);
+  auto count = ids.size() / id_size;
+
+  for (size_t i = 0; i < count; ++i) {
+    auto pos = static_cast<size_t>(id_size * i);
+    const auto &id = ids.substr(pos, id_size);
+    ret.push_back(ID::FromBinary(id));
+  }
+
+  return ret;
+}
+
+template <typename ID>
+flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
+  std::string result;
+  for (const auto &id : ids) {
+    result += id.Binary();
+  }
+
+  return fbb.CreateString(result);
+}
+
+template <typename ID>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ID ids[], int64_t num_ids) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  for (int64_t i = 0; i < num_ids; i++) {
+    results.push_back(to_flatbuf(fbb, ids[i]));
+  }
+  return fbb.CreateVector(results);
+}
+
+template <typename ID>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  for (auto id : ids) {
+    results.push_back(to_flatbuf(fbb, id));
+  }
+  return fbb.CreateVector(results);
+}
+
 #endif

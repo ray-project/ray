@@ -3,11 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import errno
 import functools
 import hashlib
 import inspect
+import logging
 import numpy as np
 import os
+import six
 import subprocess
 import sys
 import threading
@@ -48,11 +51,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker,
-                         error_type,
-                         message,
-                         driver_id=None,
-                         data=None):
+def push_error_to_driver(worker, error_type, message, job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -60,27 +59,23 @@ def push_error_to_driver(worker,
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
-    data = {} if data is None else data
-    worker.raylet_client.push_error(driver_id, error_type, message,
-                                    time.time())
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
+    worker.raylet_client.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
                                        error_type,
                                        message,
-                                       driver_id=None,
-                                       data=None):
+                                       job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
-    instances, the local scheduler client is not available, e.g., because the
+    instances, the raylet client is not available, e.g., because the
     error happens in Python before the driver or worker has connected to the
     backend processes.
 
@@ -89,22 +84,20 @@ def push_error_to_driver_through_redis(redis_client,
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        data: This should be a dictionary mapping strings to strings. It
-            will be serialized with json and stored in Redis.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
-    data = {} if data is None else data
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
+    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command("RAY.TABLE_APPEND",
-                                 ray.gcs_utils.TablePrefix.ERROR_INFO,
-                                 ray.gcs_utils.TablePubsub.ERROR_INFO,
-                                 driver_id.binary(), error_data)
+    redis_client.execute_command(
+        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
+        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
+        error_data)
 
 
 def is_cython(obj):
@@ -131,7 +124,7 @@ def is_function_or_method(obj):
     Returns:
         True if the object is an function or method.
     """
-    return (inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj))
+    return inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj)
 
 
 def is_class_method(f):
@@ -189,8 +182,43 @@ def decode(byte_str, allow_none=False):
         return byte_str
 
 
+def ensure_str(s, encoding="utf-8", errors="strict"):
+    """Coerce *s* to `str`.
+
+    To keep six with lower version, see Issue 4169, we copy this function
+    from six == 1.12.0.
+
+    TODO(yuhguo): remove this function when six >= 1.12.0.
+
+    For Python 2:
+      - `unicode` -> encoded to `str`
+      - `str` -> `str`
+
+    For Python 3:
+      - `str` -> `str`
+      - `bytes` -> decoded to `str`
+    """
+    if six.PY3:
+        text_type = str
+        binary_type = bytes
+    else:
+        text_type = unicode  # noqa: F821
+        binary_type = str
+    if not isinstance(s, (text_type, binary_type)):
+        raise TypeError("not expecting type '%s'" % type(s))
+    if six.PY2 and isinstance(s, text_type):
+        s = s.encode(encoding, errors)
+    elif six.PY3 and isinstance(s, binary_type):
+        s = s.decode(encoding, errors)
+    return s
+
+
 def binary_to_object_id(binary_object_id):
     return ray.ObjectID(binary_object_id)
+
+
+def binary_to_task_id(binary_task_id):
+    return ray.TaskID(binary_task_id)
 
 
 def binary_to_hex(identifier):
@@ -202,6 +230,20 @@ def binary_to_hex(identifier):
 
 def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
+
+
+# TODO(qwang): Remove these hepler functions
+# once we separate `WorkerID` from `UniqueID`.
+def compute_job_id_from_driver(driver_id):
+    assert isinstance(driver_id, ray.WorkerID)
+    return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
+
+
+def compute_driver_id_from_job(job_id):
+    assert isinstance(job_id, ray.JobID)
+    rest_length = ray_constants.ID_SIZE - job_id.size()
+    driver_id_str = job_id.binary() + (rest_length * b"\xff")
+    return ray.WorkerID(driver_id_str)
 
 
 def get_cuda_visible_devices():
@@ -276,6 +318,23 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     return resources
 
 
+_default_handler = None
+
+
+def setup_logger(logging_level, logging_format):
+    """Setup default logging for ray."""
+    logger = logging.getLogger("ray")
+    if type(logging_level) is str:
+        logging_level = logging.getLevelName(logging_level.upper())
+    logger.setLevel(logging_level)
+    global _default_handler
+    if _default_handler is None:
+        _default_handler = logging.StreamHandler()
+        logger.addHandler(_default_handler)
+    _default_handler.setFormatter(logging.Formatter(logging_format))
+    logger.propagate = False
+
+
 # This function is copied and modified from
 # https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
 def vmstat(stat):
@@ -339,7 +398,6 @@ def get_system_memory():
     except ImportError:
         pass
 
-    memory_in_bytes = None
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
     elif sys.platform == "linux" or sys.platform == "linux2":
@@ -354,6 +412,31 @@ def get_system_memory():
         return min(docker_limit, memory_in_bytes)
     else:
         return memory_in_bytes
+
+
+def estimate_available_memory():
+    """Return the currently available amount of system memory in bytes.
+
+    Returns:
+        The total amount of available memory in bytes. It may be an
+        overestimate if psutil is not installed.
+    """
+
+    # Use psutil if it is available.
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except ImportError:
+        pass
+
+    # Handle Linux.
+    if sys.platform == "linux" or sys.platform == "linux2":
+        bytes_in_kilobyte = 1024
+        return (
+            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
+
+    # Give up
+    return get_system_memory()
 
 
 def get_shared_memory_bytes():
@@ -400,7 +483,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
-        driver_id=worker.task_driver_id)
+        job_id=worker.current_job_id)
 
 
 class _ThreadSafeProxy(object):
@@ -459,3 +542,43 @@ def thread_safe_client(client, lock=None):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+def try_make_directory_shared(directory_path):
+    try:
+        os.chmod(directory_path, 0o0777)
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise
+
+
+def try_to_create_directory(directory_path, warn_if_exist=True):
+    """Attempt to create a directory that is globally readable/writable.
+
+    Args:
+        directory_path: The path of the directory to create.
+        warn_if_exist (bool): Warn if the directory already exists.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+            if warn_if_exist:
+                logger.warning(
+                    "Attempted to create '{}', but the directory already "
+                    "exists.".format(directory_path))
+
+    # Change the log directory permissions so others can use it. This is
+    # important when multiple people are using the same machine.
+    try_make_directory_shared(directory_path)

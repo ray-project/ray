@@ -5,16 +5,20 @@ from __future__ import print_function
 from collections import OrderedDict
 
 import gym
-import tensorflow as tf
 
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
-@PublicAPI
+# Deprecated: use TFModelV2 instead
 class Model(object):
     """Defines an abstract network model for use with RLlib.
+
+    This class is deprecated: please use TFModelV2 instead.
 
     Models convert input tensors to a number of output features. These features
     can then be interpreted by ActionDistribution classes to determine
@@ -48,6 +52,7 @@ class Model(object):
     def __init__(self,
                  input_dict,
                  obs_space,
+                 action_space,
                  num_outputs,
                  options,
                  state_in=None,
@@ -58,6 +63,13 @@ class Model(object):
         self.state_init = []
         self.state_in = state_in or []
         self.state_out = []
+        self.obs_space = obs_space
+        self.action_space = action_space
+        self.num_outputs = num_outputs
+        self.options = options
+        self.scope = tf.get_variable_scope()
+        self.session = tf.get_default_session()
+        self.input_dict = input_dict
         if seq_lens is not None:
             self.seq_lens = seq_lens
         else:
@@ -68,11 +80,19 @@ class Model(object):
         if options.get("free_log_std"):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
+
+        ok = True
         try:
+            restored = input_dict.copy()
+            restored["obs"] = restore_original_dimensions(
+                input_dict["obs"], obs_space)
             self.outputs, self.last_layer = self._build_layers_v2(
-                _restore_original_dimensions(input_dict, obs_space),
-                num_outputs, options)
+                restored, num_outputs, options)
         except NotImplementedError:
+            ok = False
+        # In TF 1.14, you cannot construct variable scopes in exception
+        # handlers so we have to set the OK flag and check it here:
+        if not ok:
             self.outputs, self.last_layer = self._build_layers(
                 input_dict["obs"], num_outputs, options)
 
@@ -139,17 +159,53 @@ class Model(object):
             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
     @PublicAPI
-    def loss(self):
-        """Builds any built-in (self-supervised) loss for the model.
+    def custom_loss(self, policy_loss, loss_inputs):
+        """Override to customize the loss function used to optimize this model.
 
-        For example, this can be used to incorporate auto-encoder style losses.
-        Note that this loss has to be included in the policy graph loss to have
-        an effect (done for built-in algorithms).
+        This can be used to incorporate self-supervised losses (by defining
+        a loss over existing input and output tensors of this model), and
+        supervised losses (by defining losses over a variable-sharing copy of
+        this model's layers).
+
+        You can find an runnable example in examples/custom_loss.py.
+
+        Arguments:
+            policy_loss (Tensor): scalar policy loss from the policy.
+            loss_inputs (dict): map of input placeholders for rollout data.
 
         Returns:
-            Scalar tensor for the self-supervised loss.
+            Scalar tensor for the customized loss for this model.
         """
-        return tf.constant(0.0)
+        if self.loss() is not None:
+            raise DeprecationWarning(
+                "self.loss() is deprecated, use self.custom_loss() instead.")
+        return policy_loss
+
+    @PublicAPI
+    def custom_stats(self):
+        """Override to return custom metrics from your model.
+
+        The stats will be reported as part of the learner stats, i.e.,
+            info:
+                learner:
+                    model:
+                        key1: metric1
+                        key2: metric2
+
+        Returns:
+            Dict of string keys to scalar tensors.
+        """
+        return {}
+
+    def loss(self):
+        """Deprecated: use self.custom_loss()."""
+        return None
+
+    @classmethod
+    def get_initial_state(cls, obs_space, action_space, num_outputs, options):
+        raise NotImplementedError(
+            "In order to use recurrent models with ModelV2, you should define "
+            "the get_initial_state @classmethod on your custom model class.")
 
     def _validate_output_shape(self):
         """Checks that the model has the correct number of outputs."""
@@ -165,15 +221,34 @@ class Model(object):
                         self._num_outputs, shape))
 
 
-def _restore_original_dimensions(input_dict, obs_space, tensorlib=tf):
+@DeveloperAPI
+def restore_original_dimensions(obs, obs_space, tensorlib=tf):
+    """Unpacks Dict and Tuple space observations into their original form.
+
+    This is needed since we flatten Dict and Tuple observations in transit.
+    Before sending them to the model though, we should unflatten them into
+    Dicts or Tuples of tensors.
+
+    Arguments:
+        obs: The flattened observation tensor.
+        obs_space: The flattened obs space. If this has the `original_space`
+            attribute, we will unflatten the tensor to that shape.
+        tensorlib: The library used to unflatten (reshape) the array/tensor.
+
+    Returns:
+        single tensor or dict / tuple of tensors matching the original
+        observation space.
+    """
+
     if hasattr(obs_space, "original_space"):
-        return dict(
-            input_dict,
-            obs=_unpack_obs(
-                input_dict["obs"],
-                obs_space.original_space,
-                tensorlib=tensorlib))
-    return input_dict
+        if tensorlib == "tf":
+            tensorlib = tf
+        elif tensorlib == "torch":
+            import torch
+            tensorlib = torch
+        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
+    else:
+        return obs
 
 
 def _unpack_obs(obs, space, tensorlib=tf):

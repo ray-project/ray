@@ -13,7 +13,7 @@ from gym import spaces
 import numpy as np
 
 import ray
-from ray.rllib.agents.dqn import DQNAgent
+from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.tune.logger import pretty_print
@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     # We use DQN since it supports off-policy actions, but you can choose and
     # configure any agent.
-    dqn = DQNAgent(
+    dqn = DQNTrainer(
         env="srv",
         config={
             # Use a single process to avoid needing to set up a load balancer

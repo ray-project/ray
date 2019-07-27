@@ -18,3 +18,4 @@ humanoid-ppo-gae:
         num_workers: 64
         num_gpus: 4
         batch_mode: complete_episodes
+        observation_filter: MeanStdFilter

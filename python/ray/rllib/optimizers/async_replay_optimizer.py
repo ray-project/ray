@@ -16,12 +16,14 @@ import numpy as np
 from six.moves import queue
 
 import ray
-from ray.rllib.evaluation.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.actors import TaskPool, create_colocated
+from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -34,31 +36,32 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     """Main event loop of the Ape-X optimizer (async sampling with replay).
 
     This class coordinates the data transfers between the learner thread,
-    remote evaluators (Ape-X actors), and replay buffer actors.
+    remote workers (Ape-X actors), and replay buffer actors.
 
     This has two modes of operation:
         - normal replay: replays independent samples.
         - batch replay: simplified mode where entire sample batches are
             replayed. This supports RNNs, but not prioritization.
 
-    This optimizer requires that policy evaluators return an additional
+    This optimizer requires that rollout workers return an additional
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    @override(PolicyOptimizer)
-    def _init(self,
-              learning_starts=1000,
-              buffer_size=10000,
-              prioritized_replay=True,
-              prioritized_replay_alpha=0.6,
-              prioritized_replay_beta=0.4,
-              prioritized_replay_eps=1e-6,
-              train_batch_size=512,
-              sample_batch_size=50,
-              num_replay_buffer_shards=1,
-              max_weight_sync_delay=400,
-              debug=False,
-              batch_replay=False):
+    def __init__(self,
+                 workers,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 prioritized_replay=True,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 train_batch_size=512,
+                 sample_batch_size=50,
+                 num_replay_buffer_shards=1,
+                 max_weight_sync_delay=400,
+                 debug=False,
+                 batch_replay=False):
+        PolicyOptimizer.__init__(self, workers)
 
         self.debug = debug
         self.batch_replay = batch_replay
@@ -67,7 +70,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         self.prioritized_replay_eps = prioritized_replay_eps
         self.max_weight_sync_delay = max_weight_sync_delay
 
-        self.learner = LearnerThread(self.local_evaluator)
+        self.learner = LearnerThread(self.workers.local_worker())
         self.learner.start()
 
         if self.batch_replay:
@@ -107,13 +110,13 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
-        if self.remote_evaluators:
-            self._set_evaluators(self.remote_evaluators)
+        if self.workers.remote_workers():
+            self._set_workers(self.workers.remote_workers())
 
     @override(PolicyOptimizer)
     def step(self):
         assert self.learner.is_alive()
-        assert len(self.remote_evaluators) > 0
+        assert len(self.workers.remote_workers()) > 0
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
         time_delta = time.time() - start
@@ -134,8 +137,14 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         self.learner.stopped = True
 
     @override(PolicyOptimizer)
+    def reset(self, remote_workers):
+        self.workers.reset(remote_workers)
+        self.sample_tasks.reset_workers(remote_workers)
+
+    @override(PolicyOptimizer)
     def stats(self):
-        replay_stats = ray.get(self.replay_actors[0].stats.remote(self.debug))
+        replay_stats = ray_get_and_free(self.replay_actors[0].stats.remote(
+            self.debug))
         timing = {
             "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
@@ -165,10 +174,10 @@ class AsyncReplayOptimizer(PolicyOptimizer):
         return dict(PolicyOptimizer.stats(self), **stats)
 
     # For https://github.com/ray-project/ray/issues/2541 only
-    def _set_evaluators(self, remote_evaluators):
-        self.remote_evaluators = remote_evaluators
-        weights = self.local_evaluator.get_weights()
-        for ev in self.remote_evaluators:
+    def _set_workers(self, remote_workers):
+        self.workers.reset(remote_workers)
+        weights = self.workers.local_worker().get_weights()
+        for ev in self.workers.remote_workers():
             ev.set_weights.remote(weights)
             self.steps_since_update[ev] = 0
             for _ in range(SAMPLE_QUEUE_DEPTH):
@@ -180,7 +189,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             completed = list(self.sample_tasks.completed())
-            counts = ray.get([c[1][1] for c in completed])
+            counts = ray_get_and_free([c[1][1] for c in completed])
             for i, (ev, (sample_batch, count)) in enumerate(completed):
                 sample_timesteps += counts[i]
 
@@ -197,7 +206,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                         self.learner.weights_updated = False
                         with self.timers["put_weights"]:
                             weights = ray.put(
-                                self.local_evaluator.get_weights())
+                                self.workers.local_worker().get_weights())
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
@@ -212,7 +221,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     self.num_samples_dropped += 1
                 else:
                     with self.timers["get_samples"]:
-                        samples = ray.get(replay)
+                        samples = ray_get_and_free(replay)
                     # Defensive copy against plasma crashes, see #2610 #3452
                     self.learner.inqueue.put((ra, samples and samples.copy()))
 
@@ -311,6 +320,8 @@ class ReplayActor(object):
         return stat
 
 
+# note: we set num_cpus=0 to avoid failing to create replay actors when
+# resources are fragmented. This isn't ideal.
 @ray.remote(num_cpus=0)
 class BatchReplayActor(object):
     """The batch replay version of the replay actor.
@@ -368,10 +379,10 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_evaluator):
+    def __init__(self, local_worker):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
-        self.local_evaluator = local_evaluator
+        self.local_worker = local_worker
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
         self.queue_timer = TimerStat()
@@ -391,13 +402,12 @@ class LearnerThread(threading.Thread):
         if replay is not None:
             prio_dict = {}
             with self.grad_timer:
-                grad_out = self.local_evaluator.compute_apply(replay)
+                grad_out = self.local_worker.learn_on_batch(replay)
                 for pid, info in grad_out.items():
                     prio_dict[pid] = (
                         replay.policy_batches[pid].data.get("batch_indexes"),
                         info.get("td_error"))
-                    if "stats" in info:
-                        self.stats[pid] = info["stats"]
+                    self.stats[pid] = get_learner_stats(info)
             self.outqueue.put((ra, prio_dict, replay.count))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True

@@ -2,13 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import numpy as np
-import scipy.optimize
-import tensorflow as tf
 import os
+import scipy.optimize
 
+import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
+
+import ray
+import ray.experimental.tf_utils
 
 
 class LinearModel(object):
@@ -35,6 +37,7 @@ class LinearModel(object):
         variables (TensorFlowVariables): Extracted variables and methods to
             manipulate them.
     """
+
     def __init__(self, shape):
         """Creates a LinearModel object."""
         x = tf.placeholder(tf.float32, [None, shape[0]])
@@ -46,26 +49,33 @@ class LinearModel(object):
         y = tf.nn.softmax(tf.matmul(x, w) + b)
         y_ = tf.placeholder(tf.float32, [None, shape[1]])
         self.y_ = y_
-        cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y),
-                                       reduction_indices=[1]))
+        cross_entropy = tf.reduce_mean(
+            -tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
         self.cross_entropy = cross_entropy
         self.cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
         self.sess = tf.Session()
         # In order to get and set the weights, we pass in the loss function to
         # Ray's TensorFlowVariables to automatically create methods to modify
         # the weights.
-        self.variables = ray.experimental.TensorFlowVariables(cross_entropy,
-                                                              self.sess)
+        self.variables = ray.experimental.tf_utils.TensorFlowVariables(
+            cross_entropy, self.sess)
 
     def loss(self, xs, ys):
         """Computes the loss of the network."""
-        return float(self.sess.run(self.cross_entropy,
-                                   feed_dict={self.x: xs, self.y_: ys}))
+        return float(
+            self.sess.run(
+                self.cross_entropy, feed_dict={
+                    self.x: xs,
+                    self.y_: ys
+                }))
 
     def grad(self, xs, ys):
         """Computes the gradients of the network."""
-        return self.sess.run(self.cross_entropy_grads,
-                             feed_dict={self.x: xs, self.y_: ys})
+        return self.sess.run(
+            self.cross_entropy_grads, feed_dict={
+                self.x: xs,
+                self.y_: ys
+            })
 
 
 @ray.remote
@@ -110,7 +120,7 @@ def full_grad(theta):
 
 
 if __name__ == "__main__":
-    ray.init(redirect_output=True)
+    ray.init()
 
     # From the perspective of scipy.optimize.fmin_l_bfgs_b, full_loss is simply
     # a function which takes some parameters theta, and computes a loss.
@@ -136,5 +146,5 @@ if __name__ == "__main__":
 
     # Use L-BFGS to minimize the loss function.
     print("Running L-BFGS.")
-    result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10,
-                                          fprime=full_grad, disp=True)
+    result = scipy.optimize.fmin_l_bfgs_b(
+        full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)

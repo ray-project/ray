@@ -6,7 +6,7 @@ from __future__ import print_function
 Control the number of agents and policies via --num-agents and --num-policies.
 
 This works with hundreds of agents and policies, but note that initializing
-many TF policy graphs will take some time.
+many TF policies will take some time.
 
 Also, TF evals might slow down with large numbers of policies. To debug TF
 execution, set the TF_TIMELINE_DIR environment variable.
@@ -16,22 +16,21 @@ import argparse
 import gym
 import random
 
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
-
 import ray
 from ray import tune
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.test.test_multi_agent_env import MultiCartpole
-from ray.tune import run_experiments
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
+parser.add_argument("--simple", action="store_true")
 
 
 class CustomModel1(Model):
@@ -45,12 +44,12 @@ class CustomModel1(Model):
                 tf.VariableScope(tf.AUTO_REUSE, "shared"),
                 reuse=tf.AUTO_REUSE,
                 auxiliary_name_scope=False):
-            last_layer = slim.fully_connected(
-                input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
-        last_layer = slim.fully_connected(
-            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
-        output = slim.fully_connected(
-            last_layer, num_outputs, activation_fn=None, scope="fc_out")
+            last_layer = tf.layers.dense(
+                input_dict["obs"], 64, activation=tf.nn.relu, name="fc1")
+        last_layer = tf.layers.dense(
+            last_layer, 64, activation=tf.nn.relu, name="fc2")
+        output = tf.layers.dense(
+            last_layer, num_outputs, activation=None, name="fc_out")
         return output, last_layer
 
 
@@ -61,12 +60,12 @@ class CustomModel2(Model):
                 tf.VariableScope(tf.AUTO_REUSE, "shared"),
                 reuse=tf.AUTO_REUSE,
                 auxiliary_name_scope=False):
-            last_layer = slim.fully_connected(
-                input_dict["obs"], 64, activation_fn=tf.nn.relu, scope="fc1")
-        last_layer = slim.fully_connected(
-            last_layer, 64, activation_fn=tf.nn.relu, scope="fc2")
-        output = slim.fully_connected(
-            last_layer, num_outputs, activation_fn=None, scope="fc_out")
+            last_layer = tf.layers.dense(
+                input_dict["obs"], 64, activation=tf.nn.relu, name="fc1")
+        last_layer = tf.layers.dense(
+            last_layer, 64, activation=tf.nn.relu, name="fc2")
+        output = tf.layers.dense(
+            last_layer, num_outputs, activation=None, name="fc_out")
         return output, last_layer
 
 
@@ -90,30 +89,27 @@ if __name__ == "__main__":
             },
             "gamma": random.choice([0.95, 0.99]),
         }
-        return (PPOPolicyGraph, obs_space, act_space, config)
+        return (None, obs_space, act_space, config)
 
-    # Setup PPO with an ensemble of `num_policies` different policy graphs
-    policy_graphs = {
+    # Setup PPO with an ensemble of `num_policies` different policies
+    policies = {
         "policy_{}".format(i): gen_policy(i)
         for i in range(args.num_policies)
     }
-    policy_ids = list(policy_graphs.keys())
+    policy_ids = list(policies.keys())
 
-    run_experiments({
-        "test": {
-            "run": "PPO",
+    tune.run(
+        "PPO",
+        stop={"training_iteration": args.num_iters},
+        config={
             "env": "multi_cartpole",
-            "stop": {
-                "training_iteration": args.num_iters
+            "log_level": "DEBUG",
+            "simple_optimizer": args.simple,
+            "num_sgd_iter": 10,
+            "multiagent": {
+                "policies": policies,
+                "policy_mapping_fn": tune.function(
+                    lambda agent_id: random.choice(policy_ids)),
             },
-            "config": {
-                "log_level": "DEBUG",
-                "num_sgd_iter": 10,
-                "multiagent": {
-                    "policy_graphs": policy_graphs,
-                    "policy_mapping_fn": tune.function(
-                        lambda agent_id: random.choice(policy_ids)),
-                },
-            },
-        }
-    })
+        },
+    )

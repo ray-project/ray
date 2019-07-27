@@ -4,19 +4,29 @@ Temporary Files
 Ray will produce some temporary files during running.
 They are useful for logging, debugging & sharing object store with other programs.
 
+Ray session
+-----------
+
+First we introduce the concept of a Ray session.
+
+A Ray session represents all tasks, processes, and resources managed by Ray. A
+session is created by executing the ``ray start`` command or by calling
+``ray.init()``, and it is terminated by executing ``ray stop`` or calling
+``ray.shutdown()``.
+
+Each Ray session will have a unique name. By default, the name is
+``session_{timestamp}_{pid}``. The format of ``timestamp`` is
+``%Y-%m-%d_%H-%M-%S_%f`` (See `Python time format <strftime.org>`__ for details);
+the pid belongs to the startup process (the process calling ``ray.init()`` or
+the Ray process executed by a shell in ``ray start``).
+
 Location of Temporary Files
 ---------------------------
 
-First we introduce the concept of a session of Ray.
-
-A session contains a set of processes. A session is created by executing
-``ray start`` command or call ``ray.init()`` in a Python script and ended by
-executing ``ray stop`` or call ``ray.shutdown()``.
-
-For each session, Ray will create a *root temporary directory* to place all its
-temporary files. The path is ``/tmp/ray/session_{datetime}_{pid}`` by default.
-The pid belongs to the startup process (the process calling ``ray.init()`` or
-the Ray process executed by a shell in ``ray start``).
+For each session, Ray will place all its temporary files under the
+*session directory*. A *session directory* is a subdirectory of the
+*root temporary path* (``/tmp/ray`` by default),
+so the default session directory is ``/tmp/ray/{ray_session_name}``.
 You can sort by their names to find the latest session.
 
 You are allowed to change the *root temporary directory* in one of these ways:
@@ -25,10 +35,7 @@ You are allowed to change the *root temporary directory* in one of these ways:
 * Specify ``temp_dir`` when call ``ray.init()``
 
 You can also use ``default_worker.py --temp-dir={your temp path}`` to
-start a new worker with given *root temporary directory*.
-
-The *root temporary directory* you specified will be given as it is,
-without pids or datetime attached.
+start a new worker with the given *root temporary directory*.
 
 Layout of Temporary Files
 -------------------------
@@ -45,11 +52,11 @@ A typical layout of temporary files could look like this:
           │   ├── log_monitor.out
           │   ├── monitor.err
           │   ├── monitor.out
-          │   ├── plasma_store_0.err  # array of plasma stores' outputs
-          │   ├── plasma_store_0.out
-          │   ├── raylet_0.err  # array of raylets' outputs. Control it with `--no-redirect-worker-output` (in Ray's command line) or `redirect_worker_output` (in ray.init())
-          │   ├── raylet_0.out
-          │   ├── redis-shard_0.err   # array of redis shards' outputs
+          │   ├── plasma_store.err  # outputs of the plasma store
+          │   ├── plasma_store.out
+          │   ├── raylet.err  # outputs of the raylet process
+          │   ├── raylet.out
+          │   ├── redis-shard_0.err   # outputs of redis shards
           │   ├── redis-shard_0.out
           │   ├── redis.err  # redis
           │   ├── redis.out
@@ -58,7 +65,6 @@ A typical layout of temporary files could look like this:
           │   ├── worker-{worker_id}.err  # redirected output of workers
           │   ├── worker-{worker_id}.out
           │   └── {other workers}
-          ├── ray_ui.ipynb  # ipython notebook file
           └── sockets  # for sockets
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
@@ -80,7 +86,4 @@ The path you specified will be given as it is without being affected any other p
 Notes
 -----
 
-Temporary file policies are defined in ``python/ray/tempfile_services.py``.
-
-Currently, we keep ``/tmp/ray`` as the default directory for temporary data files of RLlib as before.
-It is not very reasonable and could be changed later.
+Temporary file policies are defined in ``python/ray/node.py``.

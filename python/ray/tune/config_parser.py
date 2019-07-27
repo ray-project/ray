@@ -10,7 +10,6 @@ import os
 from six import string_types
 
 from ray.tune import TuneError
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Trial, json_to_resources
 from ray.tune.logger import _SafeFallbackEncoder
 
@@ -66,32 +65,6 @@ def make_parser(parser_creator=None, **kwargs):
         type=int,
         help="Number of times to repeat each trial.")
     parser.add_argument(
-        "--local-dir",
-        default=DEFAULT_RESULTS_DIR,
-        type=str,
-        help="Local dir to save training results to. Defaults to '{}'.".format(
-            DEFAULT_RESULTS_DIR))
-    parser.add_argument(
-        "--upload-dir",
-        default="",
-        type=str,
-        help="Optional URI to sync training results to (e.g. s3://bucket).")
-    parser.add_argument(
-        "--trial-name-creator",
-        default=None,
-        help="Optional creator function for the trial string, used in "
-        "generating a trial directory.")
-    parser.add_argument(
-        "--sync-function",
-        default=None,
-        help="Function for syncing the local_dir to upload_dir. If string, "
-        "then it must be a string template for syncer to run and needs to "
-        "include replacement fields '{local_dir}' and '{remote_dir}'.")
-    parser.add_argument(
-        "--custom-loggers",
-        default=None,
-        help="List of custom logger creators to be used with each Trial.")
-    parser.add_argument(
         "--checkpoint-freq",
         default=0,
         type=int,
@@ -102,6 +75,26 @@ def make_parser(parser_creator=None, **kwargs):
         action="store_true",
         help="Whether to checkpoint at the end of the experiment. "
         "Default is False.")
+    parser.add_argument(
+        "--keep-checkpoints-num",
+        default=None,
+        type=int,
+        help="Number of last checkpoints to keep. Others get "
+        "deleted. Default (None) keeps all checkpoints.")
+    parser.add_argument(
+        "--checkpoint-score-attr",
+        default="training_iteration",
+        type=str,
+        help="Specifies by which attribute to rank the best checkpoint. "
+        "Default is increasing order. If attribute starts with min- it "
+        "will rank attribute in decreasing order. Example: "
+        "min-validation_loss")
+    parser.add_argument(
+        "--export-formats",
+        default=None,
+        help="List of formats that exported at the end of the experiment. "
+        "Default is None. For RLlib, 'checkpoint' and 'model' are "
+        "supported for TensorFlow policy graphs.")
     parser.add_argument(
         "--max-failures",
         default=3,
@@ -136,6 +129,8 @@ def to_argv(config):
     for k, v in config.items():
         if "-" in k:
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
+        if v is None:
+            continue
         if not isinstance(v, bool) or v:  # for argparse flags
             argv.append("--{}".format(k.replace("_", "-")))
         if isinstance(v, string_types):
@@ -164,7 +159,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        args = parser.parse_args(to_argv(spec))
+        args, _ = parser.parse_known_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
     if "resources_per_trial" in spec:
@@ -176,17 +171,19 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         trainable_name=spec["run"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
-        local_dir=os.path.join(args.local_dir, output_path),
+        local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
+        keep_checkpoints_num=args.keep_checkpoints_num,
+        checkpoint_score_attr=args.checkpoint_score_attr,
+        export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
-        upload_dir=args.upload_dir,
         trial_name_creator=spec.get("trial_name_creator"),
-        custom_loggers=spec.get("custom_loggers"),
+        loggers=spec.get("loggers"),
         # str(None) doesn't create None
-        sync_function=spec.get("sync_function"),
+        sync_to_driver_fn=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)

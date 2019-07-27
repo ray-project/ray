@@ -1,8 +1,7 @@
 """Example of handling variable length and/or parametric action spaces.
 
 This is a toy example of the action-embedding based approach for handling large
-discrete action spaces (potentially infinite in size), similar to how
-OpenAI Five works:
+discrete action spaces (potentially infinite in size), similar to this:
 
     https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five/
 
@@ -24,14 +23,15 @@ import random
 import numpy as np
 import gym
 from gym.spaces import Box, Discrete, Dict
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
 
 import ray
+from ray import tune
 from ray.rllib.models import Model, ModelCatalog
 from ray.rllib.models.misc import normc_initializer
-from ray.tune import run_experiments
 from ray.tune.registry import register_env
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
@@ -69,13 +69,13 @@ class ParametricActionCartpole(gym.Env):
         self.wrapped = gym.make("CartPole-v0")
         self.observation_space = Dict({
             "action_mask": Box(0, 1, shape=(max_avail_actions, )),
-            "avail_actions": Box(-1, 1, shape=(max_avail_actions, 2)),
+            "avail_actions": Box(-10, 10, shape=(max_avail_actions, 2)),
             "cart": self.wrapped.observation_space,
         })
 
     def update_avail_actions(self):
-        self.action_assignments = [[0, 0]] * self.action_space.n
-        self.action_mask = [0] * self.action_space.n
+        self.action_assignments = np.array([[0., 0.]] * self.action_space.n)
+        self.action_mask = np.array([0.] * self.action_space.n)
         self.left_idx, self.right_idx = random.sample(
             range(self.action_space.n), 2)
         self.action_assignments[self.left_idx] = self.left_action_embed
@@ -135,18 +135,18 @@ class ParametricActionsModel(Model):
         hiddens = [256, 256]
         for i, size in enumerate(hiddens):
             label = "fc{}".format(i)
-            last_layer = slim.fully_connected(
+            last_layer = tf.layers.dense(
                 last_layer,
                 size,
-                weights_initializer=normc_initializer(1.0),
-                activation_fn=tf.nn.tanh,
-                scope=label)
-        output = slim.fully_connected(
+                kernel_initializer=normc_initializer(1.0),
+                activation=tf.nn.tanh,
+                name=label)
+        output = tf.layers.dense(
             last_layer,
             action_embed_size,
-            weights_initializer=normc_initializer(0.01),
-            activation_fn=None,
-            scope="fc_out")
+            kernel_initializer=normc_initializer(0.01),
+            activation=None,
+            name="fc_out")
 
         # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
         # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
@@ -173,24 +173,27 @@ if __name__ == "__main__":
             "observation_filter": "NoFilter",  # don't filter the action list
             "vf_share_layers": True,  # don't create duplicate value model
         }
-    elif args.run == "DQN":
+    elif args.run in ["SimpleQ", "DQN"]:
         cfg = {
             "hiddens": [],  # important: don't postprocess the action scores
+            # TODO(ekl) we could support dueling if the model in this example
+            # was ModelV2 and only emitted -inf values on get_q_values().
+            # The problem with ModelV1 is that the model outputs
+            # are used as state scores and hence cause blowup to inf.
+            "dueling": False,
         }
     else:
         cfg = {}  # PG, IMPALA, A2C, etc.
-    run_experiments({
-        "parametric_cartpole": {
-            "run": args.run,
-            "env": "pa_cartpole",
-            "stop": {
-                "episode_reward_mean": args.stop,
-            },
-            "config": dict({
-                "model": {
-                    "custom_model": "pa_model",
-                },
-                "num_workers": 0,
-            }, **cfg),
+    tune.run(
+        args.run,
+        stop={
+            "episode_reward_mean": args.stop,
         },
-    })
+        config=dict({
+            "env": "pa_cartpole",
+            "model": {
+                "custom_model": "pa_model",
+            },
+            "num_workers": 0,
+        }, **cfg),
+    )

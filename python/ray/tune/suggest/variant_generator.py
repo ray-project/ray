@@ -9,6 +9,7 @@ import random
 import types
 
 from ray.tune import TuneError
+from ray.tune.sample import sample_from
 
 logger = logging.getLogger(__name__)
 
@@ -52,37 +53,6 @@ def grid_search(values):
     """
 
     return {"grid_search": values}
-
-
-class sample_from(object):
-    """Specify that tune should sample configuration values from this function.
-
-    The use of function arguments in tune configs must be disambiguated by
-    either wrapped the function in tune.eval() or tune.function().
-
-    Arguments:
-        func: An callable function to draw a sample from.
-    """
-
-    def __init__(self, func):
-        self.func = func
-
-
-class function(object):
-    """Wraps `func` to make sure it is not expanded during resolution.
-
-    The use of function arguments in tune configs must be disambiguated by
-    either wrapped the function in tune.eval() or tune.function().
-
-    Arguments:
-        func: A function literal.
-    """
-
-    def __init__(self, func):
-        self.func = func
-
-    def __call__(self, *args, **kwargs):
-        return self.func(*args, **kwargs)
 
 
 _STANDARD_IMPORTS = {

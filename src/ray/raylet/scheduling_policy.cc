@@ -19,10 +19,8 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     const ClientID &local_client_id) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
-  // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
-  RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
-
 #ifndef NDEBUG
+  RAY_LOG(DEBUG) << "Cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
@@ -33,9 +31,9 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
 #endif
 
   // We expect all placeable tasks to be placed on exit from this policy method.
-  RAY_CHECK(scheduling_queue_.GetPlaceableTasks().size() <= 1);
+  RAY_CHECK(scheduling_queue_.GetTasks(TaskState::PLACEABLE).size() <= 1);
   // Iterate over running tasks, get their resource demand and try to schedule.
-  for (const auto &t : scheduling_queue_.GetPlaceableTasks()) {
+  for (const auto &t : scheduling_queue_.GetTasks(TaskState::PLACEABLE)) {
     // Get task's resource demand
     const auto &spec = t.GetTaskSpecification();
     const auto &resource_demand = spec.GetRequiredPlacementResources();
@@ -51,11 +49,14 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       const auto &node_resources = client_resource_pair.second;
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
-      available_node_resources.SubtractResourcesStrict(node_resources.GetLoadResources());
+      // We have to subtract the current "load" because we set the current "load"
+      // to be the resources used by tasks that are in the
+      // `SchedulingQueue::ready_queue_` in NodeManager::HandleWorkerAvailable's
+      // call to SchedulingQueue::GetResourceLoad.
+      available_node_resources.SubtractResources(node_resources.GetLoadResources());
       RAY_LOG(DEBUG) << "client_id " << node_client_id
                      << " avail: " << node_resources.GetAvailableResources().ToString()
-                     << " load: " << node_resources.GetLoadResources().ToString()
-                     << " avail-load: " << available_node_resources.ToString();
+                     << " load: " << node_resources.GetLoadResources().ToString();
 
       if (resource_demand.IsSubset(available_node_resources)) {
         // This node is a feasible candidate.
@@ -126,7 +127,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
 
   // Check if we can accommodate infeasible tasks.
-  for (const auto &task : scheduling_queue_.GetInfeasibleTasks()) {
+  for (const auto &task : scheduling_queue_.GetTasks(TaskState::INFEASIBLE)) {
     const auto &spec = task.GetTaskSpecification();
     const auto &placement_resources = spec.GetRequiredPlacementResources();
     if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
@@ -136,7 +137,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   }
 
   // Try to accommodate up to a single ready task.
-  for (const auto &task : scheduling_queue_.GetReadyTasks()) {
+  for (const auto &task : scheduling_queue_.GetTasks(TaskState::READY)) {
     const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
       // Make sure the node has enough available resources to prevent forwarding cycles.

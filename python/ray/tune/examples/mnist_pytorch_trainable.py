@@ -9,55 +9,63 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.autograd import Variable
 
 from ray.tune import Trainable
 
+# Change these values if you want the training to run quicker or slower.
+EPOCH_SIZE = 512
+TEST_SIZE = 256
+
 # Training settings
-parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
 parser.add_argument(
-    '--batch-size',
+    "--batch-size",
     type=int,
     default=64,
-    metavar='N',
-    help='input batch size for training (default: 64)')
+    metavar="N",
+    help="input batch size for training (default: 64)")
 parser.add_argument(
-    '--test-batch-size',
+    "--test-batch-size",
     type=int,
     default=1000,
-    metavar='N',
-    help='input batch size for testing (default: 1000)')
+    metavar="N",
+    help="input batch size for testing (default: 1000)")
 parser.add_argument(
-    '--epochs',
-    type=int,
-    default=10,
-    metavar='N',
-    help='number of epochs to train (default: 10)')
-parser.add_argument(
-    '--lr',
-    type=float,
-    default=0.01,
-    metavar='LR',
-    help='learning rate (default: 0.01)')
-parser.add_argument(
-    '--momentum',
-    type=float,
-    default=0.5,
-    metavar='M',
-    help='SGD momentum (default: 0.5)')
-parser.add_argument(
-    '--no-cuda',
-    action='store_true',
-    default=False,
-    help='disables CUDA training')
-parser.add_argument(
-    '--seed',
+    "--epochs",
     type=int,
     default=1,
-    metavar='S',
-    help='random seed (default: 1)')
+    metavar="N",
+    help="number of epochs to train (default: 1)")
 parser.add_argument(
-    '--smoke-test', action="store_true", help="Finish quickly for testing")
+    "--lr",
+    type=float,
+    default=0.01,
+    metavar="LR",
+    help="learning rate (default: 0.01)")
+parser.add_argument(
+    "--momentum",
+    type=float,
+    default=0.5,
+    metavar="M",
+    help="SGD momentum (default: 0.5)")
+parser.add_argument(
+    "--no-cuda",
+    action="store_true",
+    default=False,
+    help="disables CUDA training")
+parser.add_argument(
+    "--redis-address",
+    default=None,
+    type=str,
+    help="The Redis address of the cluster.")
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=1,
+    metavar="S",
+    help="random seed (default: 1)")
+parser.add_argument(
+    "--smoke-test", action="store_true", help="Finish quickly for testing")
 
 
 class Net(nn.Module):
@@ -81,7 +89,7 @@ class Net(nn.Module):
 
 class TrainMNIST(Trainable):
     def _setup(self, config):
-        args = config.pop("args")
+        args = config.pop("args", parser.parse_args([]))
         vars(args).update(config)
         args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -89,12 +97,12 @@ class TrainMNIST(Trainable):
         if args.cuda:
             torch.cuda.manual_seed(args.seed)
 
-        kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+        kwargs = {"num_workers": 1, "pin_memory": True} if args.cuda else {}
         self.train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                '~/data',
+                "~/data",
                 train=True,
-                download=False,
+                download=True,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307, ), (0.3081, ))
@@ -104,7 +112,7 @@ class TrainMNIST(Trainable):
             **kwargs)
         self.test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                '~/data',
+                "~/data",
                 train=False,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
@@ -125,9 +133,10 @@ class TrainMNIST(Trainable):
     def _train_iteration(self):
         self.model.train()
         for batch_idx, (data, target) in enumerate(self.train_loader):
+            if batch_idx * len(data) > EPOCH_SIZE:
+                return
             if self.args.cuda:
                 data, target = data.cuda(), target.cuda()
-            data, target = Variable(data), Variable(target)
             self.optimizer.zero_grad()
             output = self.model(data)
             loss = F.nll_loss(output, target)
@@ -138,18 +147,19 @@ class TrainMNIST(Trainable):
         self.model.eval()
         test_loss = 0
         correct = 0
-        for data, target in self.test_loader:
-            if self.args.cuda:
-                data, target = data.cuda(), target.cuda()
-            data, target = Variable(data, volatile=True), Variable(target)
-            output = self.model(data)
-
-            # sum up batch loss
-            test_loss += F.nll_loss(output, target, size_average=False).item()
-
-            # get the index of the max log-probability
-            pred = output.data.max(1, keepdim=True)[1]
-            correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
+        with torch.no_grad():
+            for batch_idx, (data, target) in enumerate(self.test_loader):
+                if batch_idx * len(data) > TEST_SIZE:
+                    break
+                if self.args.cuda:
+                    data, target = data.cuda(), target.cuda()
+                output = self.model(data)
+                # sum up batch loss
+                test_loss += F.nll_loss(output, target, reduction="sum").item()
+                # get the index of the max log-probability
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(
+                    target.data.view_as(pred)).long().cpu().sum()
 
         test_loss = test_loss / len(self.test_loader.dataset)
         accuracy = correct.item() / len(self.test_loader.dataset)
@@ -165,42 +175,37 @@ class TrainMNIST(Trainable):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.model.load_state_dict(checkpoint_path)
+        self.model.load_state_dict(torch.load(checkpoint_path))
 
 
-if __name__ == '__main__':
-    datasets.MNIST('~/data', train=True, download=True)
+if __name__ == "__main__":
+    datasets.MNIST("~/data", train=True, download=True)
     args = parser.parse_args()
 
-    import numpy as np
     import ray
     from ray import tune
     from ray.tune.schedulers import HyperBandScheduler
 
-    ray.init()
+    ray.init(redis_address=args.redis_address)
     sched = HyperBandScheduler(
-        time_attr="training_iteration", reward_attr="neg_mean_loss")
-    tune.run_experiments(
-        {
-            "exp": {
-                "stop": {
-                    "mean_accuracy": 0.95,
-                    "training_iteration": 1 if args.smoke_test else 20,
-                },
-                "resources_per_trial": {
-                    "cpu": 3
-                },
-                "run": TrainMNIST,
-                "num_samples": 1 if args.smoke_test else 20,
-                "checkpoint_at_end": True,
-                "config": {
-                    "args": args,
-                    "lr": tune.sample_from(
-                        lambda spec: np.random.uniform(0.001, 0.1)),
-                    "momentum": tune.sample_from(
-                        lambda spec: np.random.uniform(0.1, 0.9)),
-                }
+        time_attr="training_iteration", metric="mean_loss", mode="min")
+    tune.run(
+        TrainMNIST,
+        scheduler=sched,
+        **{
+            "stop": {
+                "mean_accuracy": 0.95,
+                "training_iteration": 1 if args.smoke_test else 20,
+            },
+            "resources_per_trial": {
+                "cpu": 3,
+                "gpu": int(not args.no_cuda)
+            },
+            "num_samples": 1 if args.smoke_test else 20,
+            "checkpoint_at_end": True,
+            "config": {
+                "args": args,
+                "lr": tune.uniform(0.001, 0.1),
+                "momentum": tune.uniform(0.1, 0.9),
             }
-        },
-        verbose=0,
-        scheduler=sched)
+        })

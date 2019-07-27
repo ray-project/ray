@@ -27,7 +27,7 @@ class MultiAgentEpisode(object):
         user_data (dict): Dict that you can use for temporary storage.
 
     Use case 1: Model-based rollouts in multi-agent:
-        A custom compute_actions() function in a policy graph can inspect the
+        A custom compute_actions() function in a policy can inspect the
         current episode state and perform a number of rollouts based on the
         policies and state of other agents in the environment.
 
@@ -58,6 +58,7 @@ class MultiAgentEpisode(object):
         self._agent_to_policy = {}
         self._agent_to_rnn_state = {}
         self._agent_to_last_obs = {}
+        self._agent_to_last_raw_obs = {}
         self._agent_to_last_info = {}
         self._agent_to_last_action = {}
         self._agent_to_last_pi_info = {}
@@ -65,8 +66,21 @@ class MultiAgentEpisode(object):
         self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
+    def soft_reset(self):
+        """Clears rewards and metrics, but retains RNN and other state.
+
+        This is used to carry state across multiple logical episodes in the
+        same env (i.e., if `soft_horizon` is set).
+        """
+        self.length = 0
+        self.episode_id = random.randrange(2e9)
+        self.total_reward = 0.0
+        self.agent_rewards = defaultdict(float)
+        self._agent_reward_history = defaultdict(list)
+
+    @DeveloperAPI
     def policy_for(self, agent_id=_DUMMY_AGENT_ID):
-        """Returns the policy graph for the specified agent.
+        """Returns the policy for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
         agent to a policy for the duration of the episode.
@@ -81,6 +95,12 @@ class MultiAgentEpisode(object):
         """Returns the last observation for the specified agent."""
 
         return self._agent_to_last_obs.get(agent_id)
+
+    @DeveloperAPI
+    def last_raw_obs_for(self, agent_id=_DUMMY_AGENT_ID):
+        """Returns the last un-preprocessed obs for the specified agent."""
+
+        return self._agent_to_last_raw_obs.get(agent_id)
 
     @DeveloperAPI
     def last_info_for(self, agent_id=_DUMMY_AGENT_ID):
@@ -149,10 +169,16 @@ class MultiAgentEpisode(object):
     def _set_last_observation(self, agent_id, obs):
         self._agent_to_last_obs[agent_id] = obs
 
+    def _set_last_raw_obs(self, agent_id, obs):
+        self._agent_to_last_raw_obs[agent_id] = obs
+
     def _set_last_info(self, agent_id, info):
         self._agent_to_last_info[agent_id] = info
 
     def _set_last_action(self, agent_id, action):
+        if agent_id in self._agent_to_last_action:
+            self._agent_to_prev_action[agent_id] = \
+                self._agent_to_last_action[agent_id]
         self._agent_to_last_action[agent_id] = action
 
     def _set_last_pi_info(self, agent_id, pi_info):
@@ -170,9 +196,6 @@ def _flatten_action(action):
     if isinstance(action, list) or isinstance(action, tuple):
         expanded = []
         for a in action:
-            if not hasattr(a, "shape") or len(a.shape) == 0:
-                expanded.append(np.expand_dims(a, 1))
-            else:
-                expanded.append(a)
+            expanded.append(np.reshape(a, [-1]))
         action = np.concatenate(expanded, axis=0).flatten()
     return action

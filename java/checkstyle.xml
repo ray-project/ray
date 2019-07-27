@@ -28,6 +28,9 @@
     </module>
 
     <module name="TreeWalker">
+        <!-- Below are custom config items in addition to the original google style config. -->
+        <module name="UnusedImports"/>
+        <!-- End of custom config items -->
         <module name="OuterTypeFilename"/>
         <module name="IllegalTokenText">
             <property name="tokens" value="STRING_LITERAL, CHAR_LITERAL"/>

@@ -1,3 +1,6 @@
-from ray.rllib.agents.pg.pg import PGAgent, DEFAULT_CONFIG
+from ray.rllib.agents.pg.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.utils import renamed_agent
 
-__all__ = ["PGAgent", "DEFAULT_CONFIG"]
+PGAgent = renamed_agent(PGTrainer)
+
+__all__ = ["PGAgent", "PGTrainer", "DEFAULT_CONFIG"]

@@ -8,8 +8,9 @@ import argparse
 import yaml
 
 import ray
-from ray.test.cluster_utils import Cluster
+from ray.tests.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
@@ -72,6 +73,17 @@ def create_parser(parser_creator=None):
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
     parser.add_argument(
+        "--local-dir",
+        default=DEFAULT_RESULTS_DIR,
+        type=str,
+        help="Local dir to save training results to. Defaults to '{}'.".format(
+            DEFAULT_RESULTS_DIR))
+    parser.add_argument(
+        "--upload-dir",
+        default="",
+        type=str,
+        help="Optional URI to sync training results to (e.g. s3://bucket).")
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
@@ -79,7 +91,7 @@ def create_parser(parser_creator=None):
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
-        action='store_true',
+        action="store_true",
         help=(
             "Whether to queue trials when the cluster does not currently have "
             "enough resources to launch one. This should be set to True when "
@@ -97,13 +109,15 @@ def create_parser(parser_creator=None):
 def run(args, parser):
     if args.config_file:
         with open(args.config_file) as f:
-            experiments = yaml.load(f)
+            experiments = yaml.safe_load(f)
     else:
         # Note: keep this in sync with tune/config_parser.py
         experiments = {
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
+                "keep_checkpoints_num": args.keep_checkpoints_num,
+                "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
                 "resources_per_trial": (
                     args.resources_per_trial and
@@ -126,10 +140,8 @@ def run(args, parser):
         cluster = Cluster()
         for _ in range(args.ray_num_nodes):
             cluster.add_node(
-                resources={
-                    "num_cpus": args.ray_num_cpus or 1,
-                    "num_gpus": args.ray_num_gpus or 0,
-                },
+                num_cpus=args.ray_num_cpus or 1,
+                num_gpus=args.ray_num_gpus or 0,
                 object_store_memory=args.ray_object_store_memory,
                 redis_max_memory=args.ray_redis_max_memory)
         ray.init(redis_address=cluster.redis_address)

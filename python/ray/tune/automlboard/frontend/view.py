@@ -16,8 +16,8 @@ import datetime
 
 def index(request):
     """View for the home page."""
-    recent_jobs = JobRecord.objects.order_by('-start_time')[0:100]
-    recent_trials = TrialRecord.objects.order_by('-start_time')[0:500]
+    recent_jobs = JobRecord.objects.order_by("-start_time")[0:100]
+    recent_trials = TrialRecord.objects.order_by("-start_time")[0:500]
 
     total_num = len(recent_trials)
     running_num = sum(t.trial_status == Trial.RUNNING for t in recent_trials)
@@ -29,31 +29,31 @@ def index(request):
     for recent_job in recent_jobs:
         job_records.append(get_job_info(recent_job))
     context = {
-        'log_dir': AUTOMLBOARD_LOG_DIR,
-        'reload_interval': AUTOMLBOARD_RELOAD_INTERVAL,
-        'recent_jobs': job_records,
-        'job_num': len(job_records),
-        'trial_num': total_num,
-        'running_num': running_num,
-        'success_num': success_num,
-        'failed_num': failed_num
+        "log_dir": AUTOMLBOARD_LOG_DIR,
+        "reload_interval": AUTOMLBOARD_RELOAD_INTERVAL,
+        "recent_jobs": job_records,
+        "job_num": len(job_records),
+        "trial_num": total_num,
+        "running_num": running_num,
+        "success_num": success_num,
+        "failed_num": failed_num
     }
-    return render(request, 'index.html', context)
+    return render(request, "index.html", context)
 
 
 def job(request):
     """View for a single job."""
-    job_id = request.GET.get('job_id')
-    recent_jobs = JobRecord.objects.order_by('-start_time')[0:100]
+    job_id = request.GET.get("job_id")
+    recent_jobs = JobRecord.objects.order_by("-start_time")[0:100]
     recent_trials = TrialRecord.objects \
         .filter(job_id=job_id) \
-        .order_by('-start_time')
+        .order_by("-start_time")
     trial_records = []
     for recent_trial in recent_trials:
         trial_records.append(get_trial_info(recent_trial))
     current_job = JobRecord.objects \
         .filter(job_id=job_id) \
-        .order_by('-start_time')[0]
+        .order_by("-start_time")[0]
 
     if len(trial_records) > 0:
         param_keys = trial_records[0]["params"].keys()
@@ -63,38 +63,38 @@ def job(request):
     # TODO: support custom metrics here
     metric_keys = ["episode_reward", "accuracy", "loss"]
     context = {
-        'current_job': get_job_info(current_job),
-        'recent_jobs': recent_jobs,
-        'recent_trials': trial_records,
-        'param_keys': param_keys,
-        'param_num': len(param_keys),
-        'metric_keys': metric_keys,
-        'metric_num': len(metric_keys)
+        "current_job": get_job_info(current_job),
+        "recent_jobs": recent_jobs,
+        "recent_trials": trial_records,
+        "param_keys": param_keys,
+        "param_num": len(param_keys),
+        "metric_keys": metric_keys,
+        "metric_num": len(metric_keys)
     }
-    return render(request, 'job.html', context)
+    return render(request, "job.html", context)
 
 
 def trial(request):
     """View for a single trial."""
-    job_id = request.GET.get('job_id')
-    trial_id = request.GET.get('trial_id')
+    job_id = request.GET.get("job_id")
+    trial_id = request.GET.get("trial_id")
     recent_trials = TrialRecord.objects \
         .filter(job_id=job_id) \
-        .order_by('-start_time')
+        .order_by("-start_time")
     recent_results = ResultRecord.objects \
         .filter(trial_id=trial_id) \
-        .order_by('-date')[0:2000]
+        .order_by("-date")[0:2000]
     current_trial = TrialRecord.objects \
         .filter(trial_id=trial_id) \
-        .order_by('-start_time')[0]
+        .order_by("-start_time")[0]
     context = {
-        'job_id': job_id,
-        'trial_id': trial_id,
-        'current_trial': current_trial,
-        'recent_results': recent_results,
-        'recent_trials': recent_trials
+        "job_id": job_id,
+        "trial_id": trial_id,
+        "current_trial": current_trial,
+        "recent_results": recent_results,
+        "recent_trials": recent_trials
     }
-    return render(request, 'trial.html', context)
+    return render(request, "trial.html", context)
 
 
 def get_job_info(current_job):
@@ -133,7 +133,7 @@ def get_job_info(current_job):
 
 def get_trial_info(current_trial):
     """Get job information for current trial."""
-    if current_trial.end_time and ('_' in current_trial.end_time):
+    if current_trial.end_time and ("_" in current_trial.end_time):
         # end time is parsed from result.json and the format
         # is like: yyyy-mm-dd_hh-MM-ss, which will be converted
         # to yyyy-mm-dd hh:MM:ss here
@@ -170,7 +170,7 @@ def get_winner(trials):
         first_metrics = get_trial_info(trials[0])["metrics"]
         if first_metrics and not first_metrics.get("accuracy", None):
             sort_key = "episode_reward"
-        max_metric = float('-Inf')
+        max_metric = float("-Inf")
         for t in trials:
             metrics = get_trial_info(t).get("metrics", None)
             if metrics and metrics.get(sort_key, None):
