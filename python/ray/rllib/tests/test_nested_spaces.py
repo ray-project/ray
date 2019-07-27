@@ -7,6 +7,7 @@ import pickle
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import gym
+import torch.nn as nn
 import unittest
 
 import ray
@@ -133,13 +134,14 @@ class InvalidModel2(Model):
         return tf.constant(0), tf.constant(0)
 
 
-class TorchSpyModel(TorchModelV2):
+class TorchSpyModel(TorchModelV2, nn.Module):
     capture_index = 0
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super(TorchSpyModel, self).__init__(obs_space, action_space,
-                                            num_outputs, model_config, name)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
         self.fc = FullyConnectedNetwork(
             obs_space.original_space.spaces["sensors"].spaces["position"],
             action_space, num_outputs, model_config, name)

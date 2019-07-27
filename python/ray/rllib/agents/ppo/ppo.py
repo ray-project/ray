@@ -59,9 +59,6 @@ DEFAULT_CONFIG = with_common_config({
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
-    # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
-    # sampling tasks for performance but can waste a large portion of samples.
-    "straggler_mitigation": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -83,7 +80,6 @@ def choose_policy_optimizer(workers, config):
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
-        straggler_mitigation=config["straggler_mitigation"],
         shuffle_sequences=config["shuffle_sequences"])
 
 

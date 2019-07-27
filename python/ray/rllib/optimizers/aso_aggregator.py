@@ -58,6 +58,20 @@ class AggregationWorkerBase(object):
     def __init__(self, initial_weights_obj_id, remote_workers,
                  max_sample_requests_in_flight_per_worker, replay_proportion,
                  replay_buffer_num_slots, train_batch_size, sample_batch_size):
+        """Initialize an aggregator.
+
+        Arguments:
+            initial_weights_obj_id (ObjectID): initial worker weights
+            remote_workers (list): set of remote workers assigned to this agg
+            max_sample_request_in_flight_per_worker (int): max queue size per
+                worker
+            replay_proportion (float): ratio of replay to sampled outputs
+            replay_buffer_num_slots (int): max number of sample batches to
+                store in the replay buffer
+            train_batch_size (int): size of batches to learn on
+            sample_batch_size (int): size of batches to sample from workers
+        """
+
         self.broadcasted_weights = initial_weights_obj_id
         self.remote_workers = remote_workers
         self.sample_batch_size = sample_batch_size

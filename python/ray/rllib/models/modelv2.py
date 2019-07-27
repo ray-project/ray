@@ -145,7 +145,13 @@ class ModelV2(object):
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         restored["obs_flat"] = input_dict["obs"]
-        outputs, state = self.forward(restored, state or [], seq_lens)
+        res = self.forward(restored, state or [], seq_lens)
+        if ((not isinstance(res, list) and not isinstance(res, tuple))
+                or len(res) != 2):
+            raise ValueError(
+                "forward() must return a tuple of (output, state) tensors, "
+                "got {}".format(res))
+        outputs, state = res
 
         try:
             shape = outputs.shape
