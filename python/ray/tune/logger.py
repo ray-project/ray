@@ -115,7 +115,8 @@ def to_tf_values(result, path):
     flat_result = flatten_dict(result, delimiter="/")
     values = [
         tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value)
-        for attr, value in flat_result.items() if type(value) in type_list]
+        for attr, value in flat_result.items() if type(value) in type_list
+    ]
     return values
 
 
