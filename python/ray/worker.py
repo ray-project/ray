@@ -408,60 +408,10 @@ class Worker(object):
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
-    def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
-        start_time = time.time()
-        # Only send the warning once.
-        warning_sent = False
-        serialization_context = self.get_serialization_context(
-            self.current_job_id)
-        while True:
-            try:
-                # We divide very large get requests into smaller get requests
-                # so that a single get request doesn't block the store for a
-                # long time, if the store is blocked, it can block the manager
-                # as well as a consequence.
-                results = []
-                batch_size = ray._config.worker_fetch_request_size()
-                for i in range(0, len(object_ids), batch_size):
-                    metadata_data_pairs = self.plasma_client.get_buffers(
-                        object_ids[i:i + batch_size],
-                        timeout,
-                        with_meta=True,
-                    )
-                    for j in range(len(metadata_data_pairs)):
-                        metadata, data = metadata_data_pairs[j]
-                        results.append(
-                            self._deserialize_object_from_arrow(
-                                data,
-                                metadata,
-                                object_ids[i + j],
-                                serialization_context,
-                            ))
-                return results
-            except pyarrow.DeserializationCallbackError:
-                # Wait a little bit for the import thread to import the class.
-                # If we currently have the worker lock, we need to release it
-                # so that the import thread can acquire it.
-                time.sleep(0.01)
-
-                if time.time() - start_time > error_timeout:
-                    warning_message = ("This worker or driver is waiting to "
-                                       "receive a class definition so that it "
-                                       "can deserialize an object from the "
-                                       "object store. This may be fine, or it "
-                                       "may be a bug.")
-                    if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self,
-                            ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
-                            warning_message,
-                            job_id=self.current_job_id)
-                    warning_sent = True
-
-    def _retrieve_and_deserialize(self,
-                                  object_ids,
-                                  data_metadata_pairs,
-                                  error_timeout=10):
+    def retrieve_and_deserialize(self,
+                                 object_ids,
+                                 data_metadata_pairs,
+                                 error_timeout=10):
         start_time = time.time()
         serialization_context = self.get_serialization_context(
             self.current_job_id)
@@ -550,79 +500,12 @@ class Worker(object):
         if self.mode == LOCAL_MODE:
             return self.local_mode_manager.get_object(object_ids)
 
-        CORE_WORKER_GET = True
-        if CORE_WORKER_GET:
-            data_metadata_pairs = self.core_worker.get_objects(
-                object_ids, self.current_task_id)
-            assert len(data_metadata_pairs) == len(object_ids)
+        data_metadata_pairs = self.core_worker.get_objects(
+            object_ids, self.current_task_id)
+        assert len(data_metadata_pairs) == len(object_ids)
 
-            final_results = self._retrieve_and_deserialize(
-                object_ids, data_metadata_pairs)
-
-            assert len(final_results) == len(object_ids)
-            return final_results
-
-        # Do an initial fetch for remote objects. We divide the fetch into
-        # smaller fetches so as to not block the manager for a prolonged period
-        # of time in a single call.
-        plain_object_ids = [
-            plasma.ObjectID(object_id.binary()) for object_id in object_ids
-        ]
-        for i in range(0, len(object_ids),
-                       ray._config.worker_fetch_request_size()):
-            self.raylet_client.fetch_or_reconstruct(
-                object_ids[i:(i + ray._config.worker_fetch_request_size())],
-                True)
-
-        # Get the objects. We initially try to get the objects immediately.
-        final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
-        # Construct a dictionary mapping object IDs that we haven't gotten yet
-        # to their original index in the object_ids argument.
-        unready_ids = {
-            plain_object_ids[i].binary(): i
-            for (i, val) in enumerate(final_results)
-            if val is plasma.ObjectNotAvailable
-        }
-
-        if len(unready_ids) > 0:
-            # Try reconstructing any objects we haven't gotten yet. Try to
-            # get them until at least get_timeout_milliseconds
-            # milliseconds passes, then repeat.
-            while len(unready_ids) > 0:
-                object_ids_to_fetch = [
-                    plasma.ObjectID(unready_id)
-                    for unready_id in unready_ids.keys()
-                ]
-                ray_object_ids_to_fetch = [
-                    ObjectID(unready_id) for unready_id in unready_ids.keys()
-                ]
-                fetch_request_size = ray._config.worker_fetch_request_size()
-                for i in range(0, len(object_ids_to_fetch),
-                               fetch_request_size):
-                    self.raylet_client.fetch_or_reconstruct(
-                        ray_object_ids_to_fetch[i:(i + fetch_request_size)],
-                        False,
-                        self.current_task_id,
-                    )
-                results = self.retrieve_and_deserialize(
-                    object_ids_to_fetch,
-                    max([
-                        ray._config.get_timeout_milliseconds(),
-                        int(0.01 * len(unready_ids)),
-                    ]),
-                )
-                # Remove any entries for objects we received during this
-                # iteration so we don't retrieve the same object twice.
-                for i, val in enumerate(results):
-                    if val is not plasma.ObjectNotAvailable:
-                        object_id = object_ids_to_fetch[i].binary()
-                        index = unready_ids[object_id]
-                        final_results[index] = val
-                        unready_ids.pop(object_id)
-
-            # If there were objects that we weren't able to get locally,
-            # let the raylet know that we're now unblocked.
-            self.raylet_client.notify_unblocked(self.current_task_id)
+        final_results = self.retrieve_and_deserialize(object_ids,
+                                                       data_metadata_pairs)
 
         assert len(final_results) == len(object_ids)
         return final_results
