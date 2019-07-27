@@ -46,16 +46,15 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 }
 
 std::unique_ptr<ActorHandle> CreateActorHelper(
-    CoreWorker &worker, const std::unordered_map<std::string, double> &resources, bool is_direct_call,
-    uint64_t max_reconstructions) {
-
+    CoreWorker &worker, const std::unordered_map<std::string, double> &resources,
+    bool is_direct_call, uint64_t max_reconstructions) {
   std::unique_ptr<ActorHandle> actor_handle;
 
   // Test creating actor.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func{ray::Language::PYTHON, { "actor creation task"}};
+  RayFunction func{ray::Language::PYTHON, {"actor creation task"}};
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(buffer));
 
@@ -176,22 +175,27 @@ class CoreWorkerTest : public ::testing::Test {
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
   void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
-                   bool is_direct_call);
+                               bool is_direct_call);
 
  protected:
-  bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id, bool wait_alive, int timeout_ms);
+  bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
+                                   bool wait_alive, int timeout_ms);
 
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
   gcs::GcsClientOptions gcs_options_;
 };
 
-bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id, bool wait_alive, int timeout_ms) {
+bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
+                                                 const ActorID &actor_id, bool wait_alive,
+                                                 int timeout_ms) {
   auto condition_func = [&worker, actor_id, wait_alive]() -> bool {
     auto &task_submitters = worker.Tasks().task_submitters_;
     RAY_CHECK(task_submitters.count(TaskTransportType::DIRECT_ACTOR) > 0);
-    auto submitter = worker.Tasks().task_submitters_[TaskTransportType::DIRECT_ACTOR].get();
-    auto direct_actor_submitter = dynamic_cast<CoreWorkerDirectActorTaskSubmitter*>(submitter);
+    auto submitter =
+        worker.Tasks().task_submitters_[TaskTransportType::DIRECT_ACTOR].get();
+    auto direct_actor_submitter =
+        dynamic_cast<CoreWorkerDirectActorTaskSubmitter *>(submitter);
     RAY_CHECK(direct_actor_submitter != nullptr);
     bool actor_alive = direct_actor_submitter->IsActorAlive(actor_id);
     return wait_alive ? actor_alive : !actor_alive;
@@ -323,8 +327,8 @@ void CoreWorkerTest::TestActorTask(
   }
 }
 
-void CoreWorkerTest::TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
-                                 bool is_direct_call) {
+void CoreWorkerTest::TestActorReconstruction(
+    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
 
@@ -332,7 +336,8 @@ void CoreWorkerTest::TestActorReconstruction(const std::unordered_map<std::strin
   auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
   // Wait for actor alive event.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true, 30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+                                          30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
   // Test submitting some tasks with by-value args for that actor.
@@ -346,8 +351,10 @@ void CoreWorkerTest::TestActorReconstruction(const std::unordered_map<std::strin
         system("pkill mock_worker");
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), false, 30 * 1000 /* 30s */));
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true, 30 * 1000 /* 30s */));
+        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), false,
+                                                30 * 1000 /* 30s */));
+        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+                                                30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
       }
@@ -383,7 +390,8 @@ void CoreWorkerTest::TestActorFailure(
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
 
   // creating actor.
-  auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 0 /* not reconstructable */);
+  auto actor_handle =
+      CreateActorHelper(driver, resources, is_direct_call, 0 /* not reconstructable */);
 
   // Test submitting some tasks with by-value args for that actor.
   {
@@ -429,7 +437,7 @@ void CoreWorkerTest::TestActorFailure(
         // Verify if this is the desired error.
         std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::ACTOR_DIED));
         ASSERT_TRUE(memcmp(results[0]->GetMetadata()->Data(), meta.data(), meta.size()) ==
-                  0);
+                    0);
       } else {
         // Verify if it's expected data.
         ASSERT_EQ(*results[0]->GetData(), *entry.second);
@@ -547,7 +555,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
 
   // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true, 30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+                                          30 * 1000 /* 30s */));
 
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
