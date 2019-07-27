@@ -96,9 +96,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
   /// Preprocess each request from the raylet client.
-  /// Handling three common parts for requests, print log, check heartbeat & check worker
-  /// being killed.
-  bool PreprocessRequest(const ::google::protobuf::Message &request) override;
+  /// Handling three common parts for requests, including print log, checking heartbeat
+  /// and checking worker being killed.
+  ///
+  /// \param Request Request template type.
+  /// \param worker_id The worker id.
+  /// \param request_name The request name.
+  /// \param request The request message.
+  template <typename Request>
+  bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name,
+                         const Request &request);
   /// Implementation of node manager grpc service.
 
   /// Handle a `ForwardTask` request.

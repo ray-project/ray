@@ -2,6 +2,7 @@
 #define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -87,11 +88,6 @@ class ServerCallFactory {
   virtual ~ServerCallFactory() = default;
 };
 
-/// Function pointer which points to a preprocess request function.
-template <class ServiceHandler>
-using PreprocessRequestFunction =
-    bool (ServiceHandler::*)(const ::google::protobuf::Message &);
-
 /// Represents the generic signature of a `FooServiceHandler::HandleBar()`
 /// function, where `Foo` is the service name and `Bar` is the rpc method name.
 ///
@@ -120,15 +116,13 @@ class ServerCallImpl : public ServerCall {
   ServerCallImpl(
       const ServerCallFactory &factory, ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      boost::asio::io_service &io_service,
-      PreprocessRequestFunction<ServiceHandler> preprocess_request_function)
+      boost::asio::io_service &io_service)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
-        io_service_(io_service),
-        preprocess_request_function_(preprocess_request_function) {}
+        io_service_(io_service) {}
 
   ServerCallState GetState() const override { return state_; }
 
@@ -136,13 +130,7 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     if (!io_service_.stopped()) {
-      io_service_.post([this] {
-        if (PreprocessRequest()) {
-          HandleRequestImpl();
-        } else {
-          SendReply(Status::Invalid("PreprocessFailed"));
-        }
-      });
+      io_service_.post([this] { HandleRequestImpl(); });
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -192,19 +180,6 @@ class ServerCallImpl : public ServerCall {
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 
-  /// This function will be invoked before we actually handle the request, which
-  /// can be used to print logs or execute some common operations.
-  /// It's a service level handler which means all the request in one service
-  /// will be handled in the same way.
-  /// \return Returning true means we need the futher processing of this request,
-  /// otherwise, just finish this request without handling the request.
-  bool PreprocessRequest() {
-    if (preprocess_request_function_ == nullptr) {
-      return true;
-    }
-    return (service_handler_.*preprocess_request_function_)(request_);
-  }
-
   /// State of this call.
   ServerCallState state_;
 
@@ -226,9 +201,6 @@ class ServerCallImpl : public ServerCall {
 
   /// The event loop.
   boost::asio::io_service &io_service_;
-
-  /// Pointer to the service preprocess handler function.
-  PreprocessRequestFunction<ServiceHandler> preprocess_request_function_;
 
   /// The request message.
   Request request_;
@@ -282,22 +254,19 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      boost::asio::io_service &io_service,
-      PreprocessRequestFunction<ServiceHandler> preprocess_request_function = nullptr)
+      boost::asio::io_service &io_service)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         cq_(cq),
-        io_service_(io_service),
-        preprocess_request_function_(preprocess_request_function) {}
+        io_service_(io_service) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
-        *this, service_handler_, handle_request_function_, io_service_,
-        preprocess_request_function_);
+        *this, service_handler_, handle_request_function_, io_service_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
@@ -323,9 +292,6 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// The event loop.
   boost::asio::io_service &io_service_;
-
-  /// Pointer to the service preprocess handler function.
-  PreprocessRequestFunction<ServiceHandler> preprocess_request_function_;
 };
 
 }  // namespace rpc

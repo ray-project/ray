@@ -133,11 +133,6 @@ class GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) = 0;
 
-  /// Register the preprocessing function for this service, the function will be executed
-  /// before handling the request. Any service needs to support preprocessing for a
-  /// request should override this function.
-  virtual void RegisterPreprocessFunction() {}
-
   /// The main event loop, to which the service handler functions will be posted.
   boost::asio::io_service &main_service_;
 

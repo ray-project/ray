@@ -76,7 +76,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(std::move(gcs_client)),
       object_directory_(std::move(object_directory)),
       heartbeat_timer_(io_service),
-      heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
+      heartbeat_period_(config.heartbeat_period_ms),
       debug_dump_period_(config.debug_dump_period_ms),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
@@ -354,7 +354,12 @@ void NodeManager::Heartbeat() {
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
+    if (error == boost::asio::error::operation_aborted) {
+      RAY_LOG(INFO) << "Timer has been cancelled. Maybe the timer was delayed due to "
+                       "lots of post events"
+                    << " and we have reset the heartbeat.";
+      return;
+    }
     Heartbeat();
   });
 }
@@ -751,46 +756,56 @@ std::pair<std::shared_ptr<Worker>, bool> NodeManager::GetWorker(
   return std::make_pair(worker, is_worker);
 }
 
-bool NodeManager::PreprocessRequest(const ::google::protobuf::Message &request) {
-  const auto descriptor = request.GetDescriptor();
-  const auto worker_id_field = descriptor->FindFieldByName("worker_id");
+#define PREPROCESS_REQUEST(REQUEST_TYPE)                                            \
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());                   \
+  do {                                                                              \
+    if (!PreprocessRequest<rpc::REQUEST_TYPE>(worker_id, #REQUEST_TYPE, request)) { \
+      return;                                                                       \
+    }                                                                               \
+  } while (0)
 
-  std::ostringstream debug_string;
-  // std::string type = request.GetTypeName();
-  debug_string << "Received a " << descriptor->name() << " request.";
-  if (!worker_id_field) {
-    RAY_LOG(DEBUG) << debug_string.str();
-    return true;
-  }
-  std::string worker_id_str;
-  const auto reflection = request.GetReflection();
-  worker_id_str = reflection->GetString(request, worker_id_field);
-  WorkerID worker_id = WorkerID::FromBinary(worker_id_str);
-  debug_string << " Worker id " << worker_id.Hex() << ".";
+template <typename Request>
+bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
+                                    const std::string &request_name,
+                                    const Request &request) {
+  std::ostringstream string_stream;
+  string_stream << "Received a " << request_name << " request. Worker id "
+                << worker_id.Hex() << ".";
   // NOTE(Joey Jiang): We check heartbeat actively because the heartbeats' callback won't
   // be invoked until all the post requests in the grpc server have been finished.
   // The raylet might be marked as dead due to missing heartbeats when too many requests
   // are sent to this raylet.
+  int64_t expiry_delay =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - heartbeat_timer_.expires_at())
+          .count();
+  int64_t expiry_delay_limit = RayConfig::instance().heartbeat_timeout_milliseconds() *
+                               RayConfig::instance().num_heartbeats_timeout() / 2;
+  // Timer's callback hasn't been called on the desired time.
+  if (expiry_delay > expiry_delay_limit) {
+    heartbeat_timer_.cancel();
+    Heartbeat();
+  }
 
   auto rt = GetWorker(worker_id);
   auto worker = rt.first;
   // Worker process has been killed, we should discard this request.
   if (!worker) {
-    debug_string << " Worker is not found in worker pool, request will be discarded.";
-    RAY_LOG(WARNING) << debug_string.str();
+    string_stream << " Worker is not found in worker pool, request will be discarded.";
+    RAY_LOG(WARNING) << string_stream.str();
     return false;
   }
-  debug_string << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
-               << std::to_string(worker->Pid()) << ".";
+  string_stream << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
+                << std::to_string(worker->Pid()) << ".";
 
   // The worker process is being killing, we should discard this request.
   if (worker->IsBeingKilled()) {
-    debug_string << " Worker process is being killed, request will be discarded.";
-    RAY_LOG(INFO) << debug_string.str();
+    string_stream << " Worker process is being killed, request will be discarded.";
+    RAY_LOG(INFO) << string_stream.str();
     return false;
   }
 
-  RAY_LOG(DEBUG) << debug_string.str();
+  RAY_LOG(DEBUG) << string_stream.str();
   return true;
 }
 
@@ -877,7 +892,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::GetTaskReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  PREPROCESS_REQUEST(GetTaskRequest);
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
 
   RAY_CHECK(!worker->UsePush());
@@ -889,7 +904,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
 void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
                                         rpc::TaskDoneReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  PREPROCESS_REQUEST(TaskDoneRequest);
   auto worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker && worker->UsePush());
   HandleWorkerAvailable(worker_id);
@@ -1013,6 +1028,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
 void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  PREPROCESS_REQUEST(SubmitTaskRequest);
   rpc::Task task;
   task.mutable_task_spec()->CopyFrom(request.task_spec());
 
@@ -1025,6 +1041,7 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
 void NodeManager::HandleFetchOrReconstructRequest(
     const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  PREPROCESS_REQUEST(FetchOrReconstructRequest);
   const auto &object_ids = request.object_ids();
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -1047,7 +1064,6 @@ void NodeManager::HandleFetchOrReconstructRequest(
 
   if (!required_object_ids.empty()) {
     const TaskID task_id = TaskID::FromBinary(request.task_id());
-    const WorkerID &worker_id = WorkerID::FromBinary(request.worker_id());
     HandleTaskBlocked(worker_id, required_object_ids, task_id, /*ray_get=*/true);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
