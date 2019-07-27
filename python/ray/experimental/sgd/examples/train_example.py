@@ -37,4 +37,4 @@ if __name__ == "__main__":
 
     import ray
     ray.init(redis_address=args.redis_address)
-    train_example(num_replicas=2, use_gpus=args.use_gpu)
+    train_example(num_replicas=2, use_gpu=args.use_gpu)
