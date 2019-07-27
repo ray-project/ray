@@ -57,6 +57,19 @@ Other projects in development:
 .. _`Tune`: tune.html
 .. _`RLlib`: rllib.html
 
+Contact
+-------
+The following are good places to discuss Ray.
+
+1. `ray-dev@googlegroups.com`_: For discussions about development or any general
+   questions.
+2. `StackOverflow`_: For questions about how to use Ray.
+3. `GitHub Issues`_: For bug reports and feature requests.
+
+.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+
 
 .. toctree::
    :maxdepth: 1
@@ -73,7 +86,11 @@ Other projects in development:
    using-ray-with-gpus.rst
    serialization.rst
    configure.rst
+   user-profiling.rst
    advanced.rst
+   troubleshooting.rst
+   security.rst
+   package-ref.rst
    examples.rst
 
 .. toctree::
@@ -114,28 +131,14 @@ Other projects in development:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Other Libraries
+   :caption: Experimental
 
    distributed_training.rst
    pandas_on_ray.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: How-to Guide
-
-   profiling.rst
-   user-profiling.rst
-   fault-tolerance.rst
    signals.rst
    async_api.rst
-..   logging.rst
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Ray Package Reference
-
-   package-ref.rst
-
    :maxdepth: 1
    :caption: Examples
 
@@ -153,17 +156,11 @@ Other projects in development:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Development
+   :caption: Development and Internals
 
    install-source.rst
-   contrib.rst
-   internals-overview.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Help
-
-   troubleshooting.rst
-   security.rst
    development.rst
-   contact.rst
+   profiling.rst
+   internals-overview.rst
+   fault-tolerance.rst
+   contrib.rst
