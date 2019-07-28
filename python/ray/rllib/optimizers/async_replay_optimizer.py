@@ -61,6 +61,27 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                  max_weight_sync_delay=400,
                  debug=False,
                  batch_replay=False):
+        """Initialize an async replay optimizer.
+
+        Arguments:
+            workers (WorkerSet): all workers
+            learning_starts (int): wait until this many steps have been sampled
+                before starting optimization.
+            buffer_size (int): max size of the replay buffer
+            prioritized_replay (bool): whether to enable prioritized replay
+            prioritized_replay_alpha (float): replay alpha hyperparameter
+            prioritized_replay_beta (float): replay beta hyperparameter
+            prioritized_replay_eps (float): replay eps hyperparameter
+            train_batch_size (int): size of batches to learn on
+            sample_batch_size (int): size of batches to sample from workers
+            num_replay_buffer_shards (int): number of actors to use to store
+                replay samples
+            max_weight_sync_delay (int): update the weights of a rollout worker
+                after collecting this number of timesteps from it
+            debug (bool): return extra debug stats
+            batch_replay (bool): replay entire sequential batches of
+                experiences instead of sampling steps individually
+        """
         PolicyOptimizer.__init__(self, workers)
 
         self.debug = debug

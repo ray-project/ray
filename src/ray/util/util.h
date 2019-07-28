@@ -3,6 +3,9 @@
 
 #include <boost/system/error_code.hpp>
 #include <chrono>
+#include <iterator>
+#include <sstream>
+#include <unordered_map>
 
 #include "ray/common/status.h"
 
@@ -50,6 +53,18 @@ inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   }
 }
 
+/// A helper function to split a string by whitespaces.
+///
+/// \param str The string with whitespaces.
+///
+/// \return A vector that contains strings split by whitespaces.
+inline std::vector<std::string> SplitStrByWhitespaces(const std::string &str) {
+  std::istringstream iss(str);
+  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
+                                  std::istream_iterator<std::string>());
+  return result;
+}
+
 class InitShutdownRAII {
  public:
   /// Type of the Shutdown function.
@@ -77,5 +92,16 @@ class InitShutdownRAII {
  private:
   ShutdownFunc shutdown_;
 };
+
+struct EnumClassHash {
+  template <typename T>
+  std::size_t operator()(T t) const {
+    return static_cast<std::size_t>(t);
+  }
+};
+
+/// unodered_map for enum class type.
+template <typename Key, typename T>
+using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
 #endif  // RAY_UTIL_UTIL_H

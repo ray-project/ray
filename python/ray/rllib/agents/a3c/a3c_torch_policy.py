@@ -14,9 +14,10 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 
 def actor_critic_loss(policy, batch_tensors):
-    logits, _, values, _ = policy.model({
+    logits, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-    }, [])
+    })  # TODO(ekl) seq lens shouldn't be None
+    values = policy.model.value_function()
     dist = policy.dist_class(logits)
     log_probs = dist.logp(batch_tensors[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().mean()
@@ -53,8 +54,8 @@ def add_advantages(policy,
                               policy.config["lambda"])
 
 
-def model_value_predictions(policy, input_dict, state_batches, model_out):
-    return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
+def model_value_predictions(policy, input_dict, state_batches, model):
+    return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
 
 
 def apply_grad_clipping(policy):
@@ -74,8 +75,8 @@ class ValueNetworkMixin(object):
     def _value(self, obs):
         with self.lock:
             obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
-            _, _, vf, _ = self.model({"obs": obs}, [])
-            return vf.detach().cpu().numpy().squeeze()
+            _ = self.model({"obs": obs}, [], [1])
+            return self.model.value_function().detach().cpu().numpy().squeeze()
 
 
 A3CTorchPolicy = build_torch_policy(

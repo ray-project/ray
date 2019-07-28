@@ -2,7 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -10,6 +12,10 @@ tf = try_import_tf()
 
 class SimpleQModel(TFModelV2):
     """Extension of standard TFModel to provide Q values.
+
+    Data flow:
+        obs -> forward() -> model_out
+        model_out -> get_q_values() -> Q(s, a)
 
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
@@ -54,6 +60,7 @@ class SimpleQModel(TFModelV2):
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.register_variables(self.q_value_head.variables)
 
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         """This generates the model_out tensor input.
 

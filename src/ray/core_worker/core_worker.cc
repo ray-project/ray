@@ -27,9 +27,9 @@ CoreWorker::CoreWorker(
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket_, ClientID::FromBinary(worker_context_.GetWorkerID().Binary()),
-      (worker_type_ == WorkerType::WORKER), worker_context_.GetCurrentJobID(), language_,
-      rpc_server_port));
+      raylet_socket_, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
+      language_, rpc_server_port));
 }
 
 }  // namespace ray

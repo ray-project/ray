@@ -3,7 +3,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -110,7 +110,7 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
-  auto subscribe_wrapper = [subscribe](AsyncGcsClient *client, const ID &id,
+  auto subscribe_wrapper = [subscribe](RedisGcsClient *client, const ID &id,
                                        const GcsChangeMode change_mode,
                                        const std::vector<Data> &data) {
     RAY_CHECK(change_mode != GcsChangeMode::REMOVE);
@@ -247,7 +247,7 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
                                const FailureCallback &failure) {
   num_lookups_++;
   return Log<ID, Data>::Lookup(job_id, id,
-                               [lookup, failure](AsyncGcsClient *client, const ID &id,
+                               [lookup, failure](RedisGcsClient *client, const ID &id,
                                                  const std::vector<Data> &data) {
                                  if (data.empty()) {
                                    if (failure != nullptr) {
@@ -269,7 +269,7 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
                                   const SubscriptionCallback &done) {
   return Log<ID, Data>::Subscribe(
       job_id, client_id,
-      [subscribe, failure](AsyncGcsClient *client, const ID &id,
+      [subscribe, failure](RedisGcsClient *client, const ID &id,
                            const std::vector<Data> &data) {
         RAY_CHECK(data.empty() || data.size() == 1);
         if (data.size() == 1) {
@@ -511,7 +511,7 @@ void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callb
   }
 }
 
-void ClientTable::HandleNotification(AsyncGcsClient *client,
+void ClientTable::HandleNotification(RedisGcsClient *client,
                                      const ClientTableData &data) {
   ClientID client_id = ClientID::FromBinary(data.client_id());
   // It's possible to get duplicate notifications from the client table, so
@@ -564,7 +564,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableData &data) {
+void ClientTable::HandleConnected(RedisGcsClient *client, const ClientTableData &data) {
   auto connected_client_id = ClientID::FromBinary(data.client_id());
   RAY_CHECK(client_id_ == connected_client_id)
       << connected_client_id << " " << client_id_;
@@ -589,14 +589,14 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
   data->set_is_insertion(true);
   // Callback to handle our own successful connection once we've added
   // ourselves.
-  auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
+  auto add_callback = [this](RedisGcsClient *client, const UniqueID &log_key,
                              const ClientTableData &data) {
     RAY_CHECK(log_key == client_log_key_);
     HandleConnected(client, data);
 
     // Callback for a notification from the client table.
     auto notification_callback = [this](
-                                     AsyncGcsClient *client, const UniqueID &log_key,
+                                     RedisGcsClient *client, const UniqueID &log_key,
                                      const std::vector<ClientTableData> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       std::unordered_map<std::string, ClientTableData> connected_nodes;
@@ -623,7 +623,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
     };
     // Callback to request notifications from the client table once we've
     // successfully subscribed.
-    auto subscription_callback = [this](AsyncGcsClient *c) {
+    auto subscription_callback = [this](RedisGcsClient *c) {
       RAY_CHECK_OK(RequestNotifications(JobID::Nil(), client_log_key_, client_id_));
     };
     // Subscribe to the client table.
@@ -636,7 +636,7 @@ Status ClientTable::Connect(const ClientTableData &local_client) {
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   auto data = std::make_shared<ClientTableData>(local_client_);
   data->set_is_insertion(false);
-  auto add_callback = [this, callback](AsyncGcsClient *client, const ClientID &id,
+  auto add_callback = [this, callback](RedisGcsClient *client, const ClientID &id,
                                        const ClientTableData &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(JobID::Nil(), client_log_key_, id));
@@ -689,7 +689,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
-                             ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+                             ray::gcs::RedisGcsClient *client, const UniqueID &id,
                              const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
         std::make_shared<ActorCheckpointIdData>(data);
@@ -707,7 +707,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, job_id, actor_id](
-                              ray::gcs::AsyncGcsClient *client, const UniqueID &id) {
+                              ray::gcs::RedisGcsClient *client, const UniqueID &id) {
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());

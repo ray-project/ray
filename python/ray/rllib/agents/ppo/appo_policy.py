@@ -14,7 +14,7 @@ from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
         BEHAVIOUR_LOGITS, VTraceTFPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.models.action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
@@ -205,9 +205,9 @@ def build_appo_surrogate_loss(policy, batch_tensors):
                 prev_action_dist.logp(actions), drop_last=True),
             actions_logp=make_time_major(
                 action_dist.logp(actions), drop_last=True),
-            action_kl=prev_action_dist.kl(action_dist),
+            action_kl=prev_action_dist.multi_kl(action_dist),
             actions_entropy=make_time_major(
-                action_dist.entropy(), drop_last=True),
+                action_dist.multi_entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
             behaviour_logits=make_time_major(
                 unpacked_behaviour_logits, drop_last=True),
@@ -229,8 +229,8 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
             actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=prev_action_dist.kl(action_dist),
-            actions_entropy=make_time_major(action_dist.entropy()),
+            action_kl=prev_action_dist.multi_kl(action_dist),
+            actions_entropy=make_time_major(action_dist.multi_entropy()),
             values=make_time_major(values),
             valid_mask=make_time_major(mask),
             advantages=make_time_major(

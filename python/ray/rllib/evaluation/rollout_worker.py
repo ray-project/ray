@@ -277,13 +277,13 @@ class RolloutWorker(EvaluatorInterface):
                     dim=model_config.get("dim"),
                     framestack=model_config.get("framestack"))
                 if monitor_path:
-                    env = _monitor(env, monitor_path)
+                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
 
             def wrap(env):
                 if monitor_path:
-                    env = _monitor(env, monitor_path)
+                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
                 return env
 
         self.env = wrap(self.env)
@@ -301,6 +301,15 @@ class RolloutWorker(EvaluatorInterface):
         if seed is not None:
             np.random.seed(seed)
             random.seed(seed)
+            if not hasattr(self.env, "seed"):
+                raise ValueError("Env doesn't support env.seed(): {}".format(
+                    self.env))
+            self.env.seed(seed)
+            try:
+                import torch
+                torch.manual_seed(seed)
+            except ImportError:
+                logger.info("Could not seed torch")
         if _has_tensorflow_graph(policy_dict):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
@@ -796,10 +805,6 @@ def _validate_env(env):
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
             "function returned {} ({}).".format(env, type(env)))
     return env
-
-
-def _monitor(env, path):
-    return gym.wrappers.Monitor(env, path, resume=True)
 
 
 def _has_tensorflow_graph(policy_dict):
