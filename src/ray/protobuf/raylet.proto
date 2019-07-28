@@ -1,0 +1,203 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
+
+/// Service request and reply messages.
+message RegisterClientRequest {
+  // Indicates the client is a worker or a driver.
+  bool is_worker = 1;
+  // The worker id.
+  bytes worker_id = 2;
+  // The process ID of this worker.
+  uint32 worker_pid = 3;
+  // The job ID.
+  bytes job_id = 4;
+  // Language of this worker.
+  Language language = 5;
+  // Port that this worker is listening on.
+  // If port > 0, then worker will listen to this port and wait for
+  // raylet to push tasks, instead of invoking GetTask().
+  int32 port = 6;
+}
+message RegisterClientReply {
+  repeated int32 gpu_ids = 1;
+}
+
+message SubmitTaskRequest {
+  TaskSpec task_spec = 1;
+}
+message SubmitTaskReply {
+}
+
+message DisconnectClientRequest {
+  bytes worker_id = 1;
+}
+message DisconnectClientReply {
+}
+
+message GetTaskRequest {
+  bytes worker_id = 1;
+}
+message GetTaskReply {
+  // A string of bytes representing the task specification.
+  bytes task_spec = 1;
+  // A list of the resources reserved for this worker.
+  repeated ResourceIdSetInfo fractional_resource_ids = 2;
+}
+
+message TaskDoneRequest {
+  bytes worker_id = 1;
+}
+message TaskDoneReply {
+}
+
+message FetchOrReconstructRequest {
+  // List of object IDs of the objects that we want to reconstruct or fetch.
+  repeated bytes object_ids = 1;
+  // Indicates that we only want to fetch objects, not reconstruct them.
+  bool fetch_only = 2;
+  // The current task ID. If fetch_only is false, then this task is blocked.
+  bytes task_id = 3;
+  // The worker ID.
+  bytes worker_id = 4;
+}
+message FetchOrReconstructReply {
+}
+
+message NotifyUnblockedRequest {
+  bytes worker_id = 1;
+  // The current task ID. This task is no longer blocked.
+  bytes task_id = 2;
+}
+message NotifyUnblockedReply {
+}
+
+message WaitRequest {
+  // List of object ids we'll be waiting on.
+  repeated bytes object_ids = 1;
+  // Number of objects expected to be returned, if available.
+  uint64 num_ready_objects = 2;
+  // Timeout in milliseconds.
+  int64 timeout = 3;
+  // Whether to wait until objects appear locally.
+  bool wait_local = 4;
+  // The current task ID. If there are less than num_ready_objects local, then
+  // this task is blocked.
+  bytes task_id = 5;
+  // The worker ID.
+  bytes worker_id = 6;
+}
+message WaitReply {
+  // List of object ids found.
+  repeated bytes found = 1;
+  // List of object ids not found.
+  repeated bytes remaining = 2;
+}
+
+message PushErrorRequest {
+  // The job id that the error is for.
+  bytes job_id = 1;
+  // The type of the error.
+  bytes type = 2;
+  // The error message.
+  bytes error_message = 3;
+  // The timestamp of the error message.
+  double timestamp = 4;
+}
+message PushErrorReply {
+}
+
+message PushProfileEventsRequest {
+  ProfileTableData profile_table_data = 1;
+}
+message PushProfileEventsReply {
+}
+
+message FreeObjectsInStoreRequest {
+  // Whether keep this request within the local object store
+  // or send it to all of the object stores.
+  bool local_only = 1;
+  // Whether also delete objects' creating tasks from GCS.
+  bool delete_creating_tasks = 2;
+  // List of object ids to delete from the object store.
+  repeated bytes object_ids = 3;
+}
+message FreeObjectsInStoreReply {
+}
+
+message PrepareActorCheckpointRequest {
+  bytes actor_id = 1;
+  bytes worker_id = 2;
+}
+message PrepareActorCheckpointReply {
+  bytes checkpoint_id = 1;
+}
+
+message NotifyActorResumedFromCheckpointRequest {
+  // ID of the actor that resumed.
+  bytes actor_id = 1;
+  // ID of the checkpoint from which the actor was resumed.
+  bytes checkpoint_id = 2;
+}
+message NotifyActorResumedFromCheckpointReply {
+}
+
+message SetResourceRequest {
+  // Name of the resource to be set.
+  bytes resource_name = 1;
+  // Capacity of the resource to be set.
+  double capacity = 2;
+  // Client ID where this resource will be set.
+  bytes client_id = 3;
+}
+message SetResourceReply {
+}
+
+message HeartbeatRequest {
+  bytes worker_id = 1;
+  bool is_worker = 2;
+}
+message HeartbeatReply {
+}
+
+/// Worker-to-raylet RPC service interface.
+service RayletService {
+  // Register a new worker to the raylet.
+  rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
+  // Submit a task to the raylet.
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
+  // Disconnect this client from raylet gracefully.
+  rpc DisconnectClient(DisconnectClientRequest) returns (DisconnectClientReply);
+  // Get a new task from the raylet.
+  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
+  // Notify the raylet that a task is finished.
+  rpc TaskDone(TaskDoneRequest) returns (TaskDoneReply);
+  // Reconstruct or fetch possibly lost objects.
+  rpc FetchOrReconstruct(FetchOrReconstructRequest) returns (FetchOrReconstructReply);
+  // For a worker that was blocked on some object(s), tell the raylet
+  // that the worker is now unblocked.
+  rpc NotifyUnblocked(NotifyUnblockedRequest) returns (NotifyUnblockedReply);
+  // Wait for objects to be ready either from local or remote plasma stores.
+  // The `WaitReply` contains the objects found and objects remaining.
+  rpc Wait(WaitRequest) returns (WaitReply);
+  // Push an error to the relevant driver.
+  rpc PushError(PushErrorRequest) returns (PushErrorReply);
+  // Push some profiling events to the GCS. When sending this message to the
+  // node manager, the message itself is serialized as a ProfileTableData object.
+  rpc PushProfileEvents(PushProfileEventsRequest) returns (PushProfileEventsReply);
+  // Free the objects in plasma objects store.
+  rpc FreeObjectsInStore(FreeObjectsInStoreRequest) returns (FreeObjectsInStoreReply);
+  // Request raylet backend to prepare a checkpoint for an actor.
+  rpc PrepareActorCheckpoint(PrepareActorCheckpointRequest)
+      returns (PrepareActorCheckpointReply);
+  // Notify raylet backend that an actor was resumed from a checkpoint.
+  rpc NotifyActorResumedFromCheckpoint(NotifyActorResumedFromCheckpointRequest)
+      returns (NotifyActorResumedFromCheckpointReply);
+  // Set dynamic custom resource.
+  rpc SetResource(SetResourceRequest) returns (SetResourceReply);
+  // Send a heartbeat message to raylet.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
+}

@@ -39,10 +39,31 @@ class TFMultiGPULearner(LearnerThread):
                  minibatch_buffer_size=1,
                  num_sgd_iter=1,
                  learner_queue_size=16,
+                 learner_queue_timeout=300,
                  num_data_load_threads=16,
                  _fake_gpus=False):
+        """Initialize a multi-gpu learner thread.
+
+        Arguments:
+            local_worker (RolloutWorker): process local rollout worker holding
+                policies this thread will call learn_on_batch() on
+            num_gpus (int): number of GPUs to use for data-parallel SGD
+            lr (float): learning rate
+            train_batch_size (int): size of batches to learn on
+            num_data_loader_buffers (int): number of buffers to load data into
+                in parallel. Each buffer is of size of train_batch_size and
+                increases GPU memory usage proportionally.
+            minibatch_buffer_size (int): max number of train batches to store
+                in the minibatching buffer
+            num_sgd_iter (int): number of passes to learn on per train batch
+            learner_queue_size (int): max size of queue of inbound
+                train batches to this thread
+            num_data_loader_threads (int): number of threads to use to load
+                data into GPU memory in parallel
+        """
         LearnerThread.__init__(self, local_worker, minibatch_buffer_size,
-                               num_sgd_iter, learner_queue_size)
+                               num_sgd_iter, learner_queue_size,
+                               learner_queue_timeout)
         self.lr = lr
         self.train_batch_size = train_batch_size
         if not num_gpus:
@@ -99,7 +120,8 @@ class TFMultiGPULearner(LearnerThread):
             self.loader_thread.start()
 
         self.minibatch_buffer = MinibatchBuffer(
-            self.ready_optimizers, minibatch_buffer_size, num_sgd_iter)
+            self.ready_optimizers, minibatch_buffer_size,
+            learner_queue_timeout, num_sgd_iter)
 
     @override(LearnerThread)
     def step(self):

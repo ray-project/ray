@@ -301,6 +301,15 @@ class RolloutWorker(EvaluatorInterface):
         if seed is not None:
             np.random.seed(seed)
             random.seed(seed)
+            if not hasattr(self.env, "seed"):
+                raise ValueError("Env doesn't support env.seed(): {}".format(
+                    self.env))
+            self.env.seed(seed)
+            try:
+                import torch
+                torch.manual_seed(seed)
+            except ImportError:
+                logger.info("Could not seed torch")
         if _has_tensorflow_graph(policy_dict):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE

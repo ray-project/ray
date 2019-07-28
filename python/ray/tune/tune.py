@@ -263,12 +263,13 @@ def run(run_or_experiment,
         else:
             logger.error("Trials did not complete: %s", errored_trials)
 
+    trials = runner.get_trials()
     if return_trials:
-        return runner.get_trials()
+        return trials
     logger.info("Returning an analysis object by default. You can call "
                 "`analysis.trials` to retrieve a list of trials. "
                 "This message will be removed in future versions of Tune.")
-    return ExperimentAnalysis(experiment.checkpoint_dir)
+    return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
 
 
 def run_experiments(experiments,
@@ -322,5 +323,6 @@ def run_experiments(experiments,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial)
+            raise_on_failed_trial=raise_on_failed_trial,
+            return_trials=True)
     return trials

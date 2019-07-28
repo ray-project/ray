@@ -3,9 +3,9 @@
 
 #include <inttypes.h>
 
-#include "ray/common/task/task_common.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/protobuf/common.pb.h"
 
 namespace ray {
 

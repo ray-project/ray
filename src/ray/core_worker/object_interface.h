@@ -11,6 +11,8 @@
 
 namespace ray {
 
+using rpc::RayletClient;
+
 class CoreWorker;
 class CoreWorkerStoreProvider;
 

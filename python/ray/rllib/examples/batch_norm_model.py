@@ -8,7 +8,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.models.misc import normc_initializer
+from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
