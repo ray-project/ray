@@ -102,8 +102,8 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
     new_capacity = res_capacity + 1
     ray.get(set_res.remote(res_name, new_capacity, target_node_id))
 
-    target_node = next(node for node in ray.nodes()
-                       if node["NodeID"] == target_node_id)
+    target_node = next(
+        node for node in ray.nodes() if node["NodeID"] == target_node_id)
     resources = target_node["Resources"]
 
     assert res_name in resources
@@ -130,8 +130,8 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
             resource_name, resource_capacity, client_id=res_client_id)
 
     ray.get(set_res.remote(res_name, res_capacity, target_node_id))
-    target_node = next(node for node in ray.nodes()
-                       if node["NodeID"] == target_node_id)
+    target_node = next(
+        node for node in ray.nodes() if node["NodeID"] == target_node_id)
     resources = target_node["Resources"]
 
     assert res_name in resources
@@ -170,7 +170,8 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     while time.time() - start_time < TIMEOUT and not success:
         resources_created = []
         for nid in target_node_ids:
-            target_node = next(node for node in ray.nodes() if node["NodeID"] == nid)
+            target_node = next(
+                node for node in ray.nodes() if node["NodeID"] == nid)
             resources = target_node["Resources"]
             resources_created.append(resources[res_name] == res_capacity)
         success = all(resources_created)
@@ -202,8 +203,8 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
 
     ray.get(delete_res.remote(res_name, target_node_id))
 
-    target_node = next(node for node in ray.nodes()
-                       if node["NodeID"] == target_node_id)
+    target_node = next(
+        node for node in ray.nodes() if node["NodeID"] == target_node_id)
     resources = target_node["Resources"]
     print(ray.cluster_resources())
     assert res_name not in resources

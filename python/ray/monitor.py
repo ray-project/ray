@@ -258,8 +258,7 @@ class Monitor(object):
         all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
-            node_id = (raylet_info.get("DBClientID")
-                       or raylet_info["NodeID"])
+            node_id = (raylet_info.get("DBClientID") or raylet_info["NodeID"])
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             if _append_port:
