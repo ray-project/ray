@@ -189,9 +189,15 @@ class ExperimentAnalysis(Analysis):
 
     def _get_trial_paths(self):
         """Overwrites Analysis to only have trials of one experiment."""
-        _trial_paths = [
-            checkpoint["logdir"] for checkpoint in self._checkpoints
-        ]
+        if self.trials:
+            _trial_paths = [t.logdir for t in self.trials]
+        else:
+            logger.warning("No `self.trials`. Drawing logdirs from checkpoint "
+                           "file. This may result in some information that is "
+                           "out of sync, as checkpointing is periodic.")
+            _trial_paths = [
+                checkpoint["logdir"] for checkpoint in self._checkpoints
+            ]
         if not _trial_paths:
             raise TuneError("No trials found.")
         return _trial_paths

@@ -31,7 +31,7 @@ analysis = tune.run(
     stop={"mean_accuracy": 0.98},
     config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
 
-print("Best config: ", analysis.get_best_config())
+print("Best config: ", analysis.get_best_config(metric="mean_accuracy"))
 
 # Get a dataframe for analyzing trial results.
 df = analysis.dataframe()
