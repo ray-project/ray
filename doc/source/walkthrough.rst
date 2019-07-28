@@ -7,6 +7,20 @@ This walkthrough will overview the core concepts of Ray:
    2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
    3. Using remote classes (actors) [``ray.remote``]
 
+.. list-table:: Title
+   :widths: 25 25 50
+   :header-rows: 1
+
+   * - Heading row 1, column 1
+     - Heading row 1, column 2
+     - Heading row 1, column 3
+   * - Row 1, column 1
+     -
+     - Row 1, column 3
+   * - Row 2, column 1
+     - Row 2, column 2
+     - Row 2, column 3
+
 
 With Ray, your code will work on a single machine and can be easily scaled to a large cluster. Suppose we've already downloaded Ray.
 
@@ -19,7 +33,8 @@ With Ray, your code will work on a single machine and can be easily scaled to a 
   # if you're connecting to an existing cluster.
   ray.init()
 
-To start a Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__. You can stop ray by calling ``ray.shutdown()``.
+See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
+To start a multi-node Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__. You can stop ray by calling ``ray.shutdown()``. To check if Ray is initialized, you can call ``ray.is_initialized()``.
 
 Remote functions (Tasks)
 ------------------------
@@ -70,6 +85,8 @@ This causes a few things changes in behavior:
        # These happen in parallel.
        for _ in range(4):
            remote_function.remote()
+
+See the `ray.remote package reference <package-ref.html>`__ page for specific documentation of using ``ray.remote``.
 
 **Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**.
 
@@ -152,8 +169,12 @@ Object IDs can be created in multiple ways.
     >>> obj_id = ray.put(y)
     >>> print(obj_id)
     ObjectID(0369a14bc595e08cfbd508dfaa162cb7feffffff)
-    >>> ray.get(obj_id)
-    6
+
+Here is the docstring for ``ray.put``:
+
+.. autofunction:: ray.put
+    :noindex:
+
 
 .. important::
 
@@ -169,6 +190,21 @@ The command ``ray.get(x_id)`` takes an object ID and creates a Python object fro
 the corresponding remote object. For some objects like arrays, we can use shared
 memory and avoid copying the object.
 
+.. code-block:: python
+
+    >>> y = 6
+    >>> obj_id = ray.put(y)
+    >>> print(obj_id)
+    ObjectID(0369a14bc595e08cfbd508dfaa162cb7feffffff)
+    >>> ray.get(obj_id)
+    6
+
+Here is the docstring for ``ray.get``:
+
+.. autofunction:: ray.get
+    :noindex:
+
+
 After launching a number of tasks, you may want to know which ones have
 finished executing. This can be done with ``ray.wait``. The function
 works as follows.
@@ -176,6 +212,11 @@ works as follows.
 .. code:: python
 
     ready_ids, remaining_ids = ray.wait(object_ids, num_returns=1, timeout=None)
+
+Here is the docstring for ``ray.wait``:
+
+.. autofunction:: ray.wait
+    :noindex:
 
 
 Remote Classes (Actors)

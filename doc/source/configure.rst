@@ -1,6 +1,10 @@
 Configuring Ray
 ===============
 
+This page discusses the various way to configure ray, both from the Python API and from command line.
+Take a look at the ``ray.init`` `documentation <package-ref.html#ray.init>`__ for a complete overview
+of the configurations.
+
 Cluster Resources
 -----------------
 

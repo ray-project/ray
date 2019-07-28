@@ -75,12 +75,7 @@ Now, consider a remote function definition as below.
       return x + 1
 
 When the remote function is defined as above, the function is immediately
-pickled, assigned a unique ID, and stored in a Redis server. You can view the
-remote functions in the centralized control plane as below.
-
-.. code-block:: python
-
-  TODO: Fill this in.
+pickled, assigned a unique ID, and stored in a Redis server.
 
 Each worker process has a separate thread running in the background that
 listens for the addition of remote functions to the centralized control state.
@@ -116,9 +111,8 @@ When a driver or worker invokes a remote function, a number of things happen.
     raylet. This is done by peer-to-peer connection between raylets.
     The task table can be inspected as follows.
 
-    .. code-block:: python
-
-      TODO: Fill this in.
+.. autofunction:: ray.tasks
+    :noindex:
 
 - Once a task has been scheduled to a raylet, the raylet queues
   the task for execution. A task is assigned to a worker when enough resources
@@ -130,11 +124,10 @@ When a driver or worker invokes a remote function, a number of things happen.
   state, to reflect the fact that it contains the newly created objects. The
   object table can be viewed as follows.
 
-  .. code-block:: python
+.. autofunction:: ray.objects
+    :noindex:
 
-    TODO: Fill this in.
-
-  When the task's return values are placed into the object store, they are first
+- When the task's return values are placed into the object store, they are first
   serialized into a contiguous blob of bytes using the `Apache Arrow`_ data
   layout, which is helpful for efficiently sharing data between processes using
   shared memory.
@@ -149,8 +142,6 @@ Notes and limitations
   evicted, then the call to ``ray.get`` for that object will initiate the
   reconstruction of the object. The raylet will attempt to reconstruct
   the object by replaying its task lineage.
-
-TODO: Limitations on reconstruction.
 
 Getting an object ID
 --------------------

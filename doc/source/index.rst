@@ -15,7 +15,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 - `RLlib`_: Scalable Reinforcement Learning
 - `Distributed Training <distributed_training.html>`__
 
-Install Ray with: ``pip install ray``.
+Install Ray with: ``pip install ray``. View the `Installation page <installation.html>`__ for nightly wheels.
 
 View the `codebase on GitHub`_.
 
@@ -159,8 +159,8 @@ The following are good places to discuss Ray.
    actors.rst
    using-ray-with-gpus.rst
    user-profiling.rst
+   inspect.rst
    configure.rst
-   serialization.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst

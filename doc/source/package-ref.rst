@@ -30,21 +30,21 @@ Ray Package Reference
 Inspect the Cluster State
 -------------------------
 
-.. autofunction:: ray.nodes()
+.. autofunction:: ray.nodes
 
-.. autofunction:: ray.tasks()
+.. autofunction:: ray.tasks
 
-.. autofunction:: ray.objects()
+.. autofunction:: ray.objects
 
-.. autofunction:: ray.timeline()
+.. autofunction:: ray.timeline
 
-.. autofunction:: ray.object_transfer_timeline()
+.. autofunction:: ray.object_transfer_timeline
 
-.. autofunction:: ray.cluster_resources()
+.. autofunction:: ray.cluster_resources
 
-.. autofunction:: ray.available_resources()
+.. autofunction:: ray.available_resources
 
-.. autofunction:: ray.errors()
+.. autofunction:: ray.errors
 
 
 The Ray Command Line API
