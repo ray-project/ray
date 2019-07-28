@@ -576,8 +576,7 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
 
     @ray.remote(num_cpus=1)
     def get_100():
-        import time
-        time.sleep(2)
+        time.sleep(1)
         return 100
 
     @ray.remote(num_cpus=1)
@@ -590,4 +589,18 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
 
     a = A.remote()
     assert 100 == ray.get(a.get_num.remote())
-    assert 1 == ray.available_resources()["CPU"]
+
+    def wait_until(condition, timeout_ms):
+        TIMEOUT_DURATION_MS = 100
+        time_elaspe = 0
+        while time_elaspe < timeout_ms:
+            if condition():
+                return True
+            time_elaspe += TIMEOUT_DURATION_MS
+        return False
+
+    def assert_available_resource():
+        return 1 == ray.available_resources()["CPU"]
+
+    result = wait_until(assert_available_resource, 1000)
+    assert result is True
