@@ -591,16 +591,17 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
     assert 100 == ray.get(a.get_num.remote())
 
     def wait_until(condition, timeout_ms):
-        TIMEOUT_DURATION_MS = 100
+        SLEEP_DURATION_MS = 100
         time_elapsed = 0
         while time_elapsed <= timeout_ms:
             if condition():
                 return True
-            time_elapsed += TIMEOUT_DURATION_MS
+            time.sleep(SLEEP_DURATION_MS)
+            time_elapsed += SLEEP_DURATION_MS
         return False
 
-    def assert_available_resource():
+    def assert_available_resources():
         return 1 == ray.available_resources()["CPU"]
 
-    result = wait_until(assert_available_resource, 1000)
+    result = wait_until(assert_available_resources, 1000)
     assert result is True
