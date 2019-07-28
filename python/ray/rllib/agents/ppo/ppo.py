@@ -35,9 +35,11 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 5e-5,
     # Learning rate schedule
     "lr_schedule": None,
-    # Share layers for value function
+    # Share layers for value function. If you set this to True, it's important
+    # to tune vf_loss_coeff.
     "vf_share_layers": False,
-    # Coefficient of the value function loss
+    # Coefficient of the value function loss. It's important to tune this if
+    # you set vf_share_layers: True
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
