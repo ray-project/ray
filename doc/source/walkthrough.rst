@@ -7,13 +7,16 @@ This walkthrough will overview the core concepts of Ray:
    2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
    3. Using remote classes (actors) [``ray.remote``]
 
+
 With Ray, your code will work on a single machine and can be easily scaled to a large cluster. Suppose we've already downloaded Ray.
 
 .. code-block:: python
 
   import ray
 
-  # Start ray. You can simply call `ray.init(redis_address=<cluster-redis-address>)` if you're connecting to an existing cluster
+  # Start ray. You can simply call
+  # `ray.init(redis_address=<cluster-redis-address>)`
+  # if you're connecting to an existing cluster.
   ray.init()
 
 To start a Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__. You can stop ray by calling ``ray.shutdown()``.
