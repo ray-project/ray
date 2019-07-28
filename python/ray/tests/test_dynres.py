@@ -592,11 +592,11 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
 
     def wait_until(condition, timeout_ms):
         TIMEOUT_DURATION_MS = 100
-        time_elaspe = 0
-        while time_elaspe < timeout_ms:
+        time_elapsed = 0
+        while time_elapsed <= timeout_ms:
             if condition():
                 return True
-            time_elaspe += TIMEOUT_DURATION_MS
+            time_elapsed += TIMEOUT_DURATION_MS
         return False
 
     def assert_available_resource():
