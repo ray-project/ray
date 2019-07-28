@@ -12,7 +12,7 @@ import ray.experimental.signal as signal
 from ray.experimental.streaming.benchmarks.macro.nexmark.event import Watermark
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
+logger.setLevel("INFO")
 
 
 # Signal denoting that a streaming actor finished processing

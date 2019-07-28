@@ -35,6 +35,10 @@ parser.add_argument(
     default=-1,  # Default limit: 10K bytes
     help="size limit in bytes to serialize data along with the task.")
 parser.add_argument(
+    "--inline-elements",
+    default=-1,  # Default limit: 10K bytes
+    help="number of data elements to serialize along with the task.")
+parser.add_argument(
     "--queue-size", default=10, help="the queue size in number of batches")
 # The batch size is estimated based on the Bid's size, so that
 # each batch corresponds to a buffer of around 32K bytes
@@ -136,6 +140,7 @@ if __name__ == "__main__":
     redis_max_memory = int(args.redis_max_memory)
     plasma_memory = int(args.plasma_memory)
     size_limit = int(args.inline_limit)
+    elements_limit = int(args.inline_elements)
     max_queue_size = int(args.queue_size)
     max_batch_size = int(args.batch_size)
     batch_timeout = float(args.flush_timeout)
@@ -165,8 +170,10 @@ if __name__ == "__main__":
     logger.info("Number of Redis shards: {}".format(num_redis_shards))
     logger.info("Max memory per Redis shard: {}".format(redis_max_memory))
     logger.info("Plasma memory: {}".format(plasma_memory))
-    limit = size_limit if size_limit > 0 else 10000
-    logger.info("Inline limit: {}".format(limit))
+    max_size = size_limit if size_limit > 0 else 10000
+    max_elements = elements_limit if elements_limit > 0 else 10000
+    logger.info("Inline size limit: {}".format(max_size))
+    logger.info("Inline elements limit: {}".format(max_elements))
     logger.info("Max queue size: {}".format(max_queue_size))
     logger.info("Max batch size: {}".format(max_batch_size))
     logger.info("Batch timeout: {}".format(batch_timeout))
@@ -199,10 +206,17 @@ if __name__ == "__main__":
         s3.meta.client.download_file('nexmark', "bids", "bids.data")
 
     # Generate JSON config object
-    key_value_pairs = [("size_limit", size_limit)]
-    ray_config = utils.generate_configuration(
-                                key_value_pairs) if size_limit > 0 else None
-
+    ray_config = None
+    key_value_pairs = []
+    if size_limit > 0 and elements_limit > 0:
+        key_value_pairs = [("size_limit", max_size),("num_elements_limit",max_elements)]
+    elif size_limit > 0:
+        key_value_pairs = [("size_limit", max_size)]
+    else:
+        key_value_pairs = [("num_elements_limit",max_elements)]
+    if len(key_value_pairs):
+        ray_config = utils.generate_configuration(key_value_pairs)
+                                                     
     # Number of actors per dataflow stage
     stage_parallelism = [map_instances,
                          map_instances]  # One sink per map instance
