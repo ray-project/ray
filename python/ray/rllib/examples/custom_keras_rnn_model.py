@@ -125,7 +125,6 @@ class RepeatAfterMeEnv(gym.Env):
         self.action_space = Discrete(2)
         self.delay = config["repeat_delay"]
         assert self.delay >= 1, "delay must be at least 1"
-        self.parity = None
         self.history = []
 
     def reset(self):
@@ -155,7 +154,6 @@ if __name__ == "__main__":
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
-        num_samples=4,
         config={
             "env": args.env,
             "env_config": {
@@ -166,7 +164,6 @@ if __name__ == "__main__":
             "num_envs_per_worker": 20,
             "entropy_coeff": 0.001,
             "num_sgd_iter": 5,
-            "num_gpus": 0.2,
             "vf_loss_coeff": 1e-5,
             "model": {
                 "custom_model": "rnn",
