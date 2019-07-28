@@ -31,10 +31,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def run_test_exp(self):
         self.ea = run(
             MyTrainableClass,
-            global_checkpoint_period=0,
             name=self.test_name,
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
