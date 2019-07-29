@@ -430,9 +430,11 @@ class TFPolicy(Policy):
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if self._prev_action_input is not None and prev_action_batch:
+        if self._prev_action_input is not None and \
+           prev_action_batch is not None:
             builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and prev_reward_batch:
+        if self._prev_reward_input is not None and \
+           prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
