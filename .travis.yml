@@ -19,6 +19,11 @@ matrix:
       env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
+      env: JENKINS=1 PYTHONWARNINGS=ignore
+      script:
+        - ./ci/jenkins_tests/run_multi_node_tests.sh
+
+    - os: linux
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.5 PYTHONWARNINGS=ignore
