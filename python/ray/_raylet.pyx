@@ -402,10 +402,11 @@ cdef class CoreWorker:
                 data_metadata_pairs.append((None, None))
             else:
                 data = Buffer.make(result.get().GetData())
-                metadata = Buffer.make(result.get().GetMetadata()).to_pybytes()
-                data_metadata_pairs.append((
-                    data,
-                    metadata if len(metadata) > 0 else None))
+                if result.get().GetMetadata().get().Size() > 0:
+                    metadata = Buffer.make(result.get().GetMetadata()).to_pybytes()
+                else:
+                    metadata = None
+                data_metadata_pairs.append((data, metadata))
 
         return data_metadata_pairs
 

@@ -31,11 +31,18 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
+  RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(ids, /*fetch_only=*/true, task_id));
+  RAY_RETURN_NOT_OK(local_store_provider_.Get(ids, 0, task_id, results));
 
-  bool was_blocked = false;
-
+  // Iterate through the results from the local store, adding them to the unready
+  // map if they weren't successfully fetched from the local store (are nullptr).
+  // Keeps track of the locations of the unready object IDs in the original list
+  // (accounting for duplicates).
   std::unordered_map<ObjectID, std::vector<int>> unready;
   for (size_t i = 0; i < ids.size(); i++) {
+    if ((*results)[i] != nullptr) {
+      continue;
+    }
     auto it = unready.find(ids[i]);
     if (it == unready.end()) {
       std::vector<int> v;
@@ -46,47 +53,45 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
   }
 
+  // If all objects were fetched in the first batch, return.
+  if (unready.empty()) {
+    return Status::OK();
+  }
+
+  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct and 
+  // Get from the local object store in batches. This loop will run indefinitely until the
+  // objects are all fetched if timeout is -1.
   int num_attempts = 0;
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
-  // Repeat until we get all objects.
+  int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   while (!unready.empty() && !should_break) {
     std::vector<ObjectID> unready_ids;
     for (const auto &entry : unready) {
+      if (unready_ids.size() == batch_size) {
+        break;
+      }
       unready_ids.push_back(entry.first);
     }
 
-    // For the initial fetch, we only fetch the objects, do not reconstruct them.
-    bool fetch_only = num_attempts == 0;
-    if (!fetch_only) {
-      // If fetch_only is false, this worker will be blocked.
-      was_blocked = true;
-    }
+    RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
 
-    // TODO(zhijunfu): can call `FetchOrReconstruct` in batches as an optimization.
-    RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
-
-    // Get the objects from the object store, and parse the result.
-    int64_t get_timeout;
+    int64_t timeout = std::max(
+		    RayConfig::instance().get_timeout_milliseconds(), int64_t(0.01 * unready.size()));
     if (remaining_timeout >= 0) {
-      get_timeout =
-          std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
-      remaining_timeout -= get_timeout;
+      timeout = std::min(remaining_timeout, timeout);
+      remaining_timeout -= timeout;
       should_break = remaining_timeout <= 0;
-    } else {
-      if (num_attempts == 0) {
-        get_timeout = 0;
-      } else {
-        get_timeout = RayConfig::instance().get_timeout_milliseconds();
-      }
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
-    RAY_RETURN_NOT_OK(
-        local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
+    RAY_RETURN_NOT_OK(local_store_provider_.Get(unready_ids, timeout, task_id, &result_objects));
 
+    // Add successfully retrieved objects to the result list and remove them from unready.
+    uint64_t successes = 0;
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
+        successes++;
         const auto &object_id = unready_ids[i];
         for (int idx : unready[object_id]) {
           (*results)[idx] = result_objects[i];
@@ -98,14 +103,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       }
     }
 
-    num_attempts += 1;
+    if (successes < unready_ids.size()) {
+      num_attempts += 1;
+    }
     WarnIfAttemptedTooManyTimes(num_attempts, unready);
   }
 
-  if (was_blocked) {
-    RAY_CHECK_OK(raylet_client_->NotifyUnblocked(task_id));
-  }
-
+  // Notify unblocked because we blocked when calling FetchOrReconstruct with fetch_only=false.
+  RAY_CHECK_OK(raylet_client_->NotifyUnblocked(task_id));
   return Status::OK();
 }
 
