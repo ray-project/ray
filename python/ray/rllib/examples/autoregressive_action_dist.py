@@ -31,7 +31,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument("--run", type=str, default="PPO")  # try PG, PPO, IMPALA
 parser.add_argument("--stop", type=int, default=200)
 
 
@@ -64,18 +64,20 @@ class CorrelatedActionsEnv(gym.Env):
 
 
 class BinaryAutoregressiveOutput(ActionDistribution):
-    """An autoregressive ActionDistribution class for two outputs."""
+    """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
     def sample(self):
+        # first, sample a1
         a1_dist = self._a1_distribution()
         a1 = a1_dist.sample()
+
+        # sample a2 conditioned on a1
         a2_dist = self._a2_distribution(a1)
         a2 = a2_dist.sample()
         self._action_prob = a1_dist.logp(a1) + a2_dist.logp(a2)
-        return TupleActions([a1, a2])
 
-    def sampled_action_prob(self):
-        return tf.exp(self._action_prob)
+        # return the action tuple
+        return TupleActions([a1, a2])
 
     def logp(self, actions):
         a1, a2 = actions[:, 0], actions[:, 1]
@@ -83,6 +85,9 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
         return (Categorical(a1_logits, None).logp(a1) + Categorical(
             a2_logits, None).logp(a2))
+
+    def sampled_action_prob(self):
+        return tf.exp(self._action_prob)
 
     def entropy(self):
         a1_dist = self._a1_distribution()
@@ -108,7 +113,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
 
 
 class AutoregressiveActionsModel(TFModelV2):
-    """Custom autoregressive model for policy gradient algorithms."""
+    """Implements the `.action_model` branch required above."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):

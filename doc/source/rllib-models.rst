@@ -233,24 +233,103 @@ Custom models can be used to work with environments where (1) the set of valid a
 
 Depending on your use case it may make sense to use just the masking, just action embeddings, or both. For a runnable example of this in code, check out `parametric_action_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__. Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``vf_share_layers=True``), and several other algorithms.
 
-Model-Based Rollouts
-~~~~~~~~~~~~~~~~~~~~
+Autoregressive Action Distributions
+-----------------------------------
 
-With a custom policy, you can also perform model-based rollouts and optionally incorporate the results of those rollouts as training data. For example, suppose you wanted to extend PGPolicy for model-based rollouts. This involves overriding the ``compute_actions`` method of that policy:
+In an action space with multiple components (e.g., ``Tuple(a1, a2)``), you might want ``a2`` to be conditioned on the sampled value of ``a1``, i.e., ``a2_sampled ~ P(a2 | a1_sampled, obs)``. Normally, ``a1`` and ``a2`` would be sampled independently, reducing the expressivity of the policy.
+
+To do this, you need both a custom model that implements the autoregressive pattern, and a custom action distribution class that leverages that model. The `autoregressive_action_dist.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/autoregressive_action_dist.py>`__ example shows how this can be implemented for a simple binary action space. For a more complex space, a more efficient architecture such as a `MADE <https://arxiv.org/abs/1502.03509>`__ is recommended. Note that sampling a `N-part` action requires `N` forward passes through the model, however computing the log probability of an action can be done in one pass:
 
 .. code-block:: python
 
-        class ModelBasedPolicy(PGPolicy):
-             def compute_actions(self,
-                                 obs_batch,
-                                 state_batches,
-                                 prev_action_batch=None,
-                                 prev_reward_batch=None,
-                                 episodes=None):
-                # compute a batch of actions based on the current obs_batch
-                # and state of each episode (i.e., for multiagent). You can do
-                # whatever is needed here, e.g., MCTS rollouts.
-                return action_batch
+    class BinaryAutoregressiveOutput(ActionDistribution):
+        """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
+        def sample(self):
+            # first, sample a1
+            a1_dist = self._a1_distribution()
+            a1 = a1_dist.sample()
 
-If you want take this rollouts data and append it to the sample batch, use the ``add_extra_batch()`` method of the `episode objects <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ passed in. For an example of this, see the ``testReturningModelBasedRolloutsData`` `unit test <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_multi_agent_env.py>`__.
+            # sample a2 conditioned on a1
+            a2_dist = self._a2_distribution(a1)
+            a2 = a2_dist.sample()
+            self._action_prob = a1_dist.logp(a1) + a2_dist.logp(a2)
+
+            # return the action tuple
+            return TupleActions([a1, a2])
+
+        def logp(self, actions):
+            a1, a2 = actions[:, 0], actions[:, 1]
+            a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
+            a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
+            return (Categorical(a1_logits, None).logp(a1) + Categorical(
+                a2_logits, None).logp(a2))
+
+        def _a1_distribution(self):
+            BATCH = tf.shape(self.inputs)[0]
+            a1_logits, _ = self.model.action_model(
+                [self.inputs, tf.zeros((BATCH, 1))])
+            a1_dist = Categorical(a1_logits, None)
+            return a1_dist
+
+        def _a2_distribution(self, a1):
+            a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
+            _, a2_logits = self.model.action_model([self.inputs, a1_vec])
+            a2_dist = Categorical(a2_logits, None)
+            return a2_dist
+
+    class AutoregressiveActionsModel(TFModelV2):
+        """Implements the `.action_model` branch required above."""
+
+        def __init__(self, obs_space, action_space, num_outputs, model_config,
+                     name):
+            super(AutoregressiveActionsModel, self).__init__(
+                obs_space, action_space, num_outputs, model_config, name)
+            if action_space != Tuple([Discrete(2), Discrete(2)]):
+                raise ValueError(
+                    "This model only supports the [2, 2] action space")
+
+            # Inputs
+            obs_input = tf.keras.layers.Input(
+                shape=obs_space.shape, name="obs_input")
+            a1_input = tf.keras.layers.Input(shape=(1, ), name="a1_input")
+            ctx_input = tf.keras.layers.Input(
+                shape=(num_outputs, ), name="ctx_input")
+
+            # Output of the model (normally 'logits', but for an autoregressive
+            # dist this is more like a context/feature layer encoding the obs)
+            context = tf.keras.layers.Dense(
+                num_outputs,
+                name="hidden",
+                activation=tf.nn.tanh,
+                kernel_initializer=normc_initializer(1.0))(obs_input)
+
+            # P(a1)
+            a1_logits = tf.keras.layers.Dense(
+                2,
+                name="a1_logits",
+                activation=None,
+                kernel_initializer=normc_initializer(0.01))(ctx_input)
+
+            # P(a2 | a1)
+            a2_hidden = tf.keras.layers.Dense(
+                16,
+                name="a2_hidden",
+                activation=tf.nn.tanh,
+                kernel_initializer=normc_initializer(1.0))(a1_input)
+            a2_logits = tf.keras.layers.Dense(
+                2,
+                name="a2_logits",
+                activation=None,
+                kernel_initializer=normc_initializer(0.01))(a2_hidden)
+
+            # Base layers
+            self.base_model = tf.keras.Model(obs_input, context)
+            self.register_variables(self.base_model.variables)
+            self.base_model.summary()
+
+            # Autoregressive action sampler
+            self.action_model = tf.keras.Model([ctx_input, a1_input],
+                                               [a1_logits, a2_logits])
+            self.action_model.summary()
+            self.register_variables(self.action_model.variables)

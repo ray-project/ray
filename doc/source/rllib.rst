@@ -49,6 +49,7 @@ Models and Preprocessors
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
+* `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
 Algorithms
 ----------
