@@ -253,7 +253,6 @@ To do this, you need both a custom model that implements the autoregressive patt
             # sample a2 conditioned on a1
             a2_dist = self._a2_distribution(a1)
             a2 = a2_dist.sample()
-            self._action_prob = a1_dist.logp(a1) + a2_dist.logp(a2)
 
             # return the action tuple
             return TupleActions([a1, a2])
