@@ -414,9 +414,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ASSERT_EQ(handle1.NumForks(), handle2.NumForks());
 }
 
-
 TEST_F(ZeroNodeTest, TestMemoryStoreProviderEviction) {
-
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(1000);
   CoreWorkerMemoryStoreProvider provider(memory_store);
 
@@ -424,8 +422,8 @@ TEST_F(ZeroNodeTest, TestMemoryStoreProviderEviction) {
 
   std::vector<RayObject> buffers;
   for (int i = 0; i < 10; i++) {
-    buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(
-        value.data(), value.size()), nullptr);
+    buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(value.data(), value.size()),
+                         nullptr);
   }
 
   // Now `buffers` holds 10 `RayObject`s each with size 100.
@@ -456,8 +454,8 @@ TEST_F(ZeroNodeTest, TestMemoryStoreProviderEviction) {
   }
 
   std::vector<uint8_t> new_value(350, 2);
-  auto new_buffer = RayObject(std::make_shared<LocalMemoryBuffer>(
-      new_value.data(), new_value.size()), nullptr);
+  auto new_buffer = RayObject(
+      std::make_shared<LocalMemoryBuffer>(new_value.data(), new_value.size()), nullptr);
   RAY_CHECK_OK(provider.Put(new_buffer, ObjectID::FromRandom()));
 
   // Try to get these 10 objects with a timeout.

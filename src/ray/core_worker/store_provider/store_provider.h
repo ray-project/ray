@@ -17,19 +17,19 @@ class RayObject {
   /// \param[in] metadata Metadata of the ray object.
   /// \param[in] copy_data Whether this class should hold a copy of data.
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-      bool copy_data = false)
+            bool copy_data = false)
       : data_(data), metadata_(metadata), has_data_copy_(copy_data) {
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
       if (data_ && !data_->HasDataCopy()) {
-        data_ = std::make_shared<LocalMemoryBuffer>(
-            data_->Data(), data_->Size(), /* should_copy=*/ true);
+        data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(), data_->Size(),
+                                                    /* should_copy=*/true);
       }
 
       if (metadata_ && !metadata_->HasDataCopy()) {
         metadata_ = std::make_shared<LocalMemoryBuffer>(
-            metadata_->Data(), metadata_->Size(), /* should_copy=*/ true);
+            metadata_->Data(), metadata_->Size(), /* should_copy=*/true);
       }
     }
   }

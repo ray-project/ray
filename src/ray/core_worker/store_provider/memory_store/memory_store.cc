@@ -1,9 +1,9 @@
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include <condition_variable>
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/object_interface.h"
-#include <condition_variable>
+#include "ray/core_worker/store_provider/memory_store_provider.h"
 
 namespace ray {
 
@@ -13,11 +13,9 @@ class ReferencedRayObject : public RayObject {
  public:
   ~ReferencedRayObject();
 
-  ReferencedRayObject(
-      std::shared_ptr<CoreWorkerMemoryStore> provider,
-      const ObjectID &object_id,
-      std::shared_ptr<RayObject> object)
-      : RayObject(object->GetData(), object->GetMetadata(), /* should_copy=*/ true),
+  ReferencedRayObject(std::shared_ptr<CoreWorkerMemoryStore> provider,
+                      const ObjectID &object_id, std::shared_ptr<RayObject> object)
+      : RayObject(object->GetData(), object->GetMetadata(), /* should_copy=*/true),
         provider_(provider),
         object_id_(object_id) {}
 
@@ -28,22 +26,19 @@ class ReferencedRayObject : public RayObject {
 
 ReferencedRayObject::~ReferencedRayObject() { provider_->Release(object_id_); }
 
-
-ObjectEntry::ObjectEntry(
-    const ObjectID &object_id, const RayObject &object)
+ObjectEntry::ObjectEntry(const ObjectID &object_id, const RayObject &object)
     : object_id_(object_id),
-      object_(std::make_shared<RayObject>(
-          object.GetData(), object.GetMetadata(), /* copy_data */ true)),
+      object_(std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
+                                          /* copy_data */ true)),
       refcnt_(0) {}
 
 std::shared_ptr<ReferencedRayObject> ObjectEntry::CreateReferencedObject(
     std::shared_ptr<CoreWorkerMemoryStore> provider) {
   // Get a shared_ptr reference RayObject, which will automatically
-  // release the refcnt when it destructs, so we increase the refcnt here.       
+  // release the refcnt when it destructs, so we increase the refcnt here.
   IncreaseRefcnt();
   provider->cache_.Remove(object_id_);
-  return std::make_shared<ReferencedRayObject>(
-      provider, object_id_, object_);
+  return std::make_shared<ReferencedRayObject>(provider, object_id_, object_);
 }
 
 /// A class that represents a `Get` or `Wait` reuquest.
@@ -62,7 +57,7 @@ class GetOrWaitRequest {
   /// Whether this is a `get` request.
   bool IsGetRequest() const;
 
- private: 
+ private:
   /// Wait until all requested objects are available.
   void Wait();
 
@@ -79,17 +74,12 @@ class GetOrWaitRequest {
   std::condition_variable cv_;
 };
 
-GetOrWaitRequest::GetOrWaitRequest(
-    const std::vector<ObjectID> &object_ids, bool is_get)
-  : object_ids_(object_ids), is_get_(is_get) {}
+GetOrWaitRequest::GetOrWaitRequest(const std::vector<ObjectID> &object_ids, bool is_get)
+    : object_ids_(object_ids), is_get_(is_get) {}
 
-const std::vector<ObjectID> &GetOrWaitRequest::ObjectIds() const {
-  return object_ids_;
-}
+const std::vector<ObjectID> &GetOrWaitRequest::ObjectIds() const { return object_ids_; }
 
-bool GetOrWaitRequest::IsGetRequest() const {
-  return is_get_;
-}
+bool GetOrWaitRequest::IsGetRequest() const { return is_get_; }
 
 bool GetOrWaitRequest::Wait(int64_t timeout_ms) {
   if (timeout_ms < 0) {
@@ -101,8 +91,7 @@ bool GetOrWaitRequest::Wait(int64_t timeout_ms) {
   // Wait until the object is ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
   while (!is_ready_) {
-    auto status = cv_.wait_for(lock,
-        std::chrono::milliseconds(timeout_ms));
+    auto status = cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms));
     if (status == std::cv_status::timeout) {
       return false;
     }
@@ -126,8 +115,7 @@ void GetOrWaitRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject>
   }
 }
 
-std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) const
-{
+std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) const {
   std::unique_lock<std::mutex> lock(mutex_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
@@ -137,7 +125,7 @@ std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) cons
   return nullptr;
 }
 
-void EvictionCache::Add(const ObjectID& key, uint64_t size) {
+void EvictionCache::Add(const ObjectID &key, uint64_t size) {
   auto it = item_map_.find(key);
   RAY_CHECK(it == item_map_.end());
   // Note that it is important to use a list so the iterators stay valid.
@@ -145,7 +133,7 @@ void EvictionCache::Add(const ObjectID& key, uint64_t size) {
   item_map_.emplace(key, item_list_.begin());
 }
 
-void EvictionCache::Remove(const ObjectID& key) {
+void EvictionCache::Remove(const ObjectID &key) {
   auto it = item_map_.find(key);
   if (it == item_map_.end()) {
     return;
@@ -156,7 +144,7 @@ void EvictionCache::Remove(const ObjectID& key) {
 }
 
 uint64_t EvictionCache::ChooseObjectsToEvict(uint64_t num_bytes_required,
-                                       std::vector<ObjectID>* objects_to_evict) {
+                                             std::vector<ObjectID> *objects_to_evict) {
   uint64_t bytes_evicted = 0;
   auto it = item_list_.end();
   while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
@@ -166,7 +154,6 @@ uint64_t EvictionCache::ChooseObjectsToEvict(uint64_t num_bytes_required,
   }
   return bytes_evicted;
 }
-
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(uint64_t max_size)
     : max_size_(max_size), total_size_(0) {}
@@ -181,12 +168,11 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   // Check if adding this object is allowed.
   if (object.GetSize() + total_size_ > max_size_) {
     std::vector<ObjectID> objects_to_evict;
-    auto evicted_bytes = cache_.ChooseObjectsToEvict(
-        object.GetSize(), &objects_to_evict);
+    auto evicted_bytes = cache_.ChooseObjectsToEvict(object.GetSize(), &objects_to_evict);
     for (const auto &id : objects_to_evict) {
       RAY_UNUSED(DeleteObjectImpl(id));
     }
-    
+
     if (evicted_bytes < object.GetSize()) {
       return Status::OutOfMemory("out of memory");
     }
@@ -196,27 +182,27 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   cache_.Add(object_id, object.GetSize());
   total_size_ += object.GetSize();
 
-  auto entry = std::unique_ptr<ObjectEntry>(
-      new ObjectEntry(object_id, object));
+  auto entry = std::unique_ptr<ObjectEntry>(new ObjectEntry(object_id, object));
   objects_.emplace(object_id, std::move(entry));
 
   auto object_request_iter = object_get_requests_.find(object_id);
   if (object_request_iter != object_get_requests_.end()) {
-    auto& get_requests = object_request_iter->second;
+    auto &get_requests = object_request_iter->second;
     for (auto &get_req : get_requests) {
-      auto& object_entry = objects_[object_id];
-      auto object_buffer = get_req->IsGetRequest() ?
-          object_entry->CreateReferencedObject(shared_from_this()) :
-          object_entry->GetObject();
+      auto &object_entry = objects_[object_id];
+      auto object_buffer = get_req->IsGetRequest()
+                               ? object_entry->CreateReferencedObject(shared_from_this())
+                               : object_entry->GetObject();
       get_req->Set(object_id, object_buffer);
     }
   }
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStore::GetOrWait(
-    const std::vector<ObjectID> &object_ids, int64_t timeout_ms, 
-    std::vector<std::shared_ptr<RayObject>> *results, bool is_get) {
+Status CoreWorkerMemoryStore::GetOrWait(const std::vector<ObjectID> &object_ids,
+                                        int64_t timeout_ms,
+                                        std::vector<std::shared_ptr<RayObject>> *results,
+                                        bool is_get) {
   (*results).resize(object_ids.size(), nullptr);
   std::vector<ObjectID> remaining_ids;
 
@@ -229,9 +215,9 @@ Status CoreWorkerMemoryStore::GetOrWait(
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
-        auto object_buffer = is_get ?
-            iter->second->CreateReferencedObject(shared_from_this()) :
-            iter->second->GetObject();
+        auto object_buffer =
+            is_get ? iter->second->CreateReferencedObject(shared_from_this())
+                   : iter->second->GetObject();
         (*results)[i] = object_buffer;
       } else {
         remaining_ids.emplace_back(object_id);
@@ -267,7 +253,7 @@ Status CoreWorkerMemoryStore::GetOrWait(
     for (const auto &object_id : get_request->ObjectIds()) {
       auto object_request_iter = object_get_requests_.find(object_id);
       if (object_request_iter != object_get_requests_.end()) {
-        auto& get_requests = object_request_iter->second;
+        auto &get_requests = object_request_iter->second;
         // Erase get_req from the vector.
         auto it = std::find(get_requests.begin(), get_requests.end(), get_request);
         if (it != get_requests.end()) {
@@ -284,15 +270,15 @@ Status CoreWorkerMemoryStore::GetOrWait(
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStore::Get(
-    const std::vector<ObjectID> &object_ids, int64_t timeout_ms, 
-    std::vector<std::shared_ptr<RayObject>> *results) {
+Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
+                                  int64_t timeout_ms,
+                                  std::vector<std::shared_ptr<RayObject>> *results) {
   return GetOrWait(object_ids, timeout_ms, results, /* is_get */ true);
 }
 
 Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &object_ids,
-                                                 int num_objects, int64_t timeout_ms,
-                                                 std::vector<bool> *results) {
+                                   int num_objects, int64_t timeout_ms,
+                                   std::vector<bool> *results) {
   if (num_objects != object_ids.size()) {
     return Status::Invalid("num_objects should equal to number of items in object_ids");
   }

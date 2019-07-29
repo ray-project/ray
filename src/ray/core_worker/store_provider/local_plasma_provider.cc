@@ -86,8 +86,8 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
       continue;
     }
 
-    (*results)[i] = objects[i]->GetData() != nullptr ||
-        objects[i]->GetMetadata() != nullptr;
+    (*results)[i] =
+        objects[i]->GetData() != nullptr || objects[i]->GetMetadata() != nullptr;
   }
 
   return Status::OK();

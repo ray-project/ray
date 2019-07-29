@@ -5,8 +5,8 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
 
@@ -38,7 +38,6 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
                 bool delete_creating_tasks = false) override;
 
  private:
-
   /// Implementation.
   std::shared_ptr<CoreWorkerMemoryStore> store_;
 };

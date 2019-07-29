@@ -8,7 +8,6 @@
 
 namespace ray {
 
-
 class ReferencedRayObject;
 class GetOrWaitRequest;
 class CoreWorkerMemoryStore;
@@ -17,7 +16,7 @@ class CoreWorkerMemoryStore;
 class ObjectEntry {
  public:
   ObjectEntry(const ObjectID &object_id, const RayObject &object);
-  
+
   std::shared_ptr<RayObject> GetObject() const { return object_; }
   int IncreaseRefcnt() { return ++refcnt_; }
   int DecreaseRefcnt() { return --refcnt_; }
@@ -25,6 +24,7 @@ class ObjectEntry {
 
   std::shared_ptr<ReferencedRayObject> CreateReferencedObject(
       std::shared_ptr<CoreWorkerMemoryStore> provider);
+
  private:
   const ObjectID object_id_;
   std::shared_ptr<RayObject> object_;
@@ -37,12 +37,12 @@ class EvictionCache {
  public:
   EvictionCache() {}
 
-  void Add(const ObjectID& key, uint64_t size);
+  void Add(const ObjectID &key, uint64_t size);
 
-  void Remove(const ObjectID& key);
+  void Remove(const ObjectID &key);
 
   uint64_t ChooseObjectsToEvict(uint64_t num_bytes_required,
-                               std::vector<ObjectID>* objects_to_evict);
+                                std::vector<ObjectID> *objects_to_evict);
 
  private:
   /// A doubly-linked list containing the items in the cache.
@@ -56,25 +56,23 @@ class EvictionCache {
 /// The class provides implementations for local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
 /// actor call (see direct_actor_transport.cc).
-class CoreWorkerMemoryStore :
-    public std::enable_shared_from_this<CoreWorkerMemoryStore> {
+class CoreWorkerMemoryStore : public std::enable_shared_from_this<CoreWorkerMemoryStore> {
  public:
   CoreWorkerMemoryStore(uint64_t max_size);
-  ~CoreWorkerMemoryStore() {};
+  ~CoreWorkerMemoryStore(){};
 
   Status Put(const RayObject &object, const ObjectID &object_id);
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, 
+  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
-  Status Wait(const std::vector<ObjectID> &object_ids,
-              int num_objects, int64_t timeout_ms,
-              std::vector<bool> *results);
+  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+              int64_t timeout_ms, std::vector<bool> *results);
   void Release(const ObjectID &object_id);
   void Delete(const std::vector<ObjectID> &object_ids);
+
  private:
   Status DeleteObjectImpl(const ObjectID &object_id);
   Status GetOrWait(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-                   std::vector<std::shared_ptr<RayObject>> *results,
-                   bool is_get);
+                   std::vector<std::shared_ptr<RayObject>> *results, bool is_get);
 
   const uint64_t max_size_;
 
@@ -83,7 +81,8 @@ class CoreWorkerMemoryStore :
   uint64_t total_size_;
 
   std::unordered_map<ObjectID, std::unique_ptr<ObjectEntry>> objects_;
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetOrWaitRequest>>> object_get_requests_;
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetOrWaitRequest>>>
+      object_get_requests_;
 
   EvictionCache cache_;
 
