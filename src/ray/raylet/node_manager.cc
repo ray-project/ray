@@ -1,7 +1,6 @@
 #include "ray/raylet/node_manager.h"
 
 #include <fstream>
-#include <sstream>
 
 #include "ray/common/status.h"
 
@@ -767,11 +766,10 @@ template <typename Request>
 bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
                                     const std::string &request_name,
                                     const Request &request) {
-  std::ostringstream string_stream;
-  string_stream << "Received a " << request_name << " request. Worker id "
-                << worker_id.Hex() << ".";
+  RAY_LOG(DEBUG) << "Received a " << request_name << " request. Worker id "
+                 << worker_id.Hex() << ".";
   // NOTE(Joey Jiang): We check heartbeat actively because the heartbeats' callback won't
-  // be invoked until all the post requests in the grpc server have been finished.
+  // be invoked until all the posted requests in the io_service have been finished.
   // The raylet might be marked as dead due to missing heartbeats when too many requests
   // are sent to this raylet.
   int64_t expiry_delay =
@@ -790,21 +788,18 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
   auto worker = rt.first;
   // Worker process has been killed, we should discard this request.
   if (!worker) {
-    string_stream << " Worker is not found in worker pool, request will be discarded.";
-    RAY_LOG(WARNING) << string_stream.str();
+    RAY_LOG(WARNING) << " Worker is not found in worker pool, request will be discarded.";
     return false;
   }
-  string_stream << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
-                << std::to_string(worker->Pid()) << ".";
+  RAY_LOG(DEBUG) << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
+                 << std::to_string(worker->Pid()) << ".";
 
   // The worker process is being killing, we should discard this request.
   if (worker->IsBeingKilled()) {
-    string_stream << " Worker process is being killed, request will be discarded.";
-    RAY_LOG(INFO) << string_stream.str();
+    RAY_LOG(INFO) << " Worker process is being killed, request will be discarded.";
     return false;
   }
 
-  RAY_LOG(DEBUG) << string_stream.str();
   return true;
 }
 
