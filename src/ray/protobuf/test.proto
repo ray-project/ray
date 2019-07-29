@@ -3,7 +3,6 @@ syntax = "proto3";
 package ray.rpc;
 
 /// Messages defined in this file are only used for grpc test.
-
 message DebugEchoRequest {
   // Request messsage.
   string request_message = 1;

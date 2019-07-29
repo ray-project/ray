@@ -6,7 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/client_call_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/test.grpc.pb.h"
 #include "src/ray/protobuf/test.pb.h"
@@ -30,20 +30,19 @@ class DebugTestClient {
     stub_ = DebugEchoService::NewStub(channel);
   };
 
-  /// Forward a task and its uncommitted lineage.
+  /// Send an echo message and expect for a reply message.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   Status DebugEcho(const DebugEchoRequest &request,
                    const ClientCallback<DebugEchoReply> &callback) {
-    auto call = client_call_manager_
-                    .CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+    auto call = client_call_manager_.CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
                         *stub_, &DebugEchoService::Stub::PrepareAsyncDebugEcho, request,
                         callback);
     return call->GetStatus();
   }
 
-  void StartEchoStream(const ClientCallback<Reply> &callback) {
+  void StartEchoStream(const ClientCallback<DebugEchoReply> &callback) {
     debug_stream_call_ =
         client_call_manager_
             .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
@@ -65,8 +64,7 @@ class DebugTestClient {
   ClientCallManager &client_call_manager_;
 
   /// The call for stream.
-  std::shared_ptr<ClientCall<DebugEchoRequest, DebugEchoReply>> debug_stream_call_ =
-      nullptr;
+  std::shared_ptr<ClientCall> debug_stream_call_ = nullptr;
 };
 
 }  // namespace rpc

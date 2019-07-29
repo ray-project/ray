@@ -4,7 +4,6 @@
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
 #include <grpcpp/grpcpp.h>
-
 #include "status.h"
 
 namespace ray {
@@ -71,6 +70,17 @@ template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedField<T> &pb_repeated) {
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
+}
+
+template <typename Message>
+using AddFunction = void (Message::*)(const ::std::string &value);
+/// Add a vector of type ID to protobuf message.
+template <typename ID, typename Message>
+inline void IdVectorToProtobuf(const std::vector<ID> &ids, Message &message,
+                               AddFunction<Message> add_func) {
+  for (const auto &id : ids) {
+    (message.*add_func)(id.Binary());
+  }
 }
 
 /// Converts a Protobuf `RepeatedField` to a vector of IDs.

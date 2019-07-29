@@ -42,7 +42,8 @@ class NodeManagerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+          *server_call_factories_and_concurrencies,
+          std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories) override {
     // Initialize the factory for `ForwardTask` requests.
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,

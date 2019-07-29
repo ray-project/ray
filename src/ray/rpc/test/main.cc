@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
-#include "src/ray/rpc/test/test_client.h"
-#include "src/ray/rpc/test/test_server.h"
+#include "ray/rpc/test/test_client.h"
+#include "ray/rpc/test/test_server.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -10,14 +10,15 @@
 #include <thread>
 #include <vector>
 
-using ray::rpc;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using std::cout;
+using std::endl;
 
 string GenerateMessage(const string &hdr, int idx) {
- return hdr + "-idx-" + std::to_string(idx));
+ return hdr + "-idx-" + std::to_string(idx);
 }
 
 bool VerifyMessage(const string &msg, const string &hdr, int idx) {
@@ -31,7 +32,9 @@ int GetIndex(const string &str) {
   int idx = -1;
   int pos = str.find("-idx-");
   if (pos != string::npos) {
-    idx = std::atoi(string(str.begin() + pos + 5));
+    string idx_str;
+    idx_str.assign(str.begin() + pos + 5, str.end());
+    idx = std::stoi(idx_str);
   }
   return idx;
 }
@@ -42,44 +45,55 @@ namespace rpc {
 // Server handlers for test service.
 class ServiceHandlers : public TestServiceHandler {
  public:
-  void DebugEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
-                 SendReplyCallback send_reply_callback) {
+  void HandleDebugEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
+                 SendReplyCallback send_reply_callback) override {
     cout << "Received request in DebugEcho, msg " << request.request_message() << endl;
     reply->set_reply_message("Reply for DebugEcho.");
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 
-  void DebugStreamEcho(const DebugEchoRequest &request,
-                       std::shared_ptr<ServerAsyncReaderWriter<DebugEchoRequest, DebugEchoReply>> server_stream) {
-    auto string &str = request.request_message();
+  void HandleDebugStreamEcho(const DebugEchoRequest &request,
+                            StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_writer) override {
+    const string &str = request.request_message();
     int idx = GetIndex(str);
     if (idx % 2 == 0) {
       DebugEchoReply reply;
-      reply->set_reply_message(GenerateMessage("StreamReplyMessage", idx));
-      server_stream->Write(reply);
+      reply.set_reply_message(GenerateMessage("StreamReplyMessage", idx));
+      stream_writer.Write(reply);
     }
     cout << "Received request in DebugStreamEcho, msg " << request.request_message()
          << endl;
   }
 
- private:
-}
+};
 
 class GrpcTest : public ::testing::Test {
  public:
-  GrpcTest() {}
+  GrpcTest() : work_(io_service_),
+      client_call_manager_(io_service_), service_(io_service_, service_handlers_) {}
 
   ~GrpcTest() {}
 
   void SetUp() {
+    server_thread_.reset(new std::unique_ptr<std::thread>>([this](){
+      io_service_.run();
+    }));
     server_.reset(new GrpcServer("DebugTestServer", 12345));
     server_->RegisterService(service_);
     server_->Run();
   }
 
-  void TearDown() { server_.reset(); }
+  void TearDown() {
+    server_.reset();
+    io_service_.stop();
+    server_thread_->join();
+    server_thread_.reset();
+  }
 
- private:
+ protected:
+  boost::asio::io_service io_service_;
+  boost::asio::io_serivce::work work_;
+  std::unique_ptr<std::thread> server_thread_;
   unique_ptr<GrpcServer> server_;
   ClientCallManager client_call_manager_;
   ServiceHandlers service_handlers_;

@@ -41,8 +41,7 @@ class ClientCall {
 
   /// Interfaces only for stream async call.
  public:
-  template <class Request>
-  virtual void WriteStream(const Request &request) = 0;
+  virtual void WriteStream(::google::protobuf::Message &request) = 0;
 
   virtual void WritesDone() = 0;
 
@@ -130,7 +129,7 @@ class ClientStreamCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback)
-      : callback_(callback), is_reading_(false) {}
+      : callback_(callback) {}
 
   void Connect(typename GrpcService::Stub &stub,
                const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
@@ -147,7 +146,7 @@ class ClientStreamCallImpl : public ClientCall {
     client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
   }
 
-  void WriteStream(const Request &request) {
+  void WriteStream(::google::protobuf::Message &request) {
     state_ = ClientCallState::WRITE;
     client_stream_->Write(request, reinterpret_cast<void *>(tag_));
   }

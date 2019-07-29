@@ -38,11 +38,14 @@ class ClientCallManager {
   explicit ClientCallManager(boost::asio::io_service &main_service)
       : main_service_(main_service) {
     // Start the polling thread.
-    std::thread polling_thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
-    polling_thread.detach();
+    polling_thread_ =
+        std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
   }
 
-  ~ClientCallManager() { cq_.Shutdown(); }
+  ~ClientCallManager() {
+    cq_.Shutdown();
+    polling_thread_.join();
+  }
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -58,11 +61,11 @@ class ClientCallManager {
   ///
   /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
-  std::shared_ptr<ClientCall<Request, Reply>> CreateCall(
+  std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
-    auto call = std::make_shared<ClientCallImpl<Request, Reply>>(callback);
+    auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
     // Send request.
     call->response_reader_ =
         (stub.*prepare_async_function)(&call->context_, request, &cq_);
@@ -86,10 +89,11 @@ class ClientCallManager {
       const ClientCallback<Reply> &callback) {
     auto call =
         std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
+    auto tag = new ClientCallTag(call);
+    // Should set tag before connect because the tag will be set into completion queue in connect function.
+    call->SetClientCallTag(tag);
     // Setup connection with remote server.
     call->Connect(stub, async_rpc_function, &cq_);
-    auto tag = new ClientCallTag(call);
-    call->SetClientCallTag(tag);
     return call;
   }
 
@@ -117,26 +121,25 @@ class ClientCallManager {
           if (tag->GetCall()->IsReadingStream()) {
             main_service_.post([tag]() { tag->GetCall()->OnReplyReceived(); });
           } else {
-            switch
-              type {
-              case ClientCallType::CREATE:
-                cout << "Client call create.";
+            switch(state) {
+              case ClientCallState::CREATE:
+                RAY_LOG(INFO) << "Client call create.";
                 break;
-              case ClientCallType::CONNECT:
-                cout << "Client call connect.";
+              case ClientCallState::CONNECT:
+                RAY_LOG(INFO) << "Client call connect.";
                 break;
-              case ClientCallType::WRITE:
-                cout << "Client call write.";
+              case ClientCallState::WRITE:
+                RAY_LOG(INFO) << "Client call write.";
                 break;
-              case ClientCallType::WRITES_DONE:
-                cout << "Client call writes done.";
+              case ClientCallState::WRITES_DONE:
+                RAY_LOG(INFO) << "Client call writes done.";
                 break;
-              case ClientCallType::FINISH:
-                cout << "Client call finish.";
+              case ClientCallState::FINISH:
+                RAY_LOG(INFO) << "Client call finish.";
                 delete tag;
                 break;
-              case default:
-                cout << "Should not reach here.";
+              default:
+                RAY_LOG(INFO) << "Should not reach here.";
                 break;
               }
           }
@@ -152,6 +155,9 @@ class ClientCallManager {
 
   /// The gRPC `CompletionQueue` object used to poll events.
   grpc::CompletionQueue cq_;
+
+  /// Polling thread to check the completion queue.
+  std::thread polling_thread_;
 };
 
 }  // namespace rpc

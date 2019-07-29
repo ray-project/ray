@@ -24,7 +24,7 @@ class CartPoleStatelessEnv(gym.Env):
         "video.frames_per_second": 60
     }
 
-    def __init__(self):
+    def __init__(self, config=None):
         self.gravity = 9.8
         self.masscart = 1.0
         self.masspole = 0.1

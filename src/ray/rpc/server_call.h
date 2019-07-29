@@ -2,6 +2,7 @@
 #define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -231,9 +232,23 @@ class ServerCallImpl : public ServerCall {
   friend class ServerCallFactoryImpl;
 };
 
+template <class Request, class Reply>
+class StreamReplyWriter {
+ public:
+  StreamReplyWriter(std::shared_ptr<grpc::ServerAsyncReaderWriter<Request,Reply>> server_stream,
+                          ServerCall *server_call)
+    : server_stream_(server_stream), server_call_(server_call) {}
+  void Write(const Reply &reply) {
+    server_stream_.Write(reply, reinterpret_cast<void*>(server_call_));
+  }
+ private:
+  std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream_;
+  const ServerCall* server_call_;
+};
+
 template <class ServiceHandler, class Request, class Reply>
 using HandleStreamRequestFunction = void (ServiceHandler::*)(
-    const Request &, std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>>);
+    const Request &, StreamReplyWriter<Request, Reply> &);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a stream type rpc.
 ///
@@ -259,7 +274,8 @@ class ServerStreamCallImpl : public ServerCall {
         service_handler_(service_handler),
         handle_stream_request_function_(handle_stream_request_function),
         server_stream_(std::make_shared<Request, Reply>(&context_)),
-        io_service_(io_service) {
+        io_service_(io_service),
+        stream_reply_writer_(server_stream_, this) {
     // This is important as the server should know when the client is done.
     context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(this));
     AsyncReadNextRequest();
@@ -320,6 +336,8 @@ class ServerStreamCallImpl : public ServerCall {
 
   /// The reply message.
   Reply reply_;
+
+  StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;

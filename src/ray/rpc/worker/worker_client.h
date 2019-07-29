@@ -6,7 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/client_call_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/worker.grpc.pb.h"
 #include "src/ray/protobuf/worker.pb.h"
@@ -37,8 +37,7 @@ class WorkerTaskClient {
   /// \return if the rpc call succeeds
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) {
-    auto call = client_call_manager_
-                    .CreateCall<WorkerTaskService, AssignTaskRequest, AssignTaskReply>(
+    auto call = client_call_manager_.CreateCall<WorkerTaskService, AssignTaskRequest, AssignTaskReply>(
                         *stub_, &WorkerTaskService::Stub::PrepareAsyncAssignTask, request,
                         callback);
     return call->GetStatus();

@@ -4,8 +4,8 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 
-#include "src/ray/protobuf/node_manager.grpc.pb.h"
-#include "src/ray/protobuf/node_manager.pb.h"
+#include "src/ray/protobuf/test.grpc.pb.h"
+#include "src/ray/protobuf/test.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -19,7 +19,7 @@ class TestServiceHandler {
   /// Handle `DebugStreamEcho` requests.
   virtual void HandleDebugStreamEcho(
       const DebugEchoRequest &request,
-      std::shared_ptr<ServerAsyncReaderWriter<DebugEchoRequest, DebugEchoReply>>) = 0;
+      StreamReplyWriter<DebugEchoRequest, DebugEchoReply>& stream_reply_writer) = 0;
 };
 
 /// The `GrpcService` for `TestService`.
@@ -38,7 +38,8 @@ class TestService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+          *server_call_factories_and_concurrencies,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_stream_call_factories) override {
     // Initialize the factory for `DebugEcho` requests.
     std::unique_ptr<ServerCallFactory> debug_echo_call_factory(
         new ServerCallFactoryImpl<DebugEchoService, TestServiceHandler, DebugEchoRequest,
@@ -53,11 +54,11 @@ class TestService : public GrpcService {
     std::unique_ptr<ServerCallFactory> debug_stream_echo_call_factory(
         new ServerStreamCallFactoryImpl<DebugEchoService, TestServiceHandler,
                                         DebugEchoRequest, DebugEchoReply>(
-            service_, &DebugStreamEchoService::AsyncService::RequestDebugStreamEcho,
+            service_, &DebugEchoService::AsyncService::RequestDebugStreamEcho,
             service_handler_, &TestServiceHandler::HandleDebugStreamEcho, cq,
             main_service_));
     // Set `DebugStreamEcho`'s accept concurrency.
-    server_stream_call_factories_->emplace_back(
+    server_stream_call_factories->emplace_back(
         std::move(debug_stream_echo_call_factory));
   }
 
