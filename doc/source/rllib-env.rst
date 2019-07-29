@@ -29,6 +29,9 @@ MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
 .. _`+RNN`: rllib-models.html#recurrent-models
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
 
+Configuring Environments
+------------------------
+
 You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
@@ -70,9 +73,6 @@ For a full runnable code example using the custom environment API, see `custom_e
 .. warning::
 
    The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
-
-Configuring Environments
-------------------------
 
 In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your trainer. You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
 
