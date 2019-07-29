@@ -1,6 +1,7 @@
 #include "ray/raylet/node_manager.h"
 
 #include <fstream>
+#include <sstream>
 
 #include "ray/common/status.h"
 
@@ -354,10 +355,9 @@ void NodeManager::Heartbeat() {
   heartbeat_timer_.expires_from_now(heartbeat_period_);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
-      RAY_LOG(INFO) << "Timer has been cancelled. Maybe the timer was delayed due to "
-                       "lots of post events and we have reset the heartbeat.";
       return;
     }
+    RAY_CHECK(!error);
     Heartbeat();
   });
 }
@@ -754,20 +754,22 @@ std::pair<std::shared_ptr<Worker>, bool> NodeManager::GetWorker(
   return std::make_pair(worker, is_worker);
 }
 
-#define PREPROCESS_REQUEST(REQUEST_TYPE)                                            \
-  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());                   \
-  do {                                                                              \
-    if (!PreprocessRequest<rpc::REQUEST_TYPE>(worker_id, #REQUEST_TYPE, request)) { \
-      return;                                                                       \
-    }                                                                               \
+#define PREPROCESS_REQUEST(REQUEST_TYPE, REQUEST)                          \
+  WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());          \
+  do {                                                                     \
+    if (!PreprocessRequest<rpc::REQUEST_TYPE>(worker_id, #REQUEST_TYPE)) { \
+      return;                                                              \
+    }                                                                      \
   } while (0)
 
 template <typename Request>
 bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
-                                    const std::string &request_name,
-                                    const Request &request) {
-  RAY_LOG(DEBUG) << "Received a " << request_name << " request. Worker id "
-                 << worker_id.Hex() << ".";
+                                    const std::string &request_name) {
+  std::ostringstream oss;
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    oss << "Received a " << request_name << " request. Worker id " << worker_id.Hex()
+        << ".";
+  }
   // NOTE(Joey Jiang): We check heartbeat actively because the heartbeats' callback won't
   // be invoked until all the posted requests in the io_service have been finished.
   // The raylet might be marked as dead due to missing heartbeats when too many requests
@@ -781,6 +783,8 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
   // Timer's callback hasn't been called on the desired time.
   if (expiry_delay > expiry_delay_limit) {
     heartbeat_timer_.cancel();
+    RAY_LOG(WARNING) << "Timer has been cancelled. Maybe the timer was delayed due to "
+                        "lots of post events and we have reset the heartbeat.";
     Heartbeat();
   }
 
@@ -791,12 +795,16 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
     RAY_LOG(WARNING) << " Worker is not found in worker pool, request will be discarded.";
     return false;
   }
-  RAY_LOG(DEBUG) << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
-                 << std::to_string(worker->Pid()) << ".";
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    oss << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
+        << std::to_string(worker->Pid()) << ".";
+    RAY_LOG(DEBUG) << oss.str();
+  }
 
   // The worker process is being killing, we should discard this request.
   if (worker->IsBeingKilled()) {
-    RAY_LOG(INFO) << " Worker process is being killed, request will be discarded.";
+    RAY_LOG(INFO) << "Worker " << worker_id
+                  << " is being killed, request will be discarded.";
     return false;
   }
 
@@ -886,7 +894,7 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::GetTaskReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(GetTaskRequest);
+  PREPROCESS_REQUEST(GetTaskRequest, request);
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
 
   RAY_CHECK(!worker->UsePush());
@@ -898,7 +906,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
 void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
                                         rpc::TaskDoneReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(TaskDoneRequest);
+  PREPROCESS_REQUEST(TaskDoneRequest, request);
   auto worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker && worker->UsePush());
   HandleWorkerAvailable(worker_id);
@@ -1022,7 +1030,7 @@ void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
 void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
                                           rpc::SubmitTaskReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(SubmitTaskRequest);
+  PREPROCESS_REQUEST(SubmitTaskRequest, request);
   rpc::Task task;
   task.mutable_task_spec()->CopyFrom(request.task_spec());
 
@@ -1035,7 +1043,7 @@ void NodeManager::HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
 void NodeManager::HandleFetchOrReconstructRequest(
     const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(FetchOrReconstructRequest);
+  PREPROCESS_REQUEST(FetchOrReconstructRequest, request);
   const auto &object_ids = request.object_ids();
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -1066,7 +1074,7 @@ void NodeManager::HandleFetchOrReconstructRequest(
 void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
                                     rpc::WaitReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(WaitRequest);
+  PREPROCESS_REQUEST(WaitRequest, request);
   // Read the data.
   std::vector<ObjectID> object_ids = IdVectorFromProtobuf<ObjectID>(request.object_ids());
   int64_t wait_ms = request.timeout();
@@ -1110,6 +1118,7 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
 void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
                                          rpc::PushErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  PREPROCESS_REQUEST(PushErrorRequest, request);
   JobID job_id = JobID::FromBinary(request.job_id());
   const auto &type = request.type();
   const auto &error_message = request.error_message();
@@ -1125,7 +1134,7 @@ void NodeManager::HandlePushErrorRequest(const rpc::PushErrorRequest &request,
 void NodeManager::HandlePrepareActorCheckpointRequest(
     const rpc::PrepareActorCheckpointRequest &request,
     rpc::PrepareActorCheckpointReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(PrepareActorCheckpointRequest);
+  PREPROCESS_REQUEST(PrepareActorCheckpointRequest, request);
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Preparing checkpoint for actor " << actor_id;
   const auto &actor_entry = actor_registry_.find(actor_id);
@@ -1166,6 +1175,7 @@ void NodeManager::HandleNotifyActorResumedFromCheckpointRequest(
     const rpc::NotifyActorResumedFromCheckpointRequest &request,
     rpc::NotifyActorResumedFromCheckpointReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  PREPROCESS_REQUEST(NotifyActorResumedFromCheckpointRequest, request);
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   ActorCheckpointID checkpoint_id =
       ActorCheckpointID::FromBinary(request.checkpoint_id());
@@ -1196,6 +1206,7 @@ void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
 void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &request,
                                            rpc::SetResourceReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
+  PREPROCESS_REQUEST(SetResourceRequest, request);
   auto const &resource_name = request.resource_name();
   double const capacity = request.capacity();
   bool is_deletion = capacity <= 0;
@@ -1236,7 +1247,7 @@ void NodeManager::HandleSetResourceRequest(const rpc::SetResourceRequest &reques
 void NodeManager::HandleNotifyUnblockedRequest(
     const rpc::NotifyUnblockedRequest &request, rpc::NotifyUnblockedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  PREPROCESS_REQUEST(NotifyUnblockedRequest);
+  PREPROCESS_REQUEST(NotifyUnblockedRequest, request);
   const TaskID current_task_id = TaskID::FromBinary(request.task_id());
 
   HandleTaskUnblocked(worker_id, current_task_id);
@@ -1246,7 +1257,7 @@ void NodeManager::HandleNotifyUnblockedRequest(
 void NodeManager::HandlePushProfileEventsRequest(
     const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a PushProfileEventsRequest.";
+  PREPROCESS_REQUEST(PushProfileEventsRequest, request);
   const auto &profile_table_data = request.profile_table_data();
   RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1255,7 +1266,7 @@ void NodeManager::HandlePushProfileEventsRequest(
 void NodeManager::HandleFreeObjectsInStoreRequest(
     const rpc::FreeObjectsInStoreRequest &request, rpc::FreeObjectsInStoreReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a FreeObjectsInStoreRequest.";
+  PREPROCESS_REQUEST(FreeObjectsInStoreRequest, request);
   std::vector<ObjectID> object_ids = IdVectorFromProtobuf<ObjectID>(request.object_ids());
   object_manager_.FreeObjects(object_ids, request.local_only());
   if (request.delete_creating_tasks()) {

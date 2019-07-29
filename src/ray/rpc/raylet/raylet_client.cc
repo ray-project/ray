@@ -78,10 +78,18 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   submit_task_request.set_worker_id(worker_id_.Binary());
   submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
-  grpc::ClientContext context;
-  SubmitTaskReply reply;
-  auto status = stub_->SubmitTask(&context, submit_task_request, &reply);
-  return GrpcStatusToRayStatus(status);
+  auto callback = [this](const Status &status, const SubmitTaskReply &reply) {
+    if (!status.ok() && is_connected_) {
+      is_connected_ = false;
+      RAY_LOG(INFO) << "Failed to send SubmitTaskRequest, msg: " << status.message();
+    }
+  };
+
+  auto call =
+      client_call_manager_.CreateCall<RayletService, SubmitTaskRequest, SubmitTaskReply>(
+          *stub_, &RayletService::Stub::PrepareAsyncSubmitTask, submit_task_request,
+          callback);
+  return call->GetStatus();
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {

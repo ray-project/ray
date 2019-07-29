@@ -103,8 +103,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param request_name The request name.
   /// \param request The request message.
   template <typename Request>
-  bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name,
-                         const Request &request);
+  bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name);
   /// Implementation of node manager grpc service.
 
   /// Handle a `ForwardTask` request.
