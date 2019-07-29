@@ -109,7 +109,7 @@ class QValuePolicy(object):
     def __init__(self, q_values, observations, num_actions, stochastic, eps,
                  softmax, softmax_temp):
         if softmax:
-            action_dist = Categorical(q_values / softmax_temp)
+            action_dist = Categorical(q_values / softmax_temp, None)
             self.action = action_dist.sample()
             self.action_prob = action_dist.sampled_action_prob()
             return
