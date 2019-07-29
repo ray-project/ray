@@ -66,7 +66,7 @@ class TrackApiTest(unittest.TestCase):
             for i in range(config["iters"]):
                 track.log(iteration=i, hi="test")
 
-        trials = tune.run(testme, config={"iters": 5})
+        trials = tune.run(testme, config={"iters": 5}).trials
         trial_res = trials[0].last_result
         self.assertTrue(trial_res["hi"], "test")
         self.assertTrue(trial_res["training_iteration"], 5)

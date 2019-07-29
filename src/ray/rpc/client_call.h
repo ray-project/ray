@@ -126,11 +126,14 @@ class ClientCallManager {
   explicit ClientCallManager(boost::asio::io_service &main_service)
       : main_service_(main_service) {
     // Start the polling thread.
-    std::thread polling_thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
-    polling_thread.detach();
+    polling_thread_ =
+        std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
   }
 
-  ~ClientCallManager() { cq_.Shutdown(); }
+  ~ClientCallManager() {
+    cq_.Shutdown();
+    polling_thread_.join();
+  }
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -177,7 +180,7 @@ class ClientCallManager {
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     while (cq_.Next(&got_tag, &ok)) {
       auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-      if (ok) {
+      if (ok && !main_service_.stopped()) {
         // Post the callback to the main event loop.
         main_service_.post([tag]() {
           tag->GetCall()->OnReplyReceived();
@@ -195,6 +198,9 @@ class ClientCallManager {
 
   /// The gRPC `CompletionQueue` object used to poll events.
   grpc::CompletionQueue cq_;
+
+  /// Polling thread to check the completion queue.
+  std::thread polling_thread_;
 };
 
 }  // namespace rpc

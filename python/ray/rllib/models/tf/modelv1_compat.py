@@ -7,7 +7,7 @@ import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import scope_vars
@@ -98,7 +98,7 @@ def make_v1_wrapper(legacy_model_cls):
                     "Cannot get update ops before wrapped v1 model init")
             return list(self._update_ops)
 
-        @override(ModelV2)
+        @override(TFModelV2)
         def variables(self):
             var_list = super(ModelV1Wrapper, self).variables()
             for v in scope_vars(self.variable_scope):

@@ -7,9 +7,11 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 
 namespace ray {
+
+using rpc::RayletClient;
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,

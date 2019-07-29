@@ -9,8 +9,8 @@ import os
 import numpy as np
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -94,7 +94,7 @@ class TFPolicy(Policy):
             prev_reward_input (Tensor): placeholder for previous rewards
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
-                models/lstm.py for more information.
+                policy/rnn_sequencing.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using

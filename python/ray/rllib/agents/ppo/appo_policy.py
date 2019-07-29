@@ -15,7 +15,7 @@ from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
         BEHAVIOUR_LOGITS, clip_gradients, \
         validate_config, choose_optimizer, ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.models.action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
