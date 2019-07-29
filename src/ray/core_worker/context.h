@@ -20,6 +20,9 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentTaskId(const TaskID &task_id);
+
   void SetCurrentTask(const TaskSpecification &task_spec);
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;

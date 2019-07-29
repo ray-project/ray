@@ -99,7 +99,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
   return Status::OK();
 }
 
-Status CoreWorkerLocalPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerLocalPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
                                                   bool local_only,
                                                   bool delete_creating_tasks) {
   std::vector<plasma::ObjectID> plasma_ids;

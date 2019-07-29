@@ -27,7 +27,6 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   return local_store_provider_.Seal(object_id);
 }
 
-/// TODO: duplicates
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
@@ -115,7 +114,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
-  auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms, false, task_id,
+  auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms, /*wait_local=*/false, task_id,
                                      &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
@@ -133,7 +132,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
   return status;
 }
 
-Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
                                              bool local_only,
                                              bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);

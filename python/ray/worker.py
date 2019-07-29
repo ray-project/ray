@@ -2274,11 +2274,10 @@ def wait(object_ids, num_returns=1, timeout=None):
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
-        ready_ids, remaining_ids = worker.raylet_client.wait(
+        ready_ids, remaining_ids = worker.core_worker.wait(
             object_ids,
             num_returns,
             timeout_milliseconds,
-            False,
             worker.current_task_id,
         )
         return ready_ids, remaining_ids

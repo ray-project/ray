@@ -72,6 +72,11 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
+// TODO(edoakes): remove this once Python core worker uses the task interfaces.
+void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
+  GetThreadContext().SetCurrentTaskId(task_id);
+}
+
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   current_job_id_ = task_spec.JobId();
   GetThreadContext().SetCurrentTask(task_spec);

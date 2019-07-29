@@ -254,30 +254,8 @@ cdef class RayletClient:
     def task_done(self):
         check_status(self.client.TaskDone())
 
-    def fetch_or_reconstruct(self, object_ids,
-                             c_bool fetch_only,
-                             TaskID current_task_id=TaskID.nil()):
-        cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.FetchOrReconstruct(
-            fetch_ids, fetch_only, current_task_id.native()))
-
     def notify_unblocked(self, TaskID current_task_id):
         check_status(self.client.NotifyUnblocked(current_task_id.native()))
-
-    def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
-             c_bool wait_local, TaskID current_task_id):
-        cdef:
-            WaitResultPair result
-            c_vector[CObjectID] wait_ids
-            CTaskID c_task_id = current_task_id.native()
-        wait_ids = ObjectIDsToVector(object_ids)
-        with nogil:
-            check_status(self.client.Wait(wait_ids, num_returns,
-                                                timeout_milliseconds,
-                                                wait_local,
-                                                c_task_id, &result))
-        return (VectorToObjectIDs(result.first),
-                VectorToObjectIDs(result.second))
 
     def resource_ids(self):
         cdef:
@@ -350,10 +328,6 @@ cdef class RayletClient:
 
         check_status(self.client.PushProfileEvents(profile_info))
 
-    def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
-        cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.FreeObjects(free_ids, local_only, delete_creating_tasks))
-
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef CActorCheckpointID checkpoint_id
         cdef CActorID c_actor_id = actor_id.native()
@@ -404,7 +378,8 @@ cdef class CoreWorker:
         cdef c_vector[shared_ptr[CRayObject]] results
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Get(c_object_ids, c_task_id, -1, &results))
+            self.core_worker.get().SetCurrentTaskId(c_task_id)
+            check_status(self.core_worker.get().Objects().Get(c_object_ids, -1, &results))
 
         data_metadata_pairs = []
         for result in results:
@@ -453,6 +428,33 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
-    # TODO: wait_local?
-    def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds):
-        pass
+    def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
+             TaskID current_task_id):
+
+        cdef:
+            WaitResultPair result
+            c_vector[CObjectID] wait_ids
+            c_vector[c_bool] results
+            CTaskID c_task_id = current_task_id.native()
+
+        wait_ids = ObjectIDsToVector(object_ids)
+        with nogil:
+            self.core_worker.get().SetCurrentTaskId(c_task_id)
+            check_status(self.core_worker.get().Objects().Wait(wait_ids, num_returns,
+                                                timeout_milliseconds, &results))
+
+        assert len(results) == len(object_ids)
+
+        ready, not_ready = [], []
+        for i,object_id in enumerate(object_ids):
+            if results[i]:
+                ready.append(object_id)
+            else:
+                not_ready.append(object_id)
+
+        return (ready, not_ready)
+
+    def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
+        cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
+        with nogil:
+            check_status(self.core_worker.get().Objects().Free(free_ids, local_only, delete_creating_tasks))

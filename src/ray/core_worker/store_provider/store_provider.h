@@ -78,7 +78,7 @@ class CoreWorkerStoreProvider {
                       int64_t timeout_ms, const TaskID &task_id,
                       std::vector<bool> *results) = 0;
 
-  /// Delete a list of objects from the object store.
+  /// Free a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -86,7 +86,7 @@ class CoreWorkerStoreProvider {
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects.
   /// \return Status.
-  virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+  virtual Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
                         bool delete_creating_tasks = false) = 0;
 };
 

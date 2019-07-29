@@ -55,7 +55,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
-  /// Delete a list of objects from the object store.
+  /// Free a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -63,7 +63,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects.
   /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+  Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
  private:

@@ -27,11 +27,9 @@ cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
       CRayStatus Seal(const CObjectID &object_id);
       CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                  c_vector[shared_ptr[CRayObject]] *results);
-      CRayStatus Get(const c_vector[CObjectID] &ids, const CTaskID &task_id, int64_t timeout_ms,
-                 c_vector[shared_ptr[CRayObject]] *results);
       CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                   int64_t timeout_ms, c_vector[c_bool] *results);
-      CRayStatus Delete(const c_vector[CObjectID] &object_ids, c_bool local_only,
+      CRayStatus Free(const c_vector[CObjectID] &object_ids, c_bool local_only,
                     c_bool delete_creating_tasks);
 
 
@@ -46,3 +44,5 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
         #CTaskSubmissionInterface &Tasks()
         #CTaskExecutionInterface &Execution()
         CRayletClient* GetRayletClient()
+        # TODO(edoakes): remove this once the Python core worker uses task interfaces
+        void SetCurrentTaskId(const CTaskID &task_id);
