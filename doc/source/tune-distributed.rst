@@ -3,16 +3,25 @@ Distributed Experiments
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. Tune provides many utilities that enable an effective workflow for interacting with a cluster.
 
-To launch a large hyperparameter search, you can download this `configuration file <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml>`__ and `an example Tune script <https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/async_hyperband_example.py>`__ and then run:
+Quick Start
+-----------
+
+To launch a distributed hyperparameter search, you can follow the instructions below:
+
+1. Download a full example Tune experiment script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
+2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
+3. Set up your AWS credentials (``aws configure``).
+4. Run ``ray submit`` as below. This will start 3 AWS nodes and run Tune across them. Append ``[--stop]`` to automatically shutdown your nodes after running:
 
 .. code-block:: bash
 
-    $ ray submit [config_file.yaml] [tune_script.py] --args="--ray-redis-address=localhost:6379"``.
+    export CLUSTER=tune-default.yaml
+    ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
 Connecting to a cluster
 -----------------------
 
-One common approach to modifying an existing Tune Experiment to go distributed is to set an argparse variable so that toggling between distributed and single-node is seamless. This allows Tune to utilize all the resources available to the Ray cluster.
+One common approach to modifying an existing Tune experiment to go distributed is to set an argparse variable so that toggling between distributed and single-node is seamless. This allows Tune to utilize all the resources available to the Ray cluster.
 
 .. code-block:: python
 
@@ -20,43 +29,30 @@ One common approach to modifying an existing Tune Experiment to go distributed i
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--redis-address", default=None)
+    parser.add_argument("--ray-redis-address")
     args = parser.parse_args()
-    ray.init(redis_address=args.redis_address)
+    ray.init(redis_address=args.ray_redis_address)
+
+Compare single node vs cluster execution. Note that connecting to cluster requires a pre-existing Ray cluster to be setup already (`Manual Cluster Setup <using-ray-on-a-cluster.html>`_). The script should be run on the head node of the Ray cluster.
 
 .. code-block:: bash
 
     # Single-node execution
-    $ python script.py
+    $ python tune_script.py
 
-    # Connect to an existing ray cluster
-    $ python script.py --redis-address=localhost:1234
+    # On the head node, connect to an existing ray cluster
+    $ python tune_script.py --ray-redis-address=localhost:1234
 
 
 Launching a cloud cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you have already have a list of nodes, skip down to the `Local Cluster Usage <tune-distributed.html#local-cluster-usage>`_- section.
+.. tip:: If you have already have a list of nodes, skip down to the `Local Cluster Usage <tune-distributed.html#local-cluster-usage>`_ section.
 
-You can use this YAML configuration file to kick off your cluster. The following instructions are for AWS and will require you to run ``aws configure``.
-Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`__.
+Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_.
 
-.. code-block:: yaml
+.. literalinclude:: ../../python/ray/tune/examples/quickstart/tune-default.yaml
 
-    cluster_name: minimal
-
-    # The maximum number of workers nodes to launch in addition to the head node.
-    max_workers: 1
-
-    # Cloud-provider specific configuration.
-    provider:
-        type: aws
-        region: us-west-2
-        availability_zone: us-west-2a
-
-    # How Ray will authenticate with newly launched nodes.
-    auth:
-        ssh_user: ubuntu
 
 
 This code starts a cluster as specified by the given cluster configuration YAML file.

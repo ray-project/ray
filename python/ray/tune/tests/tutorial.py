@@ -1,4 +1,5 @@
 # flake8: noqa
+# yapf: disable
 
 # __tutorial_imports_begin__
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
@@ -13,7 +14,6 @@ from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 
 datasets.MNIST("~/data", train=True, download=True)
-
 # __tutorial_imports_end__
 
 
@@ -30,8 +30,6 @@ def train_mnist(config):
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
-
-
 # __train_func_end__
 
 # __eval_func_begin__

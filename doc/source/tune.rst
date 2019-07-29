@@ -19,6 +19,7 @@ This example runs a small grid search to train a CNN using PyTorch and Tune:
 
 .. literalinclude:: ../../python/ray/tune/tests/example.py
    :language: python
+   :caption: example.py
    :start-after: __quick_start_begin__
    :end-before: __quick_start_end__
 
@@ -26,7 +27,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 
 .. code-block:: bash
 
-    $ tensorboard --logdir ~/ray_results
+    tensorboard --logdir ~/ray_results
 
 
 .. image:: images/tune-start-tb.png
@@ -38,9 +39,9 @@ For massive parallelism, do the following:
 .. code-block:: python
 
     # Append to top of your script
-
     import ray
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--ray-redis-address")
     args = parser.parse_args()
@@ -54,8 +55,8 @@ Alternatively, download a full example script here: :download:`mnist_pytorch.py 
 
 .. code-block:: bash
 
-    $ export CLUSTER=tune-default.yaml
-    $ ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    export CLUSTER=tune-default.yaml
+    ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
 Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
 
