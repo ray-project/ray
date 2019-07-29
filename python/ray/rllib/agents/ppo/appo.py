@@ -34,7 +34,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
-    "num_gpus": 1,
+    "num_gpus": 0,
     "num_data_loader_buffers": 1,
     "minibatch_buffer_size": 1,
     "num_sgd_iter": 1,
