@@ -35,9 +35,16 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   bool was_blocked = false;
 
-  std::unordered_map<ObjectID, int> unready;
+  std::unordered_map<ObjectID, std::vector<int>> unready;
   for (size_t i = 0; i < ids.size(); i++) {
-    unready.insert({ids[i], i});
+    auto it = unready.find(ids[i]);
+    if (it == unready.end()) {
+      std::vector<int> v;
+      v.push_back(i);
+      unready.insert({ids[i], v});
+    } else {
+      it->second.push_back(i);
+    }
   }
 
   int num_attempts = 0;
@@ -82,7 +89,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
         const auto &object_id = unready_ids[i];
-        (*results)[unready[object_id]] = result_objects[i];
+        for (int idx : unready[object_id]) {
+          (*results)[idx] = result_objects[i];
+	}
         unready.erase(object_id);
         if (IsException(*result_objects[i])) {
           should_break = true;
@@ -145,7 +154,7 @@ bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const std::unordered_map<ObjectID, int> &unready) {
+    int num_attempts, const std::unordered_map<ObjectID, std::vector<int>> &unready) {
   if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
       0) {
     std::ostringstream oss;
