@@ -2425,12 +2425,12 @@ def get_global_worker():
 def make_decorator(num_return_vals=None,
                    num_cpus=None,
                    num_gpus=None,
+                   memory=None,
+                   object_store_memory=None,
                    resources=None,
                    max_calls=None,
                    max_reconstructions=None,
-                   worker=None,
-                   memory=None,
-                   object_store_memory=None):
+                   worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
