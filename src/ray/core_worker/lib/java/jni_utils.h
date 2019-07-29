@@ -36,42 +36,42 @@ extern jmethodID java_array_list_init_with_capacity;
 /// RayException class
 extern jclass java_ray_exception_class;
 
-/// RayFunctionProxy class
-extern jclass java_ray_function_proxy_class;
-/// language field of RayFunctionProxy class
-extern jfieldID java_ray_function_proxy_language;
-/// function_descriptor field of RayFunctionProxy class
-extern jfieldID java_ray_function_proxy_function_descriptor;
+/// NativeRayFunction class
+extern jclass java_native_ray_function_class;
+/// language field of NativeRayFunction class
+extern jfieldID java_native_ray_function_language;
+/// function_descriptor field of NativeRayFunction class
+extern jfieldID java_native_ray_function_function_descriptor;
 
-/// TaskArgProxy class
-extern jclass java_task_arg_proxy_class;
-/// id field of TaskArgProxy class
-extern jfieldID java_task_arg_proxy_id;
-/// data field of TaskArgProxy class
-extern jfieldID java_task_arg_proxy_data;
+/// NativeTaskArg class
+extern jclass java_native_task_arg_class;
+/// id field of NativeTaskArg class
+extern jfieldID java_native_task_arg_id;
+/// data field of NativeTaskArg class
+extern jfieldID java_native_task_arg_data;
 
-/// ResourcesProxy class
-extern jclass java_resources_proxy_class;
-/// keys field of ResourcesProxy class
-extern jfieldID java_resources_proxy_keys;
-/// values field of ResourcesProxy class
-extern jfieldID java_resources_proxy_values;
+/// NativeResources class
+extern jclass java_native_resources_class;
+/// keys field of NativeResources class
+extern jfieldID java_native_resources_keys;
+/// values field of NativeResources class
+extern jfieldID java_native_resources_values;
 
-/// TaskOptionsProxy class
-extern jclass java_task_options_proxy_class;
-/// numReturns field of TaskOptionsProxy class
-extern jfieldID java_task_options_proxy_num_returns;
-/// resources field of TaskOptionsProxy class
-extern jfieldID java_task_options_proxy_resources;
+/// NativeTaskOptions class
+extern jclass java_native_task_options_class;
+/// numReturns field of NativeTaskOptions class
+extern jfieldID java_native_task_options_num_returns;
+/// resources field of NativeTaskOptions class
+extern jfieldID java_native_task_options_resources;
 
 /// ActorCreationOptions class
-extern jclass java_actor_creation_options_proxy_class;
+extern jclass java_native_actor_creation_options_class;
 /// maxReconstructions field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_proxy_max_reconstructions;
+extern jfieldID java_native_actor_creation_options_max_reconstructions;
 /// resources field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_proxy_resources;
+extern jfieldID java_native_actor_creation_options_resources;
 /// dynamicWorkerOptions field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_proxy_dynamic_worker_options;
+extern jfieldID java_native_actor_creation_options_dynamic_worker_options;
 
 /// NativeRayObject class
 extern jclass java_native_ray_object_class;

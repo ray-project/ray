@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

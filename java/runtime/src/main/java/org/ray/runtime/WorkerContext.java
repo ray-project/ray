@@ -3,7 +3,6 @@ package org.ray.runtime;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.nio.ByteBuffer;
 import org.ray.api.id.JobId;
-import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
 
@@ -21,14 +20,6 @@ public class WorkerContext {
 
   public WorkerContext(long nativeCoreWorkerPointer) {
     this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
-  }
-
-  /**
-   * @return For the main thread, this method returns the ID of this worker's current running task;
-   * for other threads, this method returns a random ID.
-   */
-  public TaskId getCurrentTaskId() {
-    return TaskId.fromByteBuffer(nativeGetCurrentTaskId(nativeCoreWorkerPointer));
   }
 
   /**
@@ -69,20 +60,18 @@ public class WorkerContext {
    * Get the current task.
    */
   public TaskSpec getCurrentTask() {
-    ByteBuffer byteBuffer = nativeGetCurrentTask(nativeCoreWorkerPointer);
-    if (byteBuffer == null) {
+    byte[] bytes = nativeGetCurrentTask(nativeCoreWorkerPointer);
+    if (bytes == null) {
       return null;
     }
     try {
-      return TaskSpec.parseFrom(byteBuffer);
+      return TaskSpec.parseFrom(bytes);
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException(e);
     }
   }
 
-  private static native ByteBuffer nativeGetCurrentTaskId(long nativeCoreWorkerPointer);
-
-  private static native ByteBuffer nativeGetCurrentTask(long nativeCoreWorkerPointer);
+  private static native byte[] nativeGetCurrentTask(long nativeCoreWorkerPointer);
 
   private static native ByteBuffer nativeGetCurrentJobId(long nativeCoreWorkerPointer);
 

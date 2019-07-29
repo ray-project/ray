@@ -13,6 +13,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.RayActorImpl;
 import org.ray.runtime.WorkerContext;
 import org.ray.runtime.generated.Gcs.ErrorType;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.ray.runtime.util.Serializer;
 
 /**

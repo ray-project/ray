@@ -26,7 +26,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_nativeGetActorId(
 
 /*
  * Class:     org_ray_runtime_RayActorImpl
- * Method:    nativeGetRayActorImplId
+ * Method:    nativeGetActorHandleId
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL

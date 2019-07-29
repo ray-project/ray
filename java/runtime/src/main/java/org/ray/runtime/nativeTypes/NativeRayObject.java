@@ -1,4 +1,4 @@
-package org.ray.runtime.objectstore;
+package org.ray.runtime.nativeTypes;
 
 public class NativeRayObject {
 

@@ -5,7 +5,7 @@ import org.ray.api.Ray;
 import org.ray.api.TestUtils;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.objectstore.NativeRayObject;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.ray.runtime.objectstore.ObjectInterface;
 import org.testng.Assert;
 import org.testng.annotations.Test;

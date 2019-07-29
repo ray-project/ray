@@ -14,8 +14,8 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    nativeInitClusterMode
- * Signature: (ILjava/lang/String;Lorg/ray/runtime/raylet/RayletClientImpl;[B[B)J
+ * Method:    nativeInit
+ * Signature: (ILjava/lang/String;Ljava/lang/String;[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jclass,
                                                                jint workerMode,
@@ -67,13 +67,23 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jcla
  * Signature: (JLorg/ray/runtime/CoreWorkerProxy;)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
-    JNIEnv *env, jclass o, jlong nativeCoreWorker, jobject javaCoreWorker) {
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jobject javaCoreWorker) {
   local_env = env;
   local_java_worker = javaCoreWorker;
-  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorker);
+  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   core_worker->Execution().Run();
   local_env = nullptr;
   local_java_worker = nullptr;
+}
+
+/*
+ * Class:     org_ray_runtime_Worker
+ * Method:    nativeDestroy
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeDestroy(
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jobject javaCoreWorker) {
+  delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }
 
 #ifdef __cplusplus

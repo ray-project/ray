@@ -1,15 +1,13 @@
 package org.ray.runtime.task;
 
-import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayActorImpl;
 import org.ray.runtime.Worker;
-import org.ray.runtime.objectstore.NativeRayObject;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.ray.runtime.util.Serializer;
 
 public class ArgumentsBuilder {

@@ -17,7 +17,7 @@ import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.generated.Common.WorkerType;
-import org.ray.runtime.objectstore.NativeRayObject;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.ray.runtime.objectstore.ObjectInterfaceImpl;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClient;

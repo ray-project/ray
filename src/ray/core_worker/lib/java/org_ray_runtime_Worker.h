@@ -9,6 +9,14 @@ extern "C" {
 #endif
 #undef org_ray_runtime_Worker_NUM_ACTOR_CHECKPOINTS_TO_KEEP
 #define org_ray_runtime_Worker_NUM_ACTOR_CHECKPOINTS_TO_KEEP 20L
+/*
+ * Class:     org_ray_runtime_Worker
+ * Method:    nativeInit
+ * Signature: (ILjava/lang/String;Ljava/lang/String;[B)J
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *, jclass, jint,
+                                                               jstring, jstring,
+                                                               jbyteArray);
 
 /*
  * Class:     org_ray_runtime_Worker
@@ -20,21 +28,10 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(JNIEnv *,
 
 /*
  * Class:     org_ray_runtime_Worker
- * Method:    nativeStopCoreWorker
+ * Method:    nativeDestroy
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeStopCoreWorker(JNIEnv *, jclass,
-                                                                        jlong);
-
-/*
- * Class:     org_ray_runtime_Worker
- * Method:    nativeGetTaskReturnId
- * Signature: ([BJ)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_Worker_nativeGetTaskReturnId(JNIEnv *,
-                                                                               jclass,
-                                                                               jbyteArray,
-                                                                               jlong);
+JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeDestroy(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

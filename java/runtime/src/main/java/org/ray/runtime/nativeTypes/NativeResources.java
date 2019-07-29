@@ -1,14 +1,14 @@
-package org.ray.runtime.proxyTypes;
+package org.ray.runtime.nativeTypes;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class ResourcesProxy {
+public class NativeResources {
   public List<String> keys;
   public List<Double> values;
 
-  public ResourcesProxy(Map<String, Double> resources) {
+  public NativeResources(Map<String, Double> resources) {
     keys = new ArrayList<>();
     values = new ArrayList<>();
     if (resources != null) {

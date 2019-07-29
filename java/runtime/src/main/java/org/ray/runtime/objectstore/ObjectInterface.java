@@ -2,6 +2,7 @@ package org.ray.runtime.objectstore;
 
 import java.util.List;
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 
 /**
  * The interface that contains all worker methods that are related to object store.

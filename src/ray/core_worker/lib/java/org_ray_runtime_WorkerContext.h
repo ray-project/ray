@@ -9,30 +9,6 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeCreateWorkerContext
- * Signature: (I[B)J
- */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerContext_nativeCreateWorkerContext(
-    JNIEnv *, jclass, jint, jbyteArray);
-
-/*
- * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetCurrentTaskId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_WorkerContext_nativeGetCurrentTaskId(JNIEnv *, jclass, jlong);
-
-/*
- * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeSetCurrentTask
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeSetCurrentTask(
-    JNIEnv *, jclass, jlong, jbyteArray);
-
-/*
- * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeGetCurrentTask
  * Signature: (J)[B
  */
@@ -50,36 +26,18 @@ Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(JNIEnv *, jclass, jlong
 /*
  * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeGetCurrentWorkerId
- * Signature: (J)[B
+ * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jbyteArray JNICALL
+JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetNextTaskIndex
- * Signature: (J)I
+ * Method:    nativeGetCurrentActorId
+ * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextTaskIndex(JNIEnv *,
-                                                                                 jclass,
-                                                                                 jlong);
-
-/*
- * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetNextPutIndex
- * Signature: (J)I
- */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextPutIndex(JNIEnv *,
-                                                                                jclass,
-                                                                                jlong);
-
-/*
- * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeDestroy
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeDestroy(JNIEnv *, jclass,
-                                                                        jlong);
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_WorkerContext_nativeGetCurrentActorId(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

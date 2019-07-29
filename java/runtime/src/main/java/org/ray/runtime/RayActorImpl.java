@@ -5,7 +5,6 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.nio.ByteBuffer;
 import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
@@ -32,12 +31,12 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
 
   @Override
   public UniqueId getId() {
-    return UniqueId.fromByteBuffer(nativeGetActorId(nativeActorHandle));
+    return new UniqueId(nativeGetActorId(nativeActorHandle));
   }
 
   @Override
   public UniqueId getHandleId() {
-    return UniqueId.fromByteBuffer(nativeGetActorHandleId(nativeActorHandle));
+    return new UniqueId(nativeGetActorHandleId(nativeActorHandle));
   }
 
   public Language getLanguage() {
@@ -85,9 +84,9 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
 
   private static native long nativeFork(long nativeActorHandle);
 
-  private static native ByteBuffer nativeGetActorId(long nativeActorHandle);
+  private static native byte[] nativeGetActorId(long nativeActorHandle);
 
-  private static native ByteBuffer nativeGetActorHandleId(long nativeActorHandle);
+  private static native byte[] nativeGetActorHandleId(long nativeActorHandle);
 
   private static native int nativeGetLanguage(long nativeActorHandle);
 
