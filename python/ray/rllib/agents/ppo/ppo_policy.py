@@ -25,12 +25,13 @@ BEHAVIOUR_LOGITS = "behaviour_logits"
 class PPOLoss(object):
     def __init__(self,
                  action_space,
-                 dist_cls,
+                 dist_class,
+                 model,
                  value_targets,
                  advantages,
                  actions,
                  prev_logits,
-                 prev_actions_logp,
+                 prev_actions_prob,
                  vf_preds,
                  curr_action_dist,
                  value_fn,
@@ -45,7 +46,7 @@ class PPOLoss(object):
 
         Arguments:
             action_space: Environment observation space specification.
-            dist_cls: action distribution class for logits.
+            dist_class: action distribution class for logits.
             value_targets (Placeholder): Placeholder for target values; used
                 for GAE.
             actions (Placeholder): Placeholder for actions taken
@@ -54,7 +55,7 @@ class PPOLoss(object):
                 from previous model evaluation.
             prev_logits (Placeholder): Placeholder for logits output from
                 previous model evaluation.
-            prev_actions_logp (Placeholder): Placeholder for logp output from
+            prev_actions_prob (Placeholder): Placeholder for prob output from
                 previous model evaluation.
             vf_preds (Placeholder): Placeholder for value function output
                 from previous model evaluation.
@@ -74,9 +75,10 @@ class PPOLoss(object):
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
-        prev_dist = dist_cls(prev_logits)
+        prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
-        logp_ratio = tf.exp(curr_action_dist.logp(actions) - prev_actions_logp)
+        logp_ratio = tf.exp(
+            curr_action_dist.logp(actions) - tf.log(prev_actions_prob))
         action_kl = prev_dist.kl(curr_action_dist)
         self.mean_kl = reduce_mean_valid(action_kl)
 
@@ -119,6 +121,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
     policy.loss_obj = PPOLoss(
         policy.action_space,
         policy.dist_class,
+        policy.model,
         batch_tensors[Postprocessing.VALUE_TARGETS],
         batch_tensors[Postprocessing.ADVANTAGES],
         batch_tensors[SampleBatch.ACTIONS],

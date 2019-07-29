@@ -41,6 +41,7 @@ class VTraceLoss(object):
                  values,
                  bootstrap_value,
                  dist_class,
+                 model,
                  valid_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
@@ -88,6 +89,7 @@ class VTraceLoss(object):
                 values=values,
                 bootstrap_value=bootstrap_value,
                 dist_class=dist_class,
+                model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
@@ -201,6 +203,7 @@ def build_vtrace_loss(policy, batch_tensors):
         values=make_time_major(values, drop_last=True),
         bootstrap_value=make_time_major(values)[-1],
         dist_class=Categorical if is_multidiscrete else policy.dist_class,
+        model=policy.model,
         valid_mask=make_time_major(mask, drop_last=True),
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,

@@ -90,6 +90,7 @@ class VTraceSurrogateLoss(object):
                  values,
                  bootstrap_value,
                  dist_class,
+                 model,
                  valid_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
@@ -116,6 +117,7 @@ class VTraceSurrogateLoss(object):
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
+            model: backing ModelV2 instance
             valid_mask: A bool tensor of valid RNN input elements (#2992).
         """
 
@@ -130,6 +132,7 @@ class VTraceSurrogateLoss(object):
                 values=values,
                 bootstrap_value=bootstrap_value,
                 dist_class=dist_class,
+                model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
                                               tf.float32))
@@ -182,7 +185,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
-    prev_action_dist = policy.dist_class(behaviour_logits)
+    prev_action_dist = policy.dist_class(behaviour_logits, policy.model)
     values = policy.value_function
 
     if policy.state_in:
@@ -217,6 +220,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
             dist_class=Categorical if is_multidiscrete else policy.dist_class,
+            model=policy.model,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.entropy_coeff,

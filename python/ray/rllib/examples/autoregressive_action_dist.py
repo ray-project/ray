@@ -25,11 +25,8 @@ parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--stop", type=int, default=200)
 
 
-class EmitCorrelatedActionsEnv(gym.Env):
+class CorrelatedActionsEnv(gym.Env):
     """Simple env in which the policy has to emit a tuple of equal actions.
-
-    However, the policy is penalized for emitting the exact same action each
-    time, so it has to learn P(a1) ~ random, then a2 = a1.
 
     The best score would be ~200 reward."""
 
@@ -56,55 +53,48 @@ class EmitCorrelatedActionsEnv(gym.Env):
         return self.last, reward, done, {}
 
 
-def make_binary_autoregressive_output(action_model):
-    """Returns an autoregressive ActionDistribution class for two outputs.
+class BinaryAutoregressiveOutput(ActionDistribution):
+    """An autoregressive ActionDistribution class for two outputs."""
 
-    Arguments:
-        action_model: Keras model that takes [context, a1_sample] and returns
-            logits for a1 and a2.
-    """
+    def sample(self):
+        a1_dist = self._a1_distribution()
+        a1 = a1_dist.sample()
+        a2_dist = self._a2_distribution(a1)
+        a2 = a2_dist.sample()
+        self._action_prob = a1_dist.logp(a1) + a2_dist.logp(a2)
+        return TupleActions([a1, a2])
 
-    class AutoregressiveOutput(ActionDistribution):
-        def sample(self):
-            a1_dist = self._a1_distribution()
-            a1 = a1_dist.sample()
-            a2_dist = self._a2_distribution(a1)
-            a2 = a2_dist.sample()
-            self._action_prob = a1_dist.logp(a1) + a2_dist.logp(a2)
-            return TupleActions([a1, a2])
+    def sampled_action_prob(self):
+        return self._action_prob
 
-        def sampled_action_prob(self):
-            return self._action_prob
+    def logp(self, actions):
+        a1, a2 = actions[:, 0], actions[:, 1]
+        a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
+        a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
+        return (Categorical(a1_logits, None).logp(a1) + Categorical(
+            a2_logits, None).logp(a2))
 
-        def logp(self, actions):
-            a1, a2 = actions[:, 0], actions[:, 1]
-            a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
-            a1_logits, a2_logits = action_model([self.inputs, a1_vec])
-            return (Categorical(a1_logits).logp(a1) +
-                    Categorical(a2_logits).logp(a2))
+    def entropy(self):
+        a1_dist = self._a1_distribution()
+        a2_dist = self._a2_distribution(a1_dist.sample())
+        return a1_dist.entropy() + a2_dist.entropy()
 
-        def entropy(self):
-            a1_dist = self._a1_distribution()
-            a2_dist = self._a2_distribution(a1_dist.sample())
-            return a1_dist.entropy() + a2_dist.entropy()
+    def kl(self, other):
+        # TODO: implement this properly
+        return tf.zeros_like(self.entropy())
 
-        def kl(self, other):
-            # TODO: implement this properly
-            return tf.zeros_like(self.entropy())
+    def _a1_distribution(self):
+        BATCH = tf.shape(self.inputs)[0]
+        a1_logits, _ = self.model.action_model(
+            [self.inputs, tf.zeros((BATCH, 1))])
+        a1_dist = Categorical(a1_logits, None)
+        return a1_dist
 
-        def _a1_distribution(self):
-            BATCH = tf.shape(self.inputs)[0]
-            a1_logits, _ = action_model([self.inputs, tf.zeros((BATCH, 1))])
-            a1_dist = Categorical(a1_logits)
-            return a1_dist
-
-        def _a2_distribution(self, a1):
-            a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
-            _, a2_logits = action_model([self.inputs, a1_vec])
-            a2_dist = Categorical(a2_logits)
-            return a2_dist
-
-    return AutoregressiveOutput
+    def _a2_distribution(self, a1):
+        a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
+        _, a2_logits = self.model.action_model([self.inputs, a1_vec])
+        a2_dist = Categorical(a2_logits, None)
+        return a2_dist
 
 
 class AutoregressiveActionsModel(TFModelV2):
@@ -114,17 +104,19 @@ class AutoregressiveActionsModel(TFModelV2):
                  name):
         super(AutoregressiveActionsModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
+        if action_space != Tuple([Discrete(2), Discrete(2)]):
+            raise ValueError(
+                "This model only supports the [2, 2] action space")
+
         # Inputs
         obs_input = tf.keras.layers.Input(
             shape=obs_space.shape, name="obs_input")
         a1_input = tf.keras.layers.Input(shape=(1, ), name="a1_input")
-        # TODO(ekl) the context should be allowed to have a different size from
-        # num_outputs. This currently doesn't work since RLlib checks the
-        # model output size is equal to num_outputs.
         ctx_input = tf.keras.layers.Input(
             shape=(num_outputs, ), name="ctx_input")
 
-        # Shared hidden layer
+        # Output of the model (normally 'logits', but for an autoregressive
+        # dist this is more like a context/feature layer encoding the obs)
         context = tf.keras.layers.Dense(
             num_outputs,
             name="hidden",
@@ -179,7 +171,7 @@ class AutoregressiveActionsModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
     def override_action_distribution(self):
-        return make_binary_autoregressive_output(self.action_model)
+        return BinaryAutoregressiveOutput
 
 
 if __name__ == "__main__":
@@ -191,9 +183,7 @@ if __name__ == "__main__":
         args.run,
         stop={"episode_reward_mean": args.stop},
         config={
-            "env": EmitCorrelatedActionsEnv,
-            "train_batch_size": 10,
-            "sample_batch_size": 10,
+            "env": CorrelatedActionsEnv,
             "gamma": 0.5,
             "num_gpus": 0,
             "model": {

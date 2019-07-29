@@ -9,13 +9,24 @@ from ray.rllib.utils.annotations import DeveloperAPI
 class ActionDistribution(object):
     """The policy action distribution of an agent.
 
-    Args:
-      inputs (Tensor): The input vector to compute samples from.
+    Attributes:
+        inputs (Tensors): input vector to compute samples from.
+        model (ModelV2): reference to model producing the inputs.
     """
 
     @DeveloperAPI
-    def __init__(self, inputs):
+    def __init__(self, inputs, model):
+        """Initialize the action dist.
+
+        Arguments:
+            inputs (Tensors): input vector to compute samples from.
+            model (ModelV2): reference to model producing the inputs. This
+                is mainly useful if you want to use model variables to compute
+                action outputs (i.e., for auto-regressive action distributions,
+                see examples/autoregressive_action_dist.py).
+        """
         self.inputs = inputs
+        self.model = model
 
     @DeveloperAPI
     def sample(self):

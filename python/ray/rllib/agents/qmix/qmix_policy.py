@@ -246,7 +246,7 @@ class QMixTorchPolicy(Policy):
             # epsilon-greedy action selector
             random_numbers = th.rand_like(q_values[:, :, 0])
             pick_random = (random_numbers < self.cur_epsilon).long()
-            random_actions = Categorical(avail).sample().long()
+            random_actions = Categorical(avail, None).sample().long()
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.max(dim=2)[1])
             actions = actions.numpy()

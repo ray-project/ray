@@ -168,4 +168,5 @@ class ModelV2(object):
         return outputs, state
 
     def override_action_distribution(self):
+        """TODO(ekl) replace this with custom action distributions."""
         return None
