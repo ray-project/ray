@@ -83,8 +83,8 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         a1, a2 = actions[:, 0], actions[:, 1]
         a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
         a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
-        return (Categorical(a1_logits, None).logp(a1) + Categorical(
-            a2_logits, None).logp(a2))
+        return (Categorical(a1_logits).logp(a1) + Categorical(
+            a2_logits).logp(a2))
 
     def sampled_action_prob(self):
         return tf.exp(self._action_prob)
@@ -102,13 +102,13 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         BATCH = tf.shape(self.inputs)[0]
         a1_logits, _ = self.model.action_model(
             [self.inputs, tf.zeros((BATCH, 1))])
-        a1_dist = Categorical(a1_logits, None)
+        a1_dist = Categorical(a1_logits)
         return a1_dist
 
     def _a2_distribution(self, a1):
         a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
         _, a2_logits = self.model.action_model([self.inputs, a1_vec])
-        a2_dist = Categorical(a2_logits, None)
+        a2_dist = Categorical(a2_logits)
         return a2_dist
 
 
