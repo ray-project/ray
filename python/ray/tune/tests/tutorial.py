@@ -10,7 +10,7 @@ from torchvision import datasets
 from ray import tune
 from ray.tune import track
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.examples.mnist_pytorch import get_data_loaders, Net, train, test
+from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 
 datasets.MNIST("~/data", train=True, download=True)
 
@@ -19,19 +19,17 @@ datasets.MNIST("~/data", train=True, download=True)
 
 # __train_func_begin__
 def train_mnist(config):
-    model = Net(config)
+    model = ConvNet()
     train_loader, test_loader = get_data_loaders()
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
-    for i in range(20):
+    for i in range(10):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
         track.log(mean_accuracy=acc)
         if i % 5 == 0:
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
-
-
 # __train_func_end__
 
 # __eval_func_begin__

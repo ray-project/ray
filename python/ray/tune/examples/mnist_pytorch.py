@@ -22,8 +22,8 @@ EPOCH_SIZE = 512
 TEST_SIZE = 256
 
 
-class Net(nn.Module):
-    def __init__(self, config):
+class ConvNet(nn.Module):
+    def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
         self.fc = nn.Linear(192, 10)
@@ -86,7 +86,7 @@ def train_mnist(config):
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
-    model = Net(config).to(device)
+    model = ConvNet().to(device)
 
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
@@ -127,7 +127,7 @@ if __name__ == "__main__":
             "cpu": 2,
             "gpu": int(args.cuda)
         },
-        num_samples=1 if args.smoke_test else 10,
+        num_samples=1 if args.smoke_test else 50,
         config={
             "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
             "momentum": tune.uniform(0.1, 0.9),

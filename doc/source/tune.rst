@@ -5,7 +5,58 @@ Tune: Scalable Hyperparameter Search
     :scale: 30%
     :align: center
 
-Tune is a scalable framework for hyperparameter search and model training with a focus on deep learning and deep reinforcement learning. With Tune, you can scale to running on a large distributed cluster without changing your code.
+Tune is a scalable framework for hyperparameter search and model training with a focus on deep learning and deep reinforcement learning.
+
+  * Scale to running on a large distributed cluster without changing your code.
+  * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+  * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_
+
+Quick Start
+~~~~~~~~~~~
+
+This example runs a small grid search to train a CNN using PyTorch and Tune:
+
+.. literalinclude:: ../../python/ray/tune/tests/example.py
+   :language: python
+   :start-after: __quick_start_begin__
+   :end-before: __quick_start_end__
+
+If TensorBoard is installed, automatically visualize all trial results:
+
+.. code-block:: bash
+
+    tensorboard --logdir ~/ray_results
+
+
+.. image:: images/tune-start-tb.png
+
+For massive parallelism, do the following:
+
+1. Import and initialize Ray.
+
+.. code-block:: python
+
+    # Append to top of your script
+
+    import ray
+    from ray import tune
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ray-redis-address")
+    args = parser.parse_args()
+    ray.init(redis_address=args.ray_redis_address)
+
+Download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
+
+2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
+3. Set up your AWS credentials (``aws configure``).
+4. Run ``ray submit``. This will start 3 AWS nodes and run Tune across them. Append ``[--stop]`` to automatically shutdown your nodes after running:
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6479"  --start
+
+Take a look at the `Distributed Experiments <distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
 
 Getting Started
 ---------------
@@ -14,53 +65,10 @@ Getting Started
   * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
   * `Tutorial Notebook <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
 
-Quick Start
-~~~~~~~~~~~
 
-This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 98`` is reached. Tune works with any deep learning framework. Here is an example with PyTorch:
-
-.. literalinclude:: ../../python/ray/tune/tests/example.py
-   :language: python
-   :start-after: __quick_start_begin__
-   :end-before: __quick_start_end__
-
-If TensorBoard is installed, you can also automatically visualize all trial results:
-
-.. code-block:: bash
-
-    tensorboard --logdir ~/ray_results
-
-
-For massive parallelism, you can import and initialize Ray and then run `ray submit`:
-
-.. code-block:: python
-
-    # Append to top of your script
-
-    import ray
-    from ray import tune
-
-    ray.init(redis_address=tune.DEFAULT_REDIS_ADDRESS)
-
-.. code-block:: bash
-
-    ray submit tune_cluster.yaml [TUNE_SCRIPT.py] --start
-
-
-Features
---------
-
-*  Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
-*  Choose among scalable hyperparameter and model search techniques such as:
-
-   -  `Population Based Training (PBT) <tune-schedulers.html#population-based-training-pbt>`__
-   -  `Median Stopping Rule <tune-schedulers.html#median-stopping-rule>`__
-   -  `HyperBand <tune-schedulers.html#asynchronous-hyperband>`__
-
-*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_ or `Nevergrad with HyperBand`_.
-*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__ and `rllab's VisKit <https://github.com/vitchyr/viskit>`__.
-*  Parallelize training for models with GPU requirements or algorithms that may themselves be parallel and distributed.
-
+.. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
+.. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
+.. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
 Contribute to Tune
 ------------------

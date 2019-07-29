@@ -9,7 +9,8 @@ import torch.optim as optim
 from torchvision import datasets
 
 from ray.tune import Trainable
-from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, Net
+from ray.tune.examples.mnist_pytorch import (
+    train, test, get_data_loaders, ConvNet)
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512
@@ -46,7 +47,7 @@ class TrainMNIST(Trainable):
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.train_loader, self.test_loader = get_data_loaders()
-        self.model = Net(config).to(self.device)
+        self.model = ConvNet().to(self.device)
         self.optimizer = optim.SGD(
             self.model.parameters(),
             lr=config.get("lr", 0.01),
