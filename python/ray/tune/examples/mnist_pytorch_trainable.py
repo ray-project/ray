@@ -9,8 +9,8 @@ import torch.optim as optim
 from torchvision import datasets
 
 from ray.tune import Trainable
-from ray.tune.examples.mnist_pytorch import (
-    train, test, get_data_loaders, ConvNet)
+from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
+                                             ConvNet)
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512

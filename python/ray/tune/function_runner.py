@@ -136,9 +136,8 @@ class FunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._status_reporter = StatusReporter(self._results_queue,
-                                               self._continue_semaphore,
-                                               self.logdir)
+        self._status_reporter = StatusReporter(
+            self._results_queue, self._continue_semaphore, self.logdir)
         self._last_result = {}
         config = config.copy()
 

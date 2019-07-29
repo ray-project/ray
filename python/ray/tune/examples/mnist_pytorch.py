@@ -24,7 +24,7 @@ TEST_SIZE = 256
 
 class ConvNet(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(ConvNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
         self.fc = nn.Linear(192, 10)
 
