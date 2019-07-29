@@ -5,10 +5,6 @@ from __future__ import print_function
 from collections import deque, OrderedDict
 import numpy as np
 
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
-
 
 def unflatten(vector, shapes):
     i = 0
@@ -50,6 +46,8 @@ class TensorFlowVariables(object):
             input_variables (List[tf.Variables]): Variables to include in the
                 list.
         """
+        import tensorflow as tf
+
         self.sess = sess
         if not isinstance(output, (list, tuple)):
             output = [output]
