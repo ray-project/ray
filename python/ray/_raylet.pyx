@@ -370,7 +370,7 @@ cdef class CoreWorker:
         self.core_worker.reset(new CCoreWorker(
             WORKER_DRIVER if is_driver else WORKER_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
-            raylet_socket.encode("ascii"), job_id.native()))
+            raylet_socket.encode("ascii"), job_id.native(), NULL))
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)

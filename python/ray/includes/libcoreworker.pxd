@@ -32,17 +32,19 @@ cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
       CRayStatus Free(const c_vector[CObjectID] &object_ids, c_bool local_only,
                     c_bool delete_creating_tasks);
 
-
 cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
                     const c_string &store_socket,
-                    const c_string &raylet_socket, const CJobID &job_id)
+                    const c_string &raylet_socket, const CJobID &job_id,
+                    void* execution_callback)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
         #CTaskSubmissionInterface &Tasks()
         #CTaskExecutionInterface &Execution()
+
+        # TODO(edoakes): remove this once the raylet client is no longer used directly
         CRayletClient* GetRayletClient()
         # TODO(edoakes): remove this once the Python core worker uses task interfaces
         void SetCurrentTaskId(const CTaskID &task_id);
