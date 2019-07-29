@@ -27,7 +27,7 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   return local_store_provider_.Seal(object_id);
 }
 
-/// TODO: timeouts, nullptrs, duplicates
+/// TODO: duplicates
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
@@ -67,7 +67,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
           std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
       remaining_timeout -= get_timeout;
       should_break = remaining_timeout <= 0;
-      std::cout << "timed out" << std::endl;
     } else {
       if (num_attempts == 0) {
         get_timeout = 0;
@@ -86,7 +85,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         (*results)[unready[object_id]] = result_objects[i];
         unready.erase(object_id);
         if (IsException(*result_objects[i])) {
-          std::cout << "was exception" << std::endl;
           should_break = true;
         }
       }
