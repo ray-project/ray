@@ -14,12 +14,17 @@ from __future__ import print_function
 
 import numpy as np
 import gym
-from ray.rllib.models import FullyConnectedNetwork, Model, ModelCatalog
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from gym.spaces import Discrete, Box
 
 import ray
 from ray import tune
+from ray.rllib.utils import try_import_tf
 from ray.tune import grid_search
+
+tf = try_import_tf()
 
 
 class SimpleCorridor(gym.Env):
@@ -48,18 +53,22 @@ class SimpleCorridor(gym.Env):
         return [self.cur_pos], 1 if done else 0, done, {}
 
 
-class CustomModel(Model):
-    """Example of a custom model.
+class CustomModel(TFModelV2):
+    """Example of a custom model that just delegates to a fc-net."""
 
-    This model just delegates to the built-in fcnet.
-    """
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super(CustomModel, self).__init__(obs_space, action_space, num_outputs,
+                                          model_config, name)
+        self.model = FullyConnectedNetwork(obs_space, action_space,
+                                           num_outputs, model_config, name)
+        self.register_variables(self.model.variables())
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        self.obs_in = input_dict["obs"]
-        self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
-                                           self.action_space, num_outputs,
-                                           options)
-        return self.fcnet.outputs, self.fcnet.last_layer
+    def forward(self, input_dict, state, seq_lens):
+        return self.model.forward(input_dict, state, seq_lens)
+
+    def value_function(self):
+        return self.model.value_function()
 
 
 if __name__ == "__main__":
@@ -77,6 +86,7 @@ if __name__ == "__main__":
             "model": {
                 "custom_model": "my_model",
             },
+            "vf_share_layers": True,
             "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
             "num_workers": 1,  # parallelism
             "env_config": {

@@ -107,7 +107,7 @@ class ResNetTrainActor(object):
         with tf.device("/gpu:0" if num_gpus > 0 else "/cpu:0"):
             # Build the model.
             images, labels = cifar_input.build_input(data, hps.batch_size,
-                                                     dataset, False)
+                                                     dataset, True)
             self.model = resnet_model.ResNet(hps, images, labels, "train")
             self.model.build_graph()
             config = tf.ConfigProto(allow_soft_placement=True)

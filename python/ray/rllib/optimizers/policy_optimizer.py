@@ -134,12 +134,3 @@ class PolicyOptimizer(object):
         The index will be passed as the second arg to the given function.
         """
         return self.workers.foreach_worker_with_index(func)
-
-    def foreach_evaluator(self, func):
-        raise DeprecationWarning(
-            "foreach_evaluator has been renamed to foreach_worker")
-
-    def foreach_evaluator_with_index(self, func):
-        raise DeprecationWarning(
-            "foreach_evaluator_with_index has been renamed to "
-            "foreach_worker_with_index")

@@ -36,12 +36,30 @@ class SyncReplayOptimizer(PolicyOptimizer):
                  prioritized_replay=True,
                  prioritized_replay_alpha=0.6,
                  prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
                  schedule_max_timesteps=100000,
                  beta_annealing_fraction=0.2,
                  final_prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6,
                  train_batch_size=32,
                  sample_batch_size=4):
+        """Initialize an sync replay optimizer.
+
+        Arguments:
+            workers (WorkerSet): all workers
+            learning_starts (int): wait until this many steps have been sampled
+                before starting optimization.
+            buffer_size (int): max size of the replay buffer
+            prioritized_replay (bool): whether to enable prioritized replay
+            prioritized_replay_alpha (float): replay alpha hyperparameter
+            prioritized_replay_beta (float): replay beta hyperparameter
+            prioritized_replay_eps (float): replay eps hyperparameter
+            schedule_max_timesteps (int): number of timesteps in the schedule
+            beta_annealing_fraction (float): fraction of schedule to anneal
+                beta over
+            final_prioritized_replay_beta (float): final value of beta
+            train_batch_size (int): size of batches to learn on
+            sample_batch_size (int): size of batches to sample from workers
+        """
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts

@@ -9,7 +9,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.misc import normc_initializer
+from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.utils import try_import_tf
@@ -17,7 +17,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="SimpleQ")  # Try PG, PPO, DQN
+parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
 parser.add_argument("--stop", type=int, default=200)
 
 
@@ -49,7 +49,6 @@ class MyKerasModel(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        self.prev_input = input_dict
         model_out, self._value_out = self.base_model(input_dict["obs"])
         return model_out, state
 
@@ -84,7 +83,6 @@ class MyKerasQModel(DistributionalQModel):
 
     # Implement the core forward method
     def forward(self, input_dict, state, seq_lens):
-        self.prev_input = input_dict
         model_out = self.base_model(input_dict["obs"])
         return model_out, state
 
