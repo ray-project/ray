@@ -438,6 +438,8 @@ class Node(object):
             self._session_dir,
             self._ray_params.num_cpus,
             self._ray_params.num_gpus,
+            self._ray_params.memory,
+            self._ray_params.object_store_memory,
             self._ray_params.resources,
             self._ray_params.object_manager_port,
             self._ray_params.node_manager_port,

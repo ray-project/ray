@@ -1269,8 +1269,10 @@ def _initialize_serialization(job_id, worker=global_worker):
 def init(redis_address=None,
          num_cpus=None,
          num_gpus=None,
-         resources=None,
+         memory=None,
          object_store_memory=None,
+         resources=None,
+         driver_memory=None,
          driver_object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
@@ -1325,6 +1327,8 @@ def init(redis_address=None,
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        memory: The amount of memory (in bytes) that is available for use by
+            workers requesting memory resources.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is capped at 20GB but can be
             set higher.
@@ -1343,6 +1347,7 @@ def init(redis_address=None,
             drivers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
+        driver_memory (int): Driver heap memory quota.
         driver_object_store_memory (int): Limit the amount of memory the driver
             can use in the object store for creating objects.
         ignore_reinit_error: True if we should suppress errors from calling
@@ -1438,6 +1443,7 @@ def init(redis_address=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
+            memory=memory,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,
             plasma_store_socket_name=plasma_store_socket_name,
@@ -1465,6 +1471,9 @@ def init(redis_address=None,
         if redis_max_clients is not None:
             raise Exception("When connecting to an existing cluster, "
                             "redis_max_clients must not be provided.")
+        if memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "memory must not be provided.")
         if object_store_memory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "object_store_memory must not be provided.")
@@ -1506,6 +1515,7 @@ def init(redis_address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
+        driver_memory=driver_memory,
         driver_object_store_memory=driver_object_store_memory,
         job_id=job_id)
 
@@ -1757,6 +1767,7 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
+            driver_memory=None,
             driver_object_store_memory=None,
             job_id=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1768,6 +1779,7 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
+        driver_memory: Driver memory quota.
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
@@ -1959,7 +1971,6 @@ def connect(node,
             [],  # new_actor_handles.
             {},  # resource_map.
             {},  # placement_resource_map.
-            {},  # task options
         )
         task_table_data = ray._raylet.generate_gcs_task_table_data(
             driver_task_spec)

@@ -990,12 +990,14 @@ def start_dashboard(redis_address,
     return dashboard_url, process_info
 
 
-def check_and_update_resources(num_cpus, num_gpus, resources):
+def check_and_update_resources(num_cpus, num_gpus, memory, object_store_memory, resources):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
         num_cpus: The number of CPUs.
         num_gpus: The number of GPUs.
+        memory: Available heap memory.
+        object_store_memory: Object store memory.
         resources: A dictionary mapping resource names to resource quantities.
 
     Returns:
@@ -1006,15 +1008,25 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
     resources = resources.copy()
     assert "CPU" not in resources
     assert "GPU" not in resources
+    assert "memory" not in resources
+    assert "object_store_memory" not in resources
     if num_cpus is not None:
         resources["CPU"] = num_cpus
     if num_gpus is not None:
         resources["GPU"] = num_gpus
+    if memory is not None:
+        resources["memory"] = memory
+    if object_store_memory is not None:
+        # scale down to take into account 30% global reserved memory
+        resources["object_store_memory"] = int(object_store_memory * 0.69)
 
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
         resources["CPU"] = multiprocessing.cpu_count()
+
+    if "memory" not in resources:
+        pass  # TODO(ekl) detect avail sys memory
 
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -1069,6 +1081,8 @@ def start_raylet(redis_address,
                  session_dir,
                  num_cpus=None,
                  num_gpus=None,
+                 memory=None,
+                 object_store_memory=None,
                  resources=None,
                  object_manager_port=None,
                  node_manager_port=None,
@@ -1095,6 +1109,8 @@ def start_raylet(redis_address,
         session_dir (str): The path of this session.
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
+        memory: The memory allocated for this raylet.
+        object_store_memory: The object store memory allocated for this raylet.
         resources: The custom resources allocated for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
@@ -1127,6 +1143,7 @@ def start_raylet(redis_address,
                            multiprocessing.cpu_count())
 
     static_resources = check_and_update_resources(num_cpus, num_gpus,
+                                                  memory, object_store_memory,
                                                   resources)
 
     # Limit the number of workers that can be started in parallel by the
