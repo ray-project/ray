@@ -145,22 +145,23 @@ class AutoregressiveActionsModel(TFModelV2):
             activation=None,
             kernel_initializer=normc_initializer(0.01))(context)
 
-        # P(a1)
+        # P(a1 | obs)
         a1_logits = tf.keras.layers.Dense(
             2,
             name="a1_logits",
             activation=None,
             kernel_initializer=normc_initializer(0.01))(ctx_input)
 
-        # P(a2 | a1) -- note this doesn't include obs for example purposes,
-        # which forces the model to learn a2 without knowing the obs. In
-        # practice you'll want to use a Concat layer here so that a2 can be
-        # conditioned on both the obs and a1.
+        # P(a2 | a1)
+        # --note: typically you'd want to implement P(a2 | a1, obs) as follows:
+        # a2_context = tf.keras.layers.Concatenate(axis=1)(
+        #     [ctx_input, a1_input])
+        a2_context = a1_input
         a2_hidden = tf.keras.layers.Dense(
             16,
             name="a2_hidden",
             activation=tf.nn.tanh,
-            kernel_initializer=normc_initializer(1.0))(a1_input)
+            kernel_initializer=normc_initializer(1.0))(a2_context)
         a2_logits = tf.keras.layers.Dense(
             2,
             name="a2_logits",
