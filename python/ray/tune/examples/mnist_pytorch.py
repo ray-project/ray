@@ -78,7 +78,9 @@ def get_data_loaders():
     with FileLock(os.path.expanduser("~/data.lock")):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "~/data", train=True, download=True,
+                "~/data",
+                train=True,
+                download=True,
                 transform=mnist_transforms),
             batch_size=64,
             shuffle=True)
