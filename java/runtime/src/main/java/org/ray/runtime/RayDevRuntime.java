@@ -6,6 +6,7 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.objectstore.MockObjectInterface;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.MockRayletClient;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
@@ -22,28 +23,22 @@ public class RayDevRuntime extends AbstractRayRuntime {
     // Reset library path at runtime.
     resetLibraryPath();
 
-    objectInterface = new MockObjectInterface(workerContext);
+    objectInterface = new MockObjectInterface();
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
-    workerContext = new WorkerContext(rayConfig.workerMode,
-        rayConfig.getJobId(), rayConfig.runMode);
-    objectStoreProxy = new ObjectStoreProxy(workerContext, objectInterface);
-    rayletClient = new MockRayletClient(this, rayConfig.numberExecThreadsForDevRuntime);
+    throw new NotImplementedException();
   }
 
   @Override
   public void shutdown() {
-    rayletClient.destroy();
-  }
-
-  public MockObjectInterface getObjectInterface() {
-    return objectInterface;
+    //worker.destroy();
   }
 
   @Override
   public Worker getWorker() {
-    return ((MockRayletClient) rayletClient).getCurrentWorker();
+//    return ((MockRayletClient) rayletClient).getCurrentWorker();
+    throw new NotImplementedException();
   }
 
   private JobId nextJobId() {

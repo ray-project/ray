@@ -36,17 +36,6 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   std::vector<std::shared_ptr<RayObject>> args;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args));
 
-  TaskType task_type;
-  if (task_spec.IsActorCreationTask()) {
-    task_type = TaskType::ACTOR_CREATION_TASK;
-  } else if (task_spec.IsActorTask()) {
-    task_type = TaskType::ACTOR_TASK;
-  } else {
-    task_type = TaskType::NORMAL_TASK;
-  }
-
-  TaskInfo task_info{task_spec.TaskId(), task_spec.JobId(), task_type};
-
   auto num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
@@ -55,7 +44,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     num_returns--;
   }
 
-  auto status = execution_callback_(func, args, task_info, num_returns, results);
+  auto status = execution_callback_(func, args, num_returns, results);
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.

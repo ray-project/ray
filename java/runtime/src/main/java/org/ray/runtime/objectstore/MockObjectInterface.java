@@ -8,8 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.WorkerContext;
-import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,10 +19,8 @@ public class MockObjectInterface implements ObjectInterface {
 
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
-  private final WorkerContext workerContext;
 
-  public MockObjectInterface(WorkerContext workerContext) {
-    this.workerContext = workerContext;
+  public MockObjectInterface() {
   }
 
   public void addObjectPutCallback(Consumer<ObjectId> callback) {
@@ -37,8 +33,7 @@ public class MockObjectInterface implements ObjectInterface {
 
   @Override
   public ObjectId put(NativeRayObject obj) {
-    ObjectId objectId = IdUtil.computePutId(workerContext.getCurrentTaskId(),
-        workerContext.nextPutIndex());
+    ObjectId objectId = ObjectId.randomId();
     put(obj, objectId);
     return objectId;
   }

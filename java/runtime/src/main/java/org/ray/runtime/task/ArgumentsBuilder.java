@@ -7,6 +7,9 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayActorImpl;
+import org.ray.runtime.Worker;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.ray.runtime.util.Serializer;
 
 public class ArgumentsBuilder {
@@ -28,8 +31,8 @@ public class ArgumentsBuilder {
       byte[] data = null;
       if (arg == null) {
         data = Serializer.encode(null);
-      } else if (arg instanceof RayActor) {
-        data = Serializer.encode(arg);
+      } else if (arg instanceof RayActorImpl) {
+        id = Ray.internal().put(arg).getId();
       } else if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();
       } else if (arg instanceof byte[] && crossLanguage) {
@@ -40,7 +43,8 @@ public class ArgumentsBuilder {
       } else {
         byte[] serialized = Serializer.encode(arg);
         if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((AbstractRayRuntime) Ray.internal()).putSerialized(serialized).getId();
+          id = ((AbstractRayRuntime) Ray.internal()).getWorker().getObjectStoreProxy()
+              .put(new NativeRayObject(serialized, null));
         } else {
           data = serialized;
         }
@@ -55,26 +59,12 @@ public class ArgumentsBuilder {
   }
 
   /**
-   * Convert task spec arguments to real function arguments.
+   * Convert list of byte array to real function arguments.
    */
-  public static Object[] unwrap(TaskSpec task, ClassLoader classLoader) {
-    Object[] realArgs = new Object[task.args.length];
-    List<ObjectId> idsToFetch = new ArrayList<>();
-    List<Integer> indices = new ArrayList<>();
-    for (int i = 0; i < task.args.length; i++) {
-      FunctionArg arg = task.args[i];
-      if (arg.id != null) {
-        // pass by reference
-        idsToFetch.add(arg.id);
-        indices.add(i);
-      } else {
-        // pass by value
-        realArgs[i] = Serializer.decode(arg.data, classLoader);
-      }
-    }
-    List<Object> objects = Ray.get(idsToFetch);
-    for (int i = 0; i < objects.size(); i++) {
-      realArgs[indices.get(i)] = objects.get(i);
+  public static Object[] unwrap(Worker worker, List<NativeRayObject> args) {
+    Object[] realArgs = new Object[args.size()];
+    for (int i = 0; i < args.size(); i++) {
+      realArgs[i] = worker.getObjectStoreProxy().deserialize(args.get(i), null);
     }
     return realArgs;
   }

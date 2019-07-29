@@ -29,7 +29,7 @@ public class TaskAssignImplTest {
 
     List<RayActor<StreamWorker>> workers = new ArrayList<>();
     for(int i = 0; i < plan.getPlanVertexList().size(); i++) {
-      workers.add(new RayActorImpl<>());
+      workers.add(new RayActorImpl());
     }
 
     ITaskAssign taskAssign = new TaskAssignImpl();

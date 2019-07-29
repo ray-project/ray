@@ -1,129 +1,101 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.ArrayList;
+import java.nio.ByteBuffer;
 import java.util.List;
 import org.ray.api.RayActor;
-import org.ray.api.id.ObjectId;
+import org.ray.api.RayPyActor;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.util.Sha1Digestor;
+import org.ray.runtime.generated.Common.Language;
 
-public class RayActorImpl<T> implements RayActor<T>, Externalizable {
+public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
+  /**
+   * Address of native actor handle.
+   */
+  private long nativeActorHandle;
 
-  public static final RayActorImpl NIL = new RayActorImpl();
-
-  /**
-   * Id of this actor.
-   */
-  protected UniqueId id;
-  /**
-   * Handle id of this actor.
-   */
-  protected UniqueId handleId;
-  /**
-   * The number of tasks that have been invoked on this actor.
-   */
-  protected int taskCounter;
-  /**
-   * The unique id of the last return of the last task.
-   * It's used as a dependency for the next task.
-   */
-  protected ObjectId taskCursor;
-  /**
-   * The number of times that this actor handle has been forked.
-   * It's used to make sure ids of actor handles are unique.
-   */
-  protected int numForks;
-
-  /**
-   * The new actor handles that were created from this handle
-   * since the last task on this handle was submitted. This is
-   * used to garbage-collect dummy objects that are no longer
-   * necessary in the backend.
-   */
-  protected List<UniqueId> newActorHandles;
+  public RayActorImpl(long nativeActorHandle) {
+    Preconditions.checkState(nativeActorHandle != 0);
+    this.nativeActorHandle = nativeActorHandle;
+  }
 
   public RayActorImpl() {
-    this(UniqueId.NIL, UniqueId.NIL);
   }
 
-  public RayActorImpl(UniqueId id) {
-    this(id, UniqueId.NIL);
-  }
-
-  public RayActorImpl(UniqueId id, UniqueId handleId) {
-    this.id = id;
-    this.handleId = handleId;
-    this.taskCounter = 0;
-    this.taskCursor = null;
-    this.newActorHandles = new ArrayList<>();
-    numForks = 0;
+  public long getNativeActorHandle() {
+    return nativeActorHandle;
   }
 
   @Override
   public UniqueId getId() {
-    return id;
+    return UniqueId.fromByteBuffer(nativeGetActorId(nativeActorHandle));
   }
 
   @Override
   public UniqueId getHandleId() {
-    return handleId;
+    return UniqueId.fromByteBuffer(nativeGetActorHandleId(nativeActorHandle));
   }
 
-  public void setTaskCursor(ObjectId taskCursor) {
-    this.taskCursor = taskCursor;
+  public Language getLanguage() {
+    return Language.forNumber(nativeGetLanguage(nativeActorHandle));
   }
 
-  public List<UniqueId> getNewActorHandles() {
-    return this.newActorHandles;
+  @Override
+  public String getModuleName() {
+    Preconditions.checkState(getLanguage() == Language.PYTHON);
+    return nativeGetActorCreationTaskFunctionDescriptor(nativeActorHandle).get(0);
   }
 
-  public void clearNewActorHandles() {
-    this.newActorHandles.clear();
+  @Override
+  public String getClassName() {
+    Preconditions.checkState(getLanguage() == Language.PYTHON);
+    return nativeGetActorCreationTaskFunctionDescriptor(nativeActorHandle).get(1);
   }
 
-  public ObjectId getTaskCursor() {
-    return taskCursor;
+  public RayActorImpl fork() {
+    return new RayActorImpl(nativeFork(nativeActorHandle));
   }
 
-  public int increaseTaskCounter() {
-    return taskCounter++;
+  public byte[] Binary() {
+    return nativeSerialize(nativeActorHandle);
   }
 
-  public RayActorImpl<T> fork() {
-    RayActorImpl<T> ret = new RayActorImpl<>();
-    ret.id = this.id;
-    ret.taskCounter = 0;
-    ret.numForks = 0;
-    ret.taskCursor = this.taskCursor;
-    ret.handleId = this.computeNextActorHandleId();
-    newActorHandles.add(ret.handleId);
-    return ret;
-  }
-
-  protected UniqueId computeNextActorHandleId() {
-    byte[] bytes = Sha1Digestor.digest(handleId.getBytes(), ++numForks);
-    return new UniqueId(bytes);
+  public static RayActorImpl fromBinary(byte[] binary) {
+    return new RayActorImpl(nativeDeserialize(binary));
   }
 
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
-    out.writeObject(this.id);
-    out.writeObject(this.handleId);
-    out.writeObject(this.taskCursor);
-    out.writeObject(this.taskCounter);
-    out.writeObject(this.numForks);
+    out.writeObject(Binary());
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    this.id = (UniqueId) in.readObject();
-    this.handleId = (UniqueId) in.readObject();
-    this.taskCursor = (ObjectId) in.readObject();
-    this.taskCounter = (int) in.readObject();
-    this.numForks = (int) in.readObject();
+    nativeActorHandle = nativeDeserialize((byte[]) in.readObject());
   }
+
+  @Override
+  protected void finalize() {
+    nativeFree(nativeActorHandle);
+  }
+
+  private static native long nativeFork(long nativeActorHandle);
+
+  private static native ByteBuffer nativeGetActorId(long nativeActorHandle);
+
+  private static native ByteBuffer nativeGetActorHandleId(long nativeActorHandle);
+
+  private static native int nativeGetLanguage(long nativeActorHandle);
+
+  private static native List<String> nativeGetActorCreationTaskFunctionDescriptor(long nativeActorHandle);
+
+  private static native byte[] nativeSerialize(long nativeActorHandle);
+
+  private static native long nativeDeserialize(byte[] data);
+
+  private static native void nativeFree(long nativeActorHandle);
 }

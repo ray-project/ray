@@ -33,14 +33,20 @@ struct TaskOptions {
 struct ActorCreationOptions {
   ActorCreationOptions() {}
   ActorCreationOptions(uint64_t max_reconstructions,
-                       const std::unordered_map<std::string, double> &resources)
-      : max_reconstructions(max_reconstructions), resources(resources) {}
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::vector<std::string> &dynamic_worker_options)
+      : max_reconstructions(max_reconstructions),
+        resources(resources),
+        dynamic_worker_options(dynamic_worker_options) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
+  /// The dynamic options used in the worker command when starting the worker process for
+  /// an actor creation task.
+  const std::vector<std::string> dynamic_worker_options;
 };
 
 /// A handle to an actor.

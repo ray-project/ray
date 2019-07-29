@@ -10,18 +10,15 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.RayActorImpl;
 import org.ray.runtime.WorkerContext;
 import org.ray.runtime.generated.Gcs.ErrorType;
 import org.ray.runtime.util.Serializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A class that is used to put/get objects to/from the object store.
  */
 public class ObjectStoreProxy {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(ObjectStoreProxy.class);
 
   private static final byte[] WORKER_EXCEPTION_META = String
       .valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
@@ -34,6 +31,8 @@ public class ObjectStoreProxy {
       .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
   private static final byte[] RAW_TYPE_META = "RAW".getBytes();
+
+  private static final byte[] ACTOR_HANDLE_META = "ACTOR_HANDLE".getBytes();
 
   private final WorkerContext workerContext;
 
@@ -73,23 +72,14 @@ public class ObjectStoreProxy {
       NativeRayObject dataAndMeta = dataAndMetaList.get(i);
       GetResult<T> result;
       if (dataAndMeta != null) {
-        byte[] meta = dataAndMeta.metadata;
-        byte[] data = dataAndMeta.data;
-        if (meta != null && meta.length > 0) {
-          // If meta is not null, deserialize the object from meta.
-          result = deserializeFromMeta(meta, data,
-              workerContext.getCurrentClassLoader(), ids.get(i));
+        Object object = deserialize(dataAndMeta, ids.get(i));
+        if (object instanceof RayException) {
+          // If the object is a `RayException`, it means that an error occurred during task
+          // execution.
+          result = new GetResult<>(true, null, (RayException) object);
         } else {
-          // If data is not null, deserialize the Java object.
-          Object object = Serializer.decode(data, workerContext.getCurrentClassLoader());
-          if (object instanceof RayException) {
-            // If the object is a `RayException`, it means that an error occurred during task
-            // execution.
-            result = new GetResult<>(true, null, (RayException) object);
-          } else {
-            // Otherwise, the object is valid.
-            result = new GetResult<>(true, (T) object, null);
-          }
+          // Otherwise, the object is valid.
+          result = new GetResult<>(true, (T) object, null);
         }
       } else {
         // If both meta and data are null, the object doesn't exist in object store.
@@ -102,48 +92,97 @@ public class ObjectStoreProxy {
   }
 
   @SuppressWarnings("unchecked")
-  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data,
-      ClassLoader classLoader, ObjectId objectId) {
-    if (Arrays.equals(meta, RAW_TYPE_META)) {
-      return (GetResult<T>) new GetResult<>(true, data, null);
-    } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
-      return new GetResult<>(true, null, RayWorkerException.INSTANCE);
-    } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-      return new GetResult<>(true, null, RayActorException.INSTANCE);
-    } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
-      return new GetResult<>(true, null, new UnreconstructableException(objectId));
-    } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-      return new GetResult<>(true, null, Serializer.decode(data, classLoader));
+  public Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId) {
+    byte[] meta = nativeRayObject.metadata;
+    byte[] data = nativeRayObject.data;
+
+    // If meta is not null, deserialize the object from meta.
+    if (meta != null && meta.length > 0) {
+      // If meta is not null, deserialize the object from meta.
+      if (Arrays.equals(meta, RAW_TYPE_META)) {
+        return data;
+      } else if (Arrays.equals(meta, ACTOR_HANDLE_META)) {
+        return RayActorImpl.fromBinary(data);
+      } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
+        return RayWorkerException.INSTANCE;
+      } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
+        return RayActorException.INSTANCE;
+      } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
+        return new UnreconstructableException(objectId);
+      } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
+        return Serializer.decode(data, workerContext.getCurrentClassLoader());
+      }
+      throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
+    } else {
+      // If data is not null, deserialize the Java object.
+      return Serializer.decode(data, workerContext.getCurrentClassLoader());
     }
-    throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
+  }
+
+  /**
+   * Serialize an object.
+   *
+   * @param object The object to serialize.
+   * @return The serialized object.
+   */
+  public NativeRayObject serialize(Object object) {
+    if (object instanceof NativeRayObject) {
+      return  (NativeRayObject) object;
+    } else if (object instanceof byte[]) {
+      // If the object is a byte array, skip serializing it and use a special metadata to
+      // indicate it's raw binary. So that this object can also be read by Python.
+      return new NativeRayObject((byte[]) object, RAW_TYPE_META);
+    } else if (object instanceof RayActorImpl) {
+      return new NativeRayObject(((RayActorImpl) object).fork().Binary(),
+          ACTOR_HANDLE_META);
+    } else if (object instanceof RayTaskException) {
+      return new NativeRayObject(Serializer.encode(object),
+          TASK_EXECUTION_EXCEPTION_META);
+    } else {
+      return new NativeRayObject(Serializer.encode(object), null);
+    }
   }
 
   /**
    * Serialize and put an object to the object store.
    *
-   * @param id Id of the object.
    * @param object The object to put.
+   * @return Id of the object.
    */
-  public void put(ObjectId id, Object object) {
-    if (object instanceof byte[]) {
-      // If the object is a byte array, skip serializing it and use a special metadata to
-      // indicate it's raw binary. So that this object can also be read by Python.
-      objectInterface.put(new NativeRayObject((byte[]) object, RAW_TYPE_META), id);
-    } else if (object instanceof RayTaskException) {
-      objectInterface.put(new NativeRayObject(Serializer.encode(object), TASK_EXECUTION_EXCEPTION_META), id);
-    } else {
-      objectInterface.put(new NativeRayObject(Serializer.encode(object), null), id);
-    }
+  public ObjectId put(Object object) {
+    return objectInterface.put(serialize(object));
   }
 
   /**
-   * Put an already serialized object to the object store.
+   * Wait for a list of objects to appear in the object store.
    *
-   * @param id Id of the object.
-   * @param serializedObject The serialized object to put.
+   * @param objectIds IDs of the objects to wait for.
+   * @param numObjects Number of objects that should appear.
+   * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
+   * @return A bitset that indicates each object has appeared or not.
    */
-  public void putSerialized(ObjectId id, byte[] serializedObject) {
-    objectInterface.put(new NativeRayObject(serializedObject, null), id);
+  public List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs) {
+    return objectInterface.wait(objectIds, numObjects, timeoutMs);
+  }
+
+  /**
+   * Delete a list of objects from the object store.
+   *
+   * @param objectIds IDs of the objects to delete.
+   * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
+   * @param deleteCreatingTasks Whether also delete the tasks that created these objects.
+   */
+  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+    objectInterface.delete(objectIds, localOnly, deleteCreatingTasks);
+  }
+
+  /**
+   * Get the object interface.
+   *
+   * @return The object interface.
+   */
+  public ObjectInterface getObjectInterface() {
+    return objectInterface;
   }
 
   /**

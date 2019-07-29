@@ -1,10 +1,13 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import java.util.Collections;
+import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -23,8 +26,9 @@ public class PlasmaFreeTest extends BaseTest {
     Assert.assertEquals("hello", helloString);
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
+    List<ObjectId> ids = Collections.singletonList(helloId.getId());
     final boolean result = TestUtils.waitForCondition(() -> !((AbstractRayRuntime) Ray.internal())
-        .getObjectStoreProxy().get(helloId.getId(), 0).exists, 50);
+        .getWorker().getObjectStoreProxy().get(ids, 0).get(0).exists, 50);
     Assert.assertTrue(result);
   }
 
