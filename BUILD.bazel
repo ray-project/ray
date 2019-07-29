@@ -685,7 +685,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib", "//:core_worker_lib"], # TODO make _core_worker separate
+    deps = ["//:raylet_lib", "//:core_worker_lib"],
 )
 
 cc_binary(

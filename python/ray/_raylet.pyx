@@ -44,7 +44,8 @@ from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError
 from ray.utils import decode
 
-# pyarrow cannot be imported until after _raylet finishes initializing.
+# pyarrow cannot be imported until after _raylet finishes initializing
+# (see ray/__init__.py for details).
 # Unfortunately, Cython won't compile if 'pyarrow' is undefined, so we
 # "forward declare" it here and then replace it with a reference to the
 # imported package from ray/__init__.py.
@@ -232,6 +233,13 @@ cdef class RayletClient:
     cdef CRayletClient* client
 
     def __cinit__(self, CoreWorker core_worker):
+        # The core worker and raylet client need to share an underlying
+        # raylet client, so we take a reference to the core worker's client
+        # here. The client is a raw pointer because it is only a temporary
+        # workaround and will be removed once the core worker transition is
+        # complete, so we don't want to change the unique_ptr in core worker
+        # to a shared_ptr. This means the core worker *must* be 
+        # initialized before the raylet client.
         self.client = core_worker.core_worker.get().GetRayletClient()
 
     def disconnect(self):
@@ -240,6 +248,7 @@ cdef class RayletClient:
     def submit_task(self, TaskSpec task_spec):
         cdef:
             CObjectID c_id
+
         check_status(self.client.SubmitTask(
             task_spec.task_spec.get()[0]))
 
@@ -265,6 +274,7 @@ cdef class RayletClient:
                 c_string, c_vector[pair[int64_t, double]]
             ].iterator iterator = resource_mapping.begin()
             c_vector[pair[int64_t, double]] c_value
+
         resources_dict = {}
         while iterator != resource_mapping.end():
             key = decode(dereference(iterator).first)
@@ -329,8 +339,10 @@ cdef class RayletClient:
         check_status(self.client.PushProfileEvents(profile_info))
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef CActorCheckpointID checkpoint_id
-        cdef CActorID c_actor_id = actor_id.native()
+        cdef:
+            CActorCheckpointID checkpoint_id
+            CActorID c_actor_id = actor_id.native()
+
         # PrepareActorCheckpoint will wait for raylet's reply, release
         # the GIL so other Python threads can run.
         with nogil:
@@ -373,9 +385,10 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(), NULL))
 
     def get_objects(self, object_ids, TaskID current_task_id):
-        cdef c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
-        cdef CTaskID c_task_id = current_task_id.native()
-        cdef c_vector[shared_ptr[CRayObject]] results
+        cdef:
+            c_vector[shared_ptr[CRayObject]] results
+            CTaskID c_task_id = current_task_id.native()
+            c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
             self.core_worker.get().SetCurrentTaskId(c_task_id)
@@ -397,12 +410,14 @@ cdef class CoreWorker:
         return data_metadata_pairs
 
     def serialize_and_put(self, object value, ObjectID object_id, serialization_context=None):
-        cdef shared_ptr[CBuffer] data
-        cdef shared_ptr[CBuffer] metadata
-        cdef CObjectID c_object_id = object_id.native()
+        cdef:
+            shared_ptr[CBuffer] data
+            shared_ptr[CBuffer] metadata
+            CObjectID c_object_id = object_id.native()
+            size_t data_size
 
         serialized = pyarrow.serialize(value, serialization_context)
-        cdef size_t data_size = serialized.total_bytes
+        data_size = serialized.total_bytes
 
         with nogil:
             check_status(self.core_worker.get().Objects().Create(metadata, data_size, c_object_id, data))
@@ -414,9 +429,10 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
     def put_raw_buffer(self, c_string value, ObjectID object_id, c_string metadata=b"", int memcopy_threads=6):
-        cdef shared_ptr[CBuffer] data_buf
-        cdef shared_ptr[CBuffer] metadata_buf = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata.data()), metadata.size()))
-        cdef CObjectID c_object_id = object_id.native()
+        cdef:
+            shared_ptr[CBuffer] data_buf
+            shared_ptr[CBuffer] metadata_buf = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata.data()), metadata.size()))
+            CObjectID c_object_id = object_id.native()
 
         with nogil:
             check_status(self.core_worker.get().Objects().Create(metadata_buf, value.size(), c_object_id, data_buf))
@@ -430,7 +446,6 @@ cdef class CoreWorker:
 
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
              TaskID current_task_id):
-
         cdef:
             WaitResultPair result
             c_vector[CObjectID] wait_ids
@@ -455,6 +470,8 @@ cdef class CoreWorker:
         return (ready, not_ready)
 
     def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
-        cdef c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
+        cdef:
+            c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
+
         with nogil:
             check_status(self.core_worker.get().Objects().Free(free_ids, local_only, delete_creating_tasks))
