@@ -7,6 +7,14 @@ from ray.includes.common cimport CBuffer
 
 
 cdef class Buffer:
+    """Cython wrapper class of C++ `ray::Buffer`.
+
+    This class implements the Python 'buffer protocol', which allows
+    us to use it for calls into pyarrow (and other Python libraries
+    down the line) without having to copy the data.
+
+    See https://docs.python.org/3/c-api/buffer.html for details.
+    """
     cdef:
         shared_ptr[CBuffer] buffer
         Py_ssize_t shape

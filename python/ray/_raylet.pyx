@@ -55,7 +55,7 @@ cimport cpython
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/task.pxi"
-include "includes/common.pxi"
+include "includes/buffer.pxi"
 
 
 if cpython.PY_MAJOR_VERSION >= 3:
