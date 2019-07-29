@@ -65,7 +65,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         return TupleActions([a1, a2])
 
     def sampled_action_prob(self):
-        return self._action_prob
+        return tf.exp(self._action_prob)
 
     def logp(self, actions):
         a1, a2 = actions[:, 0], actions[:, 1]
@@ -171,6 +171,7 @@ class AutoregressiveActionsModel(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
     def override_action_distribution(self):
+        # TODO(ekl) remove this once we have custom action dists
         return BinaryAutoregressiveOutput
 
 
