@@ -81,7 +81,13 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
 
   (*results).resize(object_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
-    (*results)[i] = objects[i]->GetData() != nullptr;
+    if (objects[i] == nullptr) {
+      (*results)[i] = false;
+      continue;
+    }
+
+    (*results)[i] = objects[i]->GetData() != nullptr ||
+        objects[i]->GetMetadata() != nullptr;
   }
 
   return Status::OK();
