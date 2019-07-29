@@ -5,6 +5,30 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: rllib-envs.svg
 
+Feature Compatibility Matrix
+----------------------------
+
+=============  =======================  ==================  ===========  ===========================
+Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
+=============  =======================  ==================  ===========  ===========================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
+DDPG, TD3       No                      **Yes**             **Yes**
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
+APEX-DDPG       No                      **Yes**             **Yes**
+ES              **Yes**                 **Yes**             No
+ARS             **Yes**                 **Yes**             No
+QMIX            **Yes**                 No                  **Yes**      `+RNN`_
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
+=============  =======================  ==================  ===========  ===========================
+
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+
 You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python

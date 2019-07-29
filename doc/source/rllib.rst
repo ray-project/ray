@@ -35,6 +35,7 @@ Training APIs
 Environments
 ------------
 * `RLlib Environments Overview <rllib-env.html>`__
+* `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
@@ -44,7 +45,6 @@ Environments
 Models and Preprocessors
 ------------------------
 * `RLlib Models and Preprocessors Overview <rllib-models.html>`__
-* `Feature Compatibility Matrix <rllib-models.html#feature-compatibility-matrix>`__
 * `TensorFlow Models <rllib-models.html#tensorflow-models>`__
 * `PyTorch Models <rllib-models.html#pytorch-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
