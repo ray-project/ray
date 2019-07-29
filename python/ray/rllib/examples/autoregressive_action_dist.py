@@ -1,4 +1,14 @@
-"""Example of specifying an autoregressive action distribution."""
+"""Example of specifying an autoregressive action distribution.
+
+In an action space with multiple components (e.g., Tuple(a1, a2)), you might
+want a2 to be sampled based on the sampled value of a1, i.e.,
+a2_sampled ~ P(a2 | a1_sampled, obs). Normally, a1 and a2 would be sampled
+independently.
+
+To do this, you need both a custom model that implements the autoregressive
+pattern, and a custom action distribution class that leverages that model.
+This examples shows both.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
