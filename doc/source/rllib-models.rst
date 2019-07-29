@@ -11,7 +11,7 @@ Feature Compatibility Matrix
 ----------------------------
 
 =============  =======================  ==================  ===========  ===========================
-Algorithm      Discrete Actions         Continuous          Multi-Agent  Policy Support
+Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
 =============  =======================  ==================  ===========  ===========================
 A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
 PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
