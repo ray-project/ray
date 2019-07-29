@@ -1576,14 +1576,11 @@ void NodeManager::HandleTaskBlocked(const WorkerID &worker_id,
       RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
       local_queues_.QueueTasks({task}, TaskState::RUNNING);
       // Get the CPU resources required by the running task.
-      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      const ResourceSet cpu_resources = required_resources.GetNumCpus();
-
       // Release the CPU resources.
       auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
       local_available_resources_.Release(cpu_resource_ids);
       cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-          cpu_resources);
+          cpu_resource_ids.ToResourceSet());
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
