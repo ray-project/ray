@@ -96,14 +96,16 @@ class RayletGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies, std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories) override {
+          *server_call_factories_and_concurrencies,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories)
+      override {
     // Initialize the factory for `RegisterClient` requests.
     std::unique_ptr<ServerCallFactory> register_client_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   RegisterClientRequest, RegisterClientReply>(
-            service_, &RayletService::AsyncService::RequestRegisterClient,
-            service_handler_, &RayletServiceHandler::HandleRegisterClientRequest, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestRegisterClient, service_handler_,
+            &RayletServiceHandler::HandleRegisterClientRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(register_client_call_factory), 10);
 
@@ -111,8 +113,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> submit_task_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, SubmitTaskRequest,
                                   SubmitTaskReply>(
-            service_, &RayletService::AsyncService::RequestSubmitTask, service_handler_,
-            &RayletServiceHandler::HandleSubmitTaskRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestSubmitTask,
+            service_handler_, &RayletServiceHandler::HandleSubmitTaskRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(submit_task_call_factory), 20);
 
@@ -120,9 +122,9 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> disconnect_client_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   DisconnectClientRequest, DisconnectClientReply>(
-            service_, &RayletService::AsyncService::RequestDisconnectClient,
-            service_handler_, &RayletServiceHandler::HandleDisconnectClientRequest, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestDisconnectClient, service_handler_,
+            &RayletServiceHandler::HandleDisconnectClientRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(disconnect_client_call_factory), 10);
 
@@ -130,8 +132,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> get_task_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, GetTaskRequest,
                                   GetTaskReply>(
-            service_, &RayletService::AsyncService::RequestGetTask, service_handler_,
-            &RayletServiceHandler::HandleGetTaskRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestGetTask,
+            service_handler_, &RayletServiceHandler::HandleGetTaskRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(get_task_call_factory), 20);
 
@@ -139,8 +141,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> task_done_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, TaskDoneRequest,
                                   TaskDoneReply>(
-            service_, &RayletService::AsyncService::RequestTaskDone, service_handler_,
-            &RayletServiceHandler::HandleTaskDoneRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestTaskDone,
+            service_handler_, &RayletServiceHandler::HandleTaskDoneRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(task_done_call_factory), 20);
 
@@ -148,9 +150,9 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> fetch_or_reconstruct_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   FetchOrReconstructRequest, FetchOrReconstructReply>(
-            service_, &RayletService::AsyncService::RequestFetchOrReconstruct,
-            service_handler_, &RayletServiceHandler::HandleFetchOrReconstructRequest, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestFetchOrReconstruct, service_handler_,
+            &RayletServiceHandler::HandleFetchOrReconstructRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(fetch_or_reconstruct_call_factory), 10);
 
@@ -158,9 +160,9 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> notify_unblocked_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   NotifyUnblockedRequest, NotifyUnblockedReply>(
-            service_, &RayletService::AsyncService::RequestNotifyUnblocked,
-            service_handler_, &RayletServiceHandler::HandleNotifyUnblockedRequest, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestNotifyUnblocked, service_handler_,
+            &RayletServiceHandler::HandleNotifyUnblockedRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(notify_unblocked_call_factory), 10);
 
@@ -168,8 +170,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> wait_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, WaitRequest,
                                   WaitReply>(
-            service_, &RayletService::AsyncService::RequestWait, service_handler_,
-            &RayletServiceHandler::HandleWaitRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestWait,
+            service_handler_, &RayletServiceHandler::HandleWaitRequest));
     server_call_factories_and_concurrencies->emplace_back(std::move(wait_call_factory),
                                                           20);
 
@@ -177,8 +179,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> push_error_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, PushErrorRequest,
                                   PushErrorReply>(
-            service_, &RayletService::AsyncService::RequestPushError, service_handler_,
-            &RayletServiceHandler::HandlePushErrorRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestPushError,
+            service_handler_, &RayletServiceHandler::HandlePushErrorRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(push_error_call_factory), 10);
 
@@ -186,9 +188,9 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> push_profile_events_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   PushProfileEventsRequest, PushProfileEventsReply>(
-            service_, &RayletService::AsyncService::RequestPushProfileEvents,
-            service_handler_, &RayletServiceHandler::HandlePushProfileEventsRequest, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestPushProfileEvents, service_handler_,
+            &RayletServiceHandler::HandlePushProfileEventsRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(push_profile_events_call_factory), 10);
 
@@ -196,9 +198,9 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   FreeObjectsInStoreRequest, FreeObjectsInStoreReply>(
-            service_, &RayletService::AsyncService::RequestFreeObjectsInStore,
-            service_handler_, &RayletServiceHandler::HandleFreeObjectsInStoreRequest, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestFreeObjectsInStore, service_handler_,
+            &RayletServiceHandler::HandleFreeObjectsInStoreRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(free_objects_call_factory), 10);
 
@@ -207,9 +209,9 @@ class RayletGrpcService : public GrpcService {
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   PrepareActorCheckpointRequest,
                                   PrepareActorCheckpointReply>(
-            service_, &RayletService::AsyncService::RequestPrepareActorCheckpoint,
-            service_handler_, &RayletServiceHandler::HandlePrepareActorCheckpointRequest,
-            cq, main_service_));
+            main_service_, cq, service_,
+            &RayletService::AsyncService::RequestPrepareActorCheckpoint, service_handler_,
+            &RayletServiceHandler::HandlePrepareActorCheckpointRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(prepare_actor_checkpoint_call_factory), 10);
 
@@ -218,11 +220,10 @@ class RayletGrpcService : public GrpcService {
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler,
                                   NotifyActorResumedFromCheckpointRequest,
                                   NotifyActorResumedFromCheckpointReply>(
-            service_,
+            main_service_, cq, service_,
             &RayletService::AsyncService::RequestNotifyActorResumedFromCheckpoint,
             service_handler_,
-            &RayletServiceHandler::HandleNotifyActorResumedFromCheckpointRequest, cq,
-            main_service_));
+            &RayletServiceHandler::HandleNotifyActorResumedFromCheckpointRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(notify_actor_resumed_from_checkpoint_call_factory), 10);
 
@@ -230,8 +231,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> set_resource_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, SetResourceRequest,
                                   SetResourceReply>(
-            service_, &RayletService::AsyncService::RequestSetResource, service_handler_,
-            &RayletServiceHandler::HandleSetResourceRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestSetResource,
+            service_handler_, &RayletServiceHandler::HandleSetResourceRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(set_resource_call_factory), 10);
 
@@ -239,8 +240,8 @@ class RayletGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> heartbeat_call_factory(
         new ServerCallFactoryImpl<RayletService, RayletServiceHandler, HeartbeatRequest,
                                   HeartbeatReply>(
-            service_, &RayletService::AsyncService::RequestHeartbeat, service_handler_,
-            &RayletServiceHandler::HandleHeartbeatRequest, cq, main_service_));
+            main_service_, cq, service_, &RayletService::AsyncService::RequestHeartbeat,
+            service_handler_, &RayletServiceHandler::HandleHeartbeatRequest));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(heartbeat_call_factory), 10);
   }

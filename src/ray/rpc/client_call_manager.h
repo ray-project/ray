@@ -90,7 +90,8 @@ class ClientCallManager {
     auto call =
         std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
     auto tag = new ClientCallTag(call);
-    // Should set tag before connect because the tag will be set into completion queue in connect function.
+    // Should set tag before connect because the tag will be set into completion queue in
+    // connect function.
     call->SetClientCallTag(tag);
     // Setup connection with remote server.
     call->Connect(stub, async_rpc_function, &cq_);
@@ -121,27 +122,27 @@ class ClientCallManager {
           if (tag->GetCall()->IsReadingStream()) {
             main_service_.post([tag]() { tag->GetCall()->OnReplyReceived(); });
           } else {
-            switch(state) {
-              case ClientCallState::CREATE:
-                RAY_LOG(INFO) << "Client call create.";
-                break;
-              case ClientCallState::CONNECT:
-                RAY_LOG(INFO) << "Client call connect.";
-                break;
-              case ClientCallState::WRITE:
-                RAY_LOG(INFO) << "Client call write.";
-                break;
-              case ClientCallState::WRITES_DONE:
-                RAY_LOG(INFO) << "Client call writes done.";
-                break;
-              case ClientCallState::FINISH:
-                RAY_LOG(INFO) << "Client call finish.";
-                delete tag;
-                break;
-              default:
-                RAY_LOG(INFO) << "Should not reach here.";
-                break;
-              }
+            switch (state) {
+            case ClientCallState::CREATE:
+              RAY_LOG(INFO) << "Client call create.";
+              break;
+            case ClientCallState::CONNECT:
+              RAY_LOG(INFO) << "Client call connect.";
+              break;
+            case ClientCallState::WRITE:
+              RAY_LOG(INFO) << "Client call write.";
+              break;
+            case ClientCallState::WRITES_DONE:
+              RAY_LOG(INFO) << "Client call writes done.";
+              break;
+            case ClientCallState::FINISH:
+              RAY_LOG(INFO) << "Client call finish.";
+              delete tag;
+              break;
+            default:
+              RAY_LOG(INFO) << "Should not reach here.";
+              break;
+            }
           }
         }
       } else {

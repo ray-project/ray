@@ -10,15 +10,15 @@
 #include <thread>
 #include <vector>
 
+using std::cout;
+using std::endl;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
-using std::cout;
-using std::endl;
 
 string GenerateMessage(const string &hdr, int idx) {
- return hdr + "-idx-" + std::to_string(idx);
+  return hdr + "-idx-" + std::to_string(idx);
 }
 
 bool VerifyMessage(const string &msg, const string &hdr, int idx) {
@@ -46,14 +46,15 @@ namespace rpc {
 class ServiceHandlers : public TestServiceHandler {
  public:
   void HandleDebugEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
-                 SendReplyCallback send_reply_callback) override {
+                       SendReplyCallback send_reply_callback) override {
     cout << "Received request in DebugEcho, msg " << request.request_message() << endl;
     reply->set_reply_message("Reply for DebugEcho.");
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 
-  void HandleDebugStreamEcho(const DebugEchoRequest &request,
-                            StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_writer) override {
+  void HandleDebugStreamEcho(
+      const DebugEchoRequest &request,
+      StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_writer) override {
     const string &str = request.request_message();
     int idx = GetIndex(str);
     if (idx % 2 == 0) {
@@ -64,20 +65,20 @@ class ServiceHandlers : public TestServiceHandler {
     cout << "Received request in DebugStreamEcho, msg " << request.request_message()
          << endl;
   }
-
 };
 
 class GrpcTest : public ::testing::Test {
  public:
-  GrpcTest() : work_(io_service_),
-      client_call_manager_(io_service_), service_(io_service_, service_handlers_) {}
+  GrpcTest()
+      : work_(io_service_),
+        client_call_manager_(io_service_),
+        service_(io_service_, service_handlers_) {}
 
   ~GrpcTest() {}
 
   void SetUp() {
-    server_thread_.reset(new std::unique_ptr<std::thread>>([this](){
-      io_service_.run();
-    }));
+    server_thread_.reset(new std::unique_ptr<std::thread>>
+                         ([this]() { io_service_.run(); }));
     server_.reset(new GrpcServer("DebugTestServer", 12345));
     server_->RegisterService(service_);
     server_->Run();

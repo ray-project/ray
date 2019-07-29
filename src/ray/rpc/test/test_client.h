@@ -36,7 +36,8 @@ class DebugTestClient {
   /// \param[in] callback The callback function that handles reply.
   Status DebugEcho(const DebugEchoRequest &request,
                    const ClientCallback<DebugEchoReply> &callback) {
-    auto call = client_call_manager_.CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
+    auto call = client_call_manager_
+                    .CreateCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
                         *stub_, &DebugEchoService::Stub::PrepareAsyncDebugEcho, request,
                         callback);
     return call->GetStatus();

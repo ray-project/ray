@@ -43,14 +43,15 @@ class NodeManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies,
-          std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories)
+      override {
     // Initialize the factory for `ForwardTask` requests.
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
-            service_, &NodeManagerService::AsyncService::RequestForwardTask,
-            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq,
-            main_service_));
+            main_service_, cq, service_,
+            &NodeManagerService::AsyncService::RequestForwardTask, service_handler_,
+            &NodeManagerServiceHandler::HandleForwardTask));
 
     // Set `ForwardTask`'s accept concurrency to 100.
     server_call_factories_and_concurrencies->emplace_back(

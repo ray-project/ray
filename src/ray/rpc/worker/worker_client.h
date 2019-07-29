@@ -37,7 +37,8 @@ class WorkerTaskClient {
   /// \return if the rpc call succeeds
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) {
-    auto call = client_call_manager_.CreateCall<WorkerTaskService, AssignTaskRequest, AssignTaskReply>(
+    auto call = client_call_manager_
+                    .CreateCall<WorkerTaskService, AssignTaskRequest, AssignTaskReply>(
                         *stub_, &WorkerTaskService::Stub::PrepareAsyncAssignTask, request,
                         callback);
     return call->GetStatus();

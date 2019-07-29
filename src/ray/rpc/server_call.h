@@ -235,20 +235,22 @@ class ServerCallImpl : public ServerCall {
 template <class Request, class Reply>
 class StreamReplyWriter {
  public:
-  StreamReplyWriter(std::shared_ptr<grpc::ServerAsyncReaderWriter<Request,Reply>> server_stream,
-                          ServerCall *server_call)
-    : server_stream_(server_stream), server_call_(server_call) {}
+  StreamReplyWriter(
+      std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream,
+      ServerCall *server_call)
+      : server_stream_(server_stream), server_call_(server_call) {}
   void Write(const Reply &reply) {
-    server_stream_.Write(reply, reinterpret_cast<void*>(server_call_));
+    server_stream_.Write(reply, reinterpret_cast<void *>(server_call_));
   }
+
  private:
   std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream_;
-  const ServerCall* server_call_;
+  const ServerCall *server_call_;
 };
 
 template <class ServiceHandler, class Request, class Reply>
-using HandleStreamRequestFunction = void (ServiceHandler::*)(
-    const Request &, StreamReplyWriter<Request, Reply> &);
+using HandleStreamRequestFunction =
+    void (ServiceHandler::*)(const Request &, StreamReplyWriter<Request, Reply> &);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a stream type rpc.
 ///

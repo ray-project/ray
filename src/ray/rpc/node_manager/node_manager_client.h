@@ -7,7 +7,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/client_call_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"

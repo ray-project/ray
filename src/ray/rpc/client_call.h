@@ -98,6 +98,11 @@ class ClientCallImpl : public ClientCall {
     }
   }
 
+  // Stream call interface, unused in default call.
+  void WriteStream(::google::protobuf::Message &request) {}
+  void WritesDone() {}
+  bool IsReadingStream() {}
+
  private:
   /// The reply message.
   Reply reply_;
@@ -129,7 +134,7 @@ class ClientStreamCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback)
-      : callback_(callback) {}
+      : ClientCall(ClientCallType::STREAM_ASYNC_CALL), callback_(callback) {}
 
   void Connect(typename GrpcService::Stub &stub,
                const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,

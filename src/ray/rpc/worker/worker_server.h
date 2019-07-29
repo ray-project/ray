@@ -41,13 +41,16 @@ class WorkerTaskGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies, std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories) override {
+          *server_call_factories_and_concurrencies,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories)
+      override {
     // Initialize the Factory for `AssignTask` requests.
     std::unique_ptr<ServerCallFactory> push_task_call_Factory(
         new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler, AssignTaskRequest,
                                   AssignTaskReply>(
-            service_, &WorkerTaskService::AsyncService::RequestAssignTask,
-            service_handler_, &WorkerTaskHandler::HandleAssignTask, cq, main_service_));
+            main_service_, cq, service_,
+            &WorkerTaskService::AsyncService::RequestAssignTask, service_handler_,
+            &WorkerTaskHandler::HandleAssignTask));
 
     // Set `AssignTask`'s accept concurrency to 5.
     server_call_factories_and_concurrencies->emplace_back(

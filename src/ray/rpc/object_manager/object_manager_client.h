@@ -10,7 +10,7 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
-#include "src/ray/rpc/client_call.h"
+#include "src/ray/rpc/client_call_manager.h"
 
 namespace ray {
 namespace rpc {

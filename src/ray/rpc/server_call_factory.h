@@ -22,8 +22,8 @@ class ServerCallFactory {
   virtual ~ServerCallFactory() = default;
 
   ServerCallFactory(boost::asio::io_service &io_service,
-                    const std::unique_ptr<grpc::ServerCompletionQueue> &cq):io_service_(io_service),
-            cq_(cq) {}
+                    const std::unique_ptr<grpc::ServerCompletionQueue> &cq)
+      : io_service_(io_service), cq_(cq) {}
 
  protected:
   /// The event loop.
