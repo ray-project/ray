@@ -167,7 +167,6 @@ class CoreWorkerTaskInterface {
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::unordered_map<std::string, std::string> &task_options,
       std::vector<ObjectID> *return_ids);
 
   /// Reference to the parent CoreWorker's context.

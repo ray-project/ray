@@ -273,9 +273,11 @@ def set_cuda_visible_devices(gpu_ids):
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
 
 
-def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
-                                      default_resources, runtime_num_cpus,
-                                      runtime_num_gpus, runtime_resources):
+def resources_from_resource_arguments(
+        default_num_cpus, default_num_gpus, default_memory,
+        default_object_store_memory, default_resources, runtime_num_cpus,
+        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
+        runtime_resources):
     """Determine a task's resource requirements.
 
     Args:
@@ -283,12 +285,19 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
             or actor method.
         default_num_gpus: The default number of GPUs required by this function
             or actor method.
+        default_memory: The default heap memory required by this function
+            or actor method.
+        default_object_store_memory: The default object store memory required
+            by this function or actor method.
         default_resources: The default custom resources required by this
             function or actor method.
         runtime_num_cpus: The number of CPUs requested when the task was
             invoked.
         runtime_num_gpus: The number of GPUs requested when the task was
             invoked.
+        runtime_memory: The heap memory requested when the task was invoked.
+        runtime_object_store_memory: The object store memory requested when
+            the task was invoked.
         runtime_resources: The custom resources requested when the task was
             invoked.
 
@@ -305,6 +314,9 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     if "CPU" in resources or "GPU" in resources:
         raise ValueError("The resources dictionary must not "
                          "contain the key 'CPU' or 'GPU'")
+    elif "memory" in resources or "object_store_memory" in resources:
+        raise ValueError("The resources dictionary must not "
+                         "contain the key 'memory' or 'object_store_memory'")
 
     assert default_num_cpus is not None
     resources["CPU"] = (default_num_cpus
@@ -314,6 +326,14 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
         resources["GPU"] = runtime_num_gpus
     elif default_num_gpus is not None:
         resources["GPU"] = default_num_gpus
+
+    memory = default_memory or runtime_memory
+    object_store_memory = (default_object_store_memory
+                           or runtime_object_store_memory)
+    if memory is not None:
+        resources["memory"] = memory
+    if object_store_memory is not None:
+        resources["object_store_memory"] = object_store_memory
 
     return resources
 

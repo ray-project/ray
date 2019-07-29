@@ -26,19 +26,14 @@ cdef class TaskSpec:
                  ObjectID previous_actor_task_dummy_object_id,
                  int32_t max_actor_reconstructions, ActorID actor_id,
                  ActorHandleID actor_handle_id, int actor_counter,
-                 new_actor_handles, resource_map, placement_resource_map,
-                 task_options_map):
+                 new_actor_handles, resource_map, placement_resource_map):
         cdef:
             TaskSpecBuilder builder
             unordered_map[c_string, double] required_resources
             unordered_map[c_string, double] required_placement_resources
-            unordered_map[c_string, c_string] task_options
             c_vector[c_string] c_function_descriptor
             c_string pickled_str
             c_vector[CActorHandleID] c_new_actor_handles
-
-        for key, value in task_options_map.items():
-            task_options[key.encode("ascii")] = value.encode("ascii")
 
         # Convert function descriptor to C++ vector.
         for item in function_descriptor:
@@ -64,7 +59,6 @@ cdef class TaskSpec:
             num_returns,
             required_resources,
             required_placement_resources,
-            task_options
         )
 
         # Build arguments.
@@ -156,25 +150,6 @@ cdef class TaskSpec:
     def parent_counter(self):
         """Return the parent counter of this task."""
         return self.task_spec.get().ParentCounter()
-
-    def task_options(self):
-        """Return the runtime options for this task."""
-        cdef:
-            unordered_map[c_string, c_string] options = (
-                self.task_spec.get().TaskOptions())
-            c_string key
-            c_string value
-            unordered_map[c_string, c_string].iterator iterator = (
-                options.begin())
-
-        task_options = {}
-        while iterator != options.end():
-            # bytes for Py2, unicode for Py3
-            py_key = dereference(iterator).first.decode()
-            py_value = dereference(iterator).second.decode()
-            task_options[py_key] = py_value
-            postincrement(iterator)
-        return task_options
 
     def function_descriptor_list(self):
         """Return the function descriptor for this task."""

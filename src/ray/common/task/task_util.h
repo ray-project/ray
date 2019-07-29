@@ -24,8 +24,7 @@ class TaskSpecBuilder {
       const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
       uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::unordered_map<std::string, std::string> &task_options) {
+      const std::unordered_map<std::string, double> &required_placement_resources) {
     message_.set_type(TaskType::NORMAL_TASK);
     message_.set_language(language);
     for (const auto &fd : function_descriptor) {
@@ -40,7 +39,6 @@ class TaskSpecBuilder {
                                                   required_resources.end());
     message_.mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
-    message_.mutable_task_options()->insert(task_options.begin(), task_options.end());
     return *this;
   }
 

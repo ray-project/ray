@@ -43,15 +43,15 @@ class TestMemoryLimits(unittest.TestCase):
 
     def testQuotaTooLarge(self):
         self.assertRaisesRegexp(ray.exceptions.RayTaskError,
-                                ".*Failed to set output_memory_limit.*",
+                                ".*Failed to set object_store_memory.*",
                                 lambda: self._run(100 * MB, None, None))
         self.assertRaisesRegexp(ray.memory_monitor.RayOutOfMemoryError,
-                                ".*Failed to set output_memory_limit.*",
+                                ".*Failed to set object_store_memory.*",
                                 lambda: self._run(None, None, 100 * MB))
 
     def testTooLargeAllocation(self):
         try:
-            ray.init(driver_output_memory_limit=10 * MB)
+            ray.init(driver_object_store_memory=10 * MB)
             ray.put(np.zeros(5 * MB, dtype=np.uint8))
             self.assertRaises(
                 OBJECT_TOO_LARGE,
@@ -64,10 +64,10 @@ class TestMemoryLimits(unittest.TestCase):
         try:
             ray.init(
                 object_store_memory=100 * MB,
-                driver_output_memory_limit=driver_quota)
+                driver_object_store_memory=driver_quota)
             z = ray.put("hi")
-            a = LightActor._remote(output_memory_limit=a_quota)
-            b = GreedyActor._remote(output_memory_limit=b_quota)
+            a = LightActor._remote(object_store_memory=a_quota)
+            b = GreedyActor._remote(object_store_memory=b_quota)
             for _ in range(5):
                 r_a = a.sample.remote()
                 for _ in range(20):

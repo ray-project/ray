@@ -61,7 +61,6 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         const ResourceSet GetRequiredPlacementResources() const
         c_bool IsDriverTask() const
         CLanguage GetLanguage() const
-        unordered_map[c_string, c_string] TaskOptions() const
         c_bool IsNormalTask() const
         c_bool IsActorCreationTask() const
         c_bool IsActorTask() const
@@ -82,8 +81,7 @@ cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
             const CLanguage &language, const c_vector[c_string] &function_descriptor,
             const CJobID &job_id, const CTaskID &parent_task_id, uint64_t parent_counter,
             uint64_t num_returns, const unordered_map[c_string, double] &required_resources,
-            const unordered_map[c_string, double] &required_placement_resources,
-            const unordered_map[c_string, c_string] &task_options)
+            const unordered_map[c_string, double] &required_placement_resources)
 
         TaskSpecBuilder &AddByRefArg(const CObjectID &arg_id)
 

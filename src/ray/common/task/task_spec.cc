@@ -145,10 +145,6 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
       message_.actor_task_spec().new_actor_handles());
 }
 
-std::unordered_map<std::string, std::string> TaskSpecification::TaskOptions() const {
-  return MapFromProtobuf(message_.task_options());
-}
-
 std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_.type())
