@@ -101,10 +101,6 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. warning::
-
-   Keras custom models are not compatible with multi-GPU (this includes PPO in single-GPU mode). This is because the multi-GPU implementation in RLlib relies on variable scopes to implement cross-GPU support.
-
 .. literalinclude:: ../../python/ray/rllib/agents/ppo/appo.py
    :language: python
    :start-after: __sphinx_doc_begin__

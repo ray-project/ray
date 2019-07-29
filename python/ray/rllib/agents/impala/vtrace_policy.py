@@ -12,7 +12,7 @@ import gym
 
 import ray
 from ray.rllib.agents.impala import vtrace
-from ray.rllib.models.action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
@@ -241,8 +241,9 @@ def add_behaviour_logits(policy):
 
 
 def validate_config(policy, obs_space, action_space, config):
-    assert config["batch_mode"] == "truncate_episodes", \
-        "Must use `truncate_episodes` batch mode with V-trace."
+    if config["vtrace"]:
+        assert config["batch_mode"] == "truncate_episodes", \
+            "Must use `truncate_episodes` batch mode with V-trace."
 
 
 def choose_optimizer(policy, config):

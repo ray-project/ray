@@ -1,5 +1,5 @@
-RLlib Concepts and Building Custom Algorithms
-=============================================
+RLlib Concepts and Custom Algorithms
+====================================
 
 This page describes the internal concepts used to implement algorithms in RLlib. You might find this useful if modifying or adding new algorithms to RLlib.
 

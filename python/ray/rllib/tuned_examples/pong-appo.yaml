@@ -1,3 +1,8 @@
+# This can reach 18-19 reward in ~5-7 minutes on a Titan XP GPU
+# with 32 workers and 8 envs per worker. IMPALA, when ran with 
+# similar configurations, solved Pong in 10-12 minutes.
+# APPO can also solve Pong in 2.5 million timesteps, which is
+# 2x more efficient than that of IMPALA.
 pong-appo:
     env: PongNoFrameskip-v4
     run: APPO
@@ -5,13 +10,15 @@ pong-appo:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     config:
+        vtrace: True
+        use_kl_loss: False
         sample_batch_size: 50
         train_batch_size: 750
         num_workers: 32
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_data_loader_buffers: 1
-        num_envs_per_worker: 5
+        num_envs_per_worker: 8
         minibatch_buffer_size: 4
         num_sgd_iter: 2
         vf_loss_coeff: 1.0

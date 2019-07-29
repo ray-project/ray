@@ -52,7 +52,7 @@ proto_library(
 
 cc_proto_library(
     name = "node_manager_cc_proto",
-    deps = ["node_manager_proto"],
+    deps = [":node_manager_proto"],
 )
 
 proto_library(
@@ -62,7 +62,21 @@ proto_library(
 
 cc_proto_library(
     name = "object_manager_cc_proto",
-    deps = ["object_manager_proto"],
+    deps = [":object_manager_proto"],
+)
+
+proto_library(
+    name = "raylet_proto",
+    srcs = ["src/ray/protobuf/raylet.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "raylet_cc_proto",
+    deps = [":raylet_proto"],
 )
 
 proto_library(
@@ -91,7 +105,7 @@ cc_proto_library(
 
 # === Begin of rpc definitions ===
 
-# grpc common lib
+# GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
     srcs = glob([
@@ -141,7 +155,7 @@ cc_grpc_library(
     deps = [":object_manager_cc_proto"],
 )
 
-# Object manager server and client.
+# Object manager rpc server and client.
 cc_library(
     name = "object_manager_rpc",
     hdrs = glob([
@@ -157,7 +171,35 @@ cc_library(
     ],
 )
 
-# worker gRPC lib.
+# Raylet gRPC lib.
+cc_grpc_library(
+    name = "raylet_cc_grpc",
+    srcs = [":raylet_proto"],
+    grpc_only = True,
+    deps = [":raylet_cc_proto"],
+)
+
+# Raylet rpc server and client.
+cc_library(
+    name = "raylet_rpc",
+    srcs = glob([
+        "src/ray/rpc/raylet/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/raylet/*.h",
+        "src/ray/raylet/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":raylet_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
     srcs = [":worker_proto"],
@@ -165,7 +207,7 @@ cc_grpc_library(
     deps = [":worker_cc_proto"],
 )
 
-# worker server and client.
+# Worker server and client.
 cc_library(
     name = "worker_rpc",
     hdrs = glob([
@@ -201,7 +243,6 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
-        ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -300,11 +341,11 @@ cc_library(
     deps = [
         ":common_cc_proto",
         ":gcs",
-        ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":raylet_rpc",
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",
@@ -375,7 +416,6 @@ cc_test(
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
     deps = [
-        ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -386,7 +426,6 @@ cc_test(
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
     copts = COPTS,
     deps = [
-        ":node_manager_fbs",
         ":object_manager",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -576,7 +615,6 @@ cc_library(
     deps = [
         ":gcs_cc_proto",
         ":hiredis",
-        ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
@@ -630,13 +668,6 @@ flatbuffer_cc_library(
     srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/common/",
-)
-
-flatbuffer_cc_library(
-    name = "node_manager_fbs",
-    srcs = ["src/ray/raylet/format/node_manager.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/raylet/format/",
 )
 
 flatbuffer_cc_library(
