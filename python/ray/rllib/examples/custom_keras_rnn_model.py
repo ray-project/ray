@@ -4,12 +4,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gym
+from gym.spaces import Discrete
 import numpy as np
+import random
 import argparse
 
 import ray
 from ray import tune
-from ray.rllib.examples.cartpole_lstm import CartPoleStatelessEnv
+from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
@@ -20,7 +23,8 @@ tf = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
+parser.add_argument("--stop", type=int, default=90)
 
 
 class MyKerasRNN(RecurrentTFModelV2):
@@ -55,14 +59,12 @@ class MyKerasRNN(RecurrentTFModelV2):
                 initial_state=[state_in_h, state_in_c])
 
         # Postprocess LSTM output with another hidden layer and compute values
-        dense2 = tf.keras.layers.Dense(
-            hiddens_size, activation=tf.nn.relu, name="dense2")(lstm_out)
         logits = tf.keras.layers.Dense(
             self.num_outputs,
             activation=tf.keras.activations.linear,
-            name="logits")(dense2)
+            name="logits")(lstm_out)
         values = tf.keras.layers.Dense(
-            1, activation=None, name="values")(dense2)
+            1, activation=None, name="values")(lstm_out)
 
         # Create the RNN model
         self.rnn_model = tf.keras.Model(
@@ -89,20 +91,82 @@ class MyKerasRNN(RecurrentTFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
+class RepeatInitialEnv(gym.Env):
+    """Simple env in which the policy learns to repeat the initial observation
+    seen at timestep 0."""
+
+    def __init__(self):
+        self.observation_space = Discrete(2)
+        self.action_space = Discrete(2)
+        self.token = None
+        self.num_steps = 0
+
+    def reset(self):
+        self.token = random.choice([0, 1])
+        self.num_steps = 0
+        return self.token
+
+    def step(self, action):
+        if action == self.token:
+            reward = 1
+        else:
+            reward = -1
+        self.num_steps += 1
+        done = self.num_steps > 100
+        return 0, reward, done, {}
+
+
+class RepeatAfterMeEnv(gym.Env):
+    """Simple env in which the policy learns to repeat a previous observation
+    token after a given delay."""
+
+    def __init__(self, config):
+        self.observation_space = Discrete(2)
+        self.action_space = Discrete(2)
+        self.delay = config["repeat_delay"]
+        assert self.delay >= 1, "delay must be at least 1"
+        self.history = []
+
+    def reset(self):
+        self.history = [0] * self.delay
+        return self._next_obs()
+
+    def step(self, action):
+        if action == self.history[-(1 + self.delay)]:
+            reward = 1
+        else:
+            reward = -1
+        done = len(self.history) > 100
+        return self._next_obs(), reward, done, {}
+
+    def _next_obs(self):
+        token = random.choice([0, 1])
+        self.history.append(token)
+        return token
+
+
 if __name__ == "__main__":
     ray.init()
     args = parser.parse_args()
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
+    register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
+    register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
         config={
-            "env": CartPoleStatelessEnv,
-            "num_envs_per_worker": 4,
-            "num_sgd_iter": 3,
-            "vf_loss_coeff": 1e-4,
+            "env": args.env,
+            "env_config": {
+                "repeat_delay": 2,
+            },
+            "gamma": 0.9,
+            "num_workers": 0,
+            "num_envs_per_worker": 20,
+            "entropy_coeff": 0.001,
+            "num_sgd_iter": 5,
+            "vf_loss_coeff": 1e-5,
             "model": {
                 "custom_model": "rnn",
-                "max_seq_len": 7,
+                "max_seq_len": 20,
             },
         })

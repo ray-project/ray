@@ -30,6 +30,10 @@ Custom Envs and Models
 
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
+- `Custom Keras model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_model.py>`__:
+   Example of using a custom Keras model.
+- `Custom Keras RNN model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_rnn_model.py>`__:
+   Example of using a custom Keras RNN model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_env_with_subprocess.py>`__:

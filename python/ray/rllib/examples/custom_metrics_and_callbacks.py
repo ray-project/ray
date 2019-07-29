@@ -75,7 +75,7 @@ if __name__ == "__main__":
                 "on_postprocess_traj": tune.function(on_postprocess_traj),
             },
         },
-    )
+        return_trials=True)
 
     # verify custom metrics for integration tests
     custom_metrics = trials[0].last_result["custom_metrics"]
