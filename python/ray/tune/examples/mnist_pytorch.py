@@ -4,8 +4,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 import argparse
+from filelock import FileLock
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -70,11 +72,16 @@ def get_data_loaders():
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
 
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            "~/data", train=True, download=True, transform=mnist_transforms),
-        batch_size=64,
-        shuffle=True)
+    # We add FileLock here because multiple workers will want to
+    # download data, and this may cause overwrites since
+    # DataLoader is not threadsafe.
+    with FileLock(os.path.expanduser("~/data.lock")):
+        train_loader = torch.utils.data.DataLoader(
+            datasets.MNIST(
+                "~/data", train=True, download=True,
+                transform=mnist_transforms),
+            batch_size=64,
+            shuffle=True)
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST("~/data", train=False, transform=mnist_transforms),
         batch_size=64,
@@ -115,13 +122,13 @@ if __name__ == "__main__":
     datasets.MNIST("~/data", train=True, download=True)
     sched = AsyncHyperBandScheduler(
         time_attr="training_iteration", metric="mean_accuracy")
-    tune.run(
+    analysis = tune.run(
         train_mnist,
         name="exp",
         scheduler=sched,
         stop={
             "mean_accuracy": 0.98,
-            "training_iteration": 5 if args.smoke_test else 20
+            "training_iteration": 5 if args.smoke_test else 100
         },
         resources_per_trial={
             "cpu": 2,
@@ -133,3 +140,5 @@ if __name__ == "__main__":
             "momentum": tune.uniform(0.1, 0.9),
             "use_gpu": int(args.cuda)
         })
+
+    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))

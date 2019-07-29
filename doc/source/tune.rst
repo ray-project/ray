@@ -13,7 +13,7 @@ Tune is a scalable framework for hyperparameter search and model training with a
   * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_
 
 Quick Start
-~~~~~~~~~~~
+-----------
 
 This example runs a small grid search to train a CNN using PyTorch and Tune:
 
@@ -26,27 +26,27 @@ If TensorBoard is installed, automatically visualize all trial results:
 
 .. code-block:: bash
 
-    tensorboard --logdir ~/ray_results
+    $ tensorboard --logdir ~/ray_results
 
 
 .. image:: images/tune-start-tb.png
 
 For massive parallelism, do the following:
 
-1. Import and initialize Ray.
+1. Import and initialize Ray by appending the following to your example script.
 
 .. code-block:: python
 
     # Append to top of your script
 
     import ray
-    from ray import tune
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--ray-redis-address")
     args = parser.parse_args()
     ray.init(redis_address=args.ray_redis_address)
 
-Download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
+Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
 2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
 3. Set up your AWS credentials (``aws configure``).
@@ -54,9 +54,10 @@ Download a full example script here: :download:`mnist_pytorch.py <../../python/r
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6479"  --start
+    $ export CLUSTER=tune-default.yaml
+    $ ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
-Take a look at the `Distributed Experiments <distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
+Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
 
 Getting Started
 ---------------
