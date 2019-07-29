@@ -17,15 +17,19 @@ extern "C" {
  * Method:    nativeInitClusterMode
  * Signature: (ILjava/lang/String;Lorg/ray/runtime/raylet/RayletClientImpl;[B[B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(
-    JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket, jbyteArray jobId) {
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jclass,
+                                                               jint workerMode,
+                                                               jstring storeSocket,
+                                                               jstring rayletSocket,
+                                                               jbyteArray jobId) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
   auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
 
   auto executor_func = [](const ray::RayFunction &ray_function,
-      const std::vector<std::shared_ptr<ray::RayObject>> &args,
-      int num_returns, std::vector<std::shared_ptr<ray::RayObject>> *results) {
+                          const std::vector<std::shared_ptr<ray::RayObject>> &args,
+                          int num_returns,
+                          std::vector<std::shared_ptr<ray::RayObject>> *results) {
     JNIEnv *env = local_env;
     RAY_CHECK(env);
     RAY_CHECK(local_java_worker);
@@ -37,15 +41,17 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(
         env, args, NativeRayObjectToJavaNativeRayObject);
 
     // invoke Java method
-    jobject return_value = env->CallObjectMethod(local_java_worker, java_worker_run_task_callback, ray_function_array_list,
-                        args_array_list);
+    jobject return_value =
+        env->CallObjectMethod(local_java_worker, java_worker_run_task_callback,
+                              ray_function_array_list, args_array_list);
     results->push_back(JavaNativeRayObjectToNativeRayObject(env, return_value));
     return ray::Status::OK();
   };
 
   try {
-    auto core_worker = new ray::CoreWorker(static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
-        native_raylet_socket, job_id, executor_func);
+    auto core_worker = new ray::CoreWorker(static_cast<ray::WorkerType>(workerMode),
+                                           ::Language::JAVA, native_store_socket,
+                                           native_raylet_socket, job_id, executor_func);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;

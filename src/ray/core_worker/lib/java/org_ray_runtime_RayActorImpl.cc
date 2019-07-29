@@ -31,7 +31,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_nativeFork(
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_nativeGetActorId(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return IdToJavaByteArray<ray::ActorID>(env,GetActorHandle(nativeActorHandle).ActorID());
+  return IdToJavaByteArray<ray::ActorID>(env,
+                                         GetActorHandle(nativeActorHandle).ActorID());
 }
 
 /*
@@ -42,7 +43,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_nativeGetActorId(
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_RayActorImpl_nativeGetActorHandleId(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return IdToJavaByteArray<ray::ActorHandleID>(
-             env, GetActorHandle(nativeActorHandle).ActorHandleID());
+      env, GetActorHandle(nativeActorHandle).ActorHandleID());
 }
 
 /*
@@ -92,7 +93,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayActorImpl_nativeDeserialize(
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
-  return reinterpret_cast<jlong>(new ray::ActorHandle(ray::ActorHandle::Deserialize(binary)));
+  return reinterpret_cast<jlong>(
+      new ray::ActorHandle(ray::ActorHandle::Deserialize(binary)));
 }
 
 /*

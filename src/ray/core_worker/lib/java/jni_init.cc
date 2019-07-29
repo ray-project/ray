@@ -82,8 +82,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
-  java_ray_function_proxy_class = LoadClass(env,
-             "org/ray/runtime/proxyTypes/RayFunctionProxy");
+  java_ray_function_proxy_class =
+      LoadClass(env, "org/ray/runtime/proxyTypes/RayFunctionProxy");
   java_ray_function_proxy_language =
       env->GetFieldID(java_ray_function_proxy_class, "language", "I");
   java_ray_function_proxy_function_descriptor = env->GetFieldID(
@@ -93,22 +93,23 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_task_arg_proxy_id = env->GetFieldID(java_task_arg_proxy_class, "id", "[B");
   java_task_arg_proxy_data = env->GetFieldID(java_task_arg_proxy_class, "data", "[B");
 
-  java_resources_proxy_class = LoadClass(env, "org/ray/runtime/proxyTypes/ResourcesProxy");
+  java_resources_proxy_class =
+      LoadClass(env, "org/ray/runtime/proxyTypes/ResourcesProxy");
   java_resources_proxy_keys =
       env->GetFieldID(java_resources_proxy_class, "keys", "Ljava/util/List;");
   java_resources_proxy_values =
       env->GetFieldID(java_resources_proxy_class, "values", "Ljava/util/List;");
 
-  java_task_options_proxy_class = LoadClass(env,
-             "org/ray/runtime/proxyTypes/TaskOptionsProxy");
+  java_task_options_proxy_class =
+      LoadClass(env, "org/ray/runtime/proxyTypes/TaskOptionsProxy");
   java_task_options_proxy_num_returns =
       env->GetFieldID(java_task_options_proxy_class, "numReturns", "I");
   java_task_options_proxy_resources =
       env->GetFieldID(java_task_options_proxy_class, "resources",
                       "Lorg/ray/runtime/proxyTypes/ResourcesProxy;");
 
-  java_actor_creation_options_proxy_class = LoadClass(env,
-             "org/ray/runtime/proxyTypes/ActorCreationOptionsProxy");
+  java_actor_creation_options_proxy_class =
+      LoadClass(env, "org/ray/runtime/proxyTypes/ActorCreationOptionsProxy");
   java_actor_creation_options_proxy_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_proxy_class, "maxReconstructions", "J");
   java_actor_creation_options_proxy_resources =
@@ -128,7 +129,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
   java_worker_class = LoadClass(env, "org/ray/runtime/Worker");
-  java_worker_run_task_callback = env->GetMethodID(java_worker_class, "runTaskCallback", "(Ljava/util/List;Ljava/util/List;)Lorg/ray/runtime/objectstore/NativeRayObject;");
+  java_worker_run_task_callback = env->GetMethodID(
+      java_worker_class, "runTaskCallback",
+      "(Ljava/util/List;Ljava/util/List;)Lorg/ray/runtime/objectstore/NativeRayObject;");
 
   return CURRENT_JNI_VERSION;
 }

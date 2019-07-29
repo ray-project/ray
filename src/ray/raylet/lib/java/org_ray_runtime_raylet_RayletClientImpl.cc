@@ -25,8 +25,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *env
                                                                      jbyteArray actorId) {
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   ActorCheckpointID checkpoint_id;
-  auto status =
-      GetRayletClient(conn).PrepareActorCheckpoint(actor_id, checkpoint_id);
+  auto status = GetRayletClient(conn).PrepareActorCheckpoint(actor_id, checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   jbyteArray result = env->NewByteArray(checkpoint_id.Size());
   env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),
@@ -44,7 +43,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpo
     JNIEnv *env, jclass, jlong conn, jbyteArray actorId, jbyteArray checkpointId) {
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto checkpoint_id = JavaByteArrayToId<ActorCheckpointID>(env, checkpointId);
-  auto status = GetRayletClient(conn).NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
+  auto status =
+      GetRayletClient(conn).NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
@@ -60,7 +60,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetRes
   const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
 
   auto status = GetRayletClient(conn).SetResource(native_resource_name,
-                                           static_cast<double>(capacity), node_id);
+                                                  static_cast<double>(capacity), node_id);
   env->ReleaseStringUTFChars(resourceName, native_resource_name);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }

@@ -31,8 +31,8 @@ class CoreWorkerTaskExecutionInterface {
   /// \return Status.
   using TaskExecutor = std::function<Status(
       const RayFunction &ray_function,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      int num_returns, std::vector<std::shared_ptr<RayObject>> *results)>;
+      const std::vector<std::shared_ptr<RayObject>> &args, int num_returns,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,

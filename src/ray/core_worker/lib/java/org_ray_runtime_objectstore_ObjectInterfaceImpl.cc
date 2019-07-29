@@ -40,7 +40,8 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__JLorg_ray_runtim
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
   ray::ObjectID object_id;
-  auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)->Put(*ray_object, &object_id);
+  auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
+                    ->Put(*ray_object, &object_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
@@ -55,11 +56,10 @@ Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativePut__J_3BLorg_ray_run
     JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jbyteArray objectId,
     jobject obj) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
-  auto ray_object = JavaNativeRayObjectToNativeRayObject(
-      env, obj);
+  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
-      ->Put(*ray_object, object_id);
+                    ->Put(*ray_object, object_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
@@ -80,8 +80,8 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
                     ->Get(object_ids, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(env, results,
-                                                                 NativeRayObjectToJavaNativeRayObject);
+  return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
+      env, results, NativeRayObjectToJavaNativeRayObject);
 }
 
 /*

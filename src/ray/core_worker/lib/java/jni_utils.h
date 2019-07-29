@@ -178,8 +178,8 @@ inline jobject NativeStringVectorToJavaStringList(
 }
 
 template <typename ID>
-inline jobject NativeIdVectorToJavaByteArrayList(
-    JNIEnv *env, const std::vector<ID> &native_vector) {
+inline jobject NativeIdVectorToJavaByteArrayList(JNIEnv *env,
+                                                 const std::vector<ID> &native_vector) {
   return NativeVectorToJavaList<ID>(env, native_vector, [](JNIEnv *env, const ID &id) {
     return IdToJavaByteArray<ID>(env, id);
   });
@@ -202,15 +202,19 @@ inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
 /// Convert a Java byte[] as a C++ std::shared_ptr<ray::LocalMemoryBuffer>.
 /// The deleter of std::shared_ptr will automatically call ReleaseByteArrayElements.
 /// NOTE: the returned std::shared_ptr cannot be used across threads.
-inline std::shared_ptr<ray::LocalMemoryBuffer> JavaByteArrayToNativeBuffer(JNIEnv *env, const jbyteArray &javaByteArray) {
+inline std::shared_ptr<ray::LocalMemoryBuffer> JavaByteArrayToNativeBuffer(
+    JNIEnv *env, const jbyteArray &javaByteArray) {
   auto size = env->GetArrayLength(javaByteArray);
   if (size == 0) {
     return std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
   }
   jbyte *data = env->GetByteArrayElements(javaByteArray, nullptr);
-  return std::shared_ptr<ray::LocalMemoryBuffer>(new ray::LocalMemoryBuffer(reinterpret_cast<uint8_t *>(data), size), [env, javaByteArray](ray::LocalMemoryBuffer *p){
-    env->ReleaseByteArrayElements(javaByteArray, reinterpret_cast<jbyte*>(p->Data()), JNI_ABORT);
-  });
+  return std::shared_ptr<ray::LocalMemoryBuffer>(
+      new ray::LocalMemoryBuffer(reinterpret_cast<uint8_t *>(data), size),
+      [env, javaByteArray](ray::LocalMemoryBuffer *p) {
+        env->ReleaseByteArrayElements(javaByteArray, reinterpret_cast<jbyte *>(p->Data()),
+                                      JNI_ABORT);
+      });
 }
 
 /// Convert a Java NativeRayObject to a C++ ray::RayObject.
@@ -229,8 +233,8 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.
-inline jobject NativeRayObjectToJavaNativeRayObject(JNIEnv *env,
-                                     const std::shared_ptr<ray::RayObject> &rayObject) {
+inline jobject NativeRayObjectToJavaNativeRayObject(
+    JNIEnv *env, const std::shared_ptr<ray::RayObject> &rayObject) {
   if (!rayObject) {
     return nullptr;
   }

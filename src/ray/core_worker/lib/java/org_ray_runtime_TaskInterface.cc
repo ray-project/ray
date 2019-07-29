@@ -32,7 +32,8 @@ inline std::vector<ray::TaskArg> ToTaskArgs(
         auto java_id =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_task_arg_proxy_id));
         if (java_id) {
-          return ray::TaskArg::PassByReference(JavaByteArrayToId<ray::ObjectID>(env, java_id));
+          return ray::TaskArg::PassByReference(
+              JavaByteArrayToId<ray::ObjectID>(env, java_id));
         }
         auto java_data =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_task_arg_proxy_data));
