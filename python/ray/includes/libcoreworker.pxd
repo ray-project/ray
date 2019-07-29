@@ -23,7 +23,7 @@ cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
     cdef cppclass CObjectInterface "CoreWorkerObjectInterface":
       CRayStatus Put(const CRayObject &object, CObjectID *object_id);
       CRayStatus Put(const CRayObject &object, const CObjectID &object_id);
-      CRayStatus Create(const shared_ptr[CBuffer] metadata, const size_t data_size, const CObjectID &object_id, shared_ptr[CBuffer] &data);
+      CRayStatus Create(const shared_ptr[CBuffer] &metadata, const size_t data_size, const CObjectID &object_id, shared_ptr[CBuffer] &data);
       CRayStatus Seal(const CObjectID &object_id);
       CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                  c_vector[shared_ptr[CRayObject]] *results);

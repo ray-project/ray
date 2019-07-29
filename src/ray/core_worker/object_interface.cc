@@ -27,7 +27,7 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
   return store_providers_[StoreProviderType::PLASMA]->Put(object, object_id);
 }
 
-Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> metadata,
+Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,
 				       const size_t data_size,
 				       const ObjectID &object_id,
 				       std::shared_ptr<Buffer> &data) {

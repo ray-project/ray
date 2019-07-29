@@ -53,4 +53,4 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
             return
 
         worker.core_worker.free_objects(object_ids, local_only,
-                                          delete_creating_tasks)
+                                        delete_creating_tasks)

@@ -48,7 +48,7 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Put(const RayObject &object, const ObjectID &object_id) = 0;
 
-  virtual Status Create(const std::shared_ptr<Buffer> metadata,
+  virtual Status Create(const std::shared_ptr<Buffer> &metadata,
 		                               const size_t data_size,
                                                const ObjectID &object_id,
 					       std::shared_ptr<Buffer> &data) = 0;

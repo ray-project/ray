@@ -21,7 +21,7 @@ class CoreWorkerLocalPlasmaStoreProvider : public CoreWorkerStoreProvider {
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
   /// See `CoreWorkerStoreProvider::Put` for semantics.
-  Status Create(const std::shared_ptr<Buffer> metadata,
+  Status Create(const std::shared_ptr<Buffer> &metadata,
 		                               const size_t data_size,
                                                const ObjectID &object_id,
 					       std::shared_ptr<Buffer> &data) override;

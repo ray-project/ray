@@ -505,7 +505,7 @@ class Worker(object):
         assert len(data_metadata_pairs) == len(object_ids)
 
         final_results = self.retrieve_and_deserialize(object_ids,
-                                                       data_metadata_pairs)
+                                                      data_metadata_pairs)
 
         assert len(final_results) == len(object_ids)
         return final_results
