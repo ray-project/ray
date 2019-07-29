@@ -142,6 +142,15 @@ class DynamicTFPolicy(TFPolicy):
                 logit_dim,
                 self.config["model"],
                 framework="tf")
+
+        override_dist = self.model.override_action_distribution()
+        if override_dist is not None:
+            if action_sampler_fn:
+                raise ValueError(
+                    "this policy doesn't use action dist classes for "
+                    "sampling actions, so you cannot override it")
+            self.dist_class = override_dist
+
         if existing_inputs:
             self.state_in = [
                 v for k, v in existing_inputs.items()

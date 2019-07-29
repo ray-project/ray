@@ -22,6 +22,8 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
+ACTION_PROB = "action_prob"
+
 
 @DeveloperAPI
 class TFPolicy(Policy):
@@ -303,7 +305,7 @@ class TFPolicy(Policy):
         By default we only return action probability info (if present).
         """
         if self._action_prob is not None:
-            return {"action_prob": self._action_prob}
+            return {ACTION_PROB: self._action_prob}
         else:
             return {}
 

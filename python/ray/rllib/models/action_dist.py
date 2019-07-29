@@ -23,6 +23,11 @@ class ActionDistribution(object):
         raise NotImplementedError
 
     @DeveloperAPI
+    def sampled_action_prob(self):
+        """Returns the log probability of the last sampled action."""
+        raise NotImplementedError
+
+    @DeveloperAPI
     def logp(self, x):
         """The log-likelihood of the action distribution."""
         raise NotImplementedError

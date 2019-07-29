@@ -166,3 +166,6 @@ class ModelV2(object):
             raise ValueError("State output is not a list: {}".format(state))
 
         return outputs, state
+
+    def override_action_distribution(self):
+        return None

@@ -146,6 +146,7 @@ def multi_from_logits(behaviour_policy_logits,
                       values,
                       bootstrap_value,
                       dist_class,
+                      behaviour_action_prob=None,
                       clip_rho_threshold=1.0,
                       clip_pg_rho_threshold=1.0,
                       name="vtrace_from_logits"):
@@ -196,6 +197,7 @@ def multi_from_logits(behaviour_policy_logits,
     bootstrap_value: A float32 of shape [B] with the value function estimate at
       time T.
     dist_class: action distribution class for the logits.
+    behaviour_action_prob: precalculated values of the behaviour actions
     clip_rho_threshold: A scalar float32 tensor with the clipping threshold for
       importance weights (rho) when calculating the baseline targets (vs).
       rho^bar in the paper.
@@ -236,8 +238,12 @@ def multi_from_logits(behaviour_policy_logits,
             ]):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
             target_policy_logits, actions, dist_class)
-        behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions, dist_class)
+        if len(behaviour_policy_logits) > 1 or behaviour_action_prob is None:
+            behaviour_action_log_probs = (
+                multi_log_probs_from_logits_and_actions(
+                    behaviour_policy_logits, actions, dist_class))
+        else:
+            behaviour_action_log_probs = tf.log(behaviour_action_prob)
 
         log_rhos = get_log_rhos(target_action_log_probs,
                                 behaviour_action_log_probs)

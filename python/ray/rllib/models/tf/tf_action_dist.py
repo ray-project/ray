@@ -30,12 +30,12 @@ class TFActionDistribution(ActionDistribution):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
+    @override(ActionDistribution)
     def sample(self):
         """Draw a sample from the action distribution."""
         return self.sample_op
 
-    @DeveloperAPI
+    @override(ActionDistribution)
     def sampled_action_prob(self):
         """Returns the log probability of the sampled action."""
         return tf.exp(self.logp(self.sample_op))
