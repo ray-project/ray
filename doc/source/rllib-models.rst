@@ -7,6 +7,29 @@ The following diagram provides a conceptual overview of data flow between differ
 
 The components highlighted in green can be replaced with custom user-defined implementations, as described in the next sections. The purple components are RLlib internal, which means they can only be modified by changing the algorithm source code.
 
+Feature Compatibility Matrix
+----------------------------
+
+=============  =======================  ==================  ===========  ===========================
+Algorithm      Discrete Actions         Continuous          Multi-Agent  Policy Support
+=============  =======================  ==================  ===========  ===========================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
+DDPG, TD3       No                      **Yes**             **Yes**
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
+APEX-DDPG       No                      **Yes**             **Yes**
+ES              **Yes**                 **Yes**             No
+ARS             **Yes**                 **Yes**             No
+QMIX            **Yes**                 No                  **Yes**      `+RNN`_
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
+=============  =======================  ==================  ===========  ===========================
+
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
 
 Default Behaviours
 ------------------
