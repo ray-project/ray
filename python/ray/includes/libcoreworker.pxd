@@ -1,6 +1,6 @@
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr, unique_ptr
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 

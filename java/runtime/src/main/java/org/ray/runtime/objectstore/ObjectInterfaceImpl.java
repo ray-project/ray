@@ -56,8 +56,8 @@ public class ObjectInterfaceImpl implements ObjectInterface {
   }
 
   @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    nativeDelete(nativeObjectInterfacePointer, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
+  public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+    nativeFree(nativeObjectInterfacePointer, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
   public void destroy() {
@@ -84,7 +84,7 @@ public class ObjectInterfaceImpl implements ObjectInterface {
   private static native List<Boolean> nativeWait(long nativeObjectInterface, List<byte[]> objectIds,
       int numObjects, long timeoutMs);
 
-  private static native void nativeDelete(long nativeObjectInterface, List<byte[]> objectIds,
+  private static native void nativeFree(long nativeObjectInterface, List<byte[]> objectIds,
       boolean localOnly, boolean deleteCreatingTasks);
 
   private static native void nativeDestroy(long nativeObjectInterface);

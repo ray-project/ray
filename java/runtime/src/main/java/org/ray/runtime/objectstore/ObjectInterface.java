@@ -44,11 +44,11 @@ public interface ObjectInterface {
   List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs);
 
   /**
-   * Delete a list of objects from the object store.
+   * Free a list of objects from the object store.
    *
-   * @param objectIds IDs of the objects to delete.
+   * @param objectIds IDs of the objects to free.
    * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
    * @param deleteCreatingTasks Whether also delete the tasks that created these objects.
    */
-  void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
+  void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
 }

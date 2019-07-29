@@ -5,7 +5,7 @@
 
 import numpy
 
-from libc.stdint cimport int32_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, int64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport unique_ptr, shared_ptr
 from libcpp.string cimport string as c_string
