@@ -24,6 +24,15 @@ class SyncBatchReplayOptimizer(PolicyOptimizer):
                  learning_starts=1000,
                  buffer_size=10000,
                  train_batch_size=32):
+        """Initialize a batch replay optimizer.
+
+        Arguments:
+            workers (WorkerSet): set of all workers
+            learning_starts (int): start learning after this number of
+                timesteps have been collected
+            buffer_size (int): max timesteps to keep in the replay buffer
+            train_batch_size (int): number of timesteps to train on at once
+        """
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts

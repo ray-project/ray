@@ -7,7 +7,6 @@
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
 
 namespace ray {

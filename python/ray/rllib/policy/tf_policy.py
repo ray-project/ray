@@ -9,8 +9,8 @@ import os
 import numpy as np
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -94,7 +94,7 @@ class TFPolicy(Policy):
             prev_reward_input (Tensor): placeholder for previous rewards
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
-                models/lstm.py for more information.
+                policy/rnn_sequencing.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
@@ -202,7 +202,7 @@ class TFPolicy(Policy):
             self._update_ops = tf.get_collection(
                 tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
         if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
+            logger.info("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
         with tf.control_dependencies(self._update_ops):
             self._apply_op = self.build_apply_op(self._optimizer,
@@ -430,9 +430,11 @@ class TFPolicy(Policy):
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if self._prev_action_input is not None and prev_action_batch:
+        if self._prev_action_input is not None and \
+           prev_action_batch is not None:
             builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and prev_reward_batch:
+        if self._prev_reward_input is not None and \
+           prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))

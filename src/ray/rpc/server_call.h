@@ -2,6 +2,7 @@
 #define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"

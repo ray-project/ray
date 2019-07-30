@@ -74,8 +74,12 @@ def build_torch_policy(name,
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"], torch=True)
-                self.model = ModelCatalog.get_torch_model(
-                    obs_space, logit_dim, self.config["model"])
+                self.model = ModelCatalog.get_model_v2(
+                    obs_space,
+                    action_space,
+                    logit_dim,
+                    self.config["model"],
+                    framework="torch")
 
             TorchPolicy.__init__(self, obs_space, action_space, self.model,
                                  loss_fn, self.dist_class)
@@ -101,13 +105,13 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model_out):
+        def extra_action_out(self, input_dict, state_batches, model):
             if extra_action_out_fn:
                 return extra_action_out_fn(self, input_dict, state_batches,
-                                           model_out)
+                                           model)
             else:
                 return TorchPolicy.extra_action_out(self, input_dict,
-                                                    state_batches, model_out)
+                                                    state_batches, model)
 
         @override(TorchPolicy)
         def optimizer(self):

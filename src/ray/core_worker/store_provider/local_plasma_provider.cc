@@ -8,12 +8,7 @@ namespace ray {
 
 CoreWorkerLocalPlasmaStoreProvider::CoreWorkerLocalPlasmaStoreProvider(
     const std::string &store_socket) {
-  auto status = store_client_.Connect(store_socket);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
-                   << " core worker: " << status.message();
-    throw std::runtime_error(status.message());
-  }
+  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,

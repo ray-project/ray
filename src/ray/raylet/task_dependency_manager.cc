@@ -340,7 +340,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
   // Check that we were able to renew the task lease before the previous one
   // expired.
   if (now_ms > it->second.expires_at) {
-    RAY_LOG(WARNING) << "Task lease to renew has already expired by "
+    RAY_LOG(WARNING) << "Task " << task_id << " lease to renew has already expired by "
                      << (it->second.expires_at - now_ms) << "ms";
   }
 
