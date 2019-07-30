@@ -5,7 +5,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
-/// NOTE(Joey Jiang) Every request defined in this file should add filed worker_id, which
+/// NOTE(Joey Jiang) Every request defined in this file should add worker_id field, which
 /// helps the raylet to filter messages from a dead worker.
 
 /// Service request and reply messages.
