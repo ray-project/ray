@@ -6,7 +6,7 @@
 #include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/rpc/raylet/raylet_client.h"
 
-inline RayletClient &GetRayletClientFromPointer(jlong nativeCoreWorkerPointer) {
+inline ray::RayletClient &GetRayletClientFromPointer(jlong nativeCoreWorkerPointer) {
   return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Raylet();
 }
 
