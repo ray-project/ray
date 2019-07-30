@@ -28,6 +28,8 @@ class CoreWorkerTaskSubmitter {
   /// \param[in] task The task spec to submit.
   /// \return Status.
   virtual Status SubmitTask(const TaskSpecification &task_spec) = 0;
+
+  virtual ~CoreWorkerTaskSubmitter() {}
 };
 
 /// This class receives tasks for execution.
@@ -36,6 +38,8 @@ class CoreWorkerTaskReceiver {
   using TaskHandler =
       std::function<Status(const TaskSpecification &task_spec,
                            std::vector<std::shared_ptr<RayObject>> *results)>;
+
+  virtual ~CoreWorkerTaskReceiver() {}
 };
 
 }  // namespace ray

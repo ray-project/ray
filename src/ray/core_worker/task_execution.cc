@@ -1,6 +1,7 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
@@ -21,6 +22,11 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
           raylet_client, object_interface_, main_service_, worker_server_, func)));
+  task_receivers_.emplace(
+      TaskTransportType::DIRECT_ACTOR,
+      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+          new CoreWorkerDirectActorTaskReceiver(object_interface_, main_service_,
+                                                worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -50,8 +56,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   auto num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
-    // Decrease to account for the dummy object id, this logic only
-    // applies to task submitted via raylet.
+    // Decrease to account for the dummy object id.
     num_returns--;
   }
 
