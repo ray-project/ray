@@ -3,7 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/subscribe_executor.h"
+#include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -79,8 +79,9 @@ class ActorStateAccessor {
  private:
   RedisGcsClient &client_impl_;
 
-  typedef SubscribeExecutor<ActorID, ActorTableData, ActorTable> ActorSubscribeExecutor;
-  ActorSubscribeExecutor actor_sub_executor_;
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
+      ActorSubscriptionExecutor;
+  ActorSubscriptionExecutor actor_sub_executor_;
 };
 
 }  // namespace gcs

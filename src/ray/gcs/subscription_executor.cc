@@ -1,15 +1,15 @@
-#include "ray/gcs/subscribe_executor.h"
+#include "ray/gcs/subscription_executor.h"
 
 namespace ray {
 
 namespace gcs {
 
 template <typename ID, typename Data, typename Table>
-Status SubscribeExecutor<ID, Data, Table>::AsyncSubscribe(
+Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     const ClientID &client_id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
   // TODO(micafan) Optimize the lock when necessary.
-  // Maybe avoid locking in the raylet process.
+  // Consider avoiding locking in single-threaded processes.
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (subscribe != nullptr && subscribe_all_callback_ != nullptr) {
@@ -59,7 +59,7 @@ Status SubscribeExecutor<ID, Data, Table>::AsyncSubscribe(
 }
 
 template <typename ID, typename Data, typename Table>
-Status SubscribeExecutor<ID, Data, Table>::AsyncSubscribe(
+Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     const ClientID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
   Status status = AsyncSubscribe(client_id, nullptr, nullptr);
@@ -85,9 +85,8 @@ Status SubscribeExecutor<ID, Data, Table>::AsyncSubscribe(
 }
 
 template <typename ID, typename Data, typename Table>
-Status SubscribeExecutor<ID, Data, Table>::AsyncUnsubscribe(const ClientID &client_id,
-                                                            const ID &id,
-                                                            const StatusCallback &done) {
+Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
+    const ClientID &client_id, const ID &id, const StatusCallback &done) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
@@ -115,7 +114,7 @@ Status SubscribeExecutor<ID, Data, Table>::AsyncUnsubscribe(const ClientID &clie
   return table_.CancelNotifications(JobID::Nil(), id, client_id, on_done);
 }
 
-template class SubscribeExecutor<ActorID, ActorTableData, ActorTable>;
+template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
 
 }  // namespace gcs
 

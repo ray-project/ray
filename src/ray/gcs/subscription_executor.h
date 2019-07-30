@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_SUBSCRIBE_EXECUTOR_H
-#define RAY_GCS_SUBSCRIBE_EXECUTOR_H
+#ifndef RAY_GCS_SUBSCRIPTION_EXECUTOR_H
+#define RAY_GCS_SUBSCRIPTION_EXECUTOR_H
 
 #include <atomic>
 #include <mutex>
@@ -10,16 +10,16 @@ namespace ray {
 
 namespace gcs {
 
-/// \class SubscribeExecutor
-/// SubscribeExecutor class encapsulates the implementation details of
+/// \class SubscriptionExecutor
+/// SubscriptionExecutor class encapsulates the implementation details of
 /// subscribe/unsubscribe to elements (e.g.: actors or tasks or objects or nodes).
 /// Either subscribe to a specific element or subscribe to all elements.
 template <typename ID, typename Data, typename Table>
-class SubscribeExecutor {
+class SubscriptionExecutor {
  public:
-  SubscribeExecutor(Table &table) : table_(table) {}
+  SubscriptionExecutor(Table &table) : table_(table) {}
 
-  ~SubscribeExecutor() {}
+  ~SubscriptionExecutor() {}
 
   /// Subscribe to operations of all elements.
   ///
@@ -79,4 +79,4 @@ class SubscribeExecutor {
 
 }  // namespace ray
 
-#endif  // RAY_GCS_SUBSCRIBE_EXECUTOR_H
+#endif  // RAY_GCS_SUBSCRIPTION_EXECUTOR_H
