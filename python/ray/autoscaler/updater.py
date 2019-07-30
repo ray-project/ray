@@ -291,20 +291,12 @@ class NodeUpdater(object):
                 "-L", "{}:localhost:{}".format(port_forward, port_forward)
             ]
 
-        final_cmd = ssh + ssh_opt + get_default_ssh_options(
-            self.ssh_private_key, connect_timeout, self.ssh_control_path) + [
-                "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
-            ]
-
-        try:
-            self.get_caller(expect_error)(
-                final_cmd,
-                stdout=redirect or sys.stdout,
-                stderr=redirect or sys.stderr)
-        except subprocess.CalledProcessError:
-            logger.error("Command failed: \n\n  {}\n".format(
-                " ".join(final_cmd)))
-            sys.exit(1)
+        self.get_caller(expect_error)(
+            ssh + ssh_opt + get_default_ssh_options(
+                self.ssh_private_key, connect_timeout, self.ssh_control_path) +
+            ["{}@{}".format(self.ssh_user, self.ssh_ip), cmd],
+            stdout=redirect or sys.stdout,
+            stderr=redirect or sys.stderr)
 
 
 class NodeUpdaterThread(NodeUpdater, Thread):
