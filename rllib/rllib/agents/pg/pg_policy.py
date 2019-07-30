@@ -30,6 +30,6 @@ def postprocess_advantages(policy,
 
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
-    get_default_config=lambda: __import("...agents.pg.pg.DEFAULT_CONFIG"),
+    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
     postprocess_fn=postprocess_advantages,
     loss_fn=policy_gradient_loss)
