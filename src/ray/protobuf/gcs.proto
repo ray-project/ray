@@ -151,28 +151,32 @@ message ResourceTableData {
   double resource_capacity = 1;
 }
 
-message ClientTableData {
-  // The client ID of the client that the message is about.
-  bytes client_id = 1;
-  // The IP address of the client's node manager.
+message GcsNodeInfo {
+  // State of a node.
+  enum GcsNodeState {
+    // Node is alive.
+    ALIVE = 0;
+    // Node is dead.
+    DEAD = 1;
+  }
+
+  // The ID of node.
+  bytes node_id = 1;
+  // The IP address of the node manager.
   string node_manager_address = 2;
-  // The IPC socket name of the client's raylet.
+  // The IPC socket name of raylet.
   string raylet_socket_name = 3;
-  // The IPC socket name of the client's plasma store.
+  // The IPC socket name of the node's plasma store.
   string object_store_socket_name = 4;
-  // The port at which the client's node manager is listening for TCP
+  // The port at which the node manager is listening for TCP
   // connections from other node managers.
   int32 node_manager_port = 5;
-  // The port at which the client's object manager is listening for TCP
+  // The port at which the object manager is listening for TCP
   // connections from other object managers.
   int32 object_manager_port = 6;
-  // True if the message is about the addition of a client and false if it is
-  // about the deletion of a client.
-  bool is_insertion = 7;
 
-  // TODO(hchen): Define the following resources in map format.
-  repeated string resources_total_label = 8;
-  repeated double resources_total_capacity = 9;
+  // Current state of this node.
+  GcsNodeState state = 7;
 }
 
 message HeartbeatTableData {
