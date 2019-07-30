@@ -147,7 +147,7 @@ Status CoreWorkerTaskInterface::CreateActor(
 
   const ActorID actor_id = ActorID::FromBinary(return_ids[0].Binary());
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
-                                   {});
+                                   actor_creation_options.dynamic_worker_options);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
       actor_id, ActorHandleID::Nil(), function.language, function.function_descriptor));

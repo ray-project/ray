@@ -73,6 +73,7 @@ public class Worker {
     this.functionManager = functionManager;
     nativeCoreWorkerPointer = nativeInit(workerType.getNumber(), storeSocket, rayletSocket,
         jobId.getBytes());
+    Preconditions.checkState(nativeCoreWorkerPointer != 0);
     rayletClient = new RayletClientImpl(nativeCoreWorkerPointer);
     workerContext = new WorkerContext(nativeCoreWorkerPointer);
     objectStoreProxy = new ObjectStoreProxy(workerContext,
@@ -81,7 +82,7 @@ public class Worker {
   }
 
   // This method is required by JNI
-  private NativeRayObject runTaskCallback(List<String> rayFunctionInfo,
+  private List<NativeRayObject> runTaskCallback(List<String> rayFunctionInfo,
       List<NativeRayObject> argsBytes) {
     TaskSpec taskSpec = workerContext.getCurrentTask();
     JobId jobId = JobId.fromByteBuffer(taskSpec.getJobId().asReadOnlyByteBuffer());
@@ -90,6 +91,7 @@ public class Worker {
     String taskInfo = taskId + " " + String.join(".", rayFunctionInfo);
     LOGGER.debug("Executing task {}", taskInfo);
 
+    List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
@@ -122,6 +124,7 @@ public class Worker {
               .fromByteBuffer(taskSpec.getActorTaskSpec().getActorId().asReadOnlyByteBuffer());
           maybeSaveCheckpoint(actor, actorId);
         }
+        returnObjects.add(objectStoreProxy.serialize(result));
       } else {
         UniqueId actorId = UniqueId.fromByteBuffer(
             taskSpec.getActorCreationTaskSpec().getActorId().asReadOnlyByteBuffer());
@@ -129,20 +132,19 @@ public class Worker {
         currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", taskInfo);
-      return objectStoreProxy.serialize(result);
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskInfo, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        return objectStoreProxy
-            .serialize(new RayTaskException("Error executing task " + taskInfo, e));
+        returnObjects.add(objectStoreProxy
+            .serialize(new RayTaskException("Error executing task " + taskInfo, e)));
       } else {
         actorCreationException = e;
-        return null;
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
       workerContext.setCurrentClassLoader(null);
     }
+    return returnObjects;
   }
 
   private JavaFunctionDescriptor getJavaFunctionDescriptor(List<String> rayFunctionInfo) {

@@ -39,9 +39,13 @@ class CoreWorkerTaskExecutionInterface {
                                    CoreWorkerObjectInterface &object_interface,
                                    const TaskExecutor &executor);
 
-  /// Start receving and executes tasks in a infinite loop.
+  /// Start receving and executes tasks.
   /// \return void.
   void Run();
+
+  /// Stop receving and executes tasks.
+  /// \return void.
+  void Stop();
 
  private:
   /// Build arguments for task executor. This would loop through all the arguments
@@ -79,10 +83,10 @@ class CoreWorkerTaskExecutionInterface {
   rpc::GrpcServer worker_server_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service main_service_;
+  std::shared_ptr<boost::asio::io_service> main_service_;
 
   /// The asio work to keep main_service_ alive.
-  boost::asio::io_service::work main_work_;
+  std::shared_ptr<boost::asio::io_service::work> main_work_;
 
   friend class CoreWorker;
 };

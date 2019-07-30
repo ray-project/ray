@@ -41,10 +41,18 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jcla
         env, args, NativeRayObjectToJavaNativeRayObject);
 
     // invoke Java method
-    jobject return_value =
+    jobject java_return_objects =
         env->CallObjectMethod(local_java_worker, java_worker_run_task_callback,
                               ray_function_array_list, args_array_list);
-    results->push_back(JavaNativeRayObjectToNativeRayObject(env, return_value));
+    std::vector<std::shared_ptr<ray::RayObject>> return_objects;
+    JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
+        env, java_return_objects, &return_objects,
+        [](JNIEnv *env, jobject java_native_ray_object) {
+          return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
+        });
+    for (auto &obj : return_objects) {
+      results->push_back(obj);
+    }
     return ray::Status::OK();
   };
 
@@ -83,7 +91,11 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeDestroy(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
-  delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
+  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
+  if (core_worker->GetWorkerType() == ray::WorkerType::WORKER) {
+    core_worker->Execution().Stop();
+  }
+  delete core_worker;
 }
 
 #ifdef __cplusplus

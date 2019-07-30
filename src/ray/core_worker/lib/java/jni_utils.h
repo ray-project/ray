@@ -204,6 +204,9 @@ inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
 /// NOTE: the returned std::shared_ptr cannot be used across threads.
 inline std::shared_ptr<ray::LocalMemoryBuffer> JavaByteArrayToNativeBuffer(
     JNIEnv *env, const jbyteArray &javaByteArray) {
+  if (!javaByteArray) {
+    return nullptr;
+  }
   auto size = env->GetArrayLength(javaByteArray);
   if (size == 0) {
     return std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
@@ -229,6 +232,12 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
       (jbyteArray)env->GetObjectField(java_obj, java_native_ray_object_metadata);
   auto data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
   auto metadata_buffer = JavaByteArrayToNativeBuffer(env, java_metadata);
+  if (!data_buffer) {
+    data_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
+  }
+  if (!metadata_buffer) {
+    metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
+  }
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
 }
 

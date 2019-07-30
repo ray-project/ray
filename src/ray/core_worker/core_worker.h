@@ -35,6 +35,8 @@ class CoreWorker {
 
   WorkerContext &Context() { return worker_context_; }
 
+  RayletClient &Raylet() { return *raylet_client_; }
+
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return task_interface_; }
@@ -48,6 +50,10 @@ class CoreWorker {
   CoreWorkerTaskExecutionInterface &Execution() {
     RAY_CHECK(task_execution_interface_ != nullptr);
     return *task_execution_interface_;
+  }
+
+  ~CoreWorker() {
+    raylet_client_->Disconnect();
   }
 
  private:

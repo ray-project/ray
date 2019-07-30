@@ -130,9 +130,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
   java_worker_class = LoadClass(env, "org/ray/runtime/Worker");
-  java_worker_run_task_callback = env->GetMethodID(
-      java_worker_class, "runTaskCallback",
-      "(Ljava/util/List;Ljava/util/List;)Lorg/ray/runtime/nativeTypes/NativeRayObject;");
+  java_worker_run_task_callback =
+      env->GetMethodID(java_worker_class, "runTaskCallback",
+                       "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   return CURRENT_JNI_VERSION;
 }

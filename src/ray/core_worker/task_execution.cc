@@ -12,7 +12,8 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       object_interface_(object_interface),
       execution_callback_(executor),
       worker_server_("Worker", 0 /* let grpc choose port */),
-      main_work_(main_service_) {
+      main_service_(std::make_shared<boost::asio::io_service>()),
+      main_work_(std::make_shared<boost::asio::io_service::work>(*main_service_)) {
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
@@ -20,7 +21,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_, main_service_, worker_server_, func)));
+          raylet_client, object_interface_, *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -53,10 +54,15 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
 
 void CoreWorkerTaskExecutionInterface::Run() {
   // Run main IO service.
-  main_service_.run();
+  main_service_->run();
+}
 
-  // should never reach here.
-  RAY_LOG(FATAL) << "should never reach here after running main io service";
+void CoreWorkerTaskExecutionInterface::Stop() {
+  // Stop main IO service.
+  std::shared_ptr<boost::asio::io_service> main_service = main_service_;
+  main_service_->post([main_service]() {
+    main_service->stop();
+  });
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
