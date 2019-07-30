@@ -49,7 +49,8 @@ class LearnerThread(threading.Thread):
             inqueue=self.inqueue,
             size=minibatch_buffer_size,
             timeout=learner_queue_timeout,
-            num_passes=num_sgd_iter)
+            num_passes=num_sgd_iter,
+            init_num_passes=num_sgd_iter)
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()
@@ -58,6 +59,7 @@ class LearnerThread(threading.Thread):
         self.weights_updated = False
         self.stats = {}
         self.stopped = False
+        self.num_steps = 0
 
     def run(self):
         while not self.stopped:
@@ -72,5 +74,6 @@ class LearnerThread(threading.Thread):
             self.weights_updated = True
             self.stats = get_learner_stats(fetches)
 
+        self.num_steps += 1
         self.outqueue.put(batch.count)
         self.learner_queue_size.push(self.inqueue.qsize())
