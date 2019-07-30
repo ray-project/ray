@@ -101,6 +101,17 @@ cc_proto_library(
     deps = ["core_worker_proto"],
 )
 
+proto_library(
+    name = "direct_actor_proto",
+    srcs = ["src/ray/protobuf/direct_actor.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "direct_actor_cc_proto",
+    deps = ["direct_actor_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -207,7 +218,15 @@ cc_grpc_library(
     deps = [":worker_cc_proto"],
 )
 
-# Worker server and client.
+# direct actor gRPC lib.
+cc_grpc_library(
+    name = "direct_actor_cc_grpc",
+    srcs = [":direct_actor_proto"],
+    grpc_only = True,
+    deps = [":direct_actor_cc_proto"],
+)
+
+# worker server and client.
 cc_library(
     name = "worker_rpc",
     hdrs = glob([
@@ -215,6 +234,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "direct_actor_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
         ":worker_cc_grpc",
@@ -388,26 +408,49 @@ cc_library(
         # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
         ":raylet_lib",
         ":worker_rpc",
+        ":gcs",
+    ],
+)
+
+cc_library(
+    name = "mock_worker_lib",
+    srcs = ["src/ray/core_worker/test/mock_worker.cc"],
+    hdrs = glob([
+        "src/ray/core_worker/test/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
     ],
 )
 
 cc_binary(
     name = "mock_worker",
-    srcs = ["src/ray/core_worker/mock_worker.cc"],
     copts = COPTS,
     deps = [
-        ":core_worker_lib",
+        ":mock_worker_lib",
     ],
 )
 
-cc_binary(
-    name = "core_worker_test",
-    srcs = ["src/ray/core_worker/core_worker_test.cc"],
+cc_library(
+    name = "core_worker_test_lib",
+    srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
+    hdrs = glob([
+        "src/ray/core_worker/test/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":core_worker_lib",
         ":gcs",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "core_worker_test",
+    copts = COPTS,
+    deps = [
+        ":core_worker_test_lib",
     ],
 )
 

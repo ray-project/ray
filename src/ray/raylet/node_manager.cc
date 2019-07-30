@@ -176,14 +176,13 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,
-                                          const ClientTableData &data) {
-    ClientAdded(data);
-  };
+                                          const GcsNodeInfo &data) { ClientAdded(data); };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed =
-      [this](gcs::RedisGcsClient *client, const UniqueID &id,
-             const ClientTableData &data) { ClientRemoved(data); };
+  auto node_manager_client_removed = [this](gcs::RedisGcsClient *client,
+                                            const UniqueID &id, const GcsNodeInfo &data) {
+    ClientRemoved(data);
+  };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to resource changes.
@@ -381,8 +380,8 @@ void NodeManager::GetObjectManagerProfileInfo() {
   }
 }
 
-void NodeManager::ClientAdded(const ClientTableData &client_data) {
-  const ClientID client_id = ClientID::FromBinary(client_data.client_id());
+void NodeManager::ClientAdded(const GcsNodeInfo &node_info) {
+  const ClientID client_id = ClientID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[ClientAdded] Received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
@@ -401,8 +400,8 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
 
   // Initialize a rpc client to the new node manager.
   std::unique_ptr<rpc::NodeManagerClient> client(
-      new rpc::NodeManagerClient(client_data.node_manager_address(),
-                                 client_data.node_manager_port(), client_call_manager_));
+      new rpc::NodeManagerClient(node_info.node_manager_address(),
+                                 node_info.node_manager_port(), client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   // Fetch resource info for the remote client and update cluster resource map.
@@ -420,10 +419,10 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
       }));
 }
 
-void NodeManager::ClientRemoved(const ClientTableData &client_data) {
+void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
-  const ClientID client_id = ClientID::FromBinary(client_data.client_id());
+  const ClientID client_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "[ClientRemoved] Received callback from client id " << client_id;
 
   RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
@@ -1827,7 +1826,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
-    const TaskSpecification &task_spec) {
+    const TaskSpecification &task_spec, int port) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
@@ -1860,6 +1859,11 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
         actor_info_ptr->remaining_reconstructions() - 1);
   }
 
+  // Set the ip address & port, which could change after reconstruction.
+  actor_info_ptr->set_ip_address(
+      gcs_client_->client_table().GetLocalClient().node_manager_address());
+  actor_info_ptr->set_port(port);
+
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
   actor_info_ptr->set_node_manager_id(
@@ -1890,10 +1894,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     RAY_CHECK(actor_handle_id.IsNil());
+    int port = worker.Port();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         /*success_callback=*/
-        [this, task_spec, resumed_from_checkpoint](
+        [this, task_spec, resumed_from_checkpoint, port](
             ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
             const TaskTableData &parent_task_data) {
           // The task was in the GCS task table. Use the stored task spec to
@@ -1906,11 +1911,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             parent_actor_id = parent_task.GetTaskSpecification().ActorId();
           }
           FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                          resumed_from_checkpoint);
+                                          resumed_from_checkpoint, port);
         },
         /*failure_callback=*/
-        [this, task_spec, resumed_from_checkpoint](ray::gcs::RedisGcsClient *client,
-                                                   const TaskID &parent_task_id) {
+        [this, task_spec, resumed_from_checkpoint, port](ray::gcs::RedisGcsClient *client,
+                                                         const TaskID &parent_task_id) {
           // The parent task was not in the GCS task table. It should most likely be in
           // the
           // lineage cache.
@@ -1933,7 +1938,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                 << "ray.init(redis_max_memory=<max_memory_bytes>).";
           }
           FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                          resumed_from_checkpoint);
+                                          resumed_from_checkpoint, port);
         }));
   } else {
     // The actor was not resumed from a checkpoint. We extend the actor's
@@ -1968,10 +1973,11 @@ void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                                   const TaskSpecification &task_spec,
-                                                  bool resumed_from_checkpoint) {
+                                                  bool resumed_from_checkpoint,
+                                                  int port) {
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
-  auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec);
+  auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port);
   new_actor_info->set_parent_actor_id(parent_actor_id.Binary());
   auto update_callback = [actor_id](Status status) {
     if (!status.ok()) {

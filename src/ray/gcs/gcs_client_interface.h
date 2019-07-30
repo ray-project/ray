@@ -69,7 +69,7 @@ class GcsClientOptions {
 /// Before exit, `Disconnect()` must be called.
 class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterface> {
  public:
-  virtual ~GcsClientInterface() { RAY_CHECK(!is_connected_); }
+  virtual ~GcsClientInterface() {}
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.

@@ -76,7 +76,7 @@ struct TaskInfo {
 
 enum class StoreProviderType { LOCAL_PLASMA, PLASMA };
 
-enum class TaskTransportType { RAYLET };
+enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 
 }  // namespace ray
 

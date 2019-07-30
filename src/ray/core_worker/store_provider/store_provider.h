@@ -24,6 +24,9 @@ class RayObject {
   /// Return the metadata of the ray object.
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; };
 
+  /// Whether this object has metadata.
+  bool HasMetadata() const { return metadata_ != nullptr && metadata_->Size() > 0; }
+
  private:
   /// Data of the ray object.
   const std::shared_ptr<Buffer> data_;
