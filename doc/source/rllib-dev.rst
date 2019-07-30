@@ -4,7 +4,9 @@ RLlib Development
 Development Install
 -------------------
 
-You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://ray.readthedocs.io/en/latest/installation.html>`__ installed.)
+To get started with RLlib development, run `python setup.py develop` in the ray/rllib directory. This installs the development package of RLlib ("rllib"), which overrides the built-in RLlib package from Ray ("ray.rllib_builtin"), allowing you to easily develop RLlib without needing to recompile Ray.
+
+How this works is that the `ray.rllib` package resolves to `rllib` with higher priority, falling back to `ray.rllib_builtin` if that is not found.
 
 API Stability
 -------------

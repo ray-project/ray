@@ -2,6 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+"""This is the development package for RLlib ("rllib").
+
+If you install it, it overrides the built-in RLlib package from Ray
+("ray.rllib_builtin"), allowing you to easily develop RLlib without needing
+to recompile Ray.
+
+How this works is that the `ray.rllib` package resolves to `rllib` with higher
+priority, falling back to `ray.rllib_builtin` if that is not found.
+"""
+
 import os
 import re
 
