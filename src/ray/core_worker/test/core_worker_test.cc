@@ -5,9 +5,9 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/test/util.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/rpc/raylet/raylet_client.h"
+#include "src/ray/util/test_util.h"
 
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"

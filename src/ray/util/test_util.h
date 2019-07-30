@@ -1,10 +1,15 @@
-#ifndef RAY_CORE_WORKER_TEST_UTIL_H
-#define RAY_CORE_WORKER_TEST_UTIL_H
+#ifndef RAY_UTIL_TEST_UTIL_H
+#define RAY_UTIL_TEST_UTIL_H
 
 #include <string>
 
 namespace ray {
 
+/// Wait until the condition is met, or timeout is reached.
+///
+/// \param[in] condition The condition to wait for.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {
@@ -25,4 +30,4 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
 
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_TEST_UTIL_H
+#endif  // RAY_UTIL_TEST_UTIL_H

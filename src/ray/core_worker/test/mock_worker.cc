@@ -3,7 +3,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
-#include "ray/core_worker/test/util.h"
+#include "src/ray/util/test_util.h"
 
 using namespace std::placeholders;
 
