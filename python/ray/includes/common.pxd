@@ -138,7 +138,10 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
 cdef extern from "ray/core_worker/store_provider/store_provider.h" namespace "ray" nogil:
     cdef cppclass CRayObject "ray::RayObject":
-        RayObject(shared_ptr[CBuffer] metadata, shared_ptr[CBuffer] data)
         const shared_ptr[CBuffer] &GetData()
         const size_t DataSize() const
         const shared_ptr[CBuffer] &GetMetadata() const
+
+cdef extern from "ray/gcs/gcs_client_interface.h" namespace "ray::gcs" nogil:
+    cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
+        CGcsClientOptions(const c_string &ip, int port, const c_string &password, c_bool is_test_client = false)

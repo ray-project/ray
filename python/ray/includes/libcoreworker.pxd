@@ -15,6 +15,7 @@ from ray.includes.common cimport (
     CRayObject,
     CWorkerType,
     CLanguage,
+    CGcsClientOptions,
 )
 from ray.includes.libraylet cimport CRayletClient
 
@@ -37,12 +38,12 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
-                    void* execution_callback)
+                    const CGcsClientOptions &gcs_options, void* execution_callback)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        #CTaskSubmissionInterface &Tasks()
-        #CTaskExecutionInterface &Execution()
+        # CTaskSubmissionInterface &Tasks()
+        # CTaskExecutionInterface &Execution()
 
         # TODO(edoakes): remove this once the raylet client is no longer used directly
         CRayletClient* GetRayletClient()

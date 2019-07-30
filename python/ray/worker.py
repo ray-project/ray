@@ -319,7 +319,8 @@ class Worker(object):
                         memcopy_threads=self.memcopy_threads)
                 else:
                     self.core_worker.serialize_and_put(
-                        value, object_id,
+                        value,
+                        object_id,
                         self.get_serialization_context(self.current_job_id),
                         memcopy_threads=self.memcopy_threads)
                 break
@@ -1877,11 +1878,23 @@ def connect(node,
         # driver task.
         worker.task_context.current_task_id = driver_task_spec.task_id()
 
+    redis_address_components = node.redis_address.split(":")
+    redis_address = redis_address_components[0]
+    if len(redis_address_components) > 1:
+        redis_port = int(redis_address_components[1])
+    else:
+        redis_port = 0
+    gcs_options = ray._raylet.GcsClientOptions(
+        redis_address,
+        redis_port,
+        node.redis_password,
+    )
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE),
         node.plasma_store_socket_name,
         node.raylet_socket_name,
         worker.current_job_id,
+        gcs_options,
     )
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 

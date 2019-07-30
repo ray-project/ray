@@ -19,6 +19,7 @@ from ray.includes.common cimport (
     CLanguage,
     CRayObject,
     CRayStatus,
+    CGcsClientOptions,
     LocalMemoryBuffer,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -58,6 +59,7 @@ include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
+include "includes/common.pxi"
 
 
 if cpython.PY_MAJOR_VERSION >= 3:
@@ -379,11 +381,12 @@ cdef class RayletClient:
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
-    def __cinit__(self, is_driver, store_socket, raylet_socket, JobID job_id):
+    def __cinit__(self, is_driver, store_socket, raylet_socket,
+                  JobID job_id, GcsClientOptions gcs_options):
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
-            raylet_socket.encode("ascii"), job_id.native(), NULL))
+            raylet_socket.encode("ascii"), job_id.native(), gcs_options.native()[0], NULL))
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
