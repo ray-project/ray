@@ -1,8 +1,11 @@
 # Note: asyncio is only compatible with Python 3
 
 import asyncio
+import time
+
 import ray
 from ray.experimental.async_plasma import PlasmaProtocol, PlasmaEventHandler
+from ray.services import logger
 
 handler = None
 transport = None
@@ -19,7 +22,7 @@ async def _async_init():
         handler = PlasmaEventHandler(loop, worker)
         transport, protocol = await loop.create_connection(
             lambda: PlasmaProtocol(worker.plasma_client, handler), sock=rsock)
-
+        logger.debug("AsyncPlasma Connection Created!")
 
 def init():
     """
@@ -29,9 +32,7 @@ def init():
 
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        raise Exception("You must initialize the Ray async API by calling "
-                        "async_api.init() or async_api.as_future(obj) before "
-                        "the event loop starts.")
+        asyncio.ensure_future(_async_init())
     else:
         asyncio.get_event_loop().run_until_complete(_async_init())
 
