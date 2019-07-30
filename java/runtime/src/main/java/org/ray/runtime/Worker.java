@@ -26,6 +26,9 @@ import org.ray.runtime.task.ArgumentsBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The worker, which pulls tasks from raylet and executes them continuously.
+ */
 public class Worker {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
@@ -33,6 +36,9 @@ public class Worker {
   // TODO(hchen): Use the C++ config.
   private static final int NUM_ACTOR_CHECKPOINTS_TO_KEEP = 20;
 
+  /**
+   * The native pointer of core worker.
+   */
   private final long nativeCoreWorkerPointer;
 
   private final ObjectStoreProxy objectStoreProxy;

@@ -111,8 +111,7 @@ public class ActorTest extends BaseTest {
     // Delete the object from the object store.
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
-    List<ObjectId> ids = new ArrayList<>();
-    ids.add(value.getId());
+    List<ObjectId> ids = Collections.singletonList(value.getId());
     while (true) {
       GetResult<Integer> result = ((AbstractRayRuntime)
           Ray.internal()).getWorker().getObjectStoreProxy().<Integer>get(ids, 0).get(0);
@@ -126,7 +125,8 @@ public class ActorTest extends BaseTest {
       // Try getting the object again, this should throw an UnreconstructableException.
       value.get();
       Assert.fail("This line should not be reachable.");
-    } catch (UnreconstructableException ignored) {
+    } catch (UnreconstructableException e) {
+      Assert.assertEquals(value.getId(), e.objectId);
     }
   }
 }

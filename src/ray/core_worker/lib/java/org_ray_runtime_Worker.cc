@@ -91,11 +91,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeDestroy(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
-  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  if (core_worker->GetWorkerType() == ray::WorkerType::WORKER) {
-    core_worker->Execution().Stop();
-  }
-  delete core_worker;
+  delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }
 
 #ifdef __cplusplus

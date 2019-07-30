@@ -20,7 +20,7 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public JobId getCurrentJobId() {
-    return runtime.getWorker().getWorkerContext().getCurrentJobId();
+    return runtime.getWorkerContext().getCurrentJobId();
   }
 
   @Override
@@ -35,7 +35,7 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorReconstructed() {
-    TaskSpec currentTask = runtime.getWorker().getWorkerContext().getCurrentTask();
+    TaskSpec currentTask = runtime.getWorkerContext().getCurrentTask();
     Preconditions.checkState(currentTask != null
             && currentTask.getType() == TaskType.ACTOR_CREATION_TASK,
         "This method can only be called from an actor creation task.");

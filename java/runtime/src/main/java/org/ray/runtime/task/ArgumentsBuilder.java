@@ -57,7 +57,7 @@ public class ArgumentsBuilder {
   }
 
   /**
-   * Convert list of byte array to real function arguments.
+   * Convert list of NativeRayObject to real function arguments.
    */
   public static Object[] unwrap(Worker worker, List<NativeRayObject> args) {
     Object[] realArgs = new Object[args.size()];
