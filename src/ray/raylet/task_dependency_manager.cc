@@ -337,6 +337,13 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
     return;
   }
 
+  // Check that we were able to renew the task lease before the previous one
+  // expired.
+  if (now_ms > it->second.expires_at) {
+    RAY_LOG(WARNING) << "Task " << task_id << " lease to renew has already expired by "
+                     << (it->second.expires_at - now_ms) << "ms";
+  }
+
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->set_node_manager_id(client_id_.Hex());
   task_lease_data->set_acquired_at(current_sys_time_ms());
