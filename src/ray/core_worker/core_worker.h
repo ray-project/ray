@@ -54,9 +54,7 @@ class CoreWorker {
     return *task_execution_interface_;
   }
 
-  ~CoreWorker() {
-    raylet_client_->Disconnect();
-  }
+  ~CoreWorker() { raylet_client_->Disconnect(); }
 
  private:
   /// Type of this worker.

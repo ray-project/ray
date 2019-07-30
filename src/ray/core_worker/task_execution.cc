@@ -60,9 +60,7 @@ void CoreWorkerTaskExecutionInterface::Run() {
 void CoreWorkerTaskExecutionInterface::Stop() {
   // Stop main IO service.
   std::shared_ptr<boost::asio::io_service> main_service = main_service_;
-  main_service_->post([main_service]() {
-    main_service->stop();
-  });
+  main_service_->post([main_service]() { main_service->stop(); });
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
