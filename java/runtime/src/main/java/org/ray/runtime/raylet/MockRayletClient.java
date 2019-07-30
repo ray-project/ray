@@ -194,7 +194,7 @@ public class MockRayletClient implements RayletClient {
   @Override
   public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
                                 boolean deleteCreatingTasks) {
-    objectInterface.delete(objectIds, localOnly, deleteCreatingTasks);
+    objectInterface.free(objectIds, localOnly, deleteCreatingTasks);
   }
 
 

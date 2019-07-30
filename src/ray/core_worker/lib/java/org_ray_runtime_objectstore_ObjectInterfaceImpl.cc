@@ -123,7 +123,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
  * Method:    nativeDelete
  * Signature: (JLjava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeDelete(
+JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeFree(
     JNIEnv *env, jclass, jlong nativeObjectInterfacePointer, jobject objectIds,
     jboolean localOnly, jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;
@@ -132,7 +132,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nati
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   auto status = GetObjectInterfaceFromPointer(nativeObjectInterfacePointer)
-                    ->Delete(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);
+                    ->Free(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

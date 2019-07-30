@@ -90,7 +90,7 @@ public class MockObjectInterface implements ObjectInterface {
   }
 
   @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+  public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
     for (ObjectId objectId : objectIds) {
       pool.remove(objectId);
     }

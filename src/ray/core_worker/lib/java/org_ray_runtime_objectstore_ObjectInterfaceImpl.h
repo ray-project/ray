@@ -52,10 +52,10 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_n
 
 /*
  * Class:     org_ray_runtime_objectstore_ObjectInterfaceImpl
- * Method:    nativeDelete
+ * Method:    nativeFree
  * Signature: (JLjava/util/List;ZZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeDelete(
+JNIEXPORT void JNICALL Java_org_ray_runtime_objectstore_ObjectInterfaceImpl_nativeFree(
     JNIEnv *, jclass, jlong, jobject, jboolean, jboolean);
 
 /*
