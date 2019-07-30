@@ -182,4 +182,4 @@ class PyTorchTrainable(Trainable):
         return self._trainer.restore(checkpoint_path)
 
     def _stop(self):
-         self._trainer.shutdown()
+        self._trainer.shutdown()

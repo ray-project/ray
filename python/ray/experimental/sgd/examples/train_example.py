@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 from ray import tune
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 
@@ -20,8 +21,8 @@ def train_example(num_replicas=1, use_gpu=False):
     trainer1.train()
     trainer1.shutdown()
 
-def tune_example(num_replicas=1, use_gpu=False):
 
+def tune_example(num_replicas=1, use_gpu=False):
     config = {
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
@@ -31,12 +32,8 @@ def tune_example(num_replicas=1, use_gpu=False):
         "use_gpu": use_gpu
     }
 
-    analysis = tune.run(
-        PyTorchTrainable,
-        num_samples=4,
-        config=config
-    )
-
+    analysis = tune.run(PyTorchTrainable, num_samples=4, config=config)
+    return analysis.get_best_config(mean_accuracy="mean_accuracy")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
