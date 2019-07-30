@@ -12,11 +12,11 @@ import pickle
 
 import gym
 import ray
-from .agents.registry import get_agent_class
-from .env import MultiAgentEnv
-from .env.base_env import _DUMMY_AGENT_ID
-from .evaluation.episode import _flatten_action
-from .policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.env import MultiAgentEnv
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.evaluation.episode import _flatten_action
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """
