@@ -9,6 +9,7 @@ import logging
 
 import ray
 
+from ray.tune import Trainable
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
@@ -134,14 +135,25 @@ class PyTorchTrainer(object):
         model.load_state_dict(state["model"])
         return model
 
-    def save(self, ckpt):
-        """Saves the model at the provided checkpoint."""
-        state = ray.get(self.workers[0].get_state.remote())
-        torch.save(state, ckpt)
+    def save(self, checkpoint):
+        """Saves the model at the provided checkpoint.
 
-    def restore(self, ckpt):
-        """Restores the model from the provided checkpoint."""
-        state = torch.load(ckpt)
+        Args:
+            checkpoint (str): Path to target checkpoint file.
+
+        """
+        state = ray.get(self.workers[0].get_state.remote())
+        torch.save(state, checkpoint)
+        return checkpoint
+
+    def restore(self, checkpoint):
+        """Restores the model from the provided checkpoint.
+
+        Args:
+            checkpoint (str): Path to target checkpoint file.
+
+        """
+        state = torch.load(checkpoint)
         state_id = ray.put(state)
         ray.get([worker.set_state.remote(state_id) for worker in self.workers])
 
@@ -150,3 +162,24 @@ class PyTorchTrainer(object):
         for worker in self.workers:
             worker.shutdown.remote()
             worker.__ray_terminate__.remote()
+
+
+class PyTorchTrainable(Trainable):
+    @classmethod
+    def default_resource_request(cls, config):
+        pass
+
+    def _setup(self, config):
+        self._trainer = PyTorchTrainer(...)
+
+    def _train(self):
+        return self._trainer.train()
+
+    def _save(self, checkpoint_dir):
+        return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))
+
+    def _restore(self, checkpoint_path):
+        return self._trainer.restore(checkpoint_path)
+
+    def _stop(self):
+         self._trainer.shutdown()
