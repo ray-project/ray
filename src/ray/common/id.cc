@@ -95,7 +95,7 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
 }
 
 ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
-  constexpr size_t plasma_id_length = kUniqueIDSize;
+  constexpr size_t plasma_id_length = kPlasmaIdSize;
   RAY_CHECK(from.size() == plasma_id_length);
   return ObjectID::FromBinary(from.substr(0, ObjectID::LENGTH));
 }
@@ -107,8 +107,7 @@ ObjectID ObjectID::GenerateActorDummyObjectId(const ActorID &actor_id) {
 }
 
 plasma::UniqueID ObjectID::ToPlasmaId() const {
-  constexpr size_t plasma_id_length = kUniqueIDSize;
-  static_assert(ObjectID::LENGTH <= plasma_id_length,
+  static_assert(ObjectID::LENGTH <= kPlasmaIdSize,
       "Currently length of ObjectID must be shorter than plasma's.");
 
   plasma::UniqueID result;
