@@ -75,6 +75,12 @@ analysis = tune.run(
     **experiment_config)
 # __run_searchalg_end__
 
+# __run_analysis_end__
+df = analysis.dataframe()
+logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
+model = torch.load(logdir + "/model.pth")
+# __run_analysis_end__
+
 # yapf: disable
 # __trainable_example_begin__
 from ray.tune import Trainable
