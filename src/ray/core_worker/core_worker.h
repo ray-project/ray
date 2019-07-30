@@ -68,12 +68,6 @@ class CoreWorker {
   /// Worker context.
   WorkerContext worker_context_;
 
-  /// Raylet client.
-  std::unique_ptr<RayletClient> raylet_client_;
-
-  /// GCS client.
-  std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
-
   /// event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
 
@@ -82,6 +76,12 @@ class CoreWorker {
 
   /// The thread to handle IO events.
   std::thread io_thread_;
+
+  /// Raylet client.
+  std::unique_ptr<RayletClient> raylet_client_;
+
+  /// GCS client.
+  std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
 
   /// The `CoreWorkerTaskInterface` instance.
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;

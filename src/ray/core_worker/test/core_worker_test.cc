@@ -36,8 +36,8 @@ static void flushall_redis(void) {
 }
 
 std::shared_ptr<Buffer> GenerateRandomBuffer() {
-  std::random_device rd;   // Will be used to obtain a seed for the random number engine
-  std::mt19937 gen(rd());  // Standard mersenne_twister_engine seeded with rd()
+  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  std::mt19937 gen(seed);
   std::uniform_int_distribution<> dis(1, 10);
   std::uniform_int_distribution<> value_dis(1, 255);
 
@@ -560,7 +560,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
-  const int num_tasks = 10000 * 10;
+  const int num_tasks = 10000;
   RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
   for (int i = 0; i < num_tasks; i++) {
     // Create arguments with PassByValue.
@@ -813,18 +813,6 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorFailure(resources, true);
-}
-
-TEST_F(SingleNodeTest, TestCoreWorkerConstructorFailure) {
-  try {
-    CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON, "",
-                           raylet_socket_names_[0], JobID::FromInt(1), gcs_options_,
-                           nullptr);
-    // Make sure exception is really thrown.
-    ASSERT_TRUE(false);
-  } catch (const std::exception &e) {
-    RAY_LOG(INFO) << "Caught exception when constructing core worker: " << e.what();
-  }
 }
 
 }  // namespace ray
