@@ -95,8 +95,7 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
 }
 
 ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
-  constexpr size_t plasma_id_length = kPlasmaIdSize;
-  RAY_CHECK(from.size() == plasma_id_length);
+  RAY_CHECK(from.size() == kPlasmaIdSize);
   return ObjectID::FromBinary(from.substr(0, ObjectID::LENGTH));
 }
 
@@ -112,7 +111,7 @@ plasma::UniqueID ObjectID::ToPlasmaId() const {
 
   plasma::UniqueID result;
   std::memcpy(result.mutable_data(), Data(), ObjectID::Size());
-  std::fill_n(result.mutable_data() + ObjectID::Size(), plasma_id_length - ObjectID::LENGTH, 0xFF);
+  std::fill_n(result.mutable_data() + ObjectID::Size(), kPlasmaIdSize - ObjectID::LENGTH, 0xFF);
   return result;
 }
 
