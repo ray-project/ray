@@ -17,6 +17,7 @@ from ...agents import Trainer, with_common_config
 from ...agents.ars import optimizers
 from ...agents.ars import policies
 from ...agents.ars import utils
+from ...models import ModelCatalog
 from ...policy.sample_batch import DEFAULT_POLICY_ID
 from ...utils.annotations import override
 from ...utils.memory import ray_get_and_free
@@ -79,8 +80,7 @@ class Worker(object):
         self.noise = SharedNoiseTable(noise)
 
         self.env = env_creator(config["env_config"])
-        from ...import models
-        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
+        self.preprocessor = ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
@@ -167,8 +167,7 @@ class ARSTrainer(Trainer):
     @override(Trainer)
     def _init(self, config, env_creator):
         env = env_creator(config["env_config"])
-        from ...import models
-        preprocessor = models.ModelCatalog.get_preprocessor(env)
+        preprocessor = ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
