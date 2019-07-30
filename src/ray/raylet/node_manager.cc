@@ -176,14 +176,13 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,
-                                          const ClientTableData &data) {
-    ClientAdded(data);
-  };
+                                          const GcsNodeInfo &data) { ClientAdded(data); };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
   // Register a callback on the client table for removed clients.
-  auto node_manager_client_removed =
-      [this](gcs::RedisGcsClient *client, const UniqueID &id,
-             const ClientTableData &data) { ClientRemoved(data); };
+  auto node_manager_client_removed = [this](gcs::RedisGcsClient *client,
+                                            const UniqueID &id, const GcsNodeInfo &data) {
+    ClientRemoved(data);
+  };
   gcs_client_->client_table().RegisterClientRemovedCallback(node_manager_client_removed);
 
   // Subscribe to resource changes.
@@ -381,8 +380,8 @@ void NodeManager::GetObjectManagerProfileInfo() {
   }
 }
 
-void NodeManager::ClientAdded(const ClientTableData &client_data) {
-  const ClientID client_id = ClientID::FromBinary(client_data.client_id());
+void NodeManager::ClientAdded(const GcsNodeInfo &node_info) {
+  const ClientID client_id = ClientID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[ClientAdded] Received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
@@ -401,8 +400,8 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
 
   // Initialize a rpc client to the new node manager.
   std::unique_ptr<rpc::NodeManagerClient> client(
-      new rpc::NodeManagerClient(client_data.node_manager_address(),
-                                 client_data.node_manager_port(), client_call_manager_));
+      new rpc::NodeManagerClient(node_info.node_manager_address(),
+                                 node_info.node_manager_port(), client_call_manager_));
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   // Fetch resource info for the remote client and update cluster resource map.
@@ -420,10 +419,10 @@ void NodeManager::ClientAdded(const ClientTableData &client_data) {
       }));
 }
 
-void NodeManager::ClientRemoved(const ClientTableData &client_data) {
+void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
-  const ClientID client_id = ClientID::FromBinary(client_data.client_id());
+  const ClientID client_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "[ClientRemoved] Received callback from client id " << client_id;
 
   RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())

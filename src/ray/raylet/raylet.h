@@ -16,7 +16,7 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ClientTableData;
+using rpc::GcsNodeInfo;
 
 class NodeManager;
 

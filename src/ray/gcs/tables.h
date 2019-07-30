@@ -23,10 +23,10 @@ namespace gcs {
 using rpc::ActorCheckpointData;
 using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
-using rpc::ClientTableData;
 using rpc::ErrorTableData;
 using rpc::GcsChangeMode;
 using rpc::GcsEntry;
+using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
@@ -820,34 +820,34 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
 /// it should append an entry to the log indicating that it is dead. A client
 /// that is marked as dead should never again be marked as alive; if it needs
 /// to reconnect, it must connect with a different ClientID.
-class ClientTable : public Log<ClientID, ClientTableData> {
+class ClientTable : public Log<ClientID, GcsNodeInfo> {
  public:
   using ClientTableCallback = std::function<void(
-      RedisGcsClient *client, const ClientID &id, const ClientTableData &data)>;
+      RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data)>;
   using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-              RedisGcsClient *client, const ClientID &client_id)
+              RedisGcsClient *client, const ClientID &node_id)
       : Log(contexts, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
         client_log_key_(),
         disconnected_(false),
-        client_id_(client_id),
-        local_client_() {
+        node_id_(node_id),
+        local_node_info_() {
     pubsub_channel_ = TablePubsub::CLIENT_PUBSUB;
     prefix_ = TablePrefix::CLIENT;
 
-    // Set the local client's ID.
-    local_client_.set_client_id(client_id.Binary());
+    // Set the local node's ID.
+    local_node_info_.set_node_id(node_id.Binary());
   };
 
   /// Connect as a client to the GCS. This registers us in the client table
   /// and begins subscription to client table notifications.
   ///
-  /// \param Information about the connecting client. This must have the
-  /// same client_id as the one set in the client table.
+  /// \param local_node_info Information about the connecting client. This must have the
+  /// same id as the one set in the client table.
   /// \return Status
-  ray::Status Connect(const ClientTableData &local_client);
+  ray::Status Connect(const GcsNodeInfo &local_node_info);
 
   /// Disconnect the client from the GCS. The client ID assigned during
   /// registration should never be reused after disconnecting.
@@ -858,9 +858,9 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// Mark a different client as disconnected. The client ID should never be
   /// reused for a new client.
   ///
-  /// \param dead_client_id The ID of the client to mark as dead.
+  /// \param dead_node_id The ID of the client to mark as dead.
   /// \return Status
-  ray::Status MarkDisconnected(const ClientID &dead_client_id);
+  ray::Status MarkDisconnected(const ClientID &dead_node_id);
 
   /// Register a callback to call when a new client is added.
   ///
@@ -876,11 +876,11 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// information for clients that we've heard a notification for.
   ///
   /// \param client The client to get information about.
-  /// \param A reference to the client information. If we have information
+  /// \param node_info A reference to the client information. If we have information
   /// about the client in the cache, then the reference will be modified to
   /// contain that information. Else, the reference will be updated to contain
   /// a nil client ID.
-  void GetClient(const ClientID &client, ClientTableData &client_info) const;
+  void GetClient(const ClientID &client, GcsNodeInfo &node_info) const;
 
   /// Get the local client's ID.
   ///
@@ -890,18 +890,18 @@ class ClientTable : public Log<ClientID, ClientTableData> {
   /// Get the local client's information.
   ///
   /// \return The local client's information.
-  const ClientTableData &GetLocalClient() const;
+  const GcsNodeInfo &GetLocalClient() const;
 
   /// Check whether the given client is removed.
   ///
-  /// \param client_id The ID of the client to check.
+  /// \param node_id The ID of the client to check.
   /// \return Whether the client with ID client_id is removed.
-  bool IsRemoved(const ClientID &client_id) const;
+  bool IsRemoved(const ClientID &node_id) const;
 
   /// Get the information of all clients.
   ///
   /// \return The client ID to client information map.
-  const std::unordered_map<ClientID, ClientTableData> &GetAllClients() const;
+  const std::unordered_map<ClientID, GcsNodeInfo> &GetAllClients() const;
 
   /// Lookup the client data in the client table.
   ///
@@ -922,23 +922,23 @@ class ClientTable : public Log<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(RedisGcsClient *client, const ClientTableData &notifications);
+  void HandleNotification(RedisGcsClient *client, const GcsNodeInfo &node_info);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(RedisGcsClient *client, const ClientTableData &client_data);
+  void HandleConnected(RedisGcsClient *client, const GcsNodeInfo &node_info);
   /// Whether this client has called Disconnect().
   bool disconnected_;
-  /// This client's ID.
-  const ClientID client_id_;
-  /// Information about this client.
-  ClientTableData local_client_;
+  /// This node's ID.
+  const ClientID node_id_;
+  /// Information about this node.
+  GcsNodeInfo local_node_info_;
   /// The callback to call when a new client is added.
   ClientTableCallback client_added_callback_;
   /// The callback to call when a client is removed.
   ClientTableCallback client_removed_callback_;
-  /// A cache for information about all clients.
-  std::unordered_map<ClientID, ClientTableData> client_cache_;
-  /// The set of removed clients.
-  std::unordered_set<ClientID> removed_clients_;
+  /// A cache for information about all nodes.
+  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  /// The set of removed nodes.
+  std::unordered_set<ClientID> removed_nodes_;
 };
 
 }  // namespace gcs
