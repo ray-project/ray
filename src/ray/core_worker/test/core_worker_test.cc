@@ -490,7 +490,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
 
-  ActorHandle actor_handle(ActorID::FromRandom(), ActorHandleID::Nil(), function.language,
+  ActorHandle actor_handle(ActorID::FromRandom(JobID::FromInt(1)), ActorHandleID::Nil(), function.language,
                            true, function.function_descriptor);
 
   // Manually create `num_tasks` task specs, and for each of them create a
@@ -518,7 +518,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     }
 
     const auto actor_creation_dummy_object_id =
-        ObjectID::FromBinary(actor_handle.ActorID().Binary());
+        ObjectID::GenerateActorDummyObjectId(actor_handle.ActorID());
     builder.SetActorTaskSpec(
         actor_handle.ActorID(), actor_handle.ActorHandleID(),
         actor_creation_dummy_object_id,
@@ -605,7 +605,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
-  ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(), Language::JAVA,
+  ActorHandle handle1(ActorID::FromRandom(JobID::FromInt(1)), ActorHandleID::FromRandom(), Language::JAVA,
                       false,
                       {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
