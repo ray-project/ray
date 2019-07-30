@@ -6,6 +6,7 @@ ray.tune
 
 .. automodule:: ray.tune
     :members:
+    :show-inheritance:
     :exclude-members: TuneError, Trainable
 
 .. autoclass:: ray.tune.Trainable
@@ -14,7 +15,6 @@ ray.tune
 
 .. autoclass:: ray.tune.function_runner.StatusReporter
     :members: __call__, logdir
-
 
 ray.tune.schedulers
 -------------------

@@ -143,6 +143,7 @@ You may want to get a summary of multiple experiments that point to the same ``l
 
 .. code-block:: python
 
+    from ray.tune import Analysis
     analysis = Analysis("~/ray_results/my_experiment")
 
 See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.

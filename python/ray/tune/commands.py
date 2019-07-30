@@ -148,7 +148,7 @@ def list_trials(experiment_path,
         info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
     col_keys = [
         k for k in checkpoints_df.columns
-        if k in info_keys or k.startswith("config:")
+        if k in info_keys or k.startswith("config/")
     ]
     checkpoints_df = checkpoints_df[col_keys]
 
