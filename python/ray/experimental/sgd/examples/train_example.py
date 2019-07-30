@@ -9,9 +9,11 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
 
+import torchvision.models as models
+
 def train_example(num_replicas=1, use_gpu=False):
     trainer1 = PyTorchTrainer(
-        model_creator,
+        lambda cfg: models.resnet50(),
         data_creator,
         optimizer_creator,
         num_replicas=num_replicas,
@@ -44,4 +46,5 @@ if __name__ == "__main__":
 
     import ray
     ray.init(redis_address=args.redis_address)
+    print(ray.cluster_resources())
     train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

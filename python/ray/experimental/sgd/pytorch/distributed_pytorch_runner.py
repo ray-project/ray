@@ -33,7 +33,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
-
+        logger.warning("Starting DPTRunner.")
         os.environ["NCCL_SOCKET_IFNAME"] = "ens3"
         os.environ["NCCL_LL_THRESHOLD"] = "0"
         os.environ["NCCL_DEBUG"] = "INFO"
@@ -71,9 +71,11 @@ class DistributedPyTorchRunner(PyTorchRunner):
         logger.warning("Creating model")
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
+            logger.info("CUDA is available - using DDP.")
             self.model = torch.nn.parallel.DistributedDataParallel(
                 self.model.cuda())
         else:
+            logger.info("CUDA is not available - using DDPCPU.")
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)
 
