@@ -44,7 +44,8 @@ class CoreWorkerObjectInterface {
 
   Status Seal(const ObjectID &object_id);
 
-  /// Get a list of objects from the object store.
+  /// Get a list of objects from the object store. Objects that failed to be retrieved
+  /// will be returned as nullptrs.
   ///
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
