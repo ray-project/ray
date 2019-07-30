@@ -285,11 +285,11 @@ For TensorFlow model training, this would look something like this `tensorflow e
         def _restore(self, checkpoint_prefix):
             self.saver.restore(self.sess, checkpoint_prefix)
 
-Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
-
- To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
+Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``. To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
 
  .. code-block:: python
+
+    from ray.tune.util import validate_save_restore
 
     validate_save_restore(MyTrainableClass)
     validate_save_restore(MyTrainableClass, use_object_store=True)
@@ -335,7 +335,7 @@ of a trial, you can additionally set the ``checkpoint_at_end=True``:
         max_failures=5,
     )
 
-The checkpoint will be saved at file whose path looks like ``local_dir/exp_name/trial_name/checkpoint_x/checkpoint-x``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
+The checkpoint will be saved at a path that looks like ``local_dir/exp_name/trial_name/checkpoint_x/``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
 
 .. code-block:: python
 
@@ -562,8 +562,8 @@ And stopping a trial (``PUT /trials/:id``):
 
     $ curl -X PUT http://<address>:<port>/trials/<trial_id>
 
-Debugging
----------
+Debugging (Single Process)
+--------------------------
 
 By default, Tune will run hyperparameter evaluations on multiple processes. However, if you need to debug your training process, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following before ``tune.run``.
 
