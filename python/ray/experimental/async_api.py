@@ -12,7 +12,6 @@ protocol = None
 async def _async_init():
     global handler, transport, protocol
     if handler is None:
-        assert ray.is_initialized(), "Please call ray.init before async_api.init"
         worker = ray.worker.global_worker
         loop = asyncio.get_event_loop()
         worker.plasma_client.subscribe()
@@ -26,6 +25,8 @@ def init():
     """
     Initialize synchronously.
     """
+    assert ray.is_initialized(), "Please call ray.init before async_api.init"
+
     loop = asyncio.get_event_loop()
     if loop.is_running():
         raise Exception("You must initialize the Ray async API by calling "
