@@ -14,6 +14,7 @@ from ray.experimental.sgd.pytorch import PyTorchTrainer
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
+
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
