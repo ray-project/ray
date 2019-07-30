@@ -388,6 +388,9 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(), gcs_options.native()[0], NULL))
 
+        assert pyarrow is not None, ("Expected pyarrow to be imported from outside _raylet. "
+                                     "See __init__.py for details.")
+
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
