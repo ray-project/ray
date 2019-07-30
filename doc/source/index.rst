@@ -7,7 +7,7 @@ Ray
     <a href="https://github.com/ray-project/ray"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
   </embed>
 
-Ray is a fast and simple framework for building and running distributed applications.
+*Ray is a fast and simple framework for building and running distributed applications.*
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
@@ -15,7 +15,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 - `RLlib`_: Scalable Reinforcement Learning
 - `Distributed Training <distributed_training.html>`__
 
-Install Ray with: ``pip install ray``. View the `Installation page <installation.html>`__ for nightly wheels.
+Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation page <installation.html>`__.
 
 View the `codebase on GitHub`_.
 
@@ -34,7 +34,7 @@ Quick Start
         return x * x
 
     futures = [f.remote(i) for i in range(4)]
-    ray.get(futures)
+    print(ray.get(futures))
 
 To use Ray's actor model:
 
@@ -56,10 +56,10 @@ To use Ray's actor model:
     counters = [Counter.remote() for i in range(4)]
     [c.increment.remote() for c in counters]
     futures = [c.read.remote() for c in counters]
-    ray.get(futures)
+    print(ray.get(futures))
 
 
-To execute the above Ray script on AWS, you can download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__:
+Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
@@ -68,7 +68,7 @@ See more details in the `Cluster Launch page <autoscaling.html>`_.
 Tune Quick Start
 ----------------
 
-Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
+`Tune`_ is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
 
 .. code-block:: python
 
@@ -99,7 +99,7 @@ Tune is a scalable framework for hyperparameter search with a focus on deep lear
 RLlib Quick Start
 -----------------
 
-RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
+`RLlib`_ is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
 
 .. code-block:: bash
 
@@ -108,26 +108,35 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 .. code-block:: python
 
-    import ray
-    import ray.rllib.agents.ppo as ppo
-    from ray.tune.logger import pretty_print
+    import gym
+    from gym.spaces import Discrete, Box
+    from ray import tune
 
-    ray.init()
-    config = ppo.DEFAULT_CONFIG.copy()
-    config["num_gpus"] = 0
-    config["num_workers"] = 1
-    trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+    class SimpleCorridor(gym.Env):
+        def __init__(self, config):
+            self.end_pos = config["corridor_length"]
+            self.cur_pos = 0
+            self.action_space = Discrete(2)
+            self.observation_space = Box(0.0, self.end_pos, shape=(1, ))
 
-    # Can optionally call trainer.restore(path) to load a checkpoint.
+        def reset(self):
+            self.cur_pos = 0
+            return [self.cur_pos]
 
-    for i in range(1000):
-       # Perform one iteration of training the policy with PPO
-       result = trainer.train()
-       print(pretty_print(result))
+        def step(self, action):
+            if action == 0 and self.cur_pos > 0:
+                self.cur_pos -= 1
+            elif action == 1:
+                self.cur_pos += 1
+            done = self.cur_pos >= self.end_pos
+            return [self.cur_pos], 1 if done else 0, done, {}
 
-       if i % 100 == 0:
-           checkpoint = trainer.save()
-           print("checkpoint saved at", checkpoint)
+    tune.run(
+        "PPO",
+        config={
+            "env": SimpleCorridor,
+            "num_workers": 4,
+            "env_config": {"corridor_length": 5}})
 
 .. _`RLlib`: rllib.html
 
