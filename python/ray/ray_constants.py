@@ -3,7 +3,10 @@ from __future__ import division
 from __future__ import print_function
 """Ray constants used in the Python code."""
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def env_integer(key, default):
@@ -54,6 +57,9 @@ MAX_RESOURCE_QUANTITY = 10000
 # Each memory "resource" counts as this many bytes of memory
 MEMORY_RESOURCE_UNIT_BYTES = 100 * 1024 * 1024
 
+# Number of units 1 resource can be subdivided into
+MIN_RESOURCE_GRANULARITY = 0.0001
+
 # Fraction of plasma memory that can be reserved. It is actually 70% but this
 # is set to 69% to leave some headroom.
 PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
@@ -70,11 +76,18 @@ def to_memory_units(memory_bytes, round_to_nearest_unit=False):
     if round_to_nearest_unit:
         value = int(value)
     if value <= 0:
-        print(
-            "Warning: the amount of memory specified is less than the minimum "
+        logger.warn(
+            "The amount of memory specified is less than the minimum "
             "available granularity of {} bytes, got only {}. Tasks may be "
             "unable to acquire memory resources.".format(
-                MEMORY_RESOURCE_UNIT_BYTES, memory_bytes))
+                MEMORY_RESOURCE_UNIT_BYTES, int(memory_bytes)))
+    if value < MIN_RESOURCE_GRANULARITY:
+        logger.warn(
+            "Rounding {} byte memory request up to the minimum "
+            "resource granularity of {} bytes.".format(
+                memory_bytes,
+                int(MEMORY_RESOURCE_UNIT_BYTES * MIN_RESOURCE_GRANULARITY)))
+        value = MIN_RESOURCE_GRANULARITY
     return value
 
 
