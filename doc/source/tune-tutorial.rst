@@ -59,9 +59,12 @@ We can then plot the performance of this trial.
 Early Stopping with ASHA
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Now, let's integrate an early stopping algorithm to our search - ASHA. ASHA is a scalable algorithm for principled early stopping. How does it
-work? On a high level, it terminates trials that are less promising and
-allocates more time and resources to more promising trials. See `this blog post <ttps://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details. Now, let's use this algorithm. With this, we can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See the `Trial Scheduler section <tune-schedulers.html>`__ for more details of available schedulers and library integrations.
+Let's integrate an early stopping algorithm to our search - ASHA, a scalable algorithm for principled early stopping.
+
+How does it work? On a high level, it terminates trials that are less promising and
+allocates more time and resources to more promising trials. See `this blog post <ttps://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
+
+We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See the `Trial Scheduler section <tune-schedulers.html>`__ for more details of available schedulers and library integrations.
 
 .. literalinclude:: ../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -105,11 +108,10 @@ Evaluate your model
 
 You can evaluate best trained model using the Analysis object to retrieve the best model:
 
-.. code:: python
-
-    df = analysis.dataframe()
-    logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
-    model = torch.load(logdir + "/model.pth")
+.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+   :language: python
+   :start-after: __run_analysis_begin__
+   :end-before: __run_analysis_end__
 
 
 Next Steps
