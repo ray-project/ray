@@ -65,7 +65,7 @@ class TestService : public GrpcService {
 
  private:
   /// The grpc async service object.
-  TestService::AsyncService service_;
+  DebugEchoService::AsyncService service_;
 
   /// The service handler that actually handle the requests.
   TestServiceHandler &service_handler_;

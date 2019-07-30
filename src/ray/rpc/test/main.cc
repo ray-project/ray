@@ -54,13 +54,14 @@ class ServiceHandlers : public TestServiceHandler {
 
   void HandleDebugStreamEcho(
       const DebugEchoRequest &request,
-      StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_writer) override {
+      StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_reply_writer) override {
     const string &str = request.request_message();
     int idx = GetIndex(str);
     if (idx % 2 == 0) {
+      cout << "begin to send reply " << idx << endl;
       DebugEchoReply reply;
       reply.set_reply_message(GenerateMessage("StreamReplyMessage", idx));
-      stream_writer.Write(reply);
+      stream_reply_writer.Write(reply);
     }
     cout << "Received request in DebugStreamEcho, msg " << request.request_message()
          << endl;
@@ -77,8 +78,7 @@ class GrpcTest : public ::testing::Test {
   ~GrpcTest() {}
 
   void SetUp() {
-    server_thread_.reset(new std::unique_ptr<std::thread>>
-                         ([this]() { io_service_.run(); }));
+    server_thread_.reset(new std::thread([this]() { io_service_.run(); }));
     server_.reset(new GrpcServer("DebugTestServer", 12345));
     server_->RegisterService(service_);
     server_->Run();
@@ -93,7 +93,7 @@ class GrpcTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  boost::asio::io_serivce::work work_;
+  boost::asio::io_service::work work_;
   std::unique_ptr<std::thread> server_thread_;
   unique_ptr<GrpcServer> server_;
   ClientCallManager client_call_manager_;
@@ -101,27 +101,38 @@ class GrpcTest : public ::testing::Test {
   TestService service_;
 };
 
-TEST_F(GrpcTest, MultiClientsTest) {}
+// TEST_F(GrpcTest, MultiClientsTest) {}
 
-TEST_F(GrpcTest, UnixDomainSocketTest) {}
+// TEST_F(GrpcTest, UnixDomainSocketTest) {}
 
-TEST_F(GrpcTest, ThreadSafeClientTest) {}
+// TEST_F(GrpcTest, ThreadSafeClientTest) {}
 
 TEST_F(GrpcTest, StreamRequestTest) {
   int num_messages = 10;
   DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
   client.StartEchoStream([](const Status &status, const rpc::DebugEchoReply &reply) {
-    cout << "Received reply from server, reply: " << reply.reply_message();
+    cout << "Received reply from server, reply: " << reply.reply_message() << endl;
   });
+  usleep(1000);
+
+  cout << "Client begin to send request." << endl;
   for (int i = 0; i < num_messages; i++) {
+    usleep(1000);
     DebugEchoRequest request;
     request.set_request_message(GenerateMessage("StreamRequest", i + 1));
+    cout << "Send request " << i + 1 << endl;
     client.DebugStreamEcho(request);
+    cout << "Send request " << i + 1 << " finish." << endl;
+    usleep(1000);
   }
+  cout << "Finish send request." << endl;
   client.CloseEchoStream();
 }
 
 }  // namespace rpc
 }  // namespace ray
 
-int main() { return 0; }
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

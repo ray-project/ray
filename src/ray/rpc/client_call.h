@@ -41,7 +41,7 @@ class ClientCall {
 
   /// Interfaces only for stream async call.
  public:
-  virtual void WriteStream(::google::protobuf::Message &request) = 0;
+  virtual void WriteStream(const ::google::protobuf::Message &request) = 0;
 
   virtual void WritesDone() = 0;
 
@@ -99,7 +99,7 @@ class ClientCallImpl : public ClientCall {
   }
 
   // Stream call interface, unused in default call.
-  void WriteStream(::google::protobuf::Message &request) {}
+  void WriteStream(const ::google::protobuf::Message &request) {}
   void WritesDone() {}
   bool IsReadingStream() {}
 
@@ -121,7 +121,7 @@ class ClientCallImpl : public ClientCall {
 
 template <class GrpcService, class Request, class Reply>
 using AsyncRpcFunction = std::unique_ptr<grpc::ClientAsyncReaderWriter<Request, Reply>> (
-    GrpcService::Stub::*)(grpc::ClientContext *, grpc::CompletionQueue, void *);
+    GrpcService::Stub::*const)(grpc::ClientContext *, grpc::CompletionQueue *, void *);
 
 /// Implementation of the `ClientStreamCall`. It represents a `ClientStreamCall` for a
 /// asynchronous streaming client call.
@@ -134,25 +134,30 @@ class ClientStreamCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback)
-      : ClientCall(ClientCallType::STREAM_ASYNC_CALL), callback_(callback) {}
+      : ClientCall(ClientCallType::STREAM_ASYNC_CALL), callback_(callback) {
+    RAY_LOG(INFO) << "Client stream call construct.";
+  }
 
   void Connect(typename GrpcService::Stub &stub,
                const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
                grpc::CompletionQueue &cq) {
+    reply_.Clear();
+    RAY_LOG(INFO) << "Client stream call connect, is initialized: " << reply_.IsInitialized();
     state_ = ClientCallState::CONNECT;
     client_stream_ =
         (stub.*async_rpc_function)(&context_, &cq, reinterpret_cast<void *>(tag_));
-    /// Wait for an asynchronous reading.
-    AsyncReadNextMessage();
   }
 
-  void WritesDone() {
+  void WritesDone() override {
     state_ = ClientCallState::WRITES_DONE;
     client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
   }
 
-  void WriteStream(::google::protobuf::Message &request) {
+  void WriteStream(const ::google::protobuf::Message &from) override {
     state_ = ClientCallState::WRITE;
+    // Construct the request with the specific type.
+    Request request;
+    request.CopyFrom(from);
     client_stream_->Write(request, reinterpret_cast<void *>(tag_));
   }
 

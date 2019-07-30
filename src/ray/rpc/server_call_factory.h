@@ -107,7 +107,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using RequestStreamCallFunction = void (GrpcService::AsyncService::*)(
-    grpc::ServerContext *, grpc::ServerAsyncReaderWriter<Request, Reply> *,
+    grpc::ServerContext *, grpc::ServerAsyncReaderWriter<Reply, Request> *,
     grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
 
 /// Stream server call factory, it's a kind of implementation of `ServerCallFactory`.
@@ -149,6 +149,8 @@ class ServerStreamCallFactoryImpl : public ServerCallFactory {
     (service_.*request_stream_call_function_)(&call->context_, call->server_stream_.get(),
                                               cq_.get(), cq_.get(),
                                               reinterpret_cast<void *>(call));
+    call->SetState(ServerCallState::CONNECT);
+    RAY_LOG(INFO) << "Create call 3";
   }
 
  private:

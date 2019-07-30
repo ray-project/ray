@@ -94,7 +94,7 @@ class ClientCallManager {
     // connect function.
     call->SetClientCallTag(tag);
     // Setup connection with remote server.
-    call->Connect(stub, async_rpc_function, &cq_);
+    call->Connect(stub, async_rpc_function, cq_);
     return call;
   }
 

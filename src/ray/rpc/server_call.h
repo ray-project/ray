@@ -33,6 +33,7 @@ enum class ServerCallType {
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
+  CONNECT,
   /// The call is created and waiting for an incoming request.
   PENDING,
   /// Request is received and being processed.
@@ -87,6 +88,9 @@ class ServerCall {
 
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
+
+ public:
+  virtual void AsyncReadNextRequest() = 0;
 
  public:
   /// Common methods for both default server call and stream server call.
@@ -188,6 +192,8 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
+  void AsyncReadNextRequest() override {}
+
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
@@ -236,16 +242,16 @@ template <class Request, class Reply>
 class StreamReplyWriter {
  public:
   StreamReplyWriter(
-      std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream,
+      std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream,
       ServerCall *server_call)
       : server_stream_(server_stream), server_call_(server_call) {}
   void Write(const Reply &reply) {
-    server_stream_.Write(reply, reinterpret_cast<void *>(server_call_));
+    server_stream_->Write(reply, reinterpret_cast<void *>(server_call_));
   }
 
  private:
-  std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream_;
-  const ServerCall *server_call_;
+  std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream_;
+  ServerCall *server_call_;
 };
 
 template <class ServiceHandler, class Request, class Reply>
@@ -275,15 +281,16 @@ class ServerStreamCallImpl : public ServerCall {
         factory_(factory),
         service_handler_(service_handler),
         handle_stream_request_function_(handle_stream_request_function),
-        server_stream_(std::make_shared<Request, Reply>(&context_)),
+        server_stream_(
+            std::make_shared<grpc::ServerAsyncReaderWriter<Reply, Request>>(&context_)),
         io_service_(io_service),
         stream_reply_writer_(server_stream_, this) {
     // This is important as the server should know when the client is done.
     context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(this));
-    AsyncReadNextRequest();
+    // AsyncReadNextRequest();
   }
 
-  void AsyncReadNextRequest() {
+  void AsyncReadNextRequest() override {
     server_stream_->Read(&request_, reinterpret_cast<void *>(this));
   }
 
@@ -308,10 +315,14 @@ class ServerStreamCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     // Actual handler for the request.
-    (service_handler_.*handle_stream_request_function_)(request_, server_stream_);
+    (service_handler_.*handle_stream_request_function_)(request_, stream_reply_writer_);
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
+
+  /// Only for defaut call, not used yet.
+  void OnReplySent() {}
+  void OnReplyFailed() {}
 
  private:
   /// State of this call.
@@ -328,7 +339,7 @@ class ServerStreamCallImpl : public ServerCall {
       handle_stream_request_function_;
 
   /// The asynchronous reader writer for stream call.
-  std::shared_ptr<grpc::ServerAsyncReaderWriter<Request, Reply>> server_stream_;
+  std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream_;
 
   /// The event loop.
   boost::asio::io_service &io_service_;
@@ -342,7 +353,7 @@ class ServerStreamCallImpl : public ServerCall {
   StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
   template <class T1, class T2, class T3, class T4>
-  friend class ServerCallFactoryImpl;
+  friend class ServerStreamCallFactoryImpl;
 };
 
 }  // namespace rpc

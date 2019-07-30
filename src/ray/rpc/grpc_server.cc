@@ -67,7 +67,13 @@ void GrpcServer::PollEventsFromCompletionQueue() {
     bool delete_call = false;
     if (ok) {
       switch (server_call->GetState()) {
+      case ServerCallState::CONNECT:
+        RAY_LOG(INFO) << "Server connect.";
+        server_call->AsyncReadNextRequest();
+        server_call->SetState(ServerCallState::PENDING);
+        break;
       case ServerCallState::PENDING:
+        RAY_LOG(INFO) << "Received pending.";
         // We've received a new incoming request. Now this call object is used to
         // track this request. So we need to create another call to handle next
         // incoming request.
@@ -78,12 +84,14 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:
+        RAY_LOG(INFO) << "Received sending reply.";
         // GRPC has sent reply successfully, invoking the callback.
         server_call->OnReplySent();
         // The rpc call has finished and can be deleted now.
         delete_call = true;
         break;
       case ServerCallState::DONE:
+        RAY_LOG(INFO) << "Received done.";
         delete_call = true;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
