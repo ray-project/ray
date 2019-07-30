@@ -13,6 +13,7 @@ async def _async_init():
     global handler, transport, protocol
     if handler is None:
         worker = ray.worker.global_worker
+        assert worker.connected, "Please call ray.init before async_api.init"
         loop = asyncio.get_event_loop()
         worker.plasma_client.subscribe()
         rsock = worker.plasma_client.get_notification_socket()
