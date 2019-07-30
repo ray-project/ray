@@ -754,15 +754,15 @@ std::pair<std::shared_ptr<Worker>, bool> NodeManager::GetWorker(
   return std::make_pair(worker, is_worker);
 }
 
-#define PREPROCESS_REQUEST(REQUEST_TYPE, REQUEST, SEND_REPLY)                         \
-  WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                     \
-  do {                                                                                \
-    if (!PreprocessRequest<rpc::REQUEST_TYPE>(worker_id, #REQUEST_TYPE)) {            \
-      SEND_REPLY(                                                                     \
-          Status::Invalid("Discarded this request due to failure of preprocessing."), \
-          nullptr, nullptr);                                                          \
-      return;                                                                         \
-    }                                                                                 \
+#define PREPROCESS_REQUEST(REQUEST_TYPE, REQUEST, SEND_REPLY)                       \
+  WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                   \
+  do {                                                                              \
+    if (!PreprocessRequest<rpc::REQUEST_TYPE>(worker_id, #REQUEST_TYPE)) {          \
+      SEND_REPLY(                                                                   \
+          Status::Invalid("Discard this request due to failure of preprocessing."), \
+          nullptr, nullptr);                                                        \
+      return;                                                                       \
+    }                                                                               \
   } while (0)
 
 template <typename Request>
@@ -770,8 +770,7 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
                                     const std::string &request_name) {
   std::ostringstream oss;
   if (RAY_LOG_ENABLED(DEBUG)) {
-    oss << "Received a " << request_name << " request. Worker id " << worker_id.Hex()
-        << ".";
+    oss << "Received a " << request_name << " request. Worker id " << worker_id << ".";
   }
   // NOTE(Joey Jiang): We check heartbeat actively because the heartbeats' callback won't
   // be invoked until all the posted requests in the io_service have been finished.
@@ -783,6 +782,7 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
           .count();
   int64_t expiry_delay_limit = RayConfig::instance().heartbeat_timeout_milliseconds() *
                                RayConfig::instance().num_heartbeats_timeout() / 2;
+
   // Timer's callback hasn't been called on the desired time.
   if (expiry_delay > expiry_delay_limit) {
     heartbeat_timer_.cancel();
@@ -795,7 +795,8 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
   auto worker = rt.first;
   // Worker process has been killed, we should discard this request.
   if (!worker) {
-    RAY_LOG(WARNING) << " Worker is not found in worker pool, request will be discarded.";
+    RAY_LOG(WARNING) << "Worker " << worker_id
+                     << " is not found in worker pool, request will be discarded.";
     return false;
   }
   if (RAY_LOG_ENABLED(DEBUG)) {
