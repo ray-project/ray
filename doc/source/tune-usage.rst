@@ -103,34 +103,49 @@ This function will report status on the command line until all Trials stop:
 All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
 
 
-Custom Trial Names
-~~~~~~~~~~~~~~~~~~
+Analyzing Results
+-----------------
 
-To specify custom trial names, you can pass use the ``trial_name_creator`` argument
-to `tune.run`.  This takes a function with the following signature, and
-be sure to wrap it with `tune.function`:
+Tune provides an ``ExperimentAnalysis`` object for analyzing results from ``tune.run``.
 
 .. code-block:: python
 
-    def trial_name_string(trial):
-        """
-        Args:
-            trial (Trial): A generated trial object.
-
-        Returns:
-            trial_name (str): String representation of Trial.
-        """
-        return str(trial)
-
-    tune.run(
-        MyTrainableClass,
+    analysis = tune.run(
+        trainable,
         name="example-experiment",
-        num_samples=1,
-        trial_name_creator=tune.function(trial_name_string)
+        num_samples=10,
     )
 
-An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+You can use the ``ExperimentAnalysis`` object to obtain the best configuration of the experiment:
 
+.. code-block:: python
+
+    >>> print("Best config is", analysis.get_best_config(metric="mean_accuracy"))
+    Best config is: {'lr': 0.011537575723482687, 'momentum': 0.8921971713692662}
+
+Here are some example operations for obtaining a summary of your experiment:
+
+.. code-block:: python
+
+    # Get a dataframe for the last reported results of all of the trials
+    df = analysis.dataframe()
+
+    # Get a dataframe for the max accuracy seen for each trial
+    df = analysis.dataframe(metric="mean_accuracy", mode="max")
+
+    # Get a dict mapping {trial logdir -> dataframes} for all trials in the experiment.
+    all_dataframes = analysis.trial_dataframes
+
+    # Get a list of trials
+    trials = analysis.trials
+
+You may want to get a summary of multiple experiments that point to the same ``local_dir``. For this, you can use the ``Analysis`` class.
+
+.. code-block:: python
+
+    analysis = Analysis("~/ray_results/my_experiment")
+
+See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
 
 Training Features
 -----------------
@@ -167,6 +182,34 @@ The following shows grid search over two nested parameters combined with random 
     Use ``tune.sample_from(...)`` to sample from a function during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
+
+Custom Trial Names
+~~~~~~~~~~~~~~~~~~
+
+To specify custom trial names, you can pass use the ``trial_name_creator`` argument
+to `tune.run`.  This takes a function with the following signature, and
+be sure to wrap it with `tune.function`:
+
+.. code-block:: python
+
+    def trial_name_string(trial):
+        """
+        Args:
+            trial (Trial): A generated trial object.
+
+        Returns:
+            trial_name (str): String representation of Trial.
+        """
+        return str(trial)
+
+    tune.run(
+        MyTrainableClass,
+        name="example-experiment",
+        num_samples=1,
+        trial_name_creator=tune.function(trial_name_string)
+    )
+
+An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 Sampling Multiple Times
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -472,21 +515,6 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
         name="experiment_name",
         sync_to_cloud=tune.function(custom_sync_func),
     )
-
-Analyzing Results
------------------
-
-Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
-
-.. code-block:: python
-
-    from ray.tune.analysis import ExperimentAnalysis
-
-    ea = ExperimentAnalysis("~/ray_results/my_experiment")
-    trials_dataframe = ea.dataframe()
-
-You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
-
 
 Tune Client API
 ---------------

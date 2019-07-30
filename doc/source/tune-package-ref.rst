@@ -12,9 +12,8 @@ ray.tune
     :members:
     :private-members:
 
-
 .. autoclass:: ray.tune.function_runner.StatusReporter
-    :members: __call__
+    :members: __call__, logdir
 
 
 ray.tune.schedulers
@@ -36,13 +35,6 @@ ray.tune.suggest
     :members:
     :private-members:
     :show-inheritance:
-
-ray.tune.analysis
------------------
-
-.. autoclass:: ray.tune.analysis.ExperimentAnalysis
-    :members:
-
 
 ray.tune.track
 --------------
