@@ -757,8 +757,8 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory,
-               resources, max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
+               max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(

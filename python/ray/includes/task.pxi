@@ -208,7 +208,7 @@ cdef class TaskSpec:
         while iterator != resource_map.end():
             resource_name = dereference(iterator).first
             # bytes for Py2, unicode for Py3
-            py_resource_name = str(resource_name)
+            py_resource_name = resource_name.decode()
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
             postincrement(iterator)

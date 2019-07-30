@@ -990,7 +990,8 @@ def start_dashboard(redis_address,
     return dashboard_url, process_info
 
 
-def check_and_update_resources(num_cpus, num_gpus, memory, object_store_memory, resources):
+def check_and_update_resources(num_cpus, num_gpus, memory, object_store_memory,
+                               resources):
     """Sanity check a resource dictionary and add sensible defaults.
 
     Args:
@@ -1015,10 +1016,14 @@ def check_and_update_resources(num_cpus, num_gpus, memory, object_store_memory, 
     if num_gpus is not None:
         resources["GPU"] = num_gpus
     if memory is not None:
-        resources["memory"] = memory
+        resources["memory"] = ray_constants.to_memory_units(
+            memory, round_to_nearest_unit=True)
     if object_store_memory is not None:
         # scale down to take into account 30% global reserved memory
-        resources["object_store_memory"] = int(object_store_memory * 0.69)
+        resources["object_store_memory"] = ray_constants.to_memory_units(
+            object_store_memory *
+            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
+            round_to_nearest_unit=True)
 
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
@@ -1142,9 +1147,8 @@ def start_raylet(redis_address,
     num_initial_workers = (num_cpus if num_cpus is not None else
                            multiprocessing.cpu_count())
 
-    static_resources = check_and_update_resources(num_cpus, num_gpus,
-                                                  memory, object_store_memory,
-                                                  resources)
+    static_resources = check_and_update_resources(
+        num_cpus, num_gpus, memory, object_store_memory, resources)
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.

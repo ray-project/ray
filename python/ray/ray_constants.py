@@ -49,7 +49,34 @@ PICKLE_OBJECT_WARNING_SIZE = 10**7
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 512
+MAX_RESOURCE_QUANTITY = 10000
+
+# Each memory "resource" counts as this many bytes of memory
+MEMORY_RESOURCE_UNIT_BYTES = 100 * 1024 * 1024
+
+# Fraction of plasma memory that can be reserved. It is actually 70% but this
+# is set to 69% to leave some headroom.
+PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
+
+
+def from_memory_units(memory_units):
+    """Convert from memory units -> bytes."""
+    return memory_units * MEMORY_RESOURCE_UNIT_BYTES
+
+
+def to_memory_units(memory_bytes, round_to_nearest_unit=False):
+    """Convert from bytes -> memory units."""
+    value = memory_bytes / MEMORY_RESOURCE_UNIT_BYTES
+    if round_to_nearest_unit:
+        value = int(value)
+    if value <= 0:
+        print(
+            "Warning: the amount of memory specified is less than the minimum "
+            "available granularity of {} bytes, got only {}. Tasks may be "
+            "unable to acquire memory resources.".format(
+                MEMORY_RESOURCE_UNIT_BYTES, memory_bytes))
+    return value
+
 
 # Different types of Ray errors that can be pushed to the driver.
 # TODO(rkn): These should be defined in flatbuffers and must be synced with

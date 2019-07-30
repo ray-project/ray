@@ -42,12 +42,9 @@ class TestMemoryLimits(unittest.TestCase):
         self._run(None, None, 50 * MB)
 
     def testQuotaTooLarge(self):
-        self.assertRaisesRegexp(ray.exceptions.RayTaskError,
-                                ".*Failed to set object_store_memory.*",
-                                lambda: self._run(100 * MB, None, None))
         self.assertRaisesRegexp(ray.memory_monitor.RayOutOfMemoryError,
                                 ".*Failed to set object_store_memory.*",
-                                lambda: self._run(None, None, 100 * MB))
+                                lambda: self._run(200 * MB, None, None))
 
     def testTooLargeAllocation(self):
         try:
@@ -63,7 +60,7 @@ class TestMemoryLimits(unittest.TestCase):
         print("*** Testing ***", driver_quota, a_quota, b_quota)
         try:
             ray.init(
-                object_store_memory=100 * MB,
+                object_store_memory=150 * MB,
                 driver_object_store_memory=driver_quota)
             z = ray.put("hi")
             a = LightActor._remote(object_store_memory=a_quota)

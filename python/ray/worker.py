@@ -945,8 +945,10 @@ class Worker(object):
                             "ray_{}_{}".format(
                                 self.actors[key].__class__.__name__,
                                 os.getpid()),
-                            int(task.required_resources()[
-                                "object_store_memory"]))
+                            int(
+                                ray_constants.from_memory_units(
+                                    task.required_resources()[
+                                        "object_store_memory"])))
                     outputs = function_executor(dummy_return_id,
                                                 self.actors[key], *arguments)
         except Exception as e:
