@@ -3,25 +3,12 @@ Tune Distributed Experiments
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. Tune and Ray provides many utilities that enable an effective workflow for interacting with a cluster, including fast uploading, one-line cluster launching, and uploading results.
 
-Quick Start
------------
-
-To launch a distributed hyperparameter search, you can follow the instructions below (this assumes your AWS credentials are setup - ``aws configure``):
-
-1. Download a full example Tune experiment script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
-3. Run ``ray submit`` as below. Append ``[--stop]`` to automatically shutdown your nodes after running. This will start 3 AWS machines (1 head node and 2 worker nodes), upload `mnist_pytorch.py` onto the head node, and run Tune. Tune will execute the hyperparameter search across all of the machines in parallel.
-
-.. code-block:: bash
-
-    export CLUSTER=tune-default.yaml
-    ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
-
+This page will overview how to start a distributed experiment.
 
 Connecting to a cluster
 -----------------------
 
-One common approach to modifying an existing Tune experiment to go distributed is to set an argparse variable so that toggling between distributed and single-node is seamless. This allows Tune to utilize all the resources available to the Ray cluster.
+One common approach to modifying an existing Tune experiment to go distributed is to set an `argparse` variable so that toggling between distributed and single-node is seamless. This allows Tune to utilize all the resources available to the Ray cluster.
 
 .. code-block:: python
 
@@ -33,7 +20,7 @@ One common approach to modifying an existing Tune experiment to go distributed i
     args = parser.parse_args()
     ray.init(redis_address=args.ray_redis_address)
 
-After, compare single node vs cluster execution. Note that connecting to cluster requires a pre-existing Ray cluster to be setup already (`Manual Cluster Setup <using-ray-on-a-cluster.html>`_). The script should be run on the head node of the Ray cluster. Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search.
+After, compare single node vs cluster execution. Note that connecting to cluster requires a pre-existing Ray cluster to be started already (`Manual Cluster Setup <using-ray-on-a-cluster.html>`_). The script should be run on the head node of the Ray cluster. Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search.
 
 .. code-block:: bash
 
@@ -42,6 +29,11 @@ After, compare single node vs cluster execution. Note that connecting to cluster
 
     # On the head node, connect to an existing ray cluster
     $ python tune_script.py --ray-redis-address=localhost:XXXX
+
+
+.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch.py
+   :language: python
+   :start-after: if __name__ == "__main__":
 
 
 Launching a cloud cluster
@@ -55,6 +47,7 @@ Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will
 
 .. literalinclude:: ../../python/ray/tune/examples/quickstart/tune-default.yaml
    :language: yaml
+   :name: tune-default.yaml
 
 This code starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
 
