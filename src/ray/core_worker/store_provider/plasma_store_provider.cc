@@ -19,7 +19,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
 		                               const size_t data_size,
                                                const ObjectID &object_id,
-					       std::shared_ptr<Buffer> &data) {
+					       std::shared_ptr<Buffer> *data) {
   return local_store_provider_.Create(metadata, data_size, object_id, data);
 }
 

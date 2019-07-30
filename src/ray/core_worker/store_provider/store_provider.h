@@ -64,7 +64,7 @@ class CoreWorkerStoreProvider {
   virtual Status Create(const std::shared_ptr<Buffer> &metadata,
 		        const size_t data_size,
                         const ObjectID &object_id,
-			std::shared_ptr<Buffer> &data) = 0;
+			std::shared_ptr<Buffer> *data) = 0;
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.

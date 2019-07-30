@@ -425,7 +425,7 @@ cdef class CoreWorker:
         data_size = serialized.total_bytes
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(metadata, data_size, c_object_id, data))
+            check_status(self.core_worker.get().Objects().Create(metadata, data_size, c_object_id, &data))
 
         stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)
@@ -441,7 +441,7 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(metadata, value.size(), c_object_id, data))
+            check_status(self.core_worker.get().Objects().Create(metadata, value.size(), c_object_id, &data))
 
         stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)

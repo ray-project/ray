@@ -14,7 +14,7 @@ CoreWorkerLocalPlasmaStoreProvider::CoreWorkerLocalPlasmaStoreProvider(
 Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
                                                const ObjectID &object_id) {
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(object.GetMetadata(), object.GetData()->Size(), object_id, data));
+  RAY_RETURN_NOT_OK(Create(object.GetMetadata(), object.GetData()->Size(), object_id, &data));
   memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
   RAY_RETURN_NOT_OK(Seal(object_id));
   return Status::OK();
@@ -23,7 +23,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
 Status CoreWorkerLocalPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
 		                               const size_t data_size,
                                                const ObjectID &object_id,
-					       std::shared_ptr<Buffer> &data) {
+					       std::shared_ptr<Buffer> *data) {
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
@@ -32,7 +32,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> 
         plasma_id, data_size, metadata ? metadata->Data() : nullptr,
         metadata ? metadata->Size() : 0, &arrow_buffer));
   }
-  data.reset(new PlasmaBuffer(arrow_buffer));
+  *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
   return Status::OK();
 }
 
