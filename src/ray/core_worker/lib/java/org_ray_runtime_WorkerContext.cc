@@ -2,10 +2,11 @@
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 inline ray::WorkerContext &GetWorkerContextFromPointer(jlong nativeCoreWorkerPointer) {
-  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->WorkerContext();
+  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Context();
 }
 
 #ifdef __cplusplus
@@ -47,9 +48,9 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJob
 /*
  * Class:     org_ray_runtime_WorkerContext
  * Method:    nativeGetCurrentWorkerId
- * Signature: (J)[B
+ * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   const auto &worker_id =
       GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetWorkerID();

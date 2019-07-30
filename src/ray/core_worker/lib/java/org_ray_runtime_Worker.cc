@@ -82,7 +82,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeDestroy(
-    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jobject javaCoreWorker) {
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
   delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }
 

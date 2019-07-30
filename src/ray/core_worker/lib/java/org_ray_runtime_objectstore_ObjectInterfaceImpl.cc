@@ -2,12 +2,13 @@
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/core_worker/object_interface.h"
 
 inline ray::CoreWorkerObjectInterface &GetObjectInterfaceFromPointer(
     jlong nativeCoreWorkerPointer) {
-  return reinterpret_cast<ray::CorWorker *>(nativeCoreWorkerPointer)->ObjectInterface();
+  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Objects();
 }
 
 #ifdef __cplusplus
