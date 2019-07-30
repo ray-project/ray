@@ -24,7 +24,8 @@ CoreWorker::CoreWorker(
       worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
 
   int rpc_server_port = 0;
-  // TODO(edoakes): remove the Python check once core worker task execution is implemented.
+  // TODO(edoakes): remove the Python check once core worker task execution is
+  // implemented.
   if (worker_type_ != WorkerType::WORKER && language != Language::PYTHON) {
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,

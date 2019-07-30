@@ -16,7 +16,7 @@ using rpc::RayletClient;
 class CoreWorker;
 class CoreWorkerStoreProvider;
 
-/// The interface that contains all `CoreWorker` methods that are related to the object store.
+/// The interface that contains all `CoreWorker` methods related to the object store.
 class CoreWorkerObjectInterface {
  public:
   CoreWorkerObjectInterface(WorkerContext &worker_context,
@@ -47,10 +47,8 @@ class CoreWorkerObjectInterface {
   /// \param[in] object_id Object ID specified by the user.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
-  Status Create(const std::shared_ptr<Buffer> &metadata,
-		const size_t data_size,
-                const ObjectID &object_id,
-                std::shared_ptr<Buffer> *data);
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
@@ -88,7 +86,7 @@ class CoreWorkerObjectInterface {
   /// created these objects.
   /// \return Status.
   Status Free(const std::vector<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+              bool delete_creating_tasks);
 
  private:
   /// Create a new store provider for the specified type on demand.

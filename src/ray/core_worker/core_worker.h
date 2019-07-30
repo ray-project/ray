@@ -41,7 +41,7 @@ class CoreWorker {
   /// Initialized raylet client. This is a temporary workaround to allow the Python
   /// raylet client implementation to share the same underlying client as us.
   /// TODO(edoakes): remove this once Python core worker implementation is complete.
-  RayletClient* GetRayletClient() { return raylet_client_.get(); }
+  RayletClient *GetRayletClient() { return raylet_client_.get(); }
 
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
@@ -59,7 +59,9 @@ class CoreWorker {
   }
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id) { worker_context_.SetCurrentTaskId(task_id); }
+  void SetCurrentTaskId(const TaskID &task_id) {
+    worker_context_.SetCurrentTaskId(task_id);
+  }
 
  private:
   void StartIOService();

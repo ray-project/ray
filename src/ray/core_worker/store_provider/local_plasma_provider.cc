@@ -14,23 +14,24 @@ CoreWorkerLocalPlasmaStoreProvider::CoreWorkerLocalPlasmaStoreProvider(
 Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
                                                const ObjectID &object_id) {
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(object.GetMetadata(), object.GetData()->Size(), object_id, &data));
+  RAY_RETURN_NOT_OK(
+      Create(object.GetMetadata(), object.GetData()->Size(), object_id, &data));
   memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
   RAY_RETURN_NOT_OK(Seal(object_id));
   return Status::OK();
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
-		                               const size_t data_size,
-                                               const ObjectID &object_id,
-					       std::shared_ptr<Buffer> *data) {
+                                                  const size_t data_size,
+                                                  const ObjectID &object_id,
+                                                  std::shared_ptr<Buffer> *data) {
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(store_client_.Create(
-        plasma_id, data_size, metadata ? metadata->Data() : nullptr,
-        metadata ? metadata->Size() : 0, &arrow_buffer));
+    RAY_ARROW_RETURN_NOT_OK(
+        store_client_.Create(plasma_id, data_size, metadata ? metadata->Data() : nullptr,
+                             metadata ? metadata->Size() : 0, &arrow_buffer));
   }
   *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
   return Status::OK();
@@ -93,8 +94,8 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
-                                                  bool local_only,
-                                                  bool delete_creating_tasks) {
+                                                bool local_only,
+                                                bool delete_creating_tasks) {
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {

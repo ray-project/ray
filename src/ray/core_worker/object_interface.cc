@@ -28,9 +28,9 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
 }
 
 Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,
-				         const size_t data_size,
-				         const ObjectID &object_id,
-				         std::shared_ptr<Buffer> *data) {
+                                         const size_t data_size,
+                                         const ObjectID &object_id,
+                                         std::shared_ptr<Buffer> *data) {
   return store_providers_[StoreProviderType::PLASMA]->Create(metadata, data_size, object_id, data);
 }
 
@@ -53,7 +53,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
 }
 
 Status CoreWorkerObjectInterface::Free(const std::vector<ObjectID> &object_ids,
-                                         bool local_only, bool delete_creating_tasks) {
+                                       bool local_only, bool delete_creating_tasks) {
   return store_providers_[StoreProviderType::PLASMA]->Free(object_ids, local_only,
                                                              delete_creating_tasks);
 }

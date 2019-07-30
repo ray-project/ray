@@ -17,9 +17,9 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
-		                               const size_t data_size,
-                                               const ObjectID &object_id,
-					       std::shared_ptr<Buffer> *data) {
+                                             const size_t data_size,
+                                             const ObjectID &object_id,
+                                             std::shared_ptr<Buffer> *data) {
   return local_store_provider_.Create(metadata, data_size, object_id, data);
 }
 
@@ -37,8 +37,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // First, attempt to fetch all of the required objects without reconstructing.
   for (int64_t start = 0; start < ids.size(); start += batch_size) {
     int64_t end = std::max(start + batch_size, int64_t(ids.size()));
-    const std::vector<ObjectID> ids_slice(ids.cbegin()+start, ids.cbegin()+end);
-    RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(ids_slice, /*fetch_only=*/true, task_id));
+    const std::vector<ObjectID> ids_slice(ids.cbegin() + start, ids.cbegin() + end);
+    RAY_CHECK_OK(
+        raylet_client_->FetchOrReconstruct(ids_slice, /*fetch_only=*/true, task_id));
     std::vector<std::shared_ptr<RayObject>> results_slice;
     RAY_RETURN_NOT_OK(local_store_provider_.Get(ids_slice, 0, task_id, &results_slice));
 
@@ -48,16 +49,16 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     // (accounting for duplicates).
     for (size_t i = 0; i < ids_slice.size(); i++) {
       if (results_slice[i] != nullptr) {
-        (*results)[start+i] = results_slice[i];
+        (*results)[start + i] = results_slice[i];
         continue;
       }
       auto it = unready.find(ids_slice[i]);
       if (it == unready.end()) {
         std::vector<int> v;
-        v.push_back(start+i);
+        v.push_back(start + i);
         unready.insert({ids[i], v});
       } else {
-        it->second.push_back(start+i);
+        it->second.push_back(start + i);
       }
     }
   }
@@ -67,7 +68,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return Status::OK();
   }
 
-  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct and 
+  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct and
   // Get from the local object store in batches. This loop will run indefinitely until the
   // objects are all fetched if timeout is -1.
   int num_attempts = 0;
@@ -82,10 +83,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       unready_ids.push_back(entry.first);
     }
 
-    RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
+    RAY_CHECK_OK(
+        raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
 
-    int64_t timeout = std::max(
-		    RayConfig::instance().get_timeout_milliseconds(), int64_t(0.01 * unready.size()));
+    int64_t timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
+                               int64_t(0.01 * unready.size()));
     if (remaining_timeout >= 0) {
       timeout = std::min(remaining_timeout, timeout);
       remaining_timeout -= timeout;
@@ -93,7 +95,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
-    RAY_RETURN_NOT_OK(local_store_provider_.Get(unready_ids, timeout, task_id, &result_objects));
+    RAY_RETURN_NOT_OK(
+        local_store_provider_.Get(unready_ids, timeout, task_id, &result_objects));
 
     // Add successfully retrieved objects to the result list and remove them from unready.
     uint64_t successes = 0;
@@ -103,7 +106,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         const auto &object_id = unready_ids[i];
         for (int idx : unready[object_id]) {
           (*results)[idx] = result_objects[i];
-	}
+        }
         unready.erase(object_id);
         if (IsException(*result_objects[i])) {
           should_break = true;
@@ -117,7 +120,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     WarnIfAttemptedTooManyTimes(num_attempts, unready);
   }
 
-  // Notify unblocked because we blocked when calling FetchOrReconstruct with fetch_only=false.
+  // Notify unblocked because we blocked when calling FetchOrReconstruct with
+  // fetch_only=false.
   return raylet_client_->NotifyUnblocked(task_id);
 }
 
@@ -126,8 +130,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
-  auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms, /*wait_local=*/false, task_id,
-                                     &result_pair);
+  auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms,
+                                     /*wait_local=*/false, task_id, &result_pair);
   std::unordered_set<ObjectID> ready_ids;
   for (const auto &entry : result_pair.first) {
     ready_ids.insert(entry);
@@ -145,8 +149,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
 }
 
 Status CoreWorkerPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
+                                           bool local_only,
+                                           bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
 }
 
