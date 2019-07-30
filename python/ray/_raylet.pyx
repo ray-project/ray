@@ -263,9 +263,6 @@ cdef class RayletClient:
     def task_done(self):
         check_status(self.client.TaskDone())
 
-    def notify_unblocked(self, TaskID current_task_id):
-        check_status(self.client.NotifyUnblocked(current_task_id.native()))
-
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
@@ -357,10 +354,6 @@ cdef class RayletClient:
 
     def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
         self.client.SetResource(resource_name.encode("ascii"), capacity, CClientID.FromBinary(client_id.binary()))
-
-    @property
-    def language(self):
-        return Language.from_native(self.client.GetLanguage())
 
     @property
     def client_id(self):
