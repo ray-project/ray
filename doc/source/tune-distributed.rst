@@ -44,15 +44,16 @@ After, compare single node vs cluster execution. Note that connecting to cluster
 
 
 Launching a cloud cluster
-~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------
 
-.. tip:: If you have already have a list of nodes, skip down to the `Local Cluster Usage <tune-distributed.html#local-cluster-usage>`_ section.
+.. tip::
+
+    If you have already have a list of nodes, skip down to the `Local Cluster Setup`_ section.
 
 Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_.
 
 .. literalinclude:: ../../python/ray/tune/examples/quickstart/tune-default.yaml
    :language: yaml
-   :caption: tune-default.yaml
 
 This code starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
 
@@ -64,13 +65,14 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 
 .. code-block:: bash
 
-    # Go to `http://localhost:6006` to access TensorBoard.
+    # Go to http://localhost:6006 to access TensorBoard.
     ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
-Note that you can customize the directory of results via ``tune.run(local_dir=...)``.
 
-Local Cluster Usage
-~~~~~~~~~~~~~~~~~~~
+Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results.
+
+Local Cluster Setup
+-------------------
 
 If you run into issues (or want to add nodes manually), you can use the manual cluster setup `documentation here <using-ray-on-a-cluster.html>`__. At a glance, On the head node, run the following.
 
@@ -88,6 +90,7 @@ The command will print out the address of the Redis server that was started (and
     $ ray start --redis-address=<redis-address>
 
 If you have already have a list of nodes, you can follow the private autoscaling cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_.
+
 
 Pre-emptible Instances (Cloud)
 ------------------------------
@@ -153,13 +156,13 @@ Here is an example for running Tune on spot instances. This assumes your AWS cre
         --args="--ray-redis-address=localhost:6379" \
         --start
 
-5. Optionally for testing on AWS or GCP, you can use the following to kill a random worker node after all the worker nodes are up
+4. Optionally for testing on AWS or GCP, you can use the following to kill a random worker node after all the worker nodes are up
 
 .. code-block:: bash
 
     $ ray kill-random-node $CLUSTER --hard
 
-You should see Tune eventually continue the trials on a different worker node. See the `Checkpointing <tune-usage.html#trainable-trial-checkpointing>`__ section for more details.
+You should see Tune eventually continue the trials on a different worker node. See the `Saving and Recovery <tune-usage.html#saving-and-recovery>`__ section for more details.
 
 You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, persisting results in case you want to start and stop your cluster automatically.
 
@@ -213,3 +216,6 @@ Sometimes, your program may freeze. Run this to restart the Ray cluster without 
 .. code-block:: bash
 
     $ ray up CLUSTER.YAML --restart-only
+
+
+..  Local Cluster Setup: tune-distributed.html#local-cluster-setup

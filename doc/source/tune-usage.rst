@@ -52,7 +52,7 @@ Training can be done with either the **Trainable Class API** or **function-based
             tune.track.log(**kwargs)
 
 
-Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be `found here <tune-package-ref.html#ray.tune.track>`__.
+Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be `found here <tune-package-ref.html#module-ray.tune.track>`__.
 
 Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
 
@@ -61,8 +61,6 @@ Both the Trainable and function-based API will have `autofilled metrics <tune-us
 
 .. note::
     See previous versions of the documentation for the ``reporter`` API.
-
-See the `experiment specification <tune-usage.html#specifying-experiments>`__ section on how to specify and execute your training.
 
 
 Launching an Experiment
@@ -273,7 +271,7 @@ For TensorFlow model training, this would look something like this `tensorflow e
 
 .. code-block:: python
 
-    class MyClass(Trainable):
+    class MyTrainableClass(Trainable):
         def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
@@ -288,6 +286,13 @@ For TensorFlow model training, this would look something like this `tensorflow e
             self.saver.restore(self.sess, checkpoint_prefix)
 
 Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
+
+ To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
+
+ .. code-block:: python
+
+    validate_save_restore(MyTrainableClass)
+    validate_save_restore(MyTrainableClass, use_object_store=True)
 
 
 Trainable (Trial) Checkpointing
@@ -348,8 +353,11 @@ Fault Tolerance
 
 Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
 
-In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again. If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
+In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
 
+If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
+
+Take a look at `an example <tune-distributed.html#example-for-using-spot-instances-aws>`_.
 
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
