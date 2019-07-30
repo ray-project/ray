@@ -1,0 +1,39 @@
+# See https://help.github.com/articles/about-codeowners/
+# for more info about CODEOWNERS file
+
+# It uses the same pattern rule for gitignore file,
+# see https://git-scm.com/docs/gitignore#_pattern_format.
+
+# ==== Ray core ====
+
+# All C++ code.
+/src/ray @ray-project/ray-core-cpp
+
+# Python worker.
+/python/ray/ @ray-project/ray-core-python
+!/python/ray/tune/ @ray-project/ray-core-python
+!/python/ray/rllib/ @ray-project/ray-core-python
+!/python/ray/modin/ @ray-project/ray-core-python
+
+# Java worker.
+/java/ @ray-project/ray-core-java
+
+# ==== Libraries and frameworks ====
+
+# Ray tune.
+/python/ray/tune/ @ray-project/ray-tune
+
+# RLlib.
+/python/ray/rllib/ @ray-project/rllib
+
+# ==== Build and CI ====
+
+# Bazel.
+/BUILD.bazel @ray-project/ray-core
+/WORKSPACE @ray-project/ray-core
+/bazel/ @ray-project/ray-core
+
+# CI scripts.
+/.travis.yml @ray-project/ray-core
+/ci/travis/ @ray-project/ray-core
+

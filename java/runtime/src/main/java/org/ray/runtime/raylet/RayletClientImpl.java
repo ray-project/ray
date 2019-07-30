@@ -10,7 +10,6 @@ public class RayletClientImpl implements RayletClient {
    */
   private long nativeCoreWorkerPointer = 0;
 
-  // TODO(qwang): JobId parameter can be removed once we embed jobId in driverId.
   public RayletClientImpl(long nativeCoreWorkerPointer) {
     this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
   }

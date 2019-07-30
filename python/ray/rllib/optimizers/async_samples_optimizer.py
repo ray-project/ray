@@ -42,6 +42,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                  num_sgd_iter=1,
                  minibatch_buffer_size=1,
                  learner_queue_size=16,
+                 learner_queue_timeout=300,
                  num_aggregation_workers=0,
                  _fake_gpus=False):
         PolicyOptimizer.__init__(self, workers)
@@ -69,11 +70,15 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 minibatch_buffer_size=minibatch_buffer_size,
                 num_sgd_iter=num_sgd_iter,
                 learner_queue_size=learner_queue_size,
+                learner_queue_timeout=learner_queue_timeout,
                 _fake_gpus=_fake_gpus)
         else:
-            self.learner = LearnerThread(self.workers.local_worker(),
-                                         minibatch_buffer_size, num_sgd_iter,
-                                         learner_queue_size)
+            self.learner = LearnerThread(
+                self.workers.local_worker(),
+                minibatch_buffer_size=minibatch_buffer_size,
+                num_sgd_iter=num_sgd_iter,
+                learner_queue_size=learner_queue_size,
+                learner_queue_timeout=learner_queue_timeout)
         self.learner.start()
 
         # Stats

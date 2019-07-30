@@ -75,7 +75,7 @@ def test_ls(start_ray, tmpdir):
         local_dir=str(tmpdir),
         global_checkpoint_period=0)
 
-    columns = ["status", "episode_reward_mean", "training_iteration"]
+    columns = ["episode_reward_mean", "training_iteration", "trial_id"]
     limit = 2
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=columns, limit=limit)
@@ -87,11 +87,10 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(
             experiment_path,
-            sort=["status"],
-            info_keys=("status", ),
-            filter_op="status == TERMINATED")
+            sort=["trial_id"],
+            info_keys=("trial_id", "training_iteration"),
+            filter_op="training_iteration == 1")
     lines = output.captured
-    assert sum("TERMINATED" in line for line in lines) == num_samples
     assert len(lines) == 3 + num_samples + 1
 
 

@@ -769,9 +769,8 @@ void ObjectManager::SpreadFreeObjectsRequest(
     const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
-  for (const auto &e : object_ids) {
-    free_objects_request.add_object_ids(e.Binary());
-  }
+  IdVectorToProtobuf<ObjectID, rpc::FreeObjectsRequest>(
+      object_ids, free_objects_request, &rpc::FreeObjectsRequest::add_object_ids);
 
   for (auto &rpc_client : rpc_clients) {
     rpc_client->FreeObjects(free_objects_request, [](const Status &status,

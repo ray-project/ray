@@ -4,7 +4,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 
 inline RayletClient &GetRayletClientFromPointer(jlong nativeCoreWorkerPointer) {
   return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Raylet();
@@ -13,6 +13,8 @@ inline RayletClient &GetRayletClientFromPointer(jlong nativeCoreWorkerPointer) {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+using ray::ClientID;
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl

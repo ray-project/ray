@@ -143,7 +143,8 @@ COMMON_CONFIG = {
     "train_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
-    # (Deprecated) Use a background thread for sampling (slightly off-policy)
+    # Use a background thread for sampling (slightly off-policy, usually not
+    # advisable to turn on unless your env specifically requires it)
     "sample_async": False,
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
