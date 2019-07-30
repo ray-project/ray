@@ -110,8 +110,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with fetch_only=false.
-  RAY_CHECK_OK(raylet_client_->NotifyUnblocked(task_id));
-  return Status::OK();
+  return raylet_client_->NotifyUnblocked(task_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_ids,

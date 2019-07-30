@@ -103,8 +103,8 @@ cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc::Language" nogil
     cdef CLanguage LANGUAGE_JAVA "ray::rpc::Language::JAVA"
 
 cdef extern from "ray/protobuf/common.pb.h" namespace "ray" nogil:
-    cdef CWorkerType WORKER_WORKER "ray::WorkerType::WORKER"
-    cdef CWorkerType WORKER_DRIVER "ray::WorkerType::DRIVER"
+    cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
+    cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
 
 
 cdef extern from "ray/common/task/scheduling_resources.h" \
@@ -134,7 +134,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
         size_t Size() const
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
-        LocalMemoryBuffer(uint8_t *data, size_t size) except +
+        LocalMemoryBuffer(uint8_t *data, size_t size)
 
 cdef extern from "ray/core_worker/store_provider/store_provider.h" namespace "ray" nogil:
     cdef cppclass CRayObject "ray::RayObject":

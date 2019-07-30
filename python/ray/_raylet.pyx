@@ -23,8 +23,8 @@ from ray.includes.common cimport (
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
-    WORKER_WORKER,
-    WORKER_DRIVER,
+    WORKER_TYPE_WORKER,
+    WORKER_TYPE_DRIVER,
 )
 from ray.includes.libraylet cimport (
     CRayletClient,
@@ -49,6 +49,7 @@ from ray.utils import decode
 # Unfortunately, Cython won't compile if 'pyarrow' is undefined, so we
 # "forward declare" it here and then replace it with a reference to the
 # imported package from ray/__init__.py.
+# TODO(edoakes): Fix this.
 pyarrow = None
 
 cimport cpython
@@ -263,6 +264,13 @@ cdef class RayletClient:
     def task_done(self):
         check_status(self.client.TaskDone())
 
+    def fetch_or_reconstruct(self, object_ids,
+                             c_bool fetch_only,
+                             TaskID current_task_id=TaskID.nil()):
+        cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
+        check_status(self.client.FetchOrReconstruct(
+            fetch_ids, fetch_only, current_task_id.native()))
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
@@ -287,9 +295,9 @@ cdef class RayletClient:
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(self.client.PushError(job_id.native(),
-                                                 error_type.encode("ascii"),
-                                                 error_message.encode("ascii"),
-                                                 timestamp))
+                                           error_type.encode("ascii"),
+                                           error_message.encode("ascii"),
+                                           timestamp))
 
     def push_profile_events(self, component_type, UniqueID component_id,
                             node_ip_address, profile_data):
@@ -373,7 +381,7 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket, JobID job_id):
         self.core_worker.reset(new CCoreWorker(
-            WORKER_DRIVER if is_driver else WORKER_WORKER,
+            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(), NULL))
 
@@ -403,7 +411,7 @@ cdef class CoreWorker:
 
         return data_metadata_pairs
 
-    def serialize_and_put(self, object value, ObjectID object_id, serialization_context=None):
+    def serialize_and_put(self, object value, ObjectID object_id, serialization_context=None, int memcopy_threads=6):
         cdef:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
@@ -416,22 +424,23 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Objects().Create(metadata, data_size, c_object_id, data))
 
-        buffer = Buffer.make(data)
-        serialized.write_to(pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer)))
+        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data)))
+        stream.set_memcopy_threads(memcopy_threads)
+        serialized.write_to(stream)
 
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
-    def put_raw_buffer(self, c_string value, ObjectID object_id, c_string metadata=b"", int memcopy_threads=6):
+    def put_raw_buffer(self, c_string value, ObjectID object_id, c_string metadata_str=b"", int memcopy_threads=6):
         cdef:
-            shared_ptr[CBuffer] data_buf
-            shared_ptr[CBuffer] metadata_buf = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata.data()), metadata.size()))
+            shared_ptr[CBuffer] data
+            shared_ptr[CBuffer] metadata = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata_str.data()), metadata_str.size()))
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(metadata_buf, value.size(), c_object_id, data_buf))
+            check_status(self.core_worker.get().Objects().Create(metadata, value.size(), c_object_id, data))
 
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data_buf)))
+        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)
         stream.write(pyarrow.py_buffer(value))
 

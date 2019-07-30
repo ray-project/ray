@@ -37,6 +37,7 @@ try:
     # pyarrow is not imported inside of _raylet because of the issue described
     # above. In order for Cython to compile _raylet, pyarrow is set to None
     # in _raylet instead, so we give _raylet a real reference to it here.
+    # TODO(edoakes): Fix this.
     ray._raylet.pyarrow = pyarrow
 except ImportError as e:
     if ((hasattr(e, "msg") and isinstance(e.msg, str)

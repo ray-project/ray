@@ -20,9 +20,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
                                                const ObjectID &object_id) {
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(), object.GetData()->Size(), object_id, data));
-  if (data != nullptr) {
-    memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
-  }
+  memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
   RAY_RETURN_NOT_OK(Seal(object_id));
   return Status::OK();
 }

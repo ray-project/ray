@@ -15,17 +15,12 @@ CoreWorker::CoreWorker(
       task_interface_(worker_context_, raylet_client_),
       object_interface_(worker_context_, raylet_client_, store_socket) {
   int rpc_server_port = 0;
-  if (worker_type_ == WorkerType::WORKER) {
-    // TODO(edoakes): assert that execution_callback isn't nullptr once Python core
-    // worker task execution is implemented.
-    if (execution_callback == nullptr) {
-      RAY_LOG(WARNING) << "No execution callback provided to core worker.";
-    } else {
-      task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-          new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
+  // TODO(edoakes): remove the Python check once core worker task execution is implemented.
+  if (worker_type_ != WorkerType::WORKER && language != Language::PYTHON) {
+    task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
+        new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
                                              object_interface_, execution_callback));
-      rpc_server_port = task_execution_interface_->worker_server_.GetPort();
-    }
+    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later

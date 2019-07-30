@@ -320,7 +320,8 @@ class Worker(object):
                 else:
                     self.core_worker.serialize_and_put(
                         value, object_id,
-                        self.get_serialization_context(self.current_job_id))
+                        self.get_serialization_context(self.current_job_id),
+                        memcopy_threads=self.memcopy_threads)
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:

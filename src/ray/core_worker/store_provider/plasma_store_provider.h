@@ -74,7 +74,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   static bool IsException(const RayObject &object);
 
   /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable.
+  /// unavailable. Only the keys in the unready map are used.
   ///
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] unready The unready objects.
