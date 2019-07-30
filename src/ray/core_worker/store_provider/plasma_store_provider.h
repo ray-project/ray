@@ -17,7 +17,9 @@ using rpc::RayletClient;
 class CoreWorker;
 
 /// The class provides implementations for accessing plasma store, which includes both
-/// local and remote store, remote access is done via raylet.
+/// local and remote stores. Local access goes is done via a
+/// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
+/// See `CoreWorkerStoreProvider` for the semantics of each method.
 class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
@@ -30,39 +32,15 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
                                                const ObjectID &object_id,
 					       std::shared_ptr<Buffer> &data) override;
 
-  /// See `CoreWorkerStoreProvider::Seal` for semantics.
   Status Seal(const ObjectID &object_id) override;
 
-  /// Get a list of objects from the object store.
-  ///
-  /// \param[in] ids IDs of the objects to get.
-  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
-  /// \param[in] task_id ID for the current task.
-  /// \param[out] results Result list of objects data.
-  /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
              std::vector<std::shared_ptr<RayObject>> *results) override;
 
-  /// Wait for a list of objects to appear in the object store.
-  ///
-  /// \param[in] IDs of the objects to wait for.
-  /// \param[in] num_returns Number of objects that should appear.
-  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
-  /// \param[in] task_id ID for the current task.
-  /// \param[out] results A bitset that indicates each object has appeared or not.
-  /// \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
-  /// Free a list of objects from the object store.
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects.
-  /// \return Status.
   Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
@@ -81,10 +59,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   static void WarnIfAttemptedTooManyTimes(
       int num_attempts, const std::unordered_map<ObjectID, std::vector<int>> &unready);
 
-  /// local plasma store provider.
   CoreWorkerLocalPlasmaStoreProvider local_store_provider_;
-
-  /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
 };
 

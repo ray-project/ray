@@ -13,42 +13,35 @@ namespace ray {
 
 class CoreWorker;
 
-/// The class provides implementations for accessing local plasma store.
+/// The class provides a store provider implementation for accessing the local plasma store.
+/// See `CoreWorkerStoreProvider` for the semantics of each method.
 class CoreWorkerLocalPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerLocalPlasmaStoreProvider(const std::string &store_socket);
 
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
-  /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Create(const std::shared_ptr<Buffer> &metadata,
 		                               const size_t data_size,
                                                const ObjectID &object_id,
 					       std::shared_ptr<Buffer> &data) override;
 
-  /// See `CoreWorkerStoreProvider::Seal` for semantics.
   Status Seal(const ObjectID &object_id) override;
 
-  /// See `CoreWorkerStoreProvider::Get` for semantics.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
              std::vector<std::shared_ptr<RayObject>> *results) override;
 
-  /// See `CoreWorkerStoreProvider::Wait` for semantics.
   /// Note that `num_objects` must equal to number of items in `object_ids`.
   Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
-  /// See `CoreWorkerStoreProvider::Free` for semantics.
   /// Note that `local_only` msut be true, and `delete_creating_tasks` must be false here.
   Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
  private:
-  /// Plasma store client.
   plasma::PlasmaClient store_client_;
-
-  /// Mutex to protect store_client_.
   std::mutex store_client_mutex_;
 };
 
