@@ -35,9 +35,11 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 5e-5,
     # Learning rate schedule
     "lr_schedule": None,
-    # Share layers for value function
+    # Share layers for value function. If you set this to True, it's important
+    # to tune vf_loss_coeff.
     "vf_share_layers": False,
-    # Coefficient of the value function loss
+    # Coefficient of the value function loss. It's important to tune this if
+    # you set vf_share_layers: True
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
@@ -59,9 +61,6 @@ DEFAULT_CONFIG = with_common_config({
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
-    # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
-    # sampling tasks for performance but can waste a large portion of samples.
-    "straggler_mitigation": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -83,7 +82,6 @@ def choose_policy_optimizer(workers, config):
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
-        straggler_mitigation=config["straggler_mitigation"],
         shuffle_sequences=config["shuffle_sequences"])
 
 

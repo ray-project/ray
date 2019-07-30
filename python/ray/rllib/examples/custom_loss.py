@@ -18,8 +18,9 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.models import (Categorical, FullyConnectedNetwork, Model,
-                              ModelCatalog)
+from ray.rllib.models import Model, ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils import try_import_tf
