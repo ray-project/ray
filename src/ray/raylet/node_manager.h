@@ -287,8 +287,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param task_spec Task specification of the actor creation task that created the
   /// actor.
+  /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec);
+      const TaskSpecification &task_spec, int port);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -302,10 +303,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param task_spec Task specification of the actor creation task that created the
   /// actor.
   /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param port Rpc server port that the actor is listening on.
   /// \return Void.
   void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                        const TaskSpecification &task_spec,
-                                       bool resumed_from_checkpoint);
+                                       bool resumed_from_checkpoint, int port);
   /// Extend actor frontier after an actor task or actor creation task executes.
   ///
   /// \param dummy_object Dummy object corresponding to the task.
