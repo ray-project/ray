@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
 from ray import tune
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 
