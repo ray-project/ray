@@ -5,10 +5,15 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 import json
+# For compatibility under py2 to consider unicode as str
+from six import string_types
 
 from numbers import Number
 
+from ray.tune import TuneError
+
 logger = logging.getLogger(__name__)
+
 
 class Resources(
         namedtuple("Resources", [
@@ -145,4 +150,3 @@ def resources_to_json(resources):
         "custom_resources": resources.custom_resources.copy(),
         "extra_custom_resources": resources.extra_custom_resources.copy()
     }
-

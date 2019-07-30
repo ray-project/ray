@@ -6,15 +6,10 @@ import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
 import logging
-import json
 import uuid
 import time
 import tempfile
 import os
-
-# For compatibility under py2 to consider unicode as str
-from six import string_types
-
 import ray
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
@@ -162,7 +157,7 @@ class Trial(object):
                 if resources:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
-                    "by its `default_resource_request()` method. Please "
+                        "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources

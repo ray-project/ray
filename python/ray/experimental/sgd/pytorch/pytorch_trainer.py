@@ -76,7 +76,8 @@ class PyTorchTrainer(object):
             Runner = ray.remote(
                 num_cpus=resources_per_replica.cpu,
                 num_gpus=resources_per_replica.gpu,
-                resources=resources_per_replica.custom_resources)(PyTorchRunner)
+                resources=resources_per_replica.custom_resources)(
+                    PyTorchRunner)
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, optimizer_creator,
