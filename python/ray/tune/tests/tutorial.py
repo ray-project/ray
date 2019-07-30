@@ -76,9 +76,11 @@ analysis = tune.run(
 # __run_searchalg_end__
 
 # __run_analysis_begin__
+import os
+
 df = analysis.dataframe()
 logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
-model = torch.load(logdir + "/model.pth")
+model = torch.load(os.path.join(logdir, "model.pth"))
 # __run_analysis_end__
 
 # yapf: disable

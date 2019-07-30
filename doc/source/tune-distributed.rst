@@ -10,7 +10,7 @@ To launch a distributed hyperparameter search, you can follow the instructions b
 
 1. Download a full example Tune experiment script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
-3. Run ``ray submit`` as below. This will start 3 AWS machines and run Tune across them. Append ``[--stop]`` to automatically shutdown your nodes after running:
+3. Run ``ray submit`` as below. Append ``[--stop]`` to automatically shutdown your nodes after running:
 
 .. code-block:: bash
 
