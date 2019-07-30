@@ -24,9 +24,7 @@ parser.add_argument(
     default=False,
     help="enables CUDA training")
 parser.add_argument(
-    "--ray-redis-address",
-    type=str,
-    help="The Redis address of the cluster.")
+    "--ray-redis-address", type=str, help="The Redis address of the cluster.")
 parser.add_argument(
     "--seed",
     type=int,

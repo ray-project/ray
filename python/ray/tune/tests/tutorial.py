@@ -1,7 +1,7 @@
 # flake8: noqa
-# yapf: disable
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 
+# yapf: disable
 # __tutorial_imports_begin__
 import numpy as np
 import torch
@@ -13,8 +13,10 @@ from ray.tune import track
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 # __tutorial_imports_end__
+# yapf: enable
 
 
+# yapf: disable
 # __train_func_begin__
 def train_mnist(config):
     model = ConvNet()
@@ -29,6 +31,7 @@ def train_mnist(config):
             # This saves the model to the trial directory
             torch.save(model, "./model.pth")
 # __train_func_end__
+# yapf: enable
 
 # __eval_func_begin__
 search_space = {
@@ -72,6 +75,7 @@ analysis = tune.run(
     **experiment_config)
 # __run_searchalg_end__
 
+# yapf: disable
 # __trainable_example_begin__
 from ray.tune import Trainable
 
@@ -104,6 +108,7 @@ class TrainMNIST(Trainable):
     def _restore(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
 # __trainable_example_end__
+# yapf: enable
 
 # __trainable_run_begin__
 search_space = {
@@ -111,8 +116,5 @@ search_space = {
     "momentum": tune.uniform(0.1, 0.9)
 }
 
-analysis = tune.run(
-    TrainMNIST,
-    num_samples=10,
-    config=search_space)
+analysis = tune.run(TrainMNIST, num_samples=10, config=search_space)
 # __trainable_run_end__
