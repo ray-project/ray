@@ -241,8 +241,9 @@ def add_behaviour_logits(policy):
 
 
 def validate_config(policy, obs_space, action_space, config):
-    assert config["batch_mode"] == "truncate_episodes", \
-        "Must use `truncate_episodes` batch mode with V-trace."
+    if config["vtrace"]:
+        assert config["batch_mode"] == "truncate_episodes", \
+            "Must use `truncate_episodes` batch mode with V-trace."
 
 
 def choose_optimizer(policy, config):
