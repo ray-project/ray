@@ -67,6 +67,8 @@ class PyTorchTrainer(object):
         if backend == "auto":
             backend = "nccl" if use_gpu > 0 else "gloo"
 
+        logger.info("Using {} as backend.".format(backend))
+
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(

@@ -44,16 +44,17 @@ class DistributedPyTorchRunner(PyTorchRunner):
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
+        logger.info("Running setup for rank {}/{}".format(world_rank, world_size))
         self._setup_distributed_pytorch(url, world_rank, world_size)
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
-            logger.debug(
+            logger.warning(
                 "Connecting to {} world_rank: {} world_size: {}".format(
                     url, world_rank, world_size))
-            logger.debug("using {}".format(self.backend))
+            logger.warning("using {}".format(self.backend))
             dist.init_process_group(
                 backend=self.backend,
                 init_method=url,
@@ -61,7 +62,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
                 world_size=world_size)
 
     def _setup_training(self):
-        logger.debug("Creating model")
+        logger.warning("Creating model")
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
             self.model = torch.nn.parallel.DistributedDataParallel(
@@ -70,13 +71,13 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)
 
-        logger.debug("Creating optimizer")
+        logger.warning("Creating optimizer")
         self.criterion, self.optimizer = self.optimizer_creator(
             self.model, self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
-        logger.debug("Creating dataset")
+        logger.warning("Creating dataset")
         self.training_set, self.validation_set = self.data_creator(self.config)
 
         # TODO: make num_workers configurable
