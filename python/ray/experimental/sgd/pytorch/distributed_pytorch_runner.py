@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import logging
 import torch.distributed as dist
 import torch.utils.data
@@ -32,6 +33,10 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
+
+        os.environ["NCCL_SOCKET_IFNAME"] = "ens3"
+        os.environ["NCCL_LL_THRESHOLD"] = "0"
+        os.environ["NCCL_DEBUG"] = "INFO"
         super(DistributedPyTorchRunner, self).__init__(
             model_creator, data_creator, optimizer_creator, config, batch_size)
         self.backend = backend
@@ -44,7 +49,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
-        logger.info("Running setup for rank {}/{}".format(world_rank, world_size))
+        logger.info("Running setup for rank {}/{}".format(
+            world_rank, world_size))
         self._setup_distributed_pytorch(url, world_rank, world_size)
         self._setup_training()
 

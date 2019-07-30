@@ -16,7 +16,7 @@ def train_example(num_replicas=1, use_gpu=False):
         optimizer_creator,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        backend="gloo")
+        backend="nccl")
     trainer1.train()
     trainer1.shutdown()
     print("success!")
