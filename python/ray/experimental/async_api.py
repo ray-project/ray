@@ -1,7 +1,6 @@
 # Note: asyncio is only compatible with Python 3
 
 import asyncio
-import time
 
 import ray
 from ray.experimental.async_plasma import PlasmaProtocol, PlasmaEventHandler
@@ -23,6 +22,7 @@ async def _async_init():
         transport, protocol = await loop.create_connection(
             lambda: PlasmaProtocol(worker.plasma_client, handler), sock=rsock)
         logger.debug("AsyncPlasma Connection Created!")
+
 
 def init():
     """
