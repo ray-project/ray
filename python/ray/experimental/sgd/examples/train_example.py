@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from ray.experimental.sgd.pytorch import PyTorchTrainer, Resources
+from ray.experimental.sgd.pytorch import PyTorchTrainer
 
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
@@ -15,8 +15,7 @@ def train_example(num_replicas=1, use_gpu=False):
         data_creator,
         optimizer_creator,
         num_replicas=num_replicas,
-        resources_per_replica=Resources(
-            num_cpus=1, num_gpus=int(use_gpu), resources={}))
+        use_gpu=use_gpu)
     trainer1.train()
     trainer1.shutdown()
 

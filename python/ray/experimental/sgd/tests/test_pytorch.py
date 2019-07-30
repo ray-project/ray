@@ -24,8 +24,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=num_replicas,
-        resources_per_replica=Resources(cpu=1, gpu=0))
+        num_replicas=num_replicas)
     train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["validation_loss"]
 
@@ -46,8 +45,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=num_replicas,
-        resources_per_replica=Resources(cpu=1, gpu=0))
+        num_replicas=num_replicas)
     trainer1.train()
 
     filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
@@ -61,8 +59,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
-        num_replicas=num_replicas,
-        resources_per_replica=Resources(cpu=1, gpu=0))
+        num_replicas=num_replicas)
     trainer2.restore(filename)
 
     os.remove(filename)

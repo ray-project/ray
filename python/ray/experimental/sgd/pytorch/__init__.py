@@ -3,6 +3,5 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
-from ray.tune.resources import Resources
 
-__all__ = ["PyTorchTrainer", "Resources"]
+__all__ = ["PyTorchTrainer"]
