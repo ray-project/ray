@@ -499,8 +499,8 @@ class Worker(object):
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
 
-    def get_object(self, object_ids):
-        """Get the value or values in the object store associated with the IDs.
+    def get_objects(self, object_ids):
+        """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_ids. This will
         block until all the values for object_ids have been written to the
@@ -522,7 +522,7 @@ class Worker(object):
                     "which is not an ray.ObjectID.".format(object_id))
 
         if self.mode == LOCAL_MODE:
-            return self.local_mode_manager.get_object(object_ids)
+            return self.local_mode_manager.get_objects(object_ids)
 
         data_metadata_pairs = self.core_worker.get_objects(
             object_ids, self.current_task_id)
@@ -767,7 +767,7 @@ class Worker(object):
 
         # Get the objects from the local object store.
         if len(object_ids) > 0:
-            values = self.get_object(object_ids)
+            values = self.get_objects(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
                     raise value
@@ -2174,7 +2174,7 @@ def get(object_ids):
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
-        values = worker.get_object(object_ids)
+        values = worker.get_objects(object_ids)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
