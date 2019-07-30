@@ -1,8 +1,8 @@
 # flake8: noqa
 # yapf: disable
+# Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 
 # __tutorial_imports_begin__
-# Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 import numpy as np
 import torch
 import torch.optim as optim
@@ -12,8 +12,6 @@ from ray import tune
 from ray.tune import track
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
-
-datasets.MNIST("~/data", train=True, download=True)
 # __tutorial_imports_end__
 
 
@@ -33,15 +31,15 @@ def train_mnist(config):
 # __train_func_end__
 
 # __eval_func_begin__
-experiment_config = dict(name="train_mnist", stop={"mean_accuracy": 0.98})
-
 search_space = {
     "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
     "momentum": tune.uniform(0.1, 0.9)
 }
 
-# Note: use `ray.init(redis_address=...)` to enable distributed execution
-analysis = tune.run(train_mnist, config=search_space, **experiment_config)
+# Uncomment this to enable distributed execution
+# `ray.init(redis_address=...)`
+
+analysis = tune.run(train_mnist, config=search_space)
 # __eval_func_end__
 
 # __run_scheduler_begin__
@@ -49,8 +47,7 @@ analysis = tune.run(
     train_mnist,
     num_samples=30,
     scheduler=ASHAScheduler(metric="mean_accuracy", mode="max"),
-    config=search_space,
-    **experiment_config)
+    config=search_space)
 
 # Obtain a trial dataframe from all run trials of this `tune.run` call.
 dfs = analysis.get_all_trial_dataframes()
@@ -74,3 +71,48 @@ analysis = tune.run(
     search_alg=hyperopt_search,
     **experiment_config)
 # __run_searchalg_end__
+
+# __trainable_example_begin__
+from ray.tune import Trainable
+
+class TrainMNIST(Trainable):
+    def _setup(self, config):
+        torch.manual_seed(config.get("seed"))
+        if config.get("use_gpu"):
+            torch.cuda.manual_seed(config.get("seed"))
+
+        use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+        self.device = torch.device("cuda" if use_cuda else "cpu")
+        self.train_loader, self.test_loader = get_data_loaders()
+        self.model = ConvNet().to(self.device)
+        self.optimizer = optim.SGD(
+            self.model.parameters(),
+            lr=config.get("lr", 0.01),
+            momentum=config.get("momentum", 0.9))
+
+    def _train(self):
+        train(
+            self.model, self.optimizer, self.train_loader, device=self.device)
+        acc = test(self.model, self.test_loader, self.device)
+        return {"mean_accuracy": acc}
+
+    def _save(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+        torch.save(self.model.state_dict(), checkpoint_path)
+        return checkpoint_path
+
+    def _restore(self, checkpoint_path):
+        self.model.load_state_dict(torch.load(checkpoint_path))
+# __trainable_example_end__
+
+# __trainable_run_begin__
+search_space = {
+    "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
+    "momentum": tune.uniform(0.1, 0.9)
+}
+
+analysis = tune.run(
+    TrainMNIST,
+    num_samples=10,
+    config=search_space)
+# __trainable_run_end__

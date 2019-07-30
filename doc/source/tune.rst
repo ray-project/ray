@@ -8,9 +8,14 @@ Tune: Scalable Hyperparameter Search
 Tune is a scalable framework for hyperparameter search and model training with a focus on deep learning and deep reinforcement learning.
 
   * Scale to running on a large distributed cluster without changing your code.
+  * Launch a multi-node Tune experiment in less than 10 lines of code.
   * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
-  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_
+  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
+
+.. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
+.. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
+.. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
 Quick Start
 -----------
@@ -19,7 +24,6 @@ This example runs a small grid search to train a CNN using PyTorch and Tune:
 
 .. literalinclude:: ../../python/ray/tune/tests/example.py
    :language: python
-   :caption: example.py
    :start-after: __quick_start_begin__
    :end-before: __quick_start_end__
 
@@ -32,7 +36,10 @@ If TensorBoard is installed, automatically visualize all trial results:
 
 .. image:: images/tune-start-tb.png
 
-For massive parallelism, do the following:
+Distributed Quick Start
+-----------------------
+
+*This assumes that you have already setup your AWS account and AWS credentials.* (``aws configure``)
 
 1. Import and initialize Ray by appending the following to your example script.
 
@@ -50,13 +57,14 @@ For massive parallelism, do the following:
 Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
 2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
-3. Set up your AWS credentials (``aws configure``).
-4. Run ``ray submit``. This will start 3 AWS nodes and run Tune across them. Append ``[--stop]`` to automatically shutdown your nodes after running:
+3. Run ``ray submit`` like the following:
 
 .. code-block:: bash
 
     export CLUSTER=tune-default.yaml
     ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+
+This will start 3 AWS machines and run a distributed hyperparameter search across them. Append ``[--stop]`` to automatically shutdown your nodes afterwards.
 
 Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
 
@@ -66,11 +74,6 @@ Getting Started
   * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
   * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
   * `Tutorial Notebook <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
-
-
-.. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
-.. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
-.. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
 Contribute to Tune
 ------------------

@@ -4,10 +4,9 @@ Tune Example Walkthrough
 This tutorial will walk you through the following process to setup a Tune experiment. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) without modifying your underlying code.
 
   1. Integrating Tune into your workflow
-  2. Setting a stopping criteria
-  3. Specifying a TrialScheduler
-  4. Adding a SearchAlgorithm
-  5. Getting the best model and analyzing results
+  2. Specifying a TrialScheduler
+  3. Adding a SearchAlgorithm
+  4. Getting the best model and analyzing results
 
 We first run some imports:
 
@@ -93,7 +92,7 @@ You can also use Tensorboard for visualizing results.
 Search Algorithms in Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With Tune you can combine powerful Hyperparameter Search libraries such as `HyperOpt <https://github.com/hyperopt/hyperopt>`__ with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers. See the `Search Algorithm section <tune-searchalg.html>`__ for more details of available algorithms and library integrations.
+With Tune you can combine powerful hyperparameter search libraries such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_ and `Ax <https://ax.dev>`_ with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers. See the `Search Algorithm section <tune-searchalg.html>`__ for more details of available algorithms and library integrations.
 
 .. literalinclude:: ../../python/ray/tune/tests/tutorial.py
    :language: python

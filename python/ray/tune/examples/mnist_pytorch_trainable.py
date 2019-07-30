@@ -24,8 +24,7 @@ parser.add_argument(
     default=False,
     help="enables CUDA training")
 parser.add_argument(
-    "--redis-address",
-    default=None,
+    "--ray-redis-address",
     type=str,
     help="The Redis address of the cluster.")
 parser.add_argument(
@@ -74,18 +73,17 @@ if __name__ == "__main__":
 
     import ray
     from ray import tune
-    from ray.tune.schedulers import HyperBandScheduler
+    from ray.tune.schedulers import ASHAScheduler
 
-    ray.init(redis_address=args.redis_address)
-    sched = HyperBandScheduler(
-        time_attr="training_iteration", metric="mean_loss", mode="min")
+    ray.init(redis_address=args.ray_redis_address)
+    sched = ASHAScheduler(metric="mean_accuracy")
     tune.run(
         TrainMNIST,
         scheduler=sched,
         **{
             "stop": {
                 "mean_accuracy": 0.95,
-                "training_iteration": 1 if args.smoke_test else 20,
+                "training_iteration": 3 if args.smoke_test else 20,
             },
             "resources_per_trial": {
                 "cpu": 3,
@@ -93,6 +91,7 @@ if __name__ == "__main__":
             },
             "num_samples": 1 if args.smoke_test else 20,
             "checkpoint_at_end": True,
+            "checkpoint_freq": 3,
             "config": {
                 "args": args,
                 "lr": tune.uniform(0.001, 0.1),
