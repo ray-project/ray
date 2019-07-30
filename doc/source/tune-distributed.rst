@@ -10,12 +10,13 @@ To launch a distributed hyperparameter search, you can follow the instructions b
 
 1. Download a full example Tune experiment script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
-3. Run ``ray submit`` as below. Append ``[--stop]`` to automatically shutdown your nodes after running:
+3. Run ``ray submit`` as below. Append ``[--stop]`` to automatically shutdown your nodes after running. This will start 3 AWS machines (1 head node and 2 worker nodes), upload `mnist_pytorch.py` onto the head node, and run Tune. Tune will execute the hyperparameter search across all of the machines in parallel.
 
 .. code-block:: bash
 
     export CLUSTER=tune-default.yaml
     ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+
 
 Connecting to a cluster
 -----------------------
@@ -60,6 +61,8 @@ This code starts a cluster as specified by the given cluster configuration YAML 
 .. code-block:: bash
 
     ray submit tune-default.yaml tune_script.py --start
+
+.. image:: images/tune-upload.png
 
 Analyze your results on TensorBoard by starting TensorBoard on the remote head machine.
 
