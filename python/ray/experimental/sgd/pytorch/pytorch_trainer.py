@@ -69,8 +69,8 @@ class PyTorchTrainer(object):
 
         if num_replicas == 1:
             # Generate actor class
-            Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(
-                PyTorchRunner)
+            Runner = ray.remote(
+                num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, optimizer_creator,
@@ -80,8 +80,8 @@ class PyTorchTrainer(object):
             ray.get(self.workers[0].setup.remote())
         else:
             # Geneate actor class
-            Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(
-                    DistributedPyTorchRunner)
+            Runner = ray.remote(
+                num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
             # Compute batch size per replica
             batch_size_per_replica = batch_size // num_replicas
             if batch_size % num_replicas > 0:
