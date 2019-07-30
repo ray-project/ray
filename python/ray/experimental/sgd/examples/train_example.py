@@ -35,6 +35,7 @@ def tune_example(num_replicas=1, use_gpu=False):
     analysis = tune.run(PyTorchTrainable, num_samples=4, config=config)
     return analysis.get_best_config(mean_accuracy="mean_accuracy")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
