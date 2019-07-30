@@ -12,8 +12,8 @@ namespace gcs {
 
 /// \class SubscribeExecutor
 /// SubscribeExecutor class encapsulates the implementation details of
-/// subscribe or unsubscribe to any operations of elements (actors or tasks or objects).
-/// Either subscribe to specific elements or subscribe to all.
+/// subscribe/unsubscribe to elements (e.g.: actors or tasks or objects or nodes).
+/// Either subscribe to a specific element or subscribe to all elements.
 template <typename ID, typename Data, typename Table>
 class SubscribeExecutor {
  public:
@@ -60,18 +60,6 @@ class SubscribeExecutor {
                           const StatusCallback &done);
 
  private:
-  struct SubscribeCallbacks {
-    SubscribeCallbacks() {}
-
-    SubscribeCallbacks(const SubscribeCallback<ID, Data> &subscribe,
-                       const StatusCallback &done)
-        : subscribe_(subscribe), done_(done) {}
-
-    SubscribeCallback<ID, Data> subscribe_{nullptr};
-    StatusCallback done_{nullptr};
-  };
-
- private:
   Table &table_;
 
   std::mutex mutex_;
@@ -79,9 +67,12 @@ class SubscribeExecutor {
   /// Whether successfully registered subscription to GCS.
   bool registered_{false};
 
+  /// Subscribe Callback of all elements.
+  SubscribeCallback<ID, Data> subscribe_all_callback_{nullptr};
+
   /// A mapping from element ID to subscription callbacks.
-  typedef std::unordered_map<ID, SubscribeCallbacks> IDToRequestMap;
-  IDToRequestMap id_to_request_map_;
+  typedef std::unordered_map<ID, SubscribeCallback<ID, Data>> IDToCallbackMap;
+  IDToCallbackMap id_to_callback_map_;
 };
 
 }  // namespace gcs
