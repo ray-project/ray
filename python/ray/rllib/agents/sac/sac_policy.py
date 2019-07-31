@@ -14,12 +14,9 @@ from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf, try_import_tfp
-from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip
+from ray.rllib.utils.tf_ops import minimize_and_clip
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -59,10 +56,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACModel,
         default_model=default_model,
         name="sac_model",
-        actor_hidden_activation=(config["policy_model"]["hidden_activation"]),
-        actor_hiddens=(config["policy_model"]["hidden_layer_sizes"]),
-        critic_hidden_activation=(config["Q_model"]["hidden_activation"]),
-        critic_hiddens=(config["Q_model"]["hidden_layer_sizes"]),
+        actor_hidden_activation=config["policy_model"]["hidden_activation"],
+        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
+        critic_hidden_activation=config["Q_model"]["hidden_activation"],
+        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
         twin_q=config["twin_q"])
 
     policy.target_model = ModelCatalog.get_model_v2(
@@ -74,10 +71,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACModel,
         default_model=default_model,
         name="target_sac_model",
-        actor_hidden_activation=(config["policy_model"]["hidden_activation"]),
-        actor_hiddens=(config["policy_model"]["hidden_layer_sizes"]),
-        critic_hidden_activation=(config["Q_model"]["hidden_activation"]),
-        critic_hiddens=(config["Q_model"]["hidden_layer_sizes"]),
+        actor_hidden_activation=config["policy_model"]["hidden_activation"],
+        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
+        critic_hidden_activation=config["Q_model"]["hidden_activation"],
+        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
         twin_q=config["twin_q"])
 
     return policy.model
@@ -150,8 +147,6 @@ def actor_critic_loss(policy, batch_tensors):
     # TODO(hartikainen): figure actions and log pis
     policy_t, log_pis_t = policy.model.get_policy_output(model_out_t)
     policy_tp1, log_pis_tp1 = policy.model.get_policy_output(model_out_tp1)
-
-    policy_tp1_smoothed = policy_tp1
 
     log_alpha = policy.model.log_alpha
     alpha = policy.model.alpha
@@ -234,18 +229,29 @@ def gradients(policy, optimizer, loss):
             policy.critic_loss,
             var_list=policy.model.q_variables(),
             clip_val=policy.config["grad_norm_clipping"])
+        alpha_grads_and_vars = minimize_and_clip(
+            policy._alpha_optimizer,
+            policy.alpha_loss,
+            var_list=policy.model.alpha,
+            clip_val=policy.config["grad_norm_clipping"])
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
         critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
             policy.critic_loss, var_list=policy.model.q_variables())
+        alpha_grads_and_vars = policy._critic_optimizer.compute_gradients(
+            policy.alpha_loss, var_list=policy.model.alpha)
     # save these for later use in build_apply_op
     policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
                                     if g is not None]
     policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
                                      if g is not None]
+    policy._alpha_grads_and_vars = [(g, v) for (g, v) in alpha_grads_and_vars
+                                    if g is not None]
     grads_and_vars = (
-        policy._actor_grads_and_vars + policy._critic_grads_and_vars)
+        policy._actor_grads_and_vars
+        + policy._critic_grads_and_vars
+        + policy._alpha_grads_and_vars)
     return grads_and_vars
 
 
