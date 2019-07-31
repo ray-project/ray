@@ -18,21 +18,27 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "twin_q": True,
     "use_state_preprocessor": False,
-
     "policy": "GaussianLatentSpacePolicy",
-
     # RLlib model options for the Q function
     "Q_model": {
         "hidden_activation": "relu",
         "hidden_layer_sizes": (256, 256),
     },
-
     # RLlib model options for the policy function
     "policy_model": {
         "hidden_activation": "relu",
         "hidden_layer_sizes": (256, 256),
     },
 
+    # === Learning ===
+    # Update the target by \tau * policy + (1-\tau) * target_policy
+    "tau": 5e-3,
+    # Target entropy lower bound. This is the inverse of reward scale,
+    # and will be optimized automatically.
+    "target_entropy": "auto",
+    # Disable setting done=True at end of episode.
+    "no_done_at_end": True,
+    # N-step target updates
     "n_step": 1,
 
     # === Evaluation ===
@@ -44,18 +50,11 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_config": {
         "exploration_enabled": False,
     },
-    "exploration_enabled": True,
 
     # === Exploration ===
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-
-    # Update the target by \tau * policy + (1-\tau) * target_policy
-    "tau": 5e-3,
-
-    # Target entropy lower bound. This is the inverse of reward scale,
-    # and will be optimized automatically.
-    "target_entropy": "auto",
+    "exploration_enabled": True,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -78,7 +77,6 @@ DEFAULT_CONFIG = with_common_config({
         "entropy_learning_rate": 3e-4,
     },
     # If not None, clip gradients during optimization at this value
-    # TODO(hartikainen): Make sure this works or remove the option.
     "grad_norm_clipping": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
@@ -103,8 +101,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
-    # Optimizer class to use.
-    "optimizer_class": "SyncReplayOptimizer",
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span

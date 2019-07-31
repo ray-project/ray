@@ -99,8 +99,8 @@ class SACModel(TFModelV2):
         )(shift_and_log_scale_diag)
 
         log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_scale_diag: tf.clip_by_value(log_scale_diag, *SCALE_DIAG_MIN_MAX)
-        )(log_scale_diag)
+            lambda log_sd: tf.clip_by_value(log_sd, *SCALE_DIAG_MIN_MAX))(
+                log_scale_diag)
 
         shift_and_log_scale_diag = tf.keras.layers.Concatenate(axis=-1)(
             [shift, log_scale_diag])
@@ -146,7 +146,7 @@ class SACModel(TFModelV2):
         else:
             self.twin_q_net = None
 
-        self.log_alpha = tf.Variable(0.0, dtype=tf.float32, name='log_alpha')
+        self.log_alpha = tf.Variable(0.0, dtype=tf.float32, name="log_alpha")
         self.alpha = tf.exp(self.log_alpha)
 
         self.register_variables([self.log_alpha])

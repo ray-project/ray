@@ -178,7 +178,7 @@ def actor_critic_loss(policy, batch_tensors):
     q_tp1_best_masked = (1.0 - tf.cast(batch_tensors[SampleBatch.DONES],
                                        tf.float32)) * q_tp1_best
 
-    assert policy.config['n_step'] == 1, policy.config['n_step']
+    assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
 
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
@@ -249,9 +249,8 @@ def gradients(policy, optimizer, loss):
     policy._alpha_grads_and_vars = [(g, v) for (g, v) in alpha_grads_and_vars
                                     if g is not None]
     grads_and_vars = (
-        policy._actor_grads_and_vars
-        + policy._critic_grads_and_vars
-        + policy._alpha_grads_and_vars)
+        policy._actor_grads_and_vars + policy._critic_grads_and_vars +
+        policy._alpha_grads_and_vars)
     return grads_and_vars
 
 
