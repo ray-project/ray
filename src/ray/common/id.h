@@ -120,7 +120,7 @@ class ActorID : public BaseID<ActorID> {
 
   /// Size of `ActorID` in bytes.
   ///
-  /// \return Void
+  /// \return Size of `ActorID` in bytes.
   static size_t Size() { return kLength; }
 
   /// Generate an `ActorID` randomly.
