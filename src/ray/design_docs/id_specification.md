@@ -33,7 +33,7 @@ Ray ID Specification
 An `ActorID` contains two parts: 1) 4 random bytes, and 2) its `JobID`.
 
 #### TaskID
-A `TaskID` contains 2 parts as well: one is a 6 random bytes and one is the bytes of `ActorID` to which it belongs.
+A `TaskID` contains two parts: 1) 6 random bytes, and 2) its `ActorID` (nil if the task is not for an actor).
 
 #### ObjectID
 An `ObjectID` contains 3 parts:
