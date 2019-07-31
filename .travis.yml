@@ -20,6 +20,7 @@ matrix:
 
     - os: linux
       env: JENKINS=1 PYTHONWARNINGS=ignore
+      install: []
       script:
         - ./ci/jenkins_tests/run_multi_node_tests.sh
 
