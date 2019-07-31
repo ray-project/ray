@@ -67,6 +67,16 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     return status;
   }
 
+  auto on_done = [this, done, id](Status status) {
+    if (!status.ok()) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      id_to_callback_map_.erase(id);
+    }
+    if (done != nullptr) {
+      done(status);
+    }
+  };
+
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
@@ -75,7 +85,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
                     << client_id;
       return Status::Invalid("Duplicate subscription!");
     }
-    status = table_.RequestNotifications(JobID::Nil(), id, client_id, done);
+    status = table_.RequestNotifications(JobID::Nil(), id, client_id, on_done);
     if (status.ok()) {
       id_to_callback_map_[id] = subscribe;
     }
@@ -98,12 +108,10 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
 
   auto on_done = [this, id, done](Status status) {
     if (status.ok()) {
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const auto it = id_to_callback_map_.find(id);
-        if (it != id_to_callback_map_.end()) {
-          id_to_callback_map_.erase(it);
-        }
+      std::lock_guard<std::mutex> lock(mutex_);
+      const auto it = id_to_callback_map_.find(id);
+      if (it != id_to_callback_map_.end()) {
+        id_to_callback_map_.erase(it);
       }
     }
     if (done != nullptr) {
