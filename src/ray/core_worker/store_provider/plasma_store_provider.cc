@@ -149,8 +149,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
 }
 
 Status CoreWorkerPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
-                                           bool local_only,
-                                           bool delete_creating_tasks) {
+                                           bool local_only, bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
 }
 

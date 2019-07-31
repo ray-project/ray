@@ -74,8 +74,8 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-                                       std::vector<bool> *results);
+  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+              int64_t timeout_ms, std::vector<bool> *results);
 
   /// Free a list of objects from the object store.
   ///
