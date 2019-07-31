@@ -25,9 +25,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
       rayConfig.setJobId(nextJobId());
     }
     objectInterface = new MockObjectInterface();
-    taskInterface = new MockTaskInterface(this, objectInterface, rayConfig.numberExecThreadsForDevRuntime);
+    taskInterface = new MockTaskInterface(this, objectInterface,
+        rayConfig.numberExecThreadsForDevRuntime);
     objectInterface.addObjectPutCallback(taskInterface::onObjectPut);
     worker = new MockWorker(this);
+    taskInterface.setCurrentWorker((MockWorker) worker);
   }
 
   @Override
@@ -37,7 +39,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public AbstractWorker getWorker() {
-    return worker;
+    return ((MockTaskInterface) worker.getTaskInterface()).getCurrentWorker();
   }
 
   private JobId nextJobId() {

@@ -1,7 +1,6 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -95,6 +94,7 @@ public class ActorTest extends BaseTest {
 
   @Test
   public void testForkingActorHandle() {
+    TestUtils.skipTestUnderSingleProcess();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
     RayActor<Counter> counter2 = ((RayActorImpl) counter).fork();

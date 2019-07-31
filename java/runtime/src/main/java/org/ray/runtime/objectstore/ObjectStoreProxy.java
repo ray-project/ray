@@ -45,19 +45,6 @@ public class ObjectStoreProxy {
   }
 
   /**
-   * Get an object from the object store.
-   *
-   * @param id Id of the object.
-   * @param timeoutMs Timeout in milliseconds.
-   * @param <T> Type of the object.
-   * @return The GetResult object.
-   */
-  public <T> GetResult<T> get(ObjectId id, int timeoutMs) {
-    List<GetResult<T>> list = get(ImmutableList.of(id), timeoutMs);
-    return list.get(0);
-  }
-
-  /**
    * Get a list of objects from the object store.
    *
    * @param ids List of the object ids.

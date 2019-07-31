@@ -40,7 +40,7 @@ public abstract class AbstractWorker {
   /**
    * The current actor object, if this worker is an actor, otherwise null.
    */
-  private Object currentActor = null;
+  protected Object currentActor = null;
 
   /**
    * The exception that failed the actor creation task, if any.

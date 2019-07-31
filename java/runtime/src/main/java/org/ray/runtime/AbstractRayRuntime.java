@@ -191,12 +191,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
-    RayActorImpl actorImpl = (RayActorImpl) actor;
-    Preconditions.checkState(actorImpl.getLanguage() == Language.JAVA);
+    AbstractRayActor abstractRayActor = (AbstractRayActor) actor;
+    Preconditions.checkState(abstractRayActor.getLanguage() == Language.JAVA);
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func)
             .functionDescriptor;
-    return callActorFunction(actorImpl, functionDescriptor, args);
+    return callActorFunction(abstractRayActor, functionDescriptor, args);
   }
 
   @Override
@@ -229,12 +229,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject callPy(RayPyActor pyActor, String functionName, Object... args) {
-    RayActorImpl pyActorImpl = (RayActorImpl) pyActor;
-    Preconditions.checkState(pyActorImpl.getLanguage() == Language.PYTHON);
+    AbstractRayActor abstractRayActor = (AbstractRayActor) pyActor;
+    Preconditions.checkState(abstractRayActor.getLanguage() == Language.PYTHON);
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), functionName);
-    return callActorFunction(pyActorImpl, functionDescriptor, args);
+    return callActorFunction(abstractRayActor, functionDescriptor, args);
   }
 
   @Override
@@ -243,7 +243,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, className,
         "__init__");
-    return createActorImpl(Language.PYTHON, functionDescriptor, args, options);
+    return (RayPyActor) createActorImpl(Language.PYTHON, functionDescriptor, args, options);
   }
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
@@ -255,25 +255,24 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return new RayObjectImpl(returnIds.get(0));
   }
 
-  private RayObject callActorFunction(RayActorImpl rayActorImpl,
-      FunctionDescriptor functionDescriptor,
-      Object[] args) {
-    Preconditions.checkState(rayActorImpl.getLanguage() == functionDescriptor.getLanguage());
+  private RayObject callActorFunction(AbstractRayActor rayActor,
+      FunctionDescriptor functionDescriptor, Object[] args) {
+    Preconditions.checkState(rayActor.getLanguage() == functionDescriptor.getLanguage());
     FunctionArg[] functionArgs = ArgumentsBuilder
-        .wrap(args, rayActorImpl.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActorImpl,
+        .wrap(args, rayActor.getLanguage() != Language.JAVA);
+    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActor,
         functionDescriptor, functionArgs, 1 /* core worker will plus it by 1, so put 1 here */,
         null);
     return new RayObjectImpl(returnIds.get(0));
   }
 
-  private RayActorImpl createActorImpl(Language language, FunctionDescriptor functionDescriptor,
+  private AbstractRayActor createActorImpl(Language language, FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
     FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, language != Language.JAVA);
     if (language != Language.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
-    RayActorImpl actor = (RayActorImpl) worker.getTaskInterface()
+    AbstractRayActor actor = (AbstractRayActor) worker.getTaskInterface()
         .createActor(functionDescriptor, functionArgs,
             options);
     Preconditions.checkState(actor.getLanguage() == language);

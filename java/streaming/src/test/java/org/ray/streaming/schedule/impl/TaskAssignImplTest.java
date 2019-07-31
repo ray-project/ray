@@ -1,5 +1,7 @@
 package org.ray.streaming.schedule.impl;
 
+import org.ray.api.id.UniqueId;
+import org.ray.runtime.MockRayActor;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.core.graph.ExecutionEdge;
 import org.ray.streaming.core.graph.ExecutionGraph;
@@ -12,7 +14,6 @@ import org.ray.streaming.schedule.ITaskAssign;
 import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.RayActor;
-import org.ray.runtime.RayActorImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -29,7 +30,7 @@ public class TaskAssignImplTest {
 
     List<RayActor<StreamWorker>> workers = new ArrayList<>();
     for(int i = 0; i < plan.getPlanVertexList().size(); i++) {
-      workers.add(new RayActorImpl());
+      workers.add(new MockRayActor(UniqueId.randomId()));
     }
 
     ITaskAssign taskAssign = new TaskAssignImpl();

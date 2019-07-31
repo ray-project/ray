@@ -6,12 +6,12 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
-import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.Language;
 
-public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
+public class RayActorImpl extends AbstractRayActor implements RayPyActor, Externalizable {
+
   /**
    * Address of native actor handle.
    */
@@ -39,6 +39,7 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
     return new UniqueId(nativeGetActorHandleId(nativeActorHandle));
   }
 
+  @Override
   public Language getLanguage() {
     return Language.forNumber(nativeGetLanguage(nativeActorHandle));
   }
@@ -63,7 +64,7 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
     return nativeSerialize(nativeActorHandle);
   }
 
-  public static RayActorImpl fromBinary(byte[] binary) {
+  public static AbstractRayActor fromBinary(byte[] binary) {
     return new RayActorImpl(nativeDeserialize(binary));
   }
 
@@ -90,7 +91,8 @@ public class RayActorImpl implements RayActor, RayPyActor, Externalizable {
 
   private static native int nativeGetLanguage(long nativeActorHandle);
 
-  private static native List<String> nativeGetActorCreationTaskFunctionDescriptor(long nativeActorHandle);
+  private static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
+      long nativeActorHandle);
 
   private static native byte[] nativeSerialize(long nativeActorHandle);
 
