@@ -1,7 +1,9 @@
+#define BOOST_BIND_NO_PLACEHOLDERS
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/task_execution.h"
+#include "src/ray/util/test_util.h"
 
 using namespace std::placeholders;
 
@@ -18,9 +20,10 @@ namespace ray {
 /// for more details on how this class is used.
 class MockWorker {
  public:
-  MockWorker(const std::string &store_socket, const std::string &raylet_socket)
+  MockWorker(const std::string &store_socket, const std::string &raylet_socket,
+             const gcs::GcsClientOptions &gcs_options)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::JobID::FromInt(1),
+                JobID::FromInt(1), gcs_options,
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5)) {}
 
   void Run() {
@@ -49,6 +52,7 @@ class MockWorker {
     for (int i = 0; i < num_returns; i++) {
       results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
     }
+
     return Status::OK();
   }
 
@@ -62,7 +66,8 @@ int main(int argc, char **argv) {
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
 
-  ray::MockWorker worker(store_socket, raylet_socket);
+  ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
+  ray::MockWorker worker(store_socket, raylet_socket, gcs_options);
   worker.Run();
   return 0;
 }

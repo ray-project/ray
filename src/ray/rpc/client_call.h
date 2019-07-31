@@ -16,12 +16,11 @@ enum class ClientCallType {
 };
 
 enum class ClientCallState {
-  CREATE = 1,
-  CONNECT = 2,
-  WRITE = 3,
-  READ = 4,
-  WRITES_DONE = 5,
-  FINISH = 6,
+  CONNECT,
+  WRITING,
+  PENDING,
+  STREAM_WRITES_DONE,
+  FINISH,
 };
 
 class ClientCallTag;
@@ -41,19 +40,23 @@ class ClientCall {
 
   /// Interfaces only for stream async call.
  public:
-  virtual void WriteStream(const ::google::protobuf::Message &request) = 0;
+  virtual bool WriteStream(const ::google::protobuf::Message &request) = 0;
 
   virtual void WritesDone() = 0;
 
-  virtual bool IsReadingStream() = 0;
+  virtual void AsyncReadNextReply() = 0;
+
+  virtual ClientCallTag* GetReplyReaderTag() {}
 
   /// Common implementations for gRPC client call.
  public:
-  ClientCall(ClientCallType type) : type_(type), state_(ClientCallState::CREATE) {}
+  ClientCall(ClientCallType type) : type_(type), state_(ClientCallState::CONNECT) {}
 
-  const ClientCallType &GetCallType() { return type_; }
+  const ClientCallType &GetType() { return type_; }
 
-  const ClientCallState &GetCallState() { return state_; }
+  void SetState(ClientCallState state) { state_ = state; }
+
+  const ClientCallState &GetState() { return state_; }
 
   virtual ~ClientCall() = default;
 
@@ -98,10 +101,10 @@ class ClientCallImpl : public ClientCall {
     }
   }
 
-  // Stream call interface, unused in default call.
-  void WriteStream(const ::google::protobuf::Message &request) {}
+  // Stream call interfaces, not used in default call.
+  bool WriteStream(const ::google::protobuf::Message &request) {}
   void WritesDone() {}
-  bool IsReadingStream() {}
+  void AsyncReadNextReply() {}
 
  private:
   /// The reply message.
@@ -134,50 +137,54 @@ class ClientStreamCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback)
-      : ClientCall(ClientCallType::STREAM_ASYNC_CALL), callback_(callback) {
-    RAY_LOG(INFO) << "Client stream call construct.";
-  }
+      : ClientCall(ClientCallType::STREAM_ASYNC_CALL), callback_(callback) {}
 
   void Connect(typename GrpcService::Stub &stub,
                const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
                grpc::CompletionQueue &cq) {
-    reply_.Clear();
-    RAY_LOG(INFO) << "Client stream call connect, is initialized: " << reply_.IsInitialized();
-    state_ = ClientCallState::CONNECT;
     client_stream_ =
         (stub.*async_rpc_function)(&context_, &cq, reinterpret_cast<void *>(tag_));
   }
 
   void WritesDone() override {
-    state_ = ClientCallState::WRITES_DONE;
+    state_ = ClientCallState::STREAM_WRITES_DONE;
     client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
   }
 
-  void WriteStream(const ::google::protobuf::Message &from) override {
-    state_ = ClientCallState::WRITE;
+  bool WriteStream(const ::google::protobuf::Message &from) override {
+    // The state of this call will be changed to PENDING in polling thread.
+    if (state_ == ClientCallState::WRITING) {
+      RAY_LOG(INFO) << "Stream is still in writing state.";
+      return false;
+    }
+    RAY_LOG(INFO) << "Write stream success.";
     // Construct the request with the specific type.
     Request request;
     request.CopyFrom(from);
+    state_ = ClientCallState::WRITING;
     client_stream_->Write(request, reinterpret_cast<void *>(tag_));
+    return true;
   }
 
   Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
 
-  bool IsReadingStream() { return reply_.IsInitialized(); }
-
-  void AsyncReadNextMessage() {
-    reply_.Clear();
-    client_stream_->Read(&reply_, reinterpret_cast<void *>(tag_));
+  void AsyncReadNextReply() {
+    client_stream_->Read(&reply_, reinterpret_cast<void *>(reader_tag_));
   }
 
   void SetClientCallTag(ClientCallTag *tag) { tag_ = tag; }
+
+  void SetReplyReaderTag(ClientCallTag *reader_tag) { reader_tag_ = reader_tag; }
+
+  ClientCallTag* GetReplyReaderTag() override { return reader_tag_; }
+
   ClientCallTag *GetClientCallTag() { return tag_; }
 
   void OnReplyReceived() override {
     if (callback_) {
       callback_(Status::OK(), reply_);
     }
-    AsyncReadNextMessage();
+    AsyncReadNextReply();
   }
 
  private:
@@ -194,6 +201,11 @@ class ClientStreamCallImpl : public ClientCall {
   grpc::Status status_;
 
   ClientCallTag *tag_;
+  /// Reading and writing in client stream call are asynchronous, we should use different
+  /// type tag to distinguish the call tag caught in completion queue. We should put the
+  /// reader tag into the completion queue when try to read a reply asynchronously in a
+  /// stream,
+  ClientCallTag *reader_tag_;
 
   friend class ClientCallManager;
 };
@@ -214,13 +226,20 @@ class ClientCallTag {
   /// Constructor.
   ///
   /// \param call A `ClientCall` that represents a request.
-  explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
+  /// \param is_reader_tag Indicates whether it's a tag for reading reply from server.
+  explicit ClientCallTag(std::shared_ptr<ClientCall> call, bool is_reader_tag = false)
+      : call_(std::move(call)), is_reader_tag_(is_reader_tag) {}
 
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
+  bool IsReaderTag() { return is_reader_tag_; }
+
  private:
+  /// Pointer to the client call.
   std::shared_ptr<ClientCall> call_;
+  /// Indicates whether the tag is used to read reply.
+  bool is_reader_tag_;
 };
 
 }  // namespace rpc

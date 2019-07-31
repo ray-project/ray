@@ -90,9 +90,11 @@ class ClientCallManager {
     auto call =
         std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
     auto tag = new ClientCallTag(call);
+    auto reader_tag = new ClientCallTag(call, true);
     // Should set tag before connect because the tag will be set into completion queue in
     // connect function.
     call->SetClientCallTag(tag);
+    call->SetReplyReaderTag(reader_tag);
     // Setup connection with remote server.
     call->Connect(stub, async_rpc_function, cq_);
     return call;
@@ -109,8 +111,9 @@ class ClientCallManager {
     while (cq_.Next(&got_tag, &ok)) {
       auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
       if (ok) {
-        auto type = tag->GetCall()->GetCallType();
-        auto state = tag->GetCall()->GetCallState();
+        auto call = tag->GetCall();
+        auto type = call->GetType();
+        auto state = call->GetState();
         if (type == ClientCallType::DEFAULT_ASYNC_CALL) {
           // Post the callback to the main event loop.
           main_service_.post([tag]() {
@@ -119,21 +122,20 @@ class ClientCallManager {
             delete tag;
           });
         } else if (type == ClientCallType::STREAM_ASYNC_CALL) {
-          if (tag->GetCall()->IsReadingStream()) {
+          if (tag->IsReaderTag()) {
             main_service_.post([tag]() { tag->GetCall()->OnReplyReceived(); });
           } else {
             switch (state) {
-            case ClientCallState::CREATE:
-              RAY_LOG(INFO) << "Client call create.";
-              break;
             case ClientCallState::CONNECT:
-              RAY_LOG(INFO) << "Client call connect.";
+              call->AsyncReadNextReply();
               break;
-            case ClientCallState::WRITE:
-              RAY_LOG(INFO) << "Client call write.";
+            case ClientCallState::WRITING:
+              call->SetState(ClientCallState::PENDING);
               break;
-            case ClientCallState::WRITES_DONE:
+            case ClientCallState::STREAM_WRITES_DONE:
               RAY_LOG(INFO) << "Client call writes done.";
+              delete call->GetReplyReaderTag();
+              delete tag;
               break;
             case ClientCallState::FINISH:
               RAY_LOG(INFO) << "Client call finish.";

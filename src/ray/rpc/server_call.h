@@ -46,6 +46,7 @@ enum class ServerCallState {
 
 class ServerCallFactory;
 
+class ServerCallTag;
 /// Represents an incoming request of a gRPC server.
 ///
 /// The lifecycle and state transition of a `ServerCall` is as follows:
@@ -92,11 +93,17 @@ class ServerCall {
  public:
   virtual void AsyncReadNextRequest() = 0;
 
+  virtual ServerCallTag *GetReplyWriterTag() {}
+
  public:
   /// Common methods for both default server call and stream server call.
   ServerCall(ServerCallType type) : type_(type) {}
 
   const ServerCallType &GetCallType() { return type_; }
+
+  void SetServerCallTag(ServerCallTag* tag) { tag_ = tag; }
+
+  ServerCallTag *GetServerCallTag() { return tag_; }
 
  protected:
   /// Context for the request, allowing to tweak aspects of it such as the use
@@ -104,6 +111,8 @@ class ServerCall {
   grpc::ServerContext context_;
   /// The type of this server call.
   const ServerCallType type_;
+  /// Tag will be put in completion queue to connect main thread and polling thread.
+  ServerCallTag *tag_;
 };
 
 /// Represents the generic signature of a `FooServiceHandler::HandleBar()`
@@ -159,7 +168,6 @@ class ServerCallImpl : public ServerCall {
   }
 
   void HandleRequestImpl() {
-    state_ = ServerCallState::PROCESSING;
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,
@@ -245,12 +253,16 @@ class StreamReplyWriter {
       std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream,
       ServerCall *server_call)
       : server_stream_(server_stream), server_call_(server_call) {}
+
   void Write(const Reply &reply) {
-    server_stream_->Write(reply, reinterpret_cast<void *>(server_call_));
+    server_call_->SetState(ServerCallState::PENDING);
+    server_stream_->Write(reply,
+                          reinterpret_cast<void *>(server_call_->GetReplyWriterTag()));
   }
 
  private:
   std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream_;
+  // Weak pointer pointing to server call without reference.
   ServerCall *server_call_;
 };
 
@@ -286,15 +298,20 @@ class ServerStreamCallImpl : public ServerCall {
         io_service_(io_service),
         stream_reply_writer_(server_stream_, this) {
     // This is important as the server should know when the client is done.
-    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(this));
-    // AsyncReadNextRequest();
+    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(tag_));
   }
 
   void AsyncReadNextRequest() override {
-    server_stream_->Read(&request_, reinterpret_cast<void *>(this));
+    // Wait for next stream request.
+    state_ = ServerCallState::PENDING;
+    server_stream_->Read(&request_, reinterpret_cast<void *>(tag_));
   }
 
   ServerCallState GetState() const override { return state_; }
+
+  void SetReplyWriterTag(ServerCallTag *writer_tag) { writer_tag_ = writer_tag; }
+
+  ServerCallTag *GetReplyWriterTag() override { return writer_tag_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
@@ -303,8 +320,6 @@ class ServerStreamCallImpl : public ServerCall {
       io_service_.post([this] {
         HandleRequestImpl();
         AsyncReadNextRequest();
-        // Wait for next stream request.
-        state_ = ServerCallState::PENDING;
       });
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
@@ -350,10 +365,30 @@ class ServerStreamCallImpl : public ServerCall {
   /// The reply message.
   Reply reply_;
 
+  /// Server call tag used to write reply.
+  ServerCallTag *writer_tag_;
+
   StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerStreamCallFactoryImpl;
+};
+
+class ServerCallTag {
+ public:
+  explicit ServerCallTag(std::shared_ptr<ServerCall> call, bool is_writer_tag = false)
+      : call_(std::move(call)), is_writer_tag_(is_writer_tag) {}
+
+  /// Get the wrapped `ServerCall`.
+  const std::shared_ptr<ServerCall> &GetCall() const { return call_; }
+
+  bool IsWriterTag() { return is_writer_tag_; }
+
+ private:
+  /// Pointer to the server call.
+  std::shared_ptr<ServerCall> call_;
+  /// Indicates whether the tag is used to write reply.
+  bool is_writer_tag_;
 };
 
 }  // namespace rpc

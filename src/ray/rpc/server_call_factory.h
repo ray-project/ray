@@ -77,13 +77,15 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
+    auto call = std::make_shared<ServerCallImpl<ServiceHandler, Request, Reply>>(
         *this, service_handler_, handle_request_function_, io_service_);
+    auto tag = new ServerCallTag(call);
+    call->SetServerCallTag(tag);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
-                                       call);
+                                       reinterpret_cast<void*>(tag));
   }
 
  private:
@@ -144,13 +146,17 @@ class ServerStreamCallFactoryImpl : public ServerCallFactory {
         handle_stream_request_function_(handle_stream_request_function) {}
 
   void CreateCall() const override {
-    auto call = new ServerStreamCallImpl<ServiceHandler, Request, Reply>(
+    auto call = std::make_shared<ServerStreamCallImpl<ServiceHandler, Request, Reply>>(
         *this, service_handler_, handle_stream_request_function_, io_service_);
+    auto tag = new ServerCallTag(call);
+    auto writer_tag = new ServerCallTag(call, true);
+    call->SetServerCallTag(tag);
+    call->SetReplyWriterTag(writer_tag);
+
     (service_.*request_stream_call_function_)(&call->context_, call->server_stream_.get(),
                                               cq_.get(), cq_.get(),
-                                              reinterpret_cast<void *>(call));
+                                              reinterpret_cast<void *>(tag));
     call->SetState(ServerCallState::CONNECT);
-    RAY_LOG(INFO) << "Create call 3";
   }
 
  private:

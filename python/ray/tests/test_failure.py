@@ -656,7 +656,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
-    client_ids = {item["ClientID"] for item in ray.nodes()}
+    node_ids = {item["NodeID"] for item in ray.nodes()}
 
     # Try to make sure that the monitor has received at least one heartbeat
     # from the node.
@@ -671,12 +671,12 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
     # Extract the client IDs from the error messages. This will need to be
     # changed if the error message changes.
-    warning_client_ids = {
+    warning_node_ids = {
         item["message"].split(" ")[5]
         for item in relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     }
 
-    assert client_ids == warning_client_ids
+    assert node_ids == warning_node_ids
 
 
 def test_raylet_crash_when_get(ray_start_regular):

@@ -59,43 +59,46 @@ void GrpcServer::RegisterService(GrpcService &service) {
 }
 
 void GrpcServer::PollEventsFromCompletionQueue() {
-  void *tag;
+  void *got_tag;
   bool ok;
   // Keep reading events from the `CompletionQueue` until it's shutdown.
-  while (cq_->Next(&tag, &ok)) {
-    auto *server_call = static_cast<ServerCall *>(tag);
+  while (cq_->Next(&got_tag, &ok)) {
+    auto *tag = static_cast<ServerCallTag *>(got_tag);
+    auto server_call = tag->GetCall();
     bool delete_call = false;
     if (ok) {
-      switch (server_call->GetState()) {
-      case ServerCallState::CONNECT:
-        RAY_LOG(INFO) << "Server connect.";
-        server_call->AsyncReadNextRequest();
-        server_call->SetState(ServerCallState::PENDING);
-        break;
-      case ServerCallState::PENDING:
-        RAY_LOG(INFO) << "Received pending.";
-        // We've received a new incoming request. Now this call object is used to
-        // track this request. So we need to create another call to handle next
-        // incoming request.
-        if (server_call->GetCallType() == ServerCallType::DEFAULT_ASYNC_CALL) {
-          server_call->GetFactory().CreateCall();
+      if (tag->IsWriterTag()) {
+        RAY_LOG(INFO) << "Server receive a writer tag.";
+      } else {
+        switch (server_call->GetState()) {
+        case ServerCallState::CONNECT:
+          server_call->AsyncReadNextRequest();
+          break;
+        case ServerCallState::PENDING:
+          // We've received a new incoming request. Now this call object is used to
+          // track this request. So we need to create another call to handle next
+          // incoming request.
+          if (server_call->GetCallType() == ServerCallType::DEFAULT_ASYNC_CALL) {
+            server_call->GetFactory().CreateCall();
+          }
+          server_call->SetState(ServerCallState::PROCESSING);
+          server_call->HandleRequest();
+          break;
+        case ServerCallState::PROCESSING:
+          break;
+        case ServerCallState::SENDING_REPLY:
+          // GRPC has sent reply successfully, invoking the callback.
+          server_call->OnReplySent();
+          // The rpc call has finished and can be deleted now.
+          delete_call = true;
+          break;
+        case ServerCallState::DONE:
+          RAY_LOG(INFO) << "Received done.";
+          delete_call = true;
+        default:
+          RAY_LOG(FATAL) << "Shouldn't reach here.";
+          break;
         }
-        server_call->SetState(ServerCallState::PROCESSING);
-        server_call->HandleRequest();
-        break;
-      case ServerCallState::SENDING_REPLY:
-        RAY_LOG(INFO) << "Received sending reply.";
-        // GRPC has sent reply successfully, invoking the callback.
-        server_call->OnReplySent();
-        // The rpc call has finished and can be deleted now.
-        delete_call = true;
-        break;
-      case ServerCallState::DONE:
-        RAY_LOG(INFO) << "Received done.";
-        delete_call = true;
-      default:
-        RAY_LOG(FATAL) << "Shouldn't reach here.";
-        break;
       }
     } else {
       // `ok == false` will occur in two situations:
@@ -108,7 +111,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
       delete_call = true;
     }
     if (delete_call) {
-      delete server_call;
+      delete tag;
     }
   }
 }

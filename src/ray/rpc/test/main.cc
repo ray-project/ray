@@ -47,7 +47,8 @@ class ServiceHandlers : public TestServiceHandler {
  public:
   void HandleDebugEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
                        SendReplyCallback send_reply_callback) override {
-    cout << "Received request in DebugEcho, msg " << request.request_message() << endl;
+    RAY_LOG(INFO) << "Server received request in DebugEcho, msg "
+                  << request.request_message();
     reply->set_reply_message("Reply for DebugEcho.");
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
@@ -58,13 +59,12 @@ class ServiceHandlers : public TestServiceHandler {
     const string &str = request.request_message();
     int idx = GetIndex(str);
     if (idx % 2 == 0) {
-      cout << "begin to send reply " << idx << endl;
       DebugEchoReply reply;
       reply.set_reply_message(GenerateMessage("StreamReplyMessage", idx));
       stream_reply_writer.Write(reply);
     }
-    cout << "Received request in DebugStreamEcho, msg " << request.request_message()
-         << endl;
+    RAY_LOG(INFO) << "Received stream request in DebugStreamEcho, msg "
+                  << request.request_message();
   }
 };
 
@@ -85,7 +85,7 @@ class GrpcTest : public ::testing::Test {
   }
 
   void TearDown() {
-    server_.reset();
+    server_->Shutdown();
     io_service_.stop();
     server_thread_->join();
     server_thread_.reset();
@@ -111,21 +111,18 @@ TEST_F(GrpcTest, StreamRequestTest) {
   int num_messages = 10;
   DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
   client.StartEchoStream([](const Status &status, const rpc::DebugEchoReply &reply) {
-    cout << "Received reply from server, reply: " << reply.reply_message() << endl;
+    RAY_LOG(INFO) << "Stream client received reply from server, reply: " << reply.reply_message();
+    auto idx = GetIndex(reply.reply_message());
+    ASSERT_TRUE(idx % 2 == 0);
   });
-  usleep(1000);
 
-  cout << "Client begin to send request." << endl;
   for (int i = 0; i < num_messages; i++) {
-    usleep(1000);
+    usleep(2000);
     DebugEchoRequest request;
     request.set_request_message(GenerateMessage("StreamRequest", i + 1));
-    cout << "Send request " << i + 1 << endl;
     client.DebugStreamEcho(request);
-    cout << "Send request " << i + 1 << " finish." << endl;
     usleep(1000);
   }
-  cout << "Finish send request." << endl;
   client.CloseEchoStream();
 }
 
