@@ -11,6 +11,7 @@ import ray
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
 def test_validation_success():
     project_files = [
         "docker_project.yaml",
@@ -20,6 +21,7 @@ def test_validation_success():
     for project_file in project_files:
         path = os.path.join(TEST_DIR, "project_files", project_file)
         ray.projects.validate_project(path)
+
 
 def test_validation_failure():
     project_files = [
@@ -31,6 +33,7 @@ def test_validation_failure():
         with pytest.raises(Exception):
             ray.projects.validate_project(path)
 
+
 def test_project_root():
     path = os.path.join(TEST_DIR, "project_files", "project1")
     assert ray.projects.find_root(path) == path
@@ -40,6 +43,7 @@ def test_project_root():
 
     path3 = "/tmp/"
     assert ray.projects.find_root(path3) is None
+
 
 def test_project_validation():
     path = os.path.join(TEST_DIR, "project_files", "project1")

@@ -720,7 +720,8 @@ def session(command, dry):
     root = os.path.join(root, ".rayproject")
     project_file = os.path.join(root, "project.yaml")
     if not os.path.exists(project_file):
-        raise Exception("Not project.yaml file found in project root {}".format(root))
+        raise Exception(
+            "Not project.yaml file found in project root {}".format(root))
     ray.projects.validate_project(project_file)
     if dry:
         print("project root directory: {}".format(root))

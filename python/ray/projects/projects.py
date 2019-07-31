@@ -21,6 +21,7 @@ def find_root(dir):
         prev, dir = dir, os.path.abspath(os.path.join(dir, os.pardir))
     return None
 
+
 def validate_project(project_file):
     """Validate a project file against the official ray project schema.
 
