@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import logging
+import os
 import torch.distributed as dist
 import torch.utils.data
 
@@ -33,10 +33,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
-        logger.warning("Starting DPTRunner.")
-        os.environ["NCCL_SOCKET_IFNAME"] = "ens3"
-        os.environ["NCCL_LL_THRESHOLD"] = "0"
-        os.environ["NCCL_DEBUG"] = "INFO"
         super(DistributedPyTorchRunner, self).__init__(
             model_creator, data_creator, optimizer_creator, config, batch_size)
         self.backend = backend
@@ -49,18 +45,17 @@ class DistributedPyTorchRunner(PyTorchRunner):
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
-        logger.info("Running setup for rank {}/{}".format(
-            world_rank, world_size))
         self._setup_distributed_pytorch(url, world_rank, world_size)
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
+        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
-            logger.warning(
+            logger.debug(
                 "Connecting to {} world_rank: {} world_size: {}".format(
                     url, world_rank, world_size))
-            logger.warning("using {}".format(self.backend))
+            logger.debug("using {}".format(self.backend))
             dist.init_process_group(
                 backend=self.backend,
                 init_method=url,
@@ -68,24 +63,22 @@ class DistributedPyTorchRunner(PyTorchRunner):
                 world_size=world_size)
 
     def _setup_training(self):
-        logger.warning("Creating model")
+        logger.debug("Creating model")
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
-            logger.info("CUDA is available - using DDP.")
             self.model = torch.nn.parallel.DistributedDataParallel(
                 self.model.cuda())
         else:
-            logger.info("CUDA is not available - using DDPCPU.")
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)
 
-        logger.warning("Creating optimizer")
+        logger.debug("Creating optimizer")
         self.criterion, self.optimizer = self.optimizer_creator(
             self.model, self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
-        logger.warning("Creating dataset")
+        logger.debug("Creating dataset")
         self.training_set, self.validation_set = self.data_creator(self.config)
 
         # TODO: make num_workers configurable

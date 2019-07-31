@@ -47,12 +47,10 @@ worker_nodes:
     #         MarketType: spot
 
 setup_commands:
-    - git clone https://github.com/jichan3751/ray/
-    - ray/ci/travis/install-bazel.sh
-    - cd ray && git checkout remove_dup_resource
-    - cd ray/python && pip install -e . --verbose
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
     - conda install -y pytorch torchvision cudatoolkit=9.0 -c pytorch
     - pip install -U ipdb ray[rllib]
+
 
 file_mounts: {
 }
