@@ -14,8 +14,7 @@ TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def test_validation_success():
     project_files = [
-        "docker_project.yaml",
-        "requirements_project.yaml",
+        "docker_project.yaml", "requirements_project.yaml",
         "shell_project.yaml"
     ]
     for project_file in project_files:
@@ -24,10 +23,7 @@ def test_validation_success():
 
 
 def test_validation_failure():
-    project_files = [
-        "no_project1.yaml",
-        "no_project2.yaml"
-    ]
+    project_files = ["no_project1.yaml", "no_project2.yaml"]
     for project_file in project_files:
         path = os.path.join(TEST_DIR, "project_files", project_file)
         with pytest.raises(Exception):
