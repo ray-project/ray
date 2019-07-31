@@ -88,7 +88,7 @@ DEFAULT_CONFIG = with_common_config({
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    "train_batch_size": 2,
+    "train_batch_size": 256,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 0,
 
