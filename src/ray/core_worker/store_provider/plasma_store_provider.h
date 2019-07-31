@@ -40,7 +40,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
               std::vector<bool> *results) override;
 
   Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                bool delete_creating_tasks = false) override;
+              bool delete_creating_tasks = false) override;
 
  private:
   /// Whether the buffer represents an exception object.

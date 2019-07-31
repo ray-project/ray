@@ -61,10 +61,8 @@ class CoreWorkerStoreProvider {
   /// \param[in] object_id Object ID specified by the user.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
-  virtual Status Create(const std::shared_ptr<Buffer> &metadata,
-		        const size_t data_size,
-                        const ObjectID &object_id,
-			std::shared_ptr<Buffer> *data) = 0;
+  virtual Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                        const ObjectID &object_id, std::shared_ptr<Buffer> *data) = 0;
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
@@ -106,7 +104,7 @@ class CoreWorkerStoreProvider {
   /// created these objects.
   /// \return Status.
   virtual Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                        bool delete_creating_tasks = false) = 0;
+                      bool delete_creating_tasks = false) = 0;
 };
 
 }  // namespace ray
