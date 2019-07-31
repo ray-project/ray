@@ -13,7 +13,7 @@ namespace gcs {
 
 class ActorStateAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
  protected:
-  void GenTestData() {
+  virtual void GenTestData() {
     for (size_t i = 0; i < 2; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       ActorID actor_id = ActorID::FromRandom();

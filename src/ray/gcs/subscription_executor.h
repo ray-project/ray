@@ -49,6 +49,7 @@ class SubscriptionExecutor {
                         const StatusCallback &done);
 
   /// Cancel subscription to an element.
+  /// Unsubscribing can only be called after the subscription request is completed.
   ///
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each update will be received. Else, only

@@ -608,6 +608,17 @@ cc_binary(
 )
 
 cc_binary(
+    name = "subscription_executor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
     name = "asio_test",
     testonly = 1,
     srcs = ["src/ray/gcs/asio_test.cc"],

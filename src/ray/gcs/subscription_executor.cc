@@ -21,25 +21,27 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     return Status::OK();
   }
 
-  auto on_subscribe = [this, subscribe](RedisGcsClient *client, const ID &id,
-                                        const std::vector<Data> &result) {
+  auto on_subscribe = [this](RedisGcsClient *client, const ID &id,
+                             const std::vector<Data> &result) {
     if (result.empty()) {
       return;
     }
 
-    SubscribeCallback<ID, Data> callback = nullptr;
+    SubscribeCallback<ID, Data> sub_one_callback = nullptr;
+    SubscribeCallback<ID, Data> sub_all_callback = nullptr;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       const auto it = id_to_callback_map_.find(id);
       if (it != id_to_callback_map_.end()) {
-        callback = it->second;
+        sub_one_callback = it->second;
       }
+      sub_all_callback = subscribe_all_callback_;
     }
-    if (callback != nullptr) {
-      callback(id, result.back());
+    if (sub_one_callback != nullptr) {
+      sub_one_callback(id, result.back());
     }
-    if (subscribe != nullptr) {
-      subscribe(id, result.back());
+    if (sub_all_callback != nullptr) {
+      sub_all_callback(id, result.back());
     }
   };
 
