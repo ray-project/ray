@@ -1025,13 +1025,25 @@ def check_and_update_resources(num_cpus, num_gpus, memory, object_store_memory,
             ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
             round_to_nearest_unit=True)
 
+    if "object_store_memory" not in resources:
+        pass  # TODO(ekl)
+
+    if "memory" not in resources:
+        total_memory = ray.utils.get_system_memory()
+        avail_memory_units = ray_constants.to_memory_units(
+            ray.utils.estimate_available_memory(),  # TODO: subtract object store memory
+            round_to_nearest_unit=True)
+        resources["memory"] = avail_memory_units
+        logger.info(
+            "Starting Ray with {} GB memory available for workers.".format(
+                round(
+                    ray_constants.from_memory_units(avail_memory_units) / 1e9,
+                    2)))
+
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
         resources["CPU"] = multiprocessing.cpu_count()
-
-    if "memory" not in resources:
-        pass  # TODO(ekl) detect avail sys memory
 
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
