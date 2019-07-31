@@ -22,6 +22,13 @@ def find_root(dir):
     return None
 
 def validate_project(project_file):
+    """Validate a project file against the official ray project schema.
+
+    Raises an exception if the project file is not valid.
+
+    Args:
+        Path to the project .yaml file.
+    """
     dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(dir, "schema.json")) as f:
         schema = json.load(f)

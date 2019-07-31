@@ -138,6 +138,7 @@ def find_version(*filepath):
 requires = [
     "numpy >= 1.14",
     "filelock",
+    "jsonschema",
     "funcsigs",
     "click",
     "colorama",
