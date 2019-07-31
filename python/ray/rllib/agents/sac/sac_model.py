@@ -10,16 +10,13 @@ from ray.rllib.utils import try_import_tf, try_import_tfp
 tf = try_import_tf()
 tfp = try_import_tfp()
 
-
 SCALE_DIAG_MIN_MAX = (-20, 2)
 
 
 class SquashBijector(tfp.bijectors.Bijector):
     def __init__(self, validate_args=False, name="tanh"):
         super(SquashBijector, self).__init__(
-            forward_min_event_ndims=0,
-            validate_args=validate_args,
-            name=name)
+            forward_min_event_ndims=0, validate_args=validate_args, name=name)
 
     def _forward(self, x):
         return tf.nn.tanh(x)
@@ -68,6 +65,9 @@ class SACModel(TFModelV2):
         forward() should be defined in subclasses of SACModel.
         """
 
+        if tfp is None:
+            raise ImportError("tensorflow-probability package not found")
+
         super(SACModel, self).__init__(obs_space, action_space, num_outputs,
                                        model_config, name)
 
@@ -81,16 +81,14 @@ class SACModel(TFModelV2):
             tf.keras.layers.Dense(
                 units=hidden,
                 activation=getattr(tf.nn, actor_hidden_activation),
-                name="action_hidden_{}".format(i)
-            )
+                name="action_hidden_{}".format(i))
             for i, hidden in enumerate(actor_hiddens)
         ] + [
             tf.keras.layers.Dense(
                 units=tfp.layers.MultivariateNormalTriL.params_size(
                     self.action_dim),
                 activation=None,
-                name="action_out"
-            )
+                name="action_out")
         ])(self.model_out)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(
@@ -101,8 +99,7 @@ class SACModel(TFModelV2):
         )(shift_and_log_scale_diag)
 
         log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_scale_diag: tf.clip_by_value(
-                log_scale_diag, *SCALE_DIAG_MIN_MAX)
+            lambda log_scale_diag: tf.clip_by_value(log_scale_diag, *SCALE_DIAG_MIN_MAX)
         )(log_scale_diag)
 
         shift_and_log_scale_diag = tf.keras.layers.Concatenate(axis=-1)(
@@ -112,8 +109,7 @@ class SACModel(TFModelV2):
             self.action_dim)(shift_and_log_scale_diag)
 
         action_distribution = tfp.layers.DistributionLambda(
-            make_distribution_fn=SquashBijector()
-        )(raw_action_distribution)
+            make_distribution_fn=SquashBijector())(raw_action_distribution)
 
         # TODO(hartikainen): Remove the unnecessary Model call here
         self.action_distribution_model = tf.keras.Model(
@@ -128,36 +124,29 @@ class SACModel(TFModelV2):
                 tf.keras.layers.Dense(
                     units=units,
                     activation=getattr(tf.nn, critic_hidden_activation),
-                    name="{}_hidden_{}".format(name, i)
-                )
+                    name="{}_hidden_{}".format(name, i))
                 for i, units in enumerate(critic_hiddens)
             ] + [
                 tf.keras.layers.Dense(
-                    units=1,
-                    activation=None,
-                    name="{}_out".format(name)
-                )
+                    units=1, activation=None, name="{}_out".format(name))
             ])
 
             # TODO(hartikainen): Remove the unnecessary Model call here
-            q_net = tf.keras.Model(
-                [observations, actions], q_net([observations, actions]))
+            q_net = tf.keras.Model([observations, actions],
+                                   q_net([observations, actions]))
             return q_net
 
         self.q_net = build_q_net("q", self.model_out, self.actions)
         self.register_variables(self.q_net.variables)
 
         if twin_q:
-            self.twin_q_net = build_q_net(
-                "twin_q", self.model_out, self.actions)
+            self.twin_q_net = build_q_net("twin_q", self.model_out,
+                                          self.actions)
             self.register_variables(self.twin_q_net.variables)
         else:
             self.twin_q_net = None
 
-        self.log_alpha = tf.Variable(
-            0.0,
-            dtype=tf.float32,
-            name='log_alpha')
+        self.log_alpha = tf.Variable(0.0, dtype=tf.float32, name='log_alpha')
         self.alpha = tf.exp(self.log_alpha)
 
         self.register_variables([self.log_alpha])

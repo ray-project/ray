@@ -6,7 +6,6 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_policy import SACTFPolicy
 
-
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
@@ -41,6 +40,11 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_interval": 1,
     # Number of episodes to run per evaluation period.
     "evaluation_num_episodes": 1,
+    # Extra configuration that disables exploration.
+    "evaluation_config": {
+        "exploration_enabled": False,
+    },
+    "exploration_enabled": True,
 
     # === Exploration ===
     # Number of env steps to optimize for before returning
@@ -53,13 +57,6 @@ DEFAULT_CONFIG = with_common_config({
     # and will be optimized automatically.
     "target_entropy": "auto",
 
-    # If True parameter space noise will be used for exploration
-    # See https://blog.openai.com/better-exploration-with-parameter-noise/
-    "parameter_noise": False,
-
-    "pure_exploration_steps": 1000,
-    # Extra configuration that disables exploration.
-
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
@@ -67,13 +64,11 @@ DEFAULT_CONFIG = with_common_config({
     # If True prioritized replay buffer will be used.
     # TODO(hartikainen): Make sure this works or remove the option.
     "prioritized_replay": False,
-    # Alpha parameter for prioritized replay buffer.
     "prioritized_replay_alpha": 0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
-    # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
-    # Whether to LZ4 compress observations
+    "beta_annealing_fraction": 0.2,
+    "final_prioritized_replay_beta": 0.4,
     "compress_observations": False,
 
     # === Optimization ===
@@ -93,7 +88,9 @@ DEFAULT_CONFIG = with_common_config({
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    "train_batch_size": 256,
+    "train_batch_size": 2,
+    # Update the target network every `target_network_update_freq` steps.
+    "target_network_update_freq": 0,
 
     # === Parallelism ===
     # Whether to use a GPU for local optimization.
@@ -122,8 +119,5 @@ DEFAULT_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-
 SACTrainer = GenericOffPolicyTrainer.with_updates(
-    name="SAC",
-    default_config=DEFAULT_CONFIG,
-    default_policy=SACTFPolicy)
+    name="SAC", default_config=DEFAULT_CONFIG, default_policy=SACTFPolicy)

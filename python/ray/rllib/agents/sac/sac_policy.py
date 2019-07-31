@@ -59,14 +59,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACModel,
         default_model=default_model,
         name="sac_model",
-        actor_hidden_activation=(
-            config["policy_model"]["hidden_activation"]),
-        actor_hiddens=(
-            config["policy_model"]["hidden_layer_sizes"]),
-        critic_hidden_activation=(
-            config["Q_model"]["hidden_activation"]),
-        critic_hiddens=(
-            config["Q_model"]["hidden_layer_sizes"]),
+        actor_hidden_activation=(config["policy_model"]["hidden_activation"]),
+        actor_hiddens=(config["policy_model"]["hidden_layer_sizes"]),
+        critic_hidden_activation=(config["Q_model"]["hidden_activation"]),
+        critic_hiddens=(config["Q_model"]["hidden_layer_sizes"]),
         twin_q=config["twin_q"])
 
     policy.target_model = ModelCatalog.get_model_v2(
@@ -78,14 +74,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACModel,
         default_model=default_model,
         name="target_sac_model",
-        actor_hidden_activation=(
-            config["policy_model"]["hidden_activation"]),
-        actor_hiddens=(
-            config["policy_model"]["hidden_layer_sizes"]),
-        critic_hidden_activation=(
-            config["Q_model"]["hidden_activation"]),
-        critic_hiddens=(
-            config["Q_model"]["hidden_layer_sizes"]),
+        actor_hidden_activation=(config["policy_model"]["hidden_activation"]),
+        actor_hiddens=(config["policy_model"]["hidden_layer_sizes"]),
+        critic_hidden_activation=(config["Q_model"]["hidden_activation"]),
+        critic_hiddens=(config["Q_model"]["hidden_layer_sizes"]),
         twin_q=config["twin_q"])
 
     return policy.model
@@ -100,8 +92,7 @@ def postprocess_trajectory(policy,
 
 def exploration_setting_inputs(policy):
     return {
-        policy.stochastic: True,
-        policy.pure_exploration_phase: policy.cur_pure_exploration_phase,
+        policy.stochastic: policy.config["exploration_enabled"],
     }
 
 
@@ -132,12 +123,10 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
         model_out, deterministic=True)
     deterministic_actions = unsquash_actions(squashed_deterministic_actions)
 
-    actions = tf.cond(policy.stochastic,
-                      lambda: stochastic_actions,
+    actions = tf.cond(policy.stochastic, lambda: stochastic_actions,
                       lambda: deterministic_actions)
 
-    action_probabilities = tf.cond(policy.stochastic,
-                                   lambda: log_pis,
+    action_probabilities = tf.cond(policy.stochastic, lambda: log_pis,
                                    lambda: tf.zeros_like(log_pis))
     policy.output_actions = actions
     return actions, action_probabilities
@@ -178,8 +167,7 @@ def actor_critic_loss(policy, batch_tensors):
     q_t_det_policy = policy.model.get_q_values(model_out_t, policy_t)
 
     # target q network evaluation
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
-                                             policy_tp1)
+    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if policy.config["twin_q"]:
         twin_q_tp1 = policy.target_model.get_twin_q_values(
             target_model_out_tp1, policy_tp1)
@@ -189,7 +177,7 @@ def actor_critic_loss(policy, batch_tensors):
         twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
         q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
-    q_tp1 -= alpha * log_pis_t
+    q_tp1 -= tf.expand_dims(alpha * log_pis_t, 1)
 
     q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
     q_tp1_best_masked = (1.0 - tf.cast(batch_tensors[SampleBatch.DONES],
@@ -199,10 +187,8 @@ def actor_critic_loss(policy, batch_tensors):
 
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
-        batch_tensors[SampleBatch.REWARDS]
-        + policy.config["gamma"]
-        ** policy.config["n_step"]
-        * q_tp1_best_masked)
+        batch_tensors[SampleBatch.REWARDS] +
+        policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # compute the error (potentially clipped)
     if policy.config["twin_q"]:
@@ -217,9 +203,12 @@ def actor_critic_loss(policy, batch_tensors):
     critic_loss = policy.model.custom_loss(
         tf.reduce_mean(batch_tensors[PRIO_WEIGHTS] * errors), batch_tensors)
     actor_loss = tf.reduce_mean(alpha * log_pis_t - q_t_det_policy)
+
+    target_entropy = (-np.prod(policy.action_space.shape)
+                      if policy.config["target_entropy"] == "auto" else
+                      policy.config["target_entropy"])
     alpha_loss = -tf.reduce_mean(
-        log_alpha *
-        tf.stop_gradient(log_pis_t + policy.config["target_entropy"]))
+        log_alpha * tf.stop_gradient(log_pis_t + target_entropy))
 
     # save for stats function
     policy.q_t = q_t
@@ -260,28 +249,6 @@ def gradients(policy, optimizer, loss):
     return grads_and_vars
 
 
-def apply_gradients(policy, optimizer, grads_and_vars):
-    # for policy gradient, update policy net one time v.s.
-    # update critic net `policy_delay` time(s)
-    should_apply_actor_opt = tf.equal(
-        tf.mod(policy.global_step, policy.config["policy_delay"]), 0)
-
-    def make_apply_op():
-        return policy._actor_optimizer.apply_gradients(
-            policy._actor_grads_and_vars)
-
-    actor_op = tf.cond(
-        should_apply_actor_opt,
-        true_fn=make_apply_op,
-        false_fn=lambda: tf.no_op())
-    critic_op = policy._critic_optimizer.apply_gradients(
-        policy._critic_grads_and_vars)
-
-    # increment global step & apply ops
-    with tf.control_dependencies([tf.assign_add(policy.global_step, 1)]):
-        return tf.group(actor_op, critic_op)
-
-
 def stats(policy, batch_tensors):
     return {
         "td_error": tf.reduce_mean(policy.td_error),
@@ -295,16 +262,10 @@ def stats(policy, batch_tensors):
 
 class ExplorationStateMixin(object):
     def __init__(self, obs_space, action_space, config):
-        self.cur_pure_exploration_phase = False
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.pure_exploration_phase = tf.placeholder(
-            tf.bool, (), name="pure_exploration_phase")
 
     def set_epsilon(self, epsilon):
         pass
-
-    def set_pure_exploration_phase(self, pure_exploration_phase):
-        self.cur_pure_exploration_phase = pure_exploration_phase
 
     @override(Policy)
     def get_state(self):
@@ -399,12 +360,9 @@ SACTFPolicy = build_tf_policy(
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,
-    apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[
-        TargetNetworkMixin,
-        ExplorationStateMixin,
-        ActorCriticOptimizerMixin,
+        TargetNetworkMixin, ExplorationStateMixin, ActorCriticOptimizerMixin,
         ComputeTDErrorMixin
     ],
     before_init=setup_early_mixins,
