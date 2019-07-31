@@ -18,10 +18,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip
 
 tf = try_import_tf()
+tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 
@@ -58,10 +59,14 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACModel,
         default_model=default_model,
         name="sac_model",
-        actor_hidden_activation=config["actor_hidden_activation"],
-        actor_hiddens=config["actor_hiddens"],
-        critic_hidden_activation=config["critic_hidden_activation"],
-        critic_hiddens=config["critic_hiddens"],
+        actor_hidden_activation=(
+            config["policy_model"]["hidden_activation"]),
+        actor_hiddens=(
+            config["policy_model"]["hidden_layer_sizes"]),
+        critic_hidden_activation=(
+            config["Q_model"]["hidden_activation"]),
+        critic_hiddens=(
+            config["Q_model"]["hidden_layer_sizes"]),
         twin_q=config["twin_q"])
 
     policy.target_model = ModelCatalog.get_model_v2(
@@ -73,10 +78,14 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACModel,
         default_model=default_model,
         name="target_sac_model",
-        actor_hidden_activation=config["actor_hidden_activation"],
-        actor_hiddens=config["actor_hiddens"],
-        critic_hidden_activation=config["critic_hidden_activation"],
-        critic_hiddens=config["critic_hiddens"],
+        actor_hidden_activation=(
+            config["policy_model"]["hidden_activation"]),
+        actor_hiddens=(
+            config["policy_model"]["hidden_layer_sizes"]),
+        critic_hidden_activation=(
+            config["Q_model"]["hidden_activation"]),
+        critic_hiddens=(
+            config["Q_model"]["hidden_layer_sizes"]),
         twin_q=config["twin_q"])
 
     return policy.model
@@ -102,28 +111,36 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    action_out = model.get_policy_output(model_out)
 
-    # Use sigmoid to scale to [0,1], but also double magnitude of input to
-    # emulate behaviour of tanh activation used in SAC and TD3 papers.
-    sigmoid_out = tf.nn.sigmoid(2 * action_out)
-    # Rescale to actual env policy scale
-    # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
-    # get same dims)
-    action_range = (action_space.high - action_space.low)[None]
-    low_action = action_space.low[None]
-    deterministic_actions = action_range * sigmoid_out + low_action
+    def unsquash_actions(actions):
+        # Use sigmoid to scale to [0,1], but also double magnitude of input to
+        # emulate behaviour of tanh activation used in SAC and TD3 papers.
+        sigmoid_out = tf.nn.sigmoid(2 * actions)
+        # Rescale to actual env policy scale
+        # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
+        # get same dims)
+        action_range = (action_space.high - action_space.low)[None]
+        low_action = action_space.low[None]
+        unsquashed_actions = action_range * sigmoid_out + low_action
 
-    noise_type = config["exploration_noise_type"]
-    action_low = action_space.low
-    action_high = action_space.high
-    action_range = action_space.high - action_low
-    enable_stochastic = tf.logical_and(policy.stochastic,
-                                       not config["parameter_noise"])
-    actions = tf.cond(enable_stochastic, compute_stochastic_actions,
+        return unsquashed_actions
+
+    squashed_stochastic_actions, log_pis = policy.model.get_policy_output(
+        model_out, deterministic=False)
+    stochastic_actions = unsquash_actions(squashed_stochastic_actions)
+    squashed_deterministic_actions, _ = policy.model.get_policy_output(
+        model_out, deterministic=True)
+    deterministic_actions = unsquash_actions(squashed_deterministic_actions)
+
+    actions = tf.cond(policy.stochastic,
+                      lambda: stochastic_actions,
                       lambda: deterministic_actions)
+
+    action_probabilities = tf.cond(policy.stochastic,
+                                   lambda: log_pis,
+                                   lambda: tf.zeros_like(log_pis))
     policy.output_actions = actions
-    return actions, None
+    return actions, action_probabilities
 
 
 def actor_critic_loss(policy, batch_tensors):
@@ -141,11 +158,14 @@ def actor_critic_loss(policy, batch_tensors):
         "obs": batch_tensors[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-
-    policy_t = policy.model.get_policy_output(model_out_t)
-    policy_tp1 = policy.model.get_policy_output(model_out_tp1)
+    # TODO(hartikainen): figure actions and log pis
+    policy_t, log_pis_t = policy.model.get_policy_output(model_out_t)
+    policy_tp1, log_pis_tp1 = policy.model.get_policy_output(model_out_tp1)
 
     policy_tp1_smoothed = policy_tp1
+
+    log_alpha = policy.model.log_alpha
+    alpha = policy.model.alpha
 
     # q network evaluation
     q_t = policy.model.get_q_values(model_out_t,
@@ -159,24 +179,30 @@ def actor_critic_loss(policy, batch_tensors):
 
     # target q network evaluation
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
-                                             policy_tp1_smoothed)
+                                             policy_tp1)
     if policy.config["twin_q"]:
         twin_q_tp1 = policy.target_model.get_twin_q_values(
-            target_model_out_tp1, policy_tp1_smoothed)
+            target_model_out_tp1, policy_tp1)
 
     q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
     if policy.config["twin_q"]:
         twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
         q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
+    q_tp1 -= alpha * log_pis_t
+
     q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
     q_tp1_best_masked = (1.0 - tf.cast(batch_tensors[SampleBatch.DONES],
                                        tf.float32)) * q_tp1_best
 
+    assert policy.config['n_step'] == 1, policy.config['n_step']
+
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
-        batch_tensors[SampleBatch.REWARDS] +
-        policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
+        batch_tensors[SampleBatch.REWARDS]
+        + policy.config["gamma"]
+        ** policy.config["n_step"]
+        * q_tp1_best_masked)
 
     # compute the error (potentially clipped)
     if policy.config["twin_q"]:
@@ -190,17 +216,21 @@ def actor_critic_loss(policy, batch_tensors):
 
     critic_loss = policy.model.custom_loss(
         tf.reduce_mean(batch_tensors[PRIO_WEIGHTS] * errors), batch_tensors)
-    actor_loss = -tf.reduce_mean(q_t_det_policy)
+    actor_loss = tf.reduce_mean(alpha * log_pis_t - q_t_det_policy)
+    alpha_loss = -tf.reduce_mean(
+        log_alpha *
+        tf.stop_gradient(log_pis_t + policy.config["target_entropy"]))
 
     # save for stats function
     policy.q_t = q_t
     policy.td_error = td_error
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
+    policy.alpha_loss = alpha_loss
 
     # in a custom apply op we handle the losses separately, but return them
     # combined in one loss for now
-    return actor_loss + critic_loss
+    return actor_loss + critic_loss + alpha_loss
 
 
 def gradients(policy, optimizer, loss):
@@ -320,9 +350,11 @@ class ActorCriticOptimizerMixin(object):
 
         # use separate optimizers for actor & critic
         self._actor_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["actor_lr"])
+            learning_rate=config["optimization"]["actor_learning_rate"])
         self._critic_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["critic_lr"])
+            learning_rate=config["optimization"]["critic_learning_rate"])
+        self._alpha_optimizer = tf.train.AdamOptimizer(
+            learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
 class ComputeTDErrorMixin(object):
@@ -370,7 +402,9 @@ SACTFPolicy = build_tf_policy(
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[
-        TargetNetworkMixin, ExplorationStateMixin, ActorCriticOptimizerMixin,
+        TargetNetworkMixin,
+        ExplorationStateMixin,
+        ActorCriticOptimizerMixin,
         ComputeTDErrorMixin
     ],
     before_init=setup_early_mixins,
