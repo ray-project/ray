@@ -18,7 +18,7 @@ def train_example(num_replicas=1, use_gpu=False):
         optimizer_creator,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        backend="nccl")
+        backend="gloo")
     trainer1.train()
     trainer1.shutdown()
     print("success!")
@@ -45,6 +45,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     import ray
+
+
     ray.init(redis_address=args.redis_address)
     print(ray.cluster_resources())
     train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

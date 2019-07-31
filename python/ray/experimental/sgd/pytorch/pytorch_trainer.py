@@ -65,7 +65,7 @@ class PyTorchTrainer(object):
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if backend == "auto":
-            backend = "nccl" if use_gpu > 0 else "gloo"
+            backend = "nccl" if use_gpu else "gloo"
 
         logger.info("Using {} as backend.".format(backend))
 
