@@ -786,8 +786,10 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
   // Timer's callback hasn't been called on the desired time.
   if (expiry_delay > expiry_delay_limit) {
     heartbeat_timer_.cancel();
-    RAY_LOG(WARNING) << "Timer has been cancelled. Maybe the timer was delayed due to "
-                        "lots of post events and we have reset the heartbeat.";
+    RAY_LOG(WARNING)
+        << "Timer has been cancelled. Maybe the timer was delayed due to "
+           "lots of post events and we have reset the heartbeat. Expiry delay "
+        << expiry_delay << ", delay limit " << expiry_delay_limit;
     Heartbeat();
   }
 
