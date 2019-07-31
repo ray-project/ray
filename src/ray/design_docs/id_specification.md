@@ -39,7 +39,7 @@ A `TaskID` contains two parts: 1) 6 random bytes, and 2) its `ActorID` (nil if t
 An `ObjectID` contains 3 parts:
 - `index bytes`: 4 bytes to indicate the index of the object.
 - `flags bytes`: 2 bytes to indicate the flags of this object. We have 3 flags now: `is_task`, `object_type` and `transport_type`.
-- `TaskID`: 14 bytes to indicate the id of the task to which this object belongs.
+- `TaskID`: 14 bytes to indicate the ID of the task to which this object belongs.
 
 **flags bytes format**
 ```
