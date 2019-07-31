@@ -82,10 +82,10 @@ extern jfieldID java_native_ray_object_data;
 /// metadata field of NativeRayObject class
 extern jfieldID java_native_ray_object_metadata;
 
-/// Worker class
+/// WorkerImpl class
 extern jclass java_worker_class;
-/// runTaskCallback method of Worker class
-extern jmethodID java_worker_run_task_callback;
+/// execute method of Worker class
+extern jmethodID java_worker_impl_execute;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 

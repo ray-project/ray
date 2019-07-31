@@ -1,4 +1,4 @@
-#include "ray/core_worker/lib/java/org_ray_runtime_TaskInterface.h"
+#include "ray/core_worker/lib/java/org_ray_runtime_TaskInterfaceImpl.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -107,12 +107,12 @@ extern "C" {
 #endif
 
 /*
- * Class:     org_ray_runtime_TaskInterface
+ * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeSubmitTask
  * Signature:
  * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_nativeSubmitTask(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject rayFunction,
     jobject taskArgs, jobject taskOptions) {
   auto ray_function = ToRayFunction(env, rayFunction);
@@ -133,12 +133,12 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_nativeSubmitTask(
 }
 
 /*
- * Class:     org_ray_runtime_TaskInterface
+ * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeCreateActor
  * Signature:
  * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_nativeCreateActor(
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject rayFunction,
     jobject taskArgs, jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, rayFunction);
@@ -159,12 +159,12 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterface_nativeCreateActor(
 }
 
 /*
- * Class:     org_ray_runtime_TaskInterface
+ * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeSubmitActorTask
  * Signature:
  * (JJLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterface_nativeSubmitActorTask(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jlong nativeActorHandle,
     jobject rayFunction, jobject taskArgs, jobject taskOptions) {
   auto &actor_handle = *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));

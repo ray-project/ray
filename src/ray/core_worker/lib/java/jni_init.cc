@@ -44,13 +44,14 @@ jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
 
 jclass java_worker_class;
-jmethodID java_worker_run_task_callback;
+jmethodID java_worker_impl_execute;
 
 JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
   jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);
+  RAY_CHECK(ret) << "Can't load Java class " << class_name;
   env->DeleteLocalRef(tempLocalClassRef);
   return ret;
 }
@@ -129,9 +130,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
-  java_worker_class = LoadClass(env, "org/ray/runtime/Worker");
-  java_worker_run_task_callback =
-      env->GetMethodID(java_worker_class, "runTaskCallback",
+  java_worker_class = LoadClass(env, "org/ray/runtime/WorkerImpl");
+  java_worker_impl_execute =
+      env->GetMethodID(java_worker_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   return CURRENT_JNI_VERSION;

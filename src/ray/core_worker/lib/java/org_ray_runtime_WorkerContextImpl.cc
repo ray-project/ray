@@ -1,4 +1,4 @@
-#include "ray/core_worker/lib/java/org_ray_runtime_WorkerContext.h"
+#include "ray/core_worker/lib/java/org_ray_runtime_WorkerContextImpl.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/context.h"
@@ -14,11 +14,11 @@ extern "C" {
 #endif
 
 /*
- * Class:     org_ray_runtime_WorkerContext
+ * Class:     org_ray_runtime_WorkerContextImpl
  * Method:    nativeGetCurrentTask
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentTask(
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTask(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   auto spec = GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetCurrentTask();
   if (!spec) {
@@ -34,11 +34,11 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
 }
 
 /*
- * Class:     org_ray_runtime_WorkerContext
+ * Class:     org_ray_runtime_WorkerContextImpl
  * Method:    nativeGetCurrentJobId
  * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJobId(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentJobId(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   const auto &job_id =
       GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetCurrentJobID();
@@ -46,11 +46,11 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentJob
 }
 
 /*
- * Class:     org_ray_runtime_WorkerContext
+ * Class:     org_ray_runtime_WorkerContextImpl
  * Method:    nativeGetCurrentWorkerId
  * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentWorkerId(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   const auto &worker_id =
       GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetWorkerID();
@@ -58,11 +58,11 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentWor
 }
 
 /*
- * Class:     org_ray_runtime_WorkerContext
+ * Class:     org_ray_runtime_WorkerContextImpl
  * Method:    nativeGetCurrentActorId
  * Signature: (J)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrentActorId(
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentActorId(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   const auto &actor_id =
       GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetCurrentActorID();

@@ -1,4 +1,4 @@
-#include "ray/core_worker/lib/java/org_ray_runtime_Worker.h"
+#include "ray/core_worker/lib/java/org_ray_runtime_WorkerImpl.h"
 #include <jni.h>
 #include <sstream>
 #include "ray/common/id.h"
@@ -13,11 +13,11 @@ extern "C" {
 #endif
 
 /*
- * Class:     org_ray_runtime_Worker
+ * Class:     org_ray_runtime_WorkerImpl
  * Method:    nativeInit
  * Signature: (ILjava/lang/String;Ljava/lang/String;[B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jclass,
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerImpl_nativeInit(JNIEnv *env, jclass,
                                                                jint workerMode,
                                                                jstring storeSocket,
                                                                jstring rayletSocket,
@@ -42,7 +42,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jcla
 
     // invoke Java method
     jobject java_return_objects =
-        env->CallObjectMethod(local_java_worker, java_worker_run_task_callback,
+        env->CallObjectMethod(local_java_worker, java_worker_impl_execute,
                               ray_function_array_list, args_array_list);
     std::vector<std::shared_ptr<ray::RayObject>> return_objects;
     JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
@@ -70,11 +70,11 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_Worker_nativeInit(JNIEnv *env, jcla
 }
 
 /*
- * Class:     org_ray_runtime_Worker
+ * Class:     org_ray_runtime_WorkerImpl
  * Method:    nativeRunCoreWorker
  * Signature: (JLorg/ray/runtime/CoreWorkerProxy;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
+JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerImpl_nativeRunCoreWorker(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jobject javaCoreWorker) {
   local_env = env;
   local_java_worker = javaCoreWorker;
@@ -85,11 +85,11 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeRunCoreWorker(
 }
 
 /*
- * Class:     org_ray_runtime_Worker
+ * Class:     org_ray_runtime_WorkerImpl
  * Method:    nativeDestroy
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_Worker_nativeDestroy(
+JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerImpl_nativeDestroy(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
   delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }
