@@ -54,7 +54,15 @@ TEST(ActorIDTest, TestActorID) {
   }
 }
 
-// TODO(qwang): test task id.
+TEST(TaskIDTest, TestTaskID) {
+  // Round trip test for task ID.
+  const ActorID actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
+  const TaskID task_id_1 = TaskID::FromRandom(actor_id);
+  ASSERT_EQ(actor_id, task_id_1.ActorId());
+
+  const TaskID task_id_2 = TaskID::FromRandom();
+  ASSERT_EQ(ActorID::Nil(), task_id_2.ActorId());
+}
 
 TEST(ObjectIDTest, TestObjectID) {
   const static ActorID default_actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
@@ -64,14 +72,14 @@ TEST(ObjectIDTest, TestObjectID) {
     // test for put
     TestPutObjectId(default_task_id, 1);
     TestPutObjectId(default_task_id, 2);
-    TestPutObjectId(default_task_id, ObjectID::MAX_OBJECT_INDEX);
+    TestPutObjectId(default_task_id, ObjectID::kMaxObjectIndex);
   }
 
   {
     // test for return
     TestReturnObjectId(default_task_id, 1);
     TestReturnObjectId(default_task_id, 2);
-    TestReturnObjectId(default_task_id, ObjectID::MAX_OBJECT_INDEX);
+    TestReturnObjectId(default_task_id, ObjectID::kMaxObjectIndex);
   }
 
   {

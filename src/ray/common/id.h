@@ -27,6 +27,10 @@ class JobID;
 /// A helper function that get the `DriverID` of the given job.
 WorkerID ComputeDriverIdFromJob(const JobID &job_id);
 
+/// The type of this object. `PUT_OBJECT` indicates this object
+/// is generated through `ray.put` during the task's execution.
+/// And `RETURN_OBJECT` indicates this object is the return value
+/// of a task.
 enum class ObjectType : uint8_t {
   PUT_OBJECT = 0x0,
   RETURN_OBJECT = 0x1,
@@ -41,6 +45,12 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 // Change the compiler alignment to 1 byte (default is 8).
 #pragma pack(push, 1)
+
+
+/// The `ID`s of Ray.
+///
+/// Please refer the specification of `Ray.ID`s.
+/// https://github.com/ray-project/ray/blob/master/src/ray/design_docs/id_specification.md
 
 template <typename T>
 class BaseID {
@@ -86,93 +96,122 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
-  static constexpr int64_t LENGTH = 4;
+  static constexpr int64_t kLength = 4;
 
   static JobID FromInt(uint32_t value);
 
-  static size_t Size() { return LENGTH; }
+  static size_t Size() { return kLength; }
 
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
 
  private:
-  uint8_t id_[LENGTH];
+  uint8_t id_[kLength];
 };
 
 class ActorID : public BaseID<ActorID> {
  private:
-  static constexpr size_t UNIQUE_BYTES_LENGTH = 4;
+  static constexpr size_t kUniqueBytesLength = 4;
 
  public:
-  static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + JobID::LENGTH;
+  /// Length of `ActorID` in bytes.
+  static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
-  static size_t Size() { return LENGTH; }
+  /// Size of `ActorID` in bytes.
+  ///
+  /// \return Void
+  static size_t Size() { return kLength; }
 
+  /// Generate an `ActorID` randomly.
+  ///
+  /// \param job_id The job id to which this actor belongs.
+  /// \return The random `ActorID`.
   static ActorID FromRandom(const JobID &job_id);
 
   static ActorID FromRandom() = delete;
 
+  /// Constructor of `ActorID`.
   ActorID() : BaseID() {}
 
+  /// Get the job id to which this actor belongs.
+  ///
+  /// \return The job id to which this actor belongs.
   JobID JobId() const;
 
  private:
-  uint8_t id_[LENGTH];
+  uint8_t id_[kLength];
 };
 
 class TaskID : public BaseID<TaskID> {
  private:
-  static constexpr size_t UNIQUE_BYTES_LENGTH = 6;
+  static constexpr size_t kUniqueBytesLength = 6;
 
  public:
-  static constexpr size_t LENGTH = UNIQUE_BYTES_LENGTH + ActorID::LENGTH;
+  static constexpr size_t kLength = kUniqueBytesLength + ActorID::kLength;
 
   TaskID() : BaseID() {}
 
-  static size_t Size() { return LENGTH; }
+  static size_t Size() { return kLength; }
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
   /// Generate TaskID randomly.
+  ///
   /// Note that the ActorID of this task should be NIL.
+  ///
+  /// \return A random TaskID.
   static TaskID FromRandom();
 
   /// Generate TaskID from the given actor id.
+  ///
+  /// \param actor_id
+  /// \return
   static TaskID FromRandom(const ActorID &actor_id);
 
   /// Get the id of the actor to which this task belongs.
+  ///
+  /// \return The `ActorID` of the actor which creates this task.
   ActorID ActorId() const;
 
  private:
-  uint8_t id_[LENGTH];
+  uint8_t id_[kLength];
 };
 
-// TODO(qwang): Add complete designing to describe structure of ID.
 class ObjectID : public BaseID<ObjectID> {
 private:
-  static constexpr size_t INDEX_BYTES_LENGTH = sizeof(ObjectIDIndexType);
+  static constexpr size_t kIndexBytesLength = sizeof(ObjectIDIndexType);
 
-  static constexpr size_t FLAGS_BYTES_LENGTH = sizeof(ObjectIDFlagsType);
+  static constexpr size_t kFlagsBytesLength = sizeof(ObjectIDFlagsType);
 
  public:
   /// The maximum number of objects that can be returned or put by a task.
-  static constexpr int64_t MAX_OBJECT_INDEX = ((int64_t) 1 << kObjectIdIndexSize) - 1;
+  static constexpr int64_t kMaxObjectIndex = ((int64_t) 1 << kObjectIdIndexSize) - 1;
 
-  static constexpr size_t LENGTH = INDEX_BYTES_LENGTH + FLAGS_BYTES_LENGTH + TaskID::LENGTH;
+  /// The length of ObjectID in bytes.
+  static constexpr size_t kLength = kIndexBytesLength + kFlagsBytesLength + TaskID::kLength;
 
   ObjectID() : BaseID() {}
 
-  /// The maximum index of object. It also means the number of objects(put or return)
-  /// of one task.
-  static uint64_t MaxObjectIndex() { return MAX_OBJECT_INDEX; }
+  /// The maximum index of object.
+  ///
+  /// It also means the number of objects(put or return) of one task.
+  ///
+  /// \return The maximum index of object.
+  static uint64_t MaxObjectIndex() { return kMaxObjectIndex; }
 
-  static size_t Size() { return LENGTH; }
+  static size_t Size() { return kLength; }
 
   /// Generate ObjectID by the given binary string of a plasma id.
+  ///
+  /// \param from The binary string of the given plasma id.
+  /// \return The ObjectID converted from a binary string of the plasma id.
   static ObjectID FromPlasmaIdBinary(const std::string &from);
 
   /// Generate an random actor cursor object id by the given actor.
+  ///
+  /// \param actor_id TODO(qwang)
+  /// \return
   static ObjectID GenerateActorDummyObjectId(const ActorID &actor_id);
 
   plasma::ObjectID ToPlasmaId() const;
@@ -182,8 +221,7 @@ private:
   /// Get the index of this object in the task that created it.
   ///
   /// \return The index of object creation according to the task that created
-  /// this object. This is positive if the task returned the object and negative
-  /// if created by a put.
+  /// this object.
   ObjectIDIndexType ObjectIndex() const;
 
   /// Compute the task ID of the task that created the object.
@@ -197,12 +235,18 @@ private:
   bool CreatedByTask() const;
 
   /// Whether this object was created through `ray.put`.
+  ///
+  /// \return True if this object was created through `ray.put`.
   bool IsPutObject() const;
 
   /// Whether this object was created as a return object of a task.
+  ///
+  /// \return True if this object is a return value of a task.
   bool IsReturnObject() const;
 
   /// Get the transport type of this object.
+  ///
+  /// \return The type of the transport which is used to transfer this object.
   uint8_t GetTransportType() const;
 
   /// Compute the object ID of an object put by the task.
@@ -240,16 +284,16 @@ private:
  ObjectIDFlagsType GetFlags() const;
 
  private:
-  uint8_t id_[LENGTH];
+  uint8_t id_[kLength];
 };
 
-static_assert(sizeof(JobID) == JobID::LENGTH + sizeof(size_t),
+static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
-static_assert(sizeof(ActorID) == ActorID::LENGTH + sizeof(size_t),
+static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
               "ActorID size is not as expected");
-static_assert(sizeof(TaskID) == TaskID::LENGTH + sizeof(size_t),
+static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
               "TaskID size is not as expected");
-static_assert(sizeof(ObjectID) == ObjectID::LENGTH + sizeof(size_t),
+static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);

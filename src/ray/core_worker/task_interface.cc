@@ -17,7 +17,7 @@ ActorHandle::ActorHandle(
   *inner_.mutable_actor_creation_task_function_descriptor() = {
       actor_creation_task_function_descriptor.begin(),
       actor_creation_task_function_descriptor.end()};
-  const auto & actor_cursor = ObjectID::GenerateActorDummyObjectId(actor_id);
+  const auto &actor_cursor = ObjectID::GenerateActorDummyObjectId(actor_id);
   inner_.set_actor_cursor(actor_cursor.Data(), actor_cursor.Size());
   inner_.set_is_direct_call(is_direct_call);
 }
