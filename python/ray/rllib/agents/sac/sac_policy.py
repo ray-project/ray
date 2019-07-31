@@ -62,7 +62,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         actor_hiddens=config["actor_hiddens"],
         critic_hidden_activation=config["critic_hidden_activation"],
         critic_hiddens=config["critic_hiddens"],
-        parameter_noise=config["parameter_noise"],
         twin_q=config["twin_q"])
 
     policy.target_model = ModelCatalog.get_model_v2(
@@ -78,7 +77,6 @@ def build_sac_model(policy, obs_space, action_space, config):
         actor_hiddens=config["actor_hiddens"],
         critic_hidden_activation=config["critic_hidden_activation"],
         critic_hiddens=config["critic_hiddens"],
-        parameter_noise=config["parameter_noise"],
         twin_q=config["twin_q"])
 
     return policy.model
@@ -88,15 +86,12 @@ def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
                            episode=None):
-    if policy.config["parameter_noise"]:
-        policy.adjust_param_noise_sigma(sample_batch)
     return _postprocess_dqn(policy, sample_batch)
 
 
 def exploration_setting_inputs(policy):
     return {
         policy.stochastic: True,
-        policy.noise_scale: policy.cur_noise_scale,
         policy.pure_exploration_phase: policy.cur_pure_exploration_phase,
     }
 
@@ -123,68 +118,6 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     action_low = action_space.low
     action_high = action_space.high
     action_range = action_space.high - action_low
-
-    def compute_stochastic_actions():
-        def make_noisy_actions():
-            # shape of deterministic_actions is [None, dim_action]
-            if noise_type == "gaussian":
-                # add IID Gaussian noise for exploration, TD3-style
-                normal_sample = policy.noise_scale * tf.random_normal(
-                    tf.shape(deterministic_actions),
-                    stddev=config["exploration_gaussian_sigma"])
-                stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + normal_sample,
-                    action_low * tf.ones_like(deterministic_actions),
-                    action_high * tf.ones_like(deterministic_actions))
-            elif noise_type == "ou":
-                # add OU noise for exploration, SAC-style
-                zero_acts = action_low.size * [.0]
-                exploration_sample = tf.get_variable(
-                    name="ornstein_uhlenbeck",
-                    dtype=tf.float32,
-                    initializer=zero_acts,
-                    trainable=False)
-                normal_sample = tf.random_normal(
-                    shape=[action_low.size], mean=0.0, stddev=1.0)
-                ou_new = config["exploration_ou_theta"] \
-                    * -exploration_sample \
-                    + config["exploration_ou_sigma"] * normal_sample
-                exploration_value = tf.assign_add(exploration_sample, ou_new)
-                base_scale = config["exploration_ou_noise_scale"]
-                noise = policy.noise_scale * base_scale \
-                    * exploration_value * action_range
-                stochastic_actions = tf.clip_by_value(
-                    deterministic_actions + noise,
-                    action_low * tf.ones_like(deterministic_actions),
-                    action_high * tf.ones_like(deterministic_actions))
-            else:
-                raise ValueError(
-                    "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
-                    noise_type)
-            return stochastic_actions
-
-        def make_uniform_random_actions():
-            # pure random exploration option
-            uniform_random_actions = tf.random_uniform(
-                tf.shape(deterministic_actions))
-            # rescale uniform random actions according to action range
-            tf_range = tf.constant(action_range[None], dtype="float32")
-            tf_low = tf.constant(action_low[None], dtype="float32")
-            uniform_random_actions = uniform_random_actions * tf_range \
-                + tf_low
-            return uniform_random_actions
-
-        stochastic_actions = tf.cond(
-            # need to condition on noise_scale > 0 because zeroing
-            # noise_scale is how a worker signals no noise should be used
-            # (this is ugly and should be fixed by adding an "eval_mode"
-            # config flag or something)
-            tf.logical_and(policy.pure_exploration_phase,
-                           policy.noise_scale > 0),
-            true_fn=make_uniform_random_actions,
-            false_fn=make_noisy_actions)
-        return stochastic_actions
-
     enable_stochastic = tf.logical_and(policy.stochastic,
                                        not config["parameter_noise"])
     actions = tf.cond(enable_stochastic, compute_stochastic_actions,
@@ -212,18 +145,7 @@ def actor_critic_loss(policy, batch_tensors):
     policy_t = policy.model.get_policy_output(model_out_t)
     policy_tp1 = policy.model.get_policy_output(model_out_tp1)
 
-    if policy.config["smooth_target_policy"]:
-        target_noise_clip = policy.config["target_noise_clip"]
-        clipped_normal_sample = tf.clip_by_value(
-            tf.random_normal(
-                tf.shape(policy_tp1), stddev=policy.config["target_noise"]),
-            -target_noise_clip, target_noise_clip)
-        policy_tp1_smoothed = tf.clip_by_value(
-            policy_tp1 + clipped_normal_sample,
-            policy.action_space.low * tf.ones_like(policy_tp1),
-            policy.action_space.high * tf.ones_like(policy_tp1))
-    else:
-        policy_tp1_smoothed = policy_tp1
+    policy_tp1_smoothed = policy_tp1
 
     # q network evaluation
     q_t = policy.model.get_q_values(model_out_t,
@@ -261,29 +183,14 @@ def actor_critic_loss(policy, batch_tensors):
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
         td_error = td_error + twin_td_error
-        if policy.config["use_huber"]:
-            errors = huber_loss(td_error, policy.config["huber_threshold"]) \
-                + huber_loss(twin_td_error, policy.config["huber_threshold"])
-        else:
-            errors = 0.5 * tf.square(td_error) + 0.5 * tf.square(twin_td_error)
+        errors = 0.5 * (tf.square(td_error) + tf.square(twin_td_error))
     else:
         td_error = q_t_selected - q_t_selected_target
-        if policy.config["use_huber"]:
-            errors = huber_loss(td_error, policy.config["huber_threshold"])
-        else:
-            errors = 0.5 * tf.square(td_error)
+        errors = 0.5 * tf.square(td_error)
 
     critic_loss = policy.model.custom_loss(
         tf.reduce_mean(batch_tensors[PRIO_WEIGHTS] * errors), batch_tensors)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
-
-    if policy.config["l2_reg"] is not None:
-        for var in policy.model.policy_variables():
-            if "bias" not in var.name:
-                actor_loss += policy.config["l2_reg"] * tf.nn.l2_loss(var)
-        for var in policy.model.q_variables():
-            if "bias" not in var.name:
-                critic_loss += policy.config["l2_reg"] * tf.nn.l2_loss(var)
 
     # save for stats function
     policy.q_t = q_t
@@ -358,60 +265,24 @@ def stats(policy, batch_tensors):
 
 class ExplorationStateMixin(object):
     def __init__(self, obs_space, action_space, config):
-        self.cur_noise_scale = 1.0
         self.cur_pure_exploration_phase = False
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
         self.pure_exploration_phase = tf.placeholder(
             tf.bool, (), name="pure_exploration_phase")
 
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.get_session().run(self.model.add_noise_op)
-
-    def adjust_param_noise_sigma(self, sample_batch):
-        # adjust the sigma of parameter space noise
-        states, noisy_actions = [
-            list(x) for x in sample_batch.columns(
-                [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
-        ]
-        self.get_session().run(self.model.remove_noise_op)
-        clean_actions = self.get_session().run(
-            self.output_actions,
-            feed_dict={
-                self.get_placeholder(SampleBatch.CUR_OBS): states,
-                self.stochastic: False,
-                self.noise_scale: .0,
-                self.pure_exploration_phase: False,
-            })
-        distance_in_action_space = np.sqrt(
-            np.mean(np.square(clean_actions - noisy_actions)))
-        self.model.update_action_noise(
-            self.get_session(), distance_in_action_space,
-            self.config["exploration_ou_sigma"], self.cur_noise_scale)
-
     def set_epsilon(self, epsilon):
-        # set_epsilon is called by optimizer to anneal exploration as
-        # necessary, and to turn it off during evaluation. The "epsilon" part
-        # is a carry-over from DQN, which uses epsilon-greedy exploration
-        # rather than adding action noise to the output of a policy network.
-        self.cur_noise_scale = epsilon
+        pass
 
     def set_pure_exploration_phase(self, pure_exploration_phase):
         self.cur_pure_exploration_phase = pure_exploration_phase
 
     @override(Policy)
     def get_state(self):
-        return [
-            TFPolicy.get_state(self), self.cur_noise_scale,
-            self.cur_pure_exploration_phase
-        ]
+        return []
 
     @override(Policy)
     def set_state(self, state):
-        TFPolicy.set_state(self, state[0])
-        self.set_epsilon(state[1])
-        self.set_pure_exploration_phase(state[2])
+        pass
 
 
 class TargetNetworkMixin(object):

@@ -3,10 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import (
-    GenericOffPolicyTrainer, update_worker_explorations)
+from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_policy import SACTFPolicy
-from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -125,35 +123,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_exploration_schedule(config, worker_index):
-    return ConstantSchedule(0.0)
-
-
-def setup_sac_exploration(trainer):
-    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
-    trainer.explorations = [
-        make_exploration_schedule(trainer.config, i)
-        for i in range(trainer.config["num_workers"])
-    ]
-
-
-def add_pure_exploration_phase(trainer):
-    global_timestep = trainer.optimizer.num_steps_sampled
-    pure_expl_steps = trainer.config["pure_exploration_steps"]
-    if pure_expl_steps:
-        # tell workers whether they should do pure exploration
-        only_explore = global_timestep < pure_expl_steps
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.set_pure_exploration_phase(only_explore))
-        for e in trainer.workers.remote_workers():
-            e.foreach_trainable_policy.remote(
-                lambda p, _: p.set_pure_exploration_phase(only_explore))
-    update_worker_explorations(trainer)
-
-
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
-    default_policy=SACTFPolicy,
-    before_init=setup_sac_exploration,
-    before_train_step=add_pure_exploration_phase)
+    default_policy=SACTFPolicy)
