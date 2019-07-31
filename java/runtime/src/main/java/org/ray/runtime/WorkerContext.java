@@ -1,81 +1,38 @@
 package org.ray.runtime;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import java.nio.ByteBuffer;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
 
-/**
- * This is a wrapper class for worker context of core worker.
- */
-public class WorkerContext {
+public interface WorkerContext {
 
   /**
-   * The native pointer of core worker.
+   * ID of the current worker.
    */
-  private final long nativeCoreWorkerPointer;
-
-  private ClassLoader currentClassLoader;
-
-  public WorkerContext(long nativeCoreWorkerPointer) {
-    this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
-  }
-
-  /**
-   * @return The ID of the current worker.
-   */
-  public UniqueId getCurrentWorkerId() {
-    return UniqueId.fromByteBuffer(nativeGetCurrentWorkerId(nativeCoreWorkerPointer));
-  }
+  UniqueId getCurrentWorkerId();
 
   /**
    * The ID of the current job.
    */
-  public JobId getCurrentJobId() {
-    return JobId.fromByteBuffer(nativeGetCurrentJobId(nativeCoreWorkerPointer));
-  }
+  JobId getCurrentJobId();
 
   /**
    * The ID of the current job.
    */
-  public UniqueId getCurrentActorId() {
-    return UniqueId.fromByteBuffer(nativeGetCurrentActorId(nativeCoreWorkerPointer));
-  }
+  UniqueId getCurrentActorId();
 
   /**
-   * @return The class loader which is associated with the current job.
+   * The class loader which is associated with the current job.
    */
-  public ClassLoader getCurrentClassLoader() {
-    return currentClassLoader;
-  }
+  ClassLoader getCurrentClassLoader();
 
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-    if (this.currentClassLoader != currentClassLoader) {
-      this.currentClassLoader = currentClassLoader;
-    }
-  }
+  /**
+   * Set the current class loader.
+   */
+  void setCurrentClassLoader(ClassLoader currentClassLoader);
 
   /**
    * Get the current task.
    */
-  public TaskSpec getCurrentTask() {
-    byte[] bytes = nativeGetCurrentTask(nativeCoreWorkerPointer);
-    if (bytes == null) {
-      return null;
-    }
-    try {
-      return TaskSpec.parseFrom(bytes);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  private static native byte[] nativeGetCurrentTask(long nativeCoreWorkerPointer);
-
-  private static native ByteBuffer nativeGetCurrentJobId(long nativeCoreWorkerPointer);
-
-  private static native ByteBuffer nativeGetCurrentWorkerId(long nativeCoreWorkerPointer);
-
-  private static native ByteBuffer nativeGetCurrentActorId(long nativeCoreWorkerPointer);
+  TaskSpec getCurrentTask();
 }

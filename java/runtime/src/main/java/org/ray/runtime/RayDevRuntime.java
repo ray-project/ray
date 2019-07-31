@@ -4,9 +4,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.objectstore.MockObjectInterface;
-import org.ray.runtime.objectstore.ObjectStoreProxy;
-import org.ray.runtime.raylet.MockRayletClient;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
@@ -14,31 +11,33 @@ public class RayDevRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private MockObjectInterface objectInterface;
-
   private AtomicInteger jobCounter = new AtomicInteger(0);
+
+  MockObjectInterface objectInterface;
+  MockTaskInterface taskInterface;
 
   @Override
   public void start() {
     // Reset library path at runtime.
     resetLibraryPath();
 
-    objectInterface = new MockObjectInterface();
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
-    throw new NotImplementedException();
+    objectInterface = new MockObjectInterface();
+    taskInterface = new MockTaskInterface(this, objectInterface, rayConfig.numberExecThreadsForDevRuntime);
+    objectInterface.addObjectPutCallback(taskInterface::onObjectPut);
+    worker = new MockWorker(this);
   }
 
   @Override
   public void shutdown() {
-    //worker.destroy();
+    worker = null;
   }
 
   @Override
-  public Worker getWorker() {
-//    return ((MockRayletClient) rayletClient).getCurrentWorker();
-    throw new NotImplementedException();
+  public AbstractWorker getWorker() {
+    return worker;
   }
 
   private JobId nextJobId() {

@@ -5,8 +5,8 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.AbstractWorker;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.Worker;
 import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.ray.runtime.util.Serializer;
 
@@ -59,7 +59,7 @@ public class ArgumentsBuilder {
   /**
    * Convert list of NativeRayObject to real function arguments.
    */
-  public static Object[] unwrap(Worker worker, List<NativeRayObject> args) {
+  public static Object[] unwrap(AbstractWorker worker, List<NativeRayObject> args) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {
       realArgs[i] = worker.getObjectStoreProxy().deserialize(args.get(i), null);

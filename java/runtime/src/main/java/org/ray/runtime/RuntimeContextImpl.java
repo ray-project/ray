@@ -25,7 +25,7 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public UniqueId getCurrentActorId() {
-    Worker worker = runtime.getWorker();
+    AbstractWorker worker = runtime.getWorker();
     Preconditions.checkState(worker != null);
     UniqueId actorId = worker.getWorkerContext().getCurrentActorId();
     Preconditions.checkState(actorId != null && !actorId.isNil(),

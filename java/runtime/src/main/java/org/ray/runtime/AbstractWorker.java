@@ -16,37 +16,26 @@ import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
-import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.nativeTypes.NativeRayObject;
-import org.ray.runtime.objectstore.ObjectInterfaceImpl;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClient;
-import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * The worker, which pulls tasks from raylet and executes them continuously.
- */
-public class Worker {
+public abstract class AbstractWorker {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractWorker.class);
 
   // TODO(hchen): Use the C++ config.
   private static final int NUM_ACTOR_CHECKPOINTS_TO_KEEP = 20;
 
-  /**
-   * The native pointer of core worker.
-   */
-  private final long nativeCoreWorkerPointer;
-
-  private final ObjectStoreProxy objectStoreProxy;
-  private final TaskInterface taskInterface;
-  private RayletClient rayletClient;
-  private final FunctionManager functionManager;
-  private final AbstractRayRuntime runtime;
-  private WorkerContext workerContext;
+  protected ObjectStoreProxy objectStoreProxy;
+  protected TaskInterface taskInterface;
+  protected RayletClient rayletClient;
+  protected FunctionManager functionManager;
+  protected AbstractRayRuntime runtime;
+  protected WorkerContext workerContext;
 
   /**
    * The current actor object, if this worker is an actor, otherwise null.
@@ -73,29 +62,17 @@ public class Worker {
    */
   private long lastCheckpointTimestamp = 0;
 
-  Worker(WorkerType workerType, AbstractRayRuntime runtime, FunctionManager functionManager,
-      String storeSocket, String rayletSocket, JobId jobId) {
+  AbstractWorker(AbstractRayRuntime runtime) {
     this.runtime = runtime;
-    this.functionManager = functionManager;
-    nativeCoreWorkerPointer = nativeInit(workerType.getNumber(), storeSocket, rayletSocket,
-        jobId.getBytes());
-    Preconditions.checkState(nativeCoreWorkerPointer != 0);
-    rayletClient = new RayletClientImpl(nativeCoreWorkerPointer);
-    workerContext = new WorkerContext(nativeCoreWorkerPointer);
-    objectStoreProxy = new ObjectStoreProxy(workerContext,
-        new ObjectInterfaceImpl(nativeCoreWorkerPointer));
-    taskInterface = new TaskInterface(nativeCoreWorkerPointer);
+    this.functionManager = runtime.functionManager;
   }
 
-  // This method is required by JNI
-  private List<NativeRayObject> runTaskCallback(List<String> rayFunctionInfo,
+  protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
       List<NativeRayObject> argsBytes) {
     TaskSpec taskSpec = workerContext.getCurrentTask();
     JobId jobId = JobId.fromByteBuffer(taskSpec.getJobId().asReadOnlyByteBuffer());
-    TaskId taskId = TaskId.fromByteBuffer(taskSpec.getTaskId().asReadOnlyByteBuffer());
     TaskType taskType = taskSpec.getType();
-    String taskInfo = taskId + " " + String.join(".", rayFunctionInfo);
-    LOGGER.debug("Executing task {}", taskInfo);
+    LOGGER.debug("Executing task {}", taskSpec);
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
@@ -137,12 +114,12 @@ public class Worker {
         maybeLoadCheckpoint(result, actorId);
         currentActor = result;
       }
-      LOGGER.debug("Finished executing task {}", taskInfo);
+      LOGGER.debug("Finished executing task {}", new TaskId(taskSpec.getTaskId().toByteArray()));
     } catch (Exception e) {
-      LOGGER.error("Error executing task " + taskInfo, e);
+      LOGGER.error("Error executing task " + taskSpec, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         returnObjects.add(objectStoreProxy
-            .serialize(new RayTaskException("Error executing task " + taskInfo, e)));
+            .serialize(new RayTaskException("Error executing task " + taskSpec, e)));
       } else {
         actorCreationException = e;
       }
@@ -216,10 +193,6 @@ public class Worker {
     }
   }
 
-  public void loop() {
-    nativeRunCoreWorker(nativeCoreWorkerPointer, this);
-  }
-
   public ObjectStoreProxy getObjectStoreProxy() {
     return objectStoreProxy;
   }
@@ -235,15 +208,4 @@ public class Worker {
   public RayletClient getRayletClient() {
     return rayletClient;
   }
-
-  public void destroy() {
-    nativeDestroy(nativeCoreWorkerPointer);
-  }
-
-  private static native long nativeInit(int workerMode, String storeSocket,
-      String rayletSocket, byte[] jobId);
-
-  private static native void nativeRunCoreWorker(long nativeCoreWorkerPointer, Worker worker);
-
-  private static native void nativeDestroy(long nativeWorkerContextPointer);
 }

@@ -40,7 +40,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setJobId(gcsClient.nextJobId());
     }
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    worker = new Worker(rayConfig.workerMode, this, functionManager,
+    worker = new WorkerImpl(rayConfig.workerMode, this,
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
         rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL);
 
@@ -56,7 +56,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (null != manager) {
       manager.cleanup();
     }
-    worker.destroy();
+    ((WorkerImpl)worker).destroy();
+  }
+
+  public void loop() {
+    ((WorkerImpl)worker).loop();
   }
 
   /**
