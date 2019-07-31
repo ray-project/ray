@@ -45,5 +45,4 @@ if __name__ == "__main__":
     import ray
 
     ray.init(redis_address=args.redis_address)
-    print(ray.cluster_resources())
     train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
