@@ -49,7 +49,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 /// The `ID`s of Ray.
 ///
-/// Please refer the specification of `Ray.ID`s.
+/// Please refer to the specification of Ray UniqueIDs.
 /// https://github.com/ray-project/ray/blob/master/src/ray/design_docs/id_specification.md
 
 template <typename T>
