@@ -51,7 +51,7 @@ An `ObjectID` contains 3 parts:
 - The (1) `is_task` part is one bit to indicate whether this `ObjectID` generated from a task.
 
 - The (2) `object_type` part is one bit to indicate the type of this object, whether a `PUT_OBJECT` or a `RETURN_OBJECT`.
-    - `PUT_OBJECT` indicates this object is generated through `ray.put`.
+    - `PUT_OBJECT` indicates this object is generated through `ray.put` during the task's execution.
     - `RETURN_OBJECT` indicates this object is the return value of a task.
 
 - The (3) `transport_type` part is 3 bits to indicate the type of the transport which is used to transfer this object. So it can support 8 typess.
