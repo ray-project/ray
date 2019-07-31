@@ -8,8 +8,8 @@ from ray.experimental.sgd.pytorch import PyTorchTrainer
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
-
 import torchvision.models as models
+
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer1 = PyTorchTrainer(
@@ -45,7 +45,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     import ray
-
 
     ray.init(redis_address=args.redis_address)
     print(ray.cluster_resources())
