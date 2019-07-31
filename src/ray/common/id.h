@@ -166,7 +166,7 @@ class TaskID : public BaseID<TaskID> {
   /// Generate TaskID from the given actor id.
   ///
   /// \param actor_id
-  /// \return
+  /// \return A random TaskID for the given actor.
   static TaskID FromRandom(const ActorID &actor_id);
 
   /// Get the id of the actor to which this task belongs.
