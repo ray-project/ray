@@ -825,9 +825,9 @@ void NodeManager::HandleRegisterClientRequest(
       std::make_shared<Worker>(worker_id, request.worker_pid(), request.language(),
                                request.port(), client_call_manager_);
 
-  RAY_LOG(DEBUG) << "Received a RegisterClientRequest, worker id: " << worker_id
-                 << ", is worker: " << request.is_worker()
-                 << ", pid: " << request.worker_pid();
+  RAY_LOG(DEBUG) << "Received a RegisterClientRequest. Worker id: " << worker_id
+                 << ". Is worker: " << request.is_worker()
+                 << ". Worker pid " << request.worker_pid();
 
   if (request.is_worker()) {
     // Register the new worker.
