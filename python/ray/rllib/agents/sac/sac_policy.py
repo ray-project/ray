@@ -267,14 +267,6 @@ class ExplorationStateMixin(object):
     def set_epsilon(self, epsilon):
         pass
 
-    @override(Policy)
-    def get_state(self):
-        return []
-
-    @override(Policy)
-    def set_state(self, state):
-        pass
-
 
 class TargetNetworkMixin(object):
     def __init__(self, config):
