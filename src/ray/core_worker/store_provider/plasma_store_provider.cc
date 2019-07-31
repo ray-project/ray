@@ -36,7 +36,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   // First, attempt to fetch all of the required objects without reconstructing.
   for (int64_t start = 0; start < ids.size(); start += batch_size) {
-    int64_t end = std::max(start + batch_size, int64_t(ids.size()));
+    int64_t end = std::min(start + batch_size, int64_t(ids.size()));
     const std::vector<ObjectID> ids_slice(ids.cbegin() + start, ids.cbegin() + end);
     RAY_CHECK_OK(
         raylet_client_->FetchOrReconstruct(ids_slice, /*fetch_only=*/true, task_id));
