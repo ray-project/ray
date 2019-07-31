@@ -8,9 +8,7 @@ message AssignTaskRequest {
   // The task to be pushed.
   Task task = 1;
   // A list of the resources reserved for this worker.
-  // TODO(zhijunfu): `resource_ids` is represented as
-  // flatbutters-serialized bytes, will be moved to protobuf later.
-  bytes resource_ids = 2;
+  repeated ResourceIdSetInfo resource_ids = 2;
 }
 
 message AssignTaskReply {

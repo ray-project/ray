@@ -12,6 +12,7 @@ import json
 import logging
 import numpy as np
 import os
+import redis
 import signal
 from six.moves import queue
 import sys
@@ -40,7 +41,6 @@ import ray.state
 from ray import (
     ActorHandleID,
     ActorID,
-    ClientID,
     WorkerID,
     JobID,
     ObjectID,
@@ -362,10 +362,14 @@ class Worker(object):
                         logger.warning(warning_message)
 
     def put_object(self, object_id, value):
-        """Put value in the local object store with object id objectid.
+        """Put value in the local object store with object id `objectid`.
 
-        This assumes that the value for objectid has not yet been placed in the
-        local object store.
+        This assumes that the value for `objectid` has not yet been placed in
+        the local object store. If the plasma store is full, the worker will
+        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
+        retry will delay for an exponentially doubling amount of time,
+        starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
+        will be raised.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
@@ -373,10 +377,9 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
+            plasma.PlasmaStoreFull: This is raised if the attempt to store the
+                object fails because the object store is full even after
+                multiple retries.
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
@@ -387,27 +390,48 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        # Serialize and put the object in the object store.
+        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
+        for attempt in reversed(
+                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
+            try:
+                self._try_store_and_register(object_id, value)
+                break
+            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
+                if attempt:
+                    logger.debug(
+                        "Waiting {} secs for plasma to drain.".format(delay))
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    raise plasma_exc
+
+    def _try_store_and_register(self, object_id, value):
+        """Wraps `store_and_register` with cases for existence and pickling.
+
+        Args:
+            object_id (object_id.ObjectID): The object ID of the value to be
+                put.
+            value: The value to put in the object store.
+        """
         try:
             self.store_and_register(object_id, value)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare the hashes
+            # need to add it again. TODO(rkn): We need to compare hashes
             # and make sure that the objects are in fact the same. We also
-            # should return an error code to the caller instead of printing a
+            # should return an error code to caller instead of printing a
             # message.
-            logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
+            logger.info("The object with ID {} already exists "
+                        "in the object store.".format(object_id))
         except TypeError:
-            # This error can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need these extra
-            # fallbacks here to start from the beginning. Hopefully the object
-            # could have a `__reduce__` method.
+            # TypeError can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need
+            # these extra fallbacks here to start from the beginning.
+            # Hopefully the object could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "falling back to cloudpickle.".format(
+                                   type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
@@ -1520,8 +1544,12 @@ def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
-                                         {"exception": error_message})
+        try:
+            global_worker.redis_client.hmset(
+                b"Drivers:" + global_worker.worker_id,
+                {"exception": error_message})
+        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
+            logger.warning("Could not push exception to redis.")
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1583,6 +1611,8 @@ def print_logs(redis_client, threads_stopped):
                     "The driver may not be able to keep up with the "
                     "stdout/stderr of the workers. To avoid forwarding logs "
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("print_logs: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1681,6 +1711,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 task_error_queue.put((error_message, time.time()))
             else:
                 logger.error(error_message)
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1914,7 +1946,7 @@ def connect(node,
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,
-        ClientID(worker.worker_id),
+        WorkerID(worker.worker_id),
         (mode == WORKER_MODE),
         worker.current_job_id,
     )

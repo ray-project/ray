@@ -13,7 +13,7 @@ namespace gcs {
 /// \class SubscriptionExecutor
 /// SubscriptionExecutor class encapsulates the implementation details of
 /// subscribe/unsubscribe to elements (e.g.: actors or tasks or objects or nodes).
-/// Either subscribe to a specific element or subscribe to all elements.
+/// Support subscribe to a specific element or subscribe to all elements.
 template <typename ID, typename Data, typename Table>
 class SubscriptionExecutor {
  public:
@@ -22,6 +22,7 @@ class SubscriptionExecutor {
   ~SubscriptionExecutor() {}
 
   /// Subscribe to operations of all elements.
+  /// Repeated subscription will return a failure.
   ///
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each update will be received. Else, only
@@ -35,6 +36,7 @@ class SubscriptionExecutor {
                         const StatusCallback &done);
 
   /// Subscribe to operations of an element.
+  /// Repeated subscription to an element will return a failure.
   ///
   /// \param client_id The type of update to listen to. If this is nil, then a
   /// message for each update will be received. Else, only

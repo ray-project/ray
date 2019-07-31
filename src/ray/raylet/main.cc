@@ -32,14 +32,6 @@ DEFINE_bool(enable_stdout_exporter, false,
 
 #ifndef RAYLET_TEST
 
-/// A helper function that parse the worker command string into a vector of arguments.
-static std::vector<std::string> parse_worker_command(std::string worker_command) {
-  std::istringstream iss(worker_command);
-  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-                                  std::istream_iterator<std::string>());
-  return result;
-}
-
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
@@ -73,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.7.2"},
+      {ray::stats::VersionKey, "0.8.0.dev3"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -118,11 +110,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::PYTHON, parse_worker_command(python_worker_command)));
+        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(ray::Language::JAVA, parse_worker_command(java_worker_command)));
+        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
@@ -155,7 +147,7 @@ int main(int argc, char *argv[]) {
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                  << "rpc_service_threads_number = "
                  << object_manager_config.rpc_service_threads_number
-                 << "object_chunk_size = " << object_manager_config.object_chunk_size;
+                 << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
@@ -179,6 +171,7 @@ int main(int argc, char *argv[]) {
       server.reset();
       gcs_client->Disconnect();
       main_service.stop();
+      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
     // Give a timeout for this Disconnect operation.

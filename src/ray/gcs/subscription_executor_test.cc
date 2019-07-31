@@ -67,7 +67,6 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
       Status status = actor_accessor.AsyncRegister(actor, done);
       RAY_CHECK_OK(status);
     }
-    // WaitPendingDone(wait_pending_timeout_);
     return id_to_datas_.size();
   }
 
@@ -114,10 +113,14 @@ TEST_F(SubscriptionExecutorTest, SubscribeOne) {
 }
 
 TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
+  size_t sub_factor = 0;
+
+  ++sub_factor;
   ++do_sub_pending_count_;
   Status status =
       actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.ok());
+  ++sub_factor;
   for (const auto &item : id_to_datas_) {
     ++do_sub_pending_count_;
     status = actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), item.first, subscribe_,
@@ -125,14 +128,16 @@ TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
     ASSERT_TRUE(status.ok());
   }
   size_t register_count = AsyncRegisterActorToGcs();
-  sub_pending_count_ = register_count * 2;
+  sub_pending_count_ = register_count * sub_factor;
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 
 TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
-  ++do_sub_pending_count_;
+  size_t sub_factor = 0;
   // Subscribe to all
+  ++sub_factor;
+  ++do_sub_pending_count_;
   Status status =
       actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.ok());
@@ -177,6 +182,7 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_unsub_pending_count_, wait_pending_timeout_);
+  ++sub_factor;
   for (const auto &item : id_to_datas_) {
     ++do_sub_pending_count_;
     status = actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), item.first, subscribe_,
@@ -185,7 +191,7 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
   }
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   size_t register_count = AsyncRegisterActorToGcs();
-  sub_pending_count_ = register_count * 2;
+  sub_pending_count_ = register_count * sub_factor;
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import json
 import os
+import pyarrow.plasma as plasma
 import pytest
 import sys
 import tempfile
@@ -655,7 +656,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     cluster.wait_for_nodes()
 
-    client_ids = {item["ClientID"] for item in ray.nodes()}
+    node_ids = {item["NodeID"] for item in ray.nodes()}
 
     # Try to make sure that the monitor has received at least one heartbeat
     # from the node.
@@ -670,12 +671,12 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
     # Extract the client IDs from the error messages. This will need to be
     # changed if the error message changes.
-    warning_client_ids = {
+    warning_node_ids = {
         item["message"].split(" ")[5]
         for item in relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     }
 
-    assert client_ids == warning_client_ids
+    assert node_ids == warning_node_ids
 
 
 def test_raylet_crash_when_get(ray_start_regular):
@@ -688,7 +689,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(Exception, match=r".*Connection closed unexpectedly.*"):
+    with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(nonexistent_id)
     thread.join()
 
@@ -719,3 +720,48 @@ def test_connect_with_disconnected_node(shutdown_only):
     # There is no connection error to a dead node.
     info = relevant_errors(ray_constants.RAYLET_CONNECTION_ERROR)
     assert len(info) == 0
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 5,
+        "object_store_memory": 10**7
+    }],
+    indirect=True)
+@pytest.mark.parametrize("num_actors", [1, 2, 5])
+def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
+    @ray.remote
+    class LargeMemoryActor(object):
+        def some_expensive_task(self):
+            return np.zeros(10**7 // 2, dtype=np.uint8)
+
+    actors = [LargeMemoryActor.remote() for _ in range(num_actors)]
+    for _ in range(10):
+        pending = [a.some_expensive_task.remote() for a in actors]
+        while pending:
+            [done], pending = ray.wait(pending, num_returns=1)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 2,
+        "object_store_memory": 10**7
+    }],
+    indirect=True)
+def test_fill_plasma_exception(ray_start_cluster_head):
+    @ray.remote
+    class LargeMemoryActor(object):
+        def some_expensive_task(self):
+            return np.zeros(10**7 + 2, dtype=np.uint8)
+
+        def test(self):
+            return 1
+
+    actor = LargeMemoryActor.remote()
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(actor.some_expensive_task.remote())
+    # Make sure actor does not die
+    ray.get(actor.test.remote())
+
+    with pytest.raises(plasma.PlasmaStoreFull):
+        ray.put(np.zeros(10**7 + 2, dtype=np.uint8))

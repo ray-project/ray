@@ -151,12 +151,12 @@ def build_trainer(name,
 
         def __getstate__(self):
             state = Trainer.__getstate__(self)
-            state.update(self.state)
+            state["trainer_state"] = self.state.copy()
             return state
 
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
-            self.state = state
+            self.state = state["trainer_state"].copy()
 
     @staticmethod
     def with_updates(**overrides):

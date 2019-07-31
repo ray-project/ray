@@ -7,7 +7,7 @@ import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.misc import linear, normc_initializer
+from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.tf_ops import scope_vars
@@ -50,6 +50,9 @@ def make_v1_wrapper(legacy_model_cls):
             # Tracks branches created so far
             self.branches_created = set()
 
+            # Tracks update ops
+            self._update_ops = None
+
             with tf.variable_scope(self.name) as scope:
                 self.variable_scope = scope
 
@@ -68,9 +71,14 @@ def make_v1_wrapper(legacy_model_cls):
             else:
                 # create a new model instance
                 with tf.variable_scope(self.name):
+                    prev_update_ops = set(
+                        tf.get_collection(tf.GraphKeys.UPDATE_OPS))
                     new_instance = self.legacy_model_cls(
                         input_dict, self.obs_space, self.action_space,
                         self.num_outputs, self.model_config, state, seq_lens)
+                    self._update_ops = list(
+                        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
+                        prev_update_ops)
             if len(new_instance.state_init) != len(self.get_initial_state()):
                 raise ValueError(
                     "When using a custom recurrent ModelV1 model, you should "
@@ -83,7 +91,14 @@ def make_v1_wrapper(legacy_model_cls):
             self.variable_scope = new_instance.scope
             return new_instance.outputs, new_instance.state_out
 
-        @override(ModelV2)
+        @override(TFModelV2)
+        def update_ops(self):
+            if self._update_ops is None:
+                raise ValueError(
+                    "Cannot get update ops before wrapped v1 model init")
+            return list(self._update_ops)
+
+        @override(TFModelV2)
         def variables(self):
             var_list = super(ModelV1Wrapper, self).variables()
             for v in scope_vars(self.variable_scope):

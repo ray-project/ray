@@ -16,13 +16,13 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ClientTableData;
+using rpc::GcsNodeInfo;
 
 class NodeManager;
 
 class Raylet {
  public:
-  /// Create a node manager server and listen for new clients.
+  /// Create a raylet server and listen for local clients.
   ///
   /// \param main_service The event loop to run the server on.
   /// \param object_manager_service The asio io_service tied to the object manager.
@@ -75,10 +75,12 @@ class Raylet {
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
-  /// An acceptor for new clients.
-  boost::asio::local::stream_protocol::acceptor acceptor_;
-  /// The socket to listen on for new clients.
-  boost::asio::local::stream_protocol::socket socket_;
+  /// The gRPC server, listens for local raylet client connections through a unix domain
+  /// socket.
+  rpc::GrpcServer raylet_server_;
+
+  /// The gRPC service.
+  rpc::RayletGrpcService raylet_service_;
 };
 
 }  // namespace raylet
