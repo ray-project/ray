@@ -729,8 +729,8 @@ pyx_library(
         "python/ray/includes/*.pxi",
     ]),
     deps = [
-        "//:raylet_lib",
         "//:core_worker_lib",
+        "//:raylet_lib",
     ],
 )
 
