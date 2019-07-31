@@ -826,8 +826,8 @@ void NodeManager::HandleRegisterClientRequest(
                                request.port(), client_call_manager_);
 
   RAY_LOG(DEBUG) << "Received a RegisterClientRequest. Worker id: " << worker_id
-                 << ". Is worker: " << request.is_worker()
-                 << ". Worker pid " << request.worker_pid();
+                 << ". Is worker: " << request.is_worker() << ". Worker pid "
+                 << request.worker_pid();
 
   if (request.is_worker()) {
     // Register the new worker.
