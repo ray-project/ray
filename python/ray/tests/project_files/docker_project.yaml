@@ -1,0 +1,5 @@
+name: testproject1
+description: "Test project for docker environment"
+
+environment:
+  docker: "Dockerfile"

@@ -1,0 +1,11 @@
+name: ray-long-running-test
+description: "Long running stress tests for the Ray project"
+repo: https://github.com/ray-project/ray
+
+commands:
+  - name: run
+    # This can overwrite the default cluster
+    cluster: ci/long_running_tests/config.yaml
+    command: source activate tensorflow_p36 && python ci/long_running_tests/workloads/{{name}}.py
+    params:
+      - name: [actor_deaths, apex, impala, many_actor_tasks, many_drivers, many_tasks, node_failure, pbt]

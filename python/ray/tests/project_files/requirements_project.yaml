@@ -1,0 +1,4 @@
+name: testproject2
+
+environment:
+  requirements: "requirements.txt"
