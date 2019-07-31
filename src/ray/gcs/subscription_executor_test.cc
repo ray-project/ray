@@ -186,7 +186,6 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   size_t register_count = AsyncRegisterActorToGcs();
   sub_pending_count_ = register_count * 2;
-  RAY_LOG(INFO) << __LINE__ << " sub done.";
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 
