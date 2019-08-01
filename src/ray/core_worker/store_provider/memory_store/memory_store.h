@@ -22,8 +22,8 @@ class CoreWorkerMemoryStore {
   Status Put(const RayObject &object, const ObjectID &object_id);
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
-  Status Wait(const std::vector<ObjectID> &object_ids,
-              int64_t timeout_ms, std::vector<bool> *results);
+  Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+              std::vector<bool> *results);
   void Delete(const std::vector<ObjectID> &object_ids);
 
  private:

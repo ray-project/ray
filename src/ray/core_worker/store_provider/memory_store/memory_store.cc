@@ -203,8 +203,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
 }
 
 Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &object_ids,
-                                   int64_t timeout_ms,
-                                   std::vector<bool> *results) {
+                                   int64_t timeout_ms, std::vector<bool> *results) {
   (*results).resize(object_ids.size(), false);
 
   std::vector<std::shared_ptr<RayObject>> result_objects;
