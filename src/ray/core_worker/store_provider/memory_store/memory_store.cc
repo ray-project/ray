@@ -7,40 +7,6 @@
 
 namespace ray {
 
-/// A RayObject class that automatically releases the backing object
-/// when it goes out of scope. This is returned by Get.
-class ReferencedRayObject : public RayObject {
- public:
-  ~ReferencedRayObject();
-
-  ReferencedRayObject(std::shared_ptr<CoreWorkerMemoryStore> provider,
-                      const ObjectID &object_id, std::shared_ptr<RayObject> object)
-      : RayObject(object->GetData(), object->GetMetadata(), /* should_copy=*/true),
-        provider_(provider),
-        object_id_(object_id) {}
-
- private:
-  std::shared_ptr<CoreWorkerMemoryStore> provider_;
-  const ObjectID object_id_;
-};
-
-ReferencedRayObject::~ReferencedRayObject() { provider_->Release(object_id_); }
-
-ObjectEntry::ObjectEntry(const ObjectID &object_id, const RayObject &object)
-    : object_id_(object_id),
-      object_(std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                          /* copy_data */ true)),
-      refcnt_(0) {}
-
-std::shared_ptr<ReferencedRayObject> ObjectEntry::CreateReferencedObject(
-    std::shared_ptr<CoreWorkerMemoryStore> provider) {
-  // Get a shared_ptr reference RayObject, which will automatically
-  // release the refcnt when it destructs, so we increase the refcnt here.
-  IncreaseRefcnt();
-  provider->cache_.Remove(object_id_);
-  return std::make_shared<ReferencedRayObject>(provider, object_id_, object_);
-}
-
 /// A class that represents a `Get` or `Wait` reuquest.
 class GetOrWaitRequest {
  public:
@@ -125,38 +91,7 @@ std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) cons
   return nullptr;
 }
 
-void EvictionCache::Add(const ObjectID &key, uint64_t size) {
-  auto it = item_map_.find(key);
-  RAY_CHECK(it == item_map_.end());
-  // Note that it is important to use a list so the iterators stay valid.
-  item_list_.emplace_front(key, size);
-  item_map_.emplace(key, item_list_.begin());
-}
-
-void EvictionCache::Remove(const ObjectID &key) {
-  auto it = item_map_.find(key);
-  if (it == item_map_.end()) {
-    return;
-  }
-
-  item_list_.erase(it->second);
-  item_map_.erase(it);
-}
-
-uint64_t EvictionCache::ChooseObjectsToEvict(uint64_t num_bytes_required,
-                                             std::vector<ObjectID> *objects_to_evict) {
-  uint64_t bytes_evicted = 0;
-  auto it = item_list_.end();
-  while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
-    it--;
-    objects_to_evict->push_back(it->first);
-    bytes_evicted += it->second;
-  }
-  return bytes_evicted;
-}
-
-CoreWorkerMemoryStore::CoreWorkerMemoryStore(uint64_t max_size)
-    : max_size_(max_size), total_size_(0) {}
+CoreWorkerMemoryStore::CoreWorkerMemoryStore() {}
 
 Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::unique_lock<std::mutex> lock(lock_);
@@ -165,36 +100,23 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     return Status::KeyError("object already exists");
   }
 
-  // Check if adding this object is allowed.
-  if (object.GetSize() + total_size_ > max_size_) {
-    std::vector<ObjectID> objects_to_evict;
-    auto evicted_bytes = cache_.ChooseObjectsToEvict(object.GetSize(), &objects_to_evict);
-    for (const auto &id : objects_to_evict) {
-      RAY_UNUSED(DeleteObjectImpl(id));
-    }
+  auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
 
-    if (evicted_bytes < object.GetSize()) {
-      return Status::OutOfMemory("out of memory");
-    }
-  }
-
-  // add to eviction cache.
-  cache_.Add(object_id, object.GetSize());
-  total_size_ += object.GetSize();
-
-  auto entry = std::unique_ptr<ObjectEntry>(new ObjectEntry(object_id, object));
-  objects_.emplace(object_id, std::move(entry));
-
+  bool should_add_entry = true;
   auto object_request_iter = object_get_requests_.find(object_id);
   if (object_request_iter != object_get_requests_.end()) {
     auto &get_requests = object_request_iter->second;
     for (auto &get_req : get_requests) {
-      auto &object_entry = objects_[object_id];
-      auto object_buffer = get_req->IsGetRequest()
-                               ? object_entry->CreateReferencedObject(shared_from_this())
-                               : object_entry->GetObject();
-      get_req->Set(object_id, object_buffer);
+      get_req->Set(object_id, object_entry);
+      if (get_req->IsGetRequest()) {
+        should_add_entry = false;
+      }
     }
+  }
+  
+  if (should_add_entry) {
+    // If there is no existing get request, then add the `RayObject` to map.
+    objects_.emplace(object_id, object_entry);
   }
   return Status::OK();
 }
@@ -215,10 +137,10 @@ Status CoreWorkerMemoryStore::GetOrWait(const std::vector<ObjectID> &object_ids,
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
-        auto object_buffer =
-            is_get ? iter->second->CreateReferencedObject(shared_from_this())
-                   : iter->second->GetObject();
-        (*results)[i] = object_buffer;
+        (*results)[i] = iter->second;
+        if (is_get) {
+          objects_.erase(object_id);
+        }
       } else {
         remaining_ids.emplace_back(object_id);
       }
@@ -297,42 +219,11 @@ Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &object_ids,
   return Status::OK();
 }
 
-void CoreWorkerMemoryStore::Release(const ObjectID &object_id) {
-  std::unique_lock<std::mutex> lock(lock_);
-  auto iter = objects_.find(object_id);
-  if (iter != objects_.end()) {
-    if (iter->second->DecreaseRefcnt() == 0) {
-      // TODO(zhijunfu): do we want to preserve it here?
-      cache_.Remove(object_id);
-      total_size_ -= iter->second->GetObject()->GetSize();
-      objects_.erase(iter);
-    }
-  }
-}
-
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   std::unique_lock<std::mutex> lock(lock_);
   for (const auto &object_id : object_ids) {
-    RAY_UNUSED(DeleteObjectImpl(object_id));
+    objects_.erase(object_id);
   }
-}
-
-Status CoreWorkerMemoryStore::DeleteObjectImpl(const ObjectID &object_id) {
-  // Note that this function doesn't take a lock.
-  auto iter = objects_.find(object_id);
-  if (iter != objects_.end()) {
-    if (iter->second->Refcnt() == 0) {
-      // TODO(zhijunfu): do we want to directly delete here, or just mark a flag
-      // and actually do the deletion when refcnt drops to 0? It's ok just to delete
-      // as the data validity is ensured by shared_ptr.
-      cache_.Remove(object_id);
-      total_size_ -= iter->second->GetObject()->GetSize();
-      objects_.erase(iter);
-      return Status::OK();
-    }
-    return Status::Invalid("reference count is not zero");
-  }
-  return Status::Invalid("object not exists");
 }
 
 }  // namespace ray
