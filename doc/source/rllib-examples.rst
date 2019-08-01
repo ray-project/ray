@@ -70,7 +70,8 @@ Multi-Agent and Hierarchical
 
 Community Examples
 ------------------
-
+- `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
+   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 - `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
