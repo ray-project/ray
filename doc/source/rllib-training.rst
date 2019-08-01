@@ -37,7 +37,7 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

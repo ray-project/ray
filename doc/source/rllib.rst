@@ -73,6 +73,8 @@ Algorithms
 
    -  `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
+   -  `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
+
 *  Derivative-free
 
    -  `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__

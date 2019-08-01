@@ -18,6 +18,7 @@ DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
 DDPG, TD3       No                      **Yes**             **Yes**      No
 APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
 APEX-DDPG       No                      **Yes**             **Yes**      No
+SAC             (todo)                  **Yes**             **Yes**      No
 ES              **Yes**                 **Yes**             No           No
 ARS             **Yes**                 **Yes**             No           No
 QMIX            **Yes**                 No                  **Yes**      **Yes**
