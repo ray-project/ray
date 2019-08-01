@@ -19,6 +19,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
                  model_creator,
                  data_creator,
                  optimizer_creator,
+                 train_function=None,
+                 validation_function=None,
                  config=None,
                  batch_size=16,
                  backend="gloo"):
@@ -33,8 +35,14 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
+        print("NCCL DEBUG SET")
+        os.environ["NCCL_SOCKET_IFNAME"] = "ens3"
+        os.environ["NCCL_LL_THRESHOLD"] = "0"
+        os.environ["NCCL_DEBUG"] = "INFO"
         super(DistributedPyTorchRunner, self).__init__(
-            model_creator, data_creator, optimizer_creator, config, batch_size)
+            model_creator, data_creator, optimizer_creator,
+            train_function=train_function,
+            validation_function=validation_function, config=config, batch_size=batch_size )
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -49,7 +57,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
             logger.debug(

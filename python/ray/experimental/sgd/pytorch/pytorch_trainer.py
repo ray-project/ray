@@ -28,6 +28,8 @@ class PyTorchTrainer(object):
                  model_creator,
                  data_creator,
                  optimizer_creator=utils.sgd_mse_optimizer,
+                 train_function=None,
+                 validation_function=None,
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
@@ -75,8 +77,14 @@ class PyTorchTrainer(object):
                 num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    train_function=train_function,
+                    validation_function=validation_function,
+                    config=self.config,
+                    batch_size=batch_size)
             ]
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
@@ -97,8 +105,15 @@ class PyTorchTrainer(object):
                          num_replicas=num_replicas))
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size_per_replica, backend)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    backend=backend,
+                    train_function=train_function,
+                    validation_function=validation_function,
+                    config=self.config,
+                    batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
             # Compute URL for initializing distributed PyTorch
