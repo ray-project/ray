@@ -15,7 +15,7 @@ namespace {
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
 /// Macro to handle early return for preprocessing.
-/// An early return will take place if the worker is being killed due to the exitting of
+/// An early return will take place if the worker is being killed due to the exiting of
 /// driver, or the worker is not registered yet.
 #define PREPROCESS_REQUEST(REQUEST_TYPE, REQUEST, SEND_REPLY)                       \
   WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                   \
