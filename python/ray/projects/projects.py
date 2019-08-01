@@ -54,8 +54,7 @@ def load_project(current_dir):
     project_file = os.path.join(project_root, ".rayproject", "project.yaml")
 
     if not os.path.exists(project_file):
-        raise Exception(
-            "Project file {} not found".format(project_file))
+        raise Exception("Project file {} not found".format(project_file))
 
     with open(project_file) as f:
         project_definition = yaml.load(f)
@@ -64,16 +63,20 @@ def load_project(current_dir):
 
     # Make sure the cluster yaml file exists
     if "cluster" in project_definition:
-        cluster_file = os.path.join(project_root, project_definition["cluster"])
+        cluster_file = os.path.join(project_root,
+                                    project_definition["cluster"])
         assert os.path.exists(cluster_file)
 
     if "environment" in project_definition:
         if "requirements" in project_definition["environment"]:
-            requirements_file = os.path.join(project_root, project_definition["environment"]["requirements"])
+            requirements_file = os.path.join(
+                project_root,
+                project_definition["environment"]["requirements"])
             assert os.path.exists(requirements_file)
 
         if "dockerfile" in project_definition["environment"]:
-            docker_file = os.path.join(project_root, project_definition["environment"]["dockerfile"])
+            docker_file = os.path.join(
+                project_root, project_definition["environment"]["dockerfile"])
             assert os.path.exists(docker_file)
 
     return project_definition
