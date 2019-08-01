@@ -4,6 +4,7 @@ from __future__ import print_function
 """Ray constants used in the Python code."""
 
 import logging
+import math
 import os
 
 logger = logging.getLogger(__name__)
@@ -89,10 +90,18 @@ def to_memory_units(memory_bytes, round_to_nearest_unit=False):
     elif value < MIN_RESOURCE_GRANULARITY:
         logger.warn(
             "Rounding {} byte memory request up to the minimum "
-            "resource request granularity of {} bytes.".format(
+            "fractional resource request granularity of {} bytes.".format(
                 memory_bytes,
                 int(MEMORY_RESOURCE_UNIT_BYTES * MIN_RESOURCE_GRANULARITY)))
         value = MIN_RESOURCE_GRANULARITY
+    elif value > 1 and not value.is_integer():
+        # TODO(ekl) Ray currently does not support fractional resources when
+        # the quantity is greater than one.
+        logger.warn(
+            "Rounding {} byte memory request up to the minimum "
+            "integral resource request granularity of {} bytes.".format(
+                value, MEMORY_RESOURCE_UNIT_BYTES))
+        value = int(math.ceil(value))
     return value
 
 
