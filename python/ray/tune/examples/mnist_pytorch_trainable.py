@@ -6,7 +6,6 @@ import argparse
 import os
 import torch
 import torch.optim as optim
-from torchvision import datasets
 
 import ray
 from ray import tune
@@ -29,6 +28,7 @@ parser.add_argument(
     "--ray-redis-address", type=str, help="The Redis address of the cluster.")
 parser.add_argument(
     "--smoke-test", action="store_true", help="Finish quickly for testing")
+
 
 # Below comments are for documentation purposes only.
 # yapf: disable
@@ -57,9 +57,10 @@ class TrainMNIST(tune.Trainable):
 
     def _restore(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
+
+
 # __trainable_example_end__
 # yapf: enable
-
 
 if __name__ == "__main__":
     args = parser.parse_args()

@@ -82,10 +82,7 @@ space = {
 hyperopt_search = HyperOptSearch(
     space, max_concurrent=2, reward_attr="mean_accuracy")
 
-analysis = tune.run(
-    train_mnist,
-    num_samples=10,
-    search_alg=hyperopt_search)
+analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 # __run_searchalg_end__
 
 # __run_analysis_begin__
