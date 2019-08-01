@@ -73,7 +73,7 @@ class SubscriptionExecutor {
   /// Subscribe Callback of all elements.
   SubscribeCallback<ID, Data> subscribe_all_callback_{nullptr};
 
-  /// A mapping from element ID to subscription callbacks.
+  /// A mapping from element ID to subscription callback.
   typedef std::unordered_map<ID, SubscribeCallback<ID, Data>> IDToCallbackMap;
   IDToCallbackMap id_to_callback_map_;
 };

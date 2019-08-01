@@ -13,14 +13,14 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (subscribe_all_callback_ != nullptr) {
-    RAY_LOG(INFO) << "Duplicate subscription! Already subscribed to all elements.";
+    RAY_LOG(DEBUG) << "Duplicate subscription! Already subscribed to all elements.";
     return Status::Invalid("Duplicate subscription!");
   }
 
   if (registered_) {
     if (subscribe != nullptr) {
-      RAY_LOG(INFO) << "Duplicate subscription! Already subscribed to specific elements"
-                       ", can't subscribe to all elements.";
+      RAY_LOG(DEBUG) << "Duplicate subscription! Already subscribed to specific elements"
+                        ", can't subscribe to all elements.";
       return Status::Invalid("Duplicate subscription!");
     }
     return Status::OK();
@@ -91,8 +91,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
     if (it != id_to_callback_map_.end()) {
-      RAY_LOG(INFO) << "Duplicate subscription to id " << id << " client_id "
-                    << client_id;
+      RAY_LOG(DEBUG) << "Duplicate subscription to id " << id << " client_id "
+                     << client_id;
       return Status::Invalid("Duplicate subscription to element!");
     }
     status = table_.RequestNotifications(JobID::Nil(), id, client_id, on_done);
@@ -111,8 +111,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
     if (it == id_to_callback_map_.end()) {
-      RAY_LOG(INFO) << "Invalid Unsubscribe! id " << id << " client_id " << client_id;
-      return Status::Invalid("Invalid Unsubscribe, not existing subscription found.");
+      RAY_LOG(DEBUG) << "Invalid Unsubscribe! id " << id << " client_id " << client_id;
+      return Status::Invalid("Invalid Unsubscribe, no existing subscription found.");
     }
   }
 
