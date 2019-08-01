@@ -66,10 +66,9 @@ MIN_RESOURCE_GRANULARITY = 0.0001
 PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
 
-def round_to_memory_units(memory_bytes):
+def round_to_memory_units(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""
-    return from_memory_units(
-        to_memory_units(memory_bytes, round_to_nearest_unit=True))
+    return from_memory_units(to_memory_units(memory_bytes, round_up))
 
 
 def from_memory_units(memory_units):
@@ -77,32 +76,24 @@ def from_memory_units(memory_units):
     return memory_units * MEMORY_RESOURCE_UNIT_BYTES
 
 
-def to_memory_units(memory_bytes, round_to_nearest_unit=False):
+def to_memory_units(memory_bytes, round_up):
     """Convert from bytes -> memory units."""
     value = memory_bytes / MEMORY_RESOURCE_UNIT_BYTES
-    if round_to_nearest_unit:
-        value = int(value)
-        if value < 1:
-            logger.warn("Rounding {} byte memory request up to the minimum "
-                        "resource creation granularity of {} bytes.".format(
-                            memory_bytes, MEMORY_RESOURCE_UNIT_BYTES))
-            value = 1
-    elif value < MIN_RESOURCE_GRANULARITY:
-        logger.warn(
-            "Rounding {} byte memory request up to the minimum "
-            "fractional resource request granularity of {} bytes.".format(
-                memory_bytes,
-                int(MEMORY_RESOURCE_UNIT_BYTES * MIN_RESOURCE_GRANULARITY)))
-        value = MIN_RESOURCE_GRANULARITY
-    elif value > 1 and not value.is_integer():
+    if value <= 0:
+        value = 1
+    if isinstance(value, float) and not value.is_integer():
         # TODO(ekl) Ray currently does not support fractional resources when
         # the quantity is greater than one.
-        logger.warn(
-            "Rounding {} byte memory request up to the minimum "
-            "integral resource request granularity of {} bytes.".format(
-                value, MEMORY_RESOURCE_UNIT_BYTES))
-        value = int(math.ceil(value))
-    return value
+        prev_value = value
+        if round_up:
+            value = int(math.ceil(value))
+        else:
+            value = int(math.floor(value))
+        logger.warn("Rounding {} byte {} {} to {} MB.".format(
+            int(prev_value * MEMORY_RESOURCE_UNIT_BYTES), "memory request"
+            if round_up else "available memory config", "up" if round_up else
+            "down", value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024)))
+    return int(value)
 
 
 # Different types of Ray errors that can be pushed to the driver.

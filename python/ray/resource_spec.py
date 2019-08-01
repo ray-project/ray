@@ -68,11 +68,11 @@ class ResourceSpec(
         assert self.resolved()
 
         memory_units = ray_constants.to_memory_units(
-            self.memory, round_to_nearest_unit=True)
+            self.memory, round_up=False)
         object_store_memory_units = ray_constants.to_memory_units(
             self.object_store_memory *
             ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
-            round_to_nearest_unit=True)
+            round_up=False)
 
         resources = dict(
             self.resources,
@@ -138,7 +138,7 @@ class ResourceSpec(
         avail_memory = ray.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
-            object_store_memory = int(system_memory * 0.3)
+            object_store_memory = int(system_memory * 0.2)
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (object_store_memory >
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
@@ -197,7 +197,8 @@ class ResourceSpec(
             logger.info(
                 "Starting Ray with {} GB memory available for workers.".format(
                     round(
-                        ray_constants.round_to_memory_units(memory) / 1e9, 2)))
+                        ray_constants.round_to_memory_units(
+                            memory, round_up=False) / 1e9, 2)))
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)

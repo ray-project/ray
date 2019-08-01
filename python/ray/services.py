@@ -1160,70 +1160,27 @@ def build_java_worker_command(
     return command
 
 
-def determine_plasma_store_config(object_store_memory=None,
+def determine_plasma_store_config(object_store_memory,
                                   plasma_directory=None,
                                   huge_pages=False):
     """Figure out how to configure the plasma object store.
 
-    This will determine which directory to use for the plasma store (e.g.,
-    /tmp or /dev/shm) and how much memory to start the store with. On Linux,
+    This will determine which directory to use for the plasma store. On Linux,
     we will try to use /dev/shm unless the shared memory file system is too
     small, in which case we will fall back to /tmp. If any of the object store
     memory or plasma directory parameters are specified by the user, then those
     values will be preserved.
 
     Args:
-        object_store_memory (int): The user-specified object store memory
-            parameter.
+        object_store_memory (int): The objec store memory to use.
         plasma_directory (str): The user-specified plasma directory parameter.
         huge_pages (bool): The user-specified huge pages parameter.
 
     Returns:
-        A tuple of the object store memory to use and the plasma directory to
-            use. If either of these values is specified by the user, then that
-            value will be preserved.
+        The plasma directory to use. If it is specified by the user, then that
+        value will be preserved.
     """
     system_memory = ray.utils.get_system_memory()
-
-    # Choose a default object store size.
-    if object_store_memory is None:
-        object_store_memory = int(system_memory * 0.3)
-        # Cap memory to avoid memory waste and perf issues on large nodes
-        if (object_store_memory >
-                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
-            logger.warning(
-                "Warning: Capping object memory store to {}GB. ".format(
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES // 1e9)
-                + "To increase this further, specify `object_store_memory` "
-                "when calling ray.init() or ray start.")
-            object_store_memory = (
-                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-
-        # Other applications may also be using a lot of memory on the same
-        # node. Try to detect when this is happening and log a warning or
-        # error in more severe cases.
-        avail_memory = ray.utils.estimate_available_memory()
-        object_store_fraction = object_store_memory / avail_memory
-        # Escape hatch, undocumented for now.
-        no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
-        if object_store_fraction > 0.9 and not no_check:
-            raise ValueError(
-                "The default object store size of {} GB "
-                "will use more than 90% of the available memory on this node "
-                "({} GB). Please reduce the object store memory size "
-                "to avoid memory contention with other applications, or "
-                "shut down the applications using this memory.".format(
-                    round(object_store_memory / 1e9, 2),
-                    round(avail_memory / 1e9, 2)))
-        elif object_store_fraction > 0.5:
-            logger.warning(
-                "WARNING: The default object store size of {} GB "
-                "will use more than 50% of the available memory on this node "
-                "({} GB). Consider setting the object store memory manually "
-                "to a smaller size to avoid memory contention with other "
-                "applications.".format(
-                    round(object_store_memory / 1e9, 2),
-                    round(avail_memory / 1e9, 2)))
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
@@ -1264,7 +1221,7 @@ def determine_plasma_store_config(object_store_memory=None,
             "The file {} does not exist or is not a directory.".format(
                 plasma_directory))
 
-    return object_store_memory, plasma_directory
+    return plasma_directory
 
 
 def _start_plasma_store(plasma_store_memory,
@@ -1355,8 +1312,9 @@ def start_plasma_store(resource_spec,
         ProcessInfo for the process that was started.
     """
     assert resource_spec.resolved()
-    object_store_memory, plasma_directory = determine_plasma_store_config(
-        resource_spec.object_store_memory, plasma_directory, huge_pages)
+    object_store_memory = resource_spec.object_store_memory
+    plasma_directory = determine_plasma_store_config(
+        object_store_memory, plasma_directory, huge_pages)
 
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
         raise ValueError("Attempting to cap object store memory usage at {} "

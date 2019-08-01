@@ -331,10 +331,11 @@ def resources_from_resource_arguments(
     object_store_memory = (default_object_store_memory
                            or runtime_object_store_memory)
     if memory is not None:
-        resources["memory"] = ray_constants.to_memory_units(memory)
+        resources["memory"] = ray_constants.to_memory_units(
+            memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
-            object_store_memory)
+            object_store_memory, round_up=True)
 
     return resources
 
