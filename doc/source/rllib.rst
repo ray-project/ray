@@ -98,6 +98,8 @@ Concepts and Custom Algorithms
 ------------------------------
 *  `Policies <rllib-concepts.html>`__
 
+   -  `Policies in Multi-Agent <rllib-concepts.html#policies-in-multi-agent>`__
+
    -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__
 
    -  `Building Policies in TensorFlow Eager <rllib-concepts.html#building-policies-in-tensorflow-eager>`__

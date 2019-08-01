@@ -55,6 +55,8 @@ Serving and Offline
 Multi-Agent and Hierarchical
 ----------------------------
 
+- `Rock-paper-scissors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rock_paper_scissors_multiagent.py>`__:
+   Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/twostep_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
 - `Hand-coded policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_custom_policy.py>`__:
@@ -72,13 +74,15 @@ Community Examples
 ------------------
 - `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
    Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
-- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
-   Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
+- `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
+   Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
+- `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
+   Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
 - `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
-   Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
+- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+   Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
