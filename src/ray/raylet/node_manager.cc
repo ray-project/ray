@@ -14,6 +14,20 @@ namespace {
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
+/// Macro to handle early return for preprocessing.
+/// An early return will take place if the worker is being killed due to the exitting of
+/// driver, or the worker is not registered yet.
+#define PREPROCESS_REQUEST(REQUEST_TYPE, REQUEST, SEND_REPLY)                       \
+  WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                   \
+  do {                                                                              \
+    if (!PreprocessRequest(worker_id, #REQUEST_TYPE)) {                             \
+      SEND_REPLY(                                                                   \
+          Status::Invalid("Discard this request due to failure of preprocessing."), \
+          nullptr, nullptr);                                                        \
+      return;                                                                       \
+    }                                                                               \
+  } while (0)
+
 /// A helper function to return the expected actor counter for a given actor
 /// and actor handle, according to the given actor registry. If a task's
 /// counter is less than the returned value, then the task is a duplicate. If
@@ -739,77 +753,45 @@ void NodeManager::DispatchTasks(
   local_queues_.MoveTasks(assigned_task_ids, TaskState::READY, TaskState::RUNNING);
 }
 
-std::pair<std::shared_ptr<Worker>, bool> NodeManager::GetWorker(
-    const WorkerID &worker_id) {
-  bool is_worker = true;
-  auto worker = worker_pool_.GetRegisteredWorker(worker_id);
-  if (!worker) {
-    is_worker = false;
-    worker = worker_pool_.GetRegisteredDriver(worker_id);
-    if (!worker) {
-      return std::make_pair(nullptr, true);
-    }
-  }
-  return std::make_pair(worker, is_worker);
-}
-
-#define PREPROCESS_REQUEST(REQUEST_TYPE, REQUEST, SEND_REPLY)                       \
-  WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                   \
-  do {                                                                              \
-    if (!PreprocessRequest<rpc::REQUEST_TYPE>(worker_id, #REQUEST_TYPE)) {          \
-      SEND_REPLY(                                                                   \
-          Status::Invalid("Discard this request due to failure of preprocessing."), \
-          nullptr, nullptr);                                                        \
-      return;                                                                       \
-    }                                                                               \
-  } while (0)
-
-template <typename Request>
 bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
                                     const std::string &request_name) {
   std::ostringstream oss;
   if (RAY_LOG_ENABLED(DEBUG)) {
     oss << "Received a " << request_name << " request. Worker id " << worker_id << ".";
   }
-  // NOTE(Joey Jiang): We check heartbeat actively because the heartbeats' callback won't
-  // be invoked until all the posted requests in the io_service have been finished.
+  // NOTE(Joey Jiang): We check heartbeat proactively because the heartbeats' callback
+  // won't be invoked until all the posted requests in the io_service have been finished.
   // The raylet might be marked as dead due to missing heartbeats when too many requests
   // are sent to this raylet.
   int64_t expiry_delay =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - heartbeat_timer_.expires_at())
           .count();
-  int64_t expiry_delay_limit = RayConfig::instance().heartbeat_timeout_milliseconds() *
-                               RayConfig::instance().num_heartbeats_timeout() / 2;
 
-  // Timer's callback hasn't been called on the desired time.
-  if (expiry_delay > expiry_delay_limit) {
+  // Timer's callback hasn't been called if the execution of the timer's callback is
+  // delayed.
+  if (expiry_delay > RayConfig::instance().heartbeat_timeout_milliseconds()) {
     heartbeat_timer_.cancel();
-    RAY_LOG(WARNING)
-        << "Timer has been cancelled. Maybe the timer was delayed due to "
-           "lots of post events and we have reset the heartbeat. Expiry delay "
-        << expiry_delay << ", delay limit " << expiry_delay_limit;
     Heartbeat();
   }
 
-  auto rt = GetWorker(worker_id);
-  auto worker = rt.first;
+  auto worker = worker_pool_.GetWorker(worker_id);
   // Worker process has been killed, we should discard this request.
   if (!worker) {
-    RAY_LOG(WARNING) << "Worker " << worker_id
-                     << " is not found in worker pool, request will be discarded.";
+    RAY_LOG(WARNING) << "Worker " << worker_id << " is not found in worker pool, request "
+                     << request_name << " will be discarded.";
     return false;
   }
   if (RAY_LOG_ENABLED(DEBUG)) {
-    oss << " Is worker: " << (rt.second ? "true" : "false") << ". Worker pid "
+    oss << " Is worker: " << (worker->IsWorker() ? "true" : "false") << ". Worker pid "
         << std::to_string(worker->Pid()) << ".";
     RAY_LOG(DEBUG) << oss.str();
   }
 
   // The worker process is being killing, we should discard this request.
   if (worker->IsBeingKilled()) {
-    RAY_LOG(INFO) << "Worker " << worker_id
-                  << " is being killed, request will be discarded.";
+    RAY_LOG(INFO) << "Worker " << worker_id << " is being killed, request "
+                  << request_name << " will be discarded.";
     return false;
   }
 
@@ -821,15 +803,16 @@ void NodeManager::HandleRegisterClientRequest(
     rpc::SendReplyCallback send_reply_callback) {
   // Client id in register client is treated as worker id.
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  bool is_worker = request.is_worker();
   auto worker =
       std::make_shared<Worker>(worker_id, request.worker_pid(), request.language(),
-                               request.port(), client_call_manager_);
+                               request.port(), client_call_manager_, is_worker);
 
   RAY_LOG(DEBUG) << "Received a RegisterClientRequest. Worker id: " << worker_id
-                 << ". Is worker: " << request.is_worker() << ". Worker pid "
+                 << ". Is worker: " << is_worker << ". Worker pid "
                  << request.worker_pid();
 
-  if (request.is_worker()) {
+  if (is_worker) {
     // Register the new worker.
     bool use_push_task = worker->UsePush();
     worker_pool_.RegisterWorker(worker_id, std::move(worker));
@@ -928,14 +911,13 @@ void NodeManager::HandleDisconnectClientRequest(
 
 void NodeManager::ProcessDisconnectClientMessage(const WorkerID &worker_id,
                                                  bool intentional_disconnect) {
-  auto rt = GetWorker(worker_id);
-  auto worker = rt.first;
+  auto worker = worker_pool_.GetWorker(worker_id);
   if (!worker) {
     RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
                   << "been disconnected.";
     return;
   }
-  bool is_worker = rt.second;
+  bool is_worker = worker->IsWorker();
 
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.

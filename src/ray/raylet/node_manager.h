@@ -95,15 +95,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  /// Preprocess request from raylet client. This takes care of common processing for each
-  /// request, such as logging, checking heartbeat and whether worker is being killed.
+  /// Preprocess request from raylet client. We will check whether the worker is being
+  /// killed due to exitting of driver. Also we will send the heartbeat to monitor
+  /// proactively if the callback of timer is not trigger at the desired time.
   ///
-  /// \param Request Request template type.
   /// \param worker_id The worker id.
   /// \param request_name The request name.
-  /// \param request The request message.
-  template <typename Request>
+  /// \return False if there is no need to process this request.
   bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name);
+
   /// Implementation of node manager grpc service.
 
   /// Handle a `ForwardTask` request.
@@ -550,13 +550,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
-
-  /// Get the pointer to a worker object.
-  ///
-  /// \param worker_id The worker id.
-  /// \return The pair contains the pointer to the worker and the flat that indicates
-  /// whether it's a driver.
-  std::pair<std::shared_ptr<Worker>, bool> GetWorker(const WorkerID &worker_id);
 
   // GCS client ID for this node.
   ClientID client_id_;
