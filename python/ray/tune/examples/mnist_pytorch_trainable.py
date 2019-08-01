@@ -37,9 +37,9 @@ parser.add_argument(
 
 class TrainMNIST(Trainable):
     def _setup(self, config):
-        torch.manual_seed(config.get("seed"))
+        torch.manual_seed(config.get("seed", 0))
         if config.get("use_gpu"):
-            torch.cuda.manual_seed(config.get("seed"))
+            torch.cuda.manual_seed(config.get("seed", 0))
 
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")

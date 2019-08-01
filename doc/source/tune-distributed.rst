@@ -1,9 +1,9 @@
 Tune Distributed Experiments
 ============================
 
-Tune is commonly used for large-scale distributed hyperparameter optimization. Tune and Ray provides many utilities that enable an effective workflow for interacting with a cluster, including fast uploading, one-line cluster launching, and uploading results.
+Tune is commonly used for large-scale distributed hyperparameter optimization. Tune and Ray provide many utilities that enable an effective workflow for interacting with a cluster, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
 
-This page will overview how to start a distributed experiment.
+This page will overview the tooling for distributed experiments, covering how to connect to a cluster, how to launch a distributed experiment, and commonly used commands.
 
 Connecting to a cluster
 -----------------------
@@ -20,7 +20,7 @@ One common approach to modifying an existing Tune experiment to go distributed i
     args = parser.parse_args()
     ray.init(redis_address=args.ray_redis_address)
 
-After, compare single node vs cluster execution. Note that connecting to cluster requires a pre-existing Ray cluster to be started already (`Manual Cluster Setup <using-ray-on-a-cluster.html>`_). The script should be run on the head node of the Ray cluster. Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search.
+Note that connecting to cluster requires a pre-existing Ray cluster to be started already (`Manual Cluster Setup <using-ray-on-a-cluster.html>`_). The script should be run on the head node of the Ray cluster. Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search.
 
 .. code-block:: bash
 
@@ -146,7 +146,7 @@ To run this example, you will need to install the following:
 
     $ pip install ray torch torchvision filelock
 
-1. Download a full example Tune experiment script here: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`
+1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`
 2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
 3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster is not up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
 

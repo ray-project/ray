@@ -92,7 +92,7 @@ This function will report status on the command line until all Trials stop:
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
 
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/example-experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
 
 
 Analyzing Results
@@ -136,7 +136,7 @@ You may want to get a summary of multiple experiments that point to the same ``l
 .. code-block:: python
 
     from ray.tune import Analysis
-    analysis = Analysis("~/ray_results/my_experiment")
+    analysis = Analysis("~/ray_results/example-experiment")
 
 See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
 
