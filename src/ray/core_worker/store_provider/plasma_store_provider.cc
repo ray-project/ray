@@ -115,9 +115,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     if (successes < unready_ids.size()) {
-      num_attempts += 1;
+      num_attempts++;
+      WarnIfAttemptedTooManyTimes(num_attempts, unready);
     }
-    WarnIfAttemptedTooManyTimes(num_attempts, unready);
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with

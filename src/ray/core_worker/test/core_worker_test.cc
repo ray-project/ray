@@ -680,12 +680,12 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  // Test Delete().
+  // Test Free().
   // clear the reference held by PlasmaBuffer.
   results.clear();
-  RAY_CHECK_OK(core_worker.Objects().Delete(ids, true, false));
+  RAY_CHECK_OK(core_worker.Objects().Free(ids, true, false));
 
-  // Note that Delete() calls RayletClient::FreeObjects and would not
+  // Note that Free() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
@@ -739,12 +739,12 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  // Test Delete() from all machines.
+  // Test Free() from all machines.
   // clear the reference held by PlasmaBuffer.
   results.clear();
-  RAY_CHECK_OK(worker2.Objects().Delete(ids, false, false));
+  RAY_CHECK_OK(worker2.Objects().Free(ids, false, false));
 
-  // Note that Delete() calls RayletClient::FreeObjects and would not
+  // Note that Free() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(1000 * 1000);
