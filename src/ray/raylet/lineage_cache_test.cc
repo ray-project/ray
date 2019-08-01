@@ -13,6 +13,16 @@ namespace ray {
 
 namespace raylet {
 
+const static JobID kDefaultJobId = JobID::FromInt(1);
+
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask();
+
+// A helper function to get a normal task id.
+inline TaskID RandomTaskId() {
+  // ForDriverTask() returns a random ID.
+  return TaskID::ForDriverTask();
+}
+
 class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
                 public gcs::PubsubInterface<TaskID> {
  public:
@@ -127,8 +137,9 @@ class LineageCacheTest : public ::testing::Test {
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
-  builder.SetCommonTaskSpec(TaskID::ForNormalTask(), Language::PYTHON, {"", "", ""},
-                            JobID::Nil(), TaskID::ForNormalTask(), 0, num_returns, {}, {});
+  builder.SetCommonTaskSpec(RandomTaskId(),
+                            Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                            RandomTaskId(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }

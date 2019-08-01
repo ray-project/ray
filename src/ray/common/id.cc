@@ -27,6 +27,22 @@ std::mt19937 RandomlySeededMersenneTwister() {
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
+/// A helper function to generate the unique bytes by hash.
+std::string GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter, size_t length) {
+  RAY_CHECK(length <= DIGEST_SIZE);
+  SHA256_CTX ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()), parent_task_id.Size());
+  sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+
+  // TODO(qwang): I don't if DIGEST_SIZE is ok here,
+  // maybe we can use a fixed size which is smaller than DIGEST_SIZE.
+  BYTE buff[DIGEST_SIZE];
+  sha256_final(&ctx, buff);
+  return std::string(buff, buff + length);
+}
+
 namespace {
 
 /// The bit offset of the flag `CreatedByTask` in a flags bytes.
@@ -198,9 +214,9 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-ActorID ActorID::FromRandom(const JobID &job_id) {
-  std::string data(kUniqueBytesLength, 0);
-  FillRandom(&data);
+
+ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id, const size_t parent_task_counter) {
+  auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, ActorID::kUniqueBytesLength);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
@@ -212,23 +228,36 @@ JobID ActorID::JobId() const {
       std::string(reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
+TaskID TaskID::ForDriverTask() {
+  std::string data(kUniqueBytesLength, 0);
+  FillRandom(&data);
+  const auto nil_actor_id = ActorID::Nil();
+  std::copy_n(nil_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == TaskID::kLength);
+  return TaskID::FromBinary(data);
+}
+
 TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
   std::string data(kUniqueBytesLength, 0);
   FillNil(&data);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForActorTask(const ActorID &actor_id) {
-  std::string data(kUniqueBytesLength, 0);
-  FillRandom(&data);
+TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
+                            size_t parent_task_counter, const ActorID &actor_id) {
+  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, TaskID::kUniqueBytesLength);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForNormalTask() {
-  std::string data(TaskID::kLength, 0);
-  FillRandom(&data);
+TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter) {
+  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, TaskID::kUniqueBytesLength);
+  const auto nil_actor_id = ActorID::Nil();
+  std::copy_n(nil_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 

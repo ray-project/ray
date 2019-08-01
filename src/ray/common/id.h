@@ -17,6 +17,7 @@
 
 namespace ray {
 
+class TaskID;
 class WorkerID;
 class UniqueID;
 class JobID;
@@ -123,11 +124,16 @@ class ActorID : public BaseID<ActorID> {
   /// \return Size of `ActorID` in bytes.
   static size_t Size() { return kLength; }
 
-  /// Generate an `ActorID` randomly.
+  /// Create an `ActorID` from the given information.
+  ///
+  /// The same arguments will return the same `ActorID`.
   ///
   /// \param job_id The job id to which this actor belongs.
+  /// \param parent_task_id The id of the task which created this actor.
+  /// \param parent_task_counter The counter of the parent task.
+  ///
   /// \return The random `ActorID`.
-  static ActorID FromRandom(const JobID &job_id);
+  static ActorID Of(const JobID &job_id, const TaskID &parent_task_id, const size_t parent_task_counter);
 
   static ActorID FromRandom() = delete;
 
@@ -159,11 +165,14 @@ class TaskID : public BaseID<TaskID> {
   static TaskID FromRandom() = delete;
 
   // TODO(qwang): Comments
+  static TaskID ForDriverTask();
+
   static TaskID ForActorCreationTask(const ActorID &actor_id);
 
-  static TaskID ForActorTask(const ActorID &actor_id);
+  static TaskID ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
+                             size_t parent_task_counter, const ActorID &actor_id);
 
-  static TaskID ForNormalTask();
+  static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter);
 
   /// Get the id of the actor to which this task belongs.
   ///

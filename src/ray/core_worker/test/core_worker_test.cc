@@ -27,6 +27,8 @@ std::string mock_worker_executable;
 
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
+ray::TaskID RandomTaskId() { return TaskID::ForDriverTask(); }
+
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -490,7 +492,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
 
-  ActorHandle actor_handle(ActorID::FromRandom(JobID::FromInt(1)), ActorHandleID::Nil(), function.language,
+  ActorHandle actor_handle(ActorID::Of(JobID::FromInt(1), TaskID::ForDriverTask(), 1),
+                           ActorHandleID::Nil(), function.language,
                            true, function.function_descriptor);
 
   // Manually create `num_tasks` task specs, and for each of them create a
@@ -505,8 +508,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(TaskID::ForNormalTask(), function.language, function.function_descriptor,
-                              JobID::FromInt(1), TaskID::ForNormalTask(), 0, num_returns,
+    builder.SetCommonTaskSpec(RandomTaskId(), function.language, function.function_descriptor,
+                              JobID::FromInt(1), RandomTaskId(), 0, num_returns,
                               resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
@@ -600,8 +603,8 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
-  ActorHandle handle1(ActorID::FromRandom(JobID::FromInt(1)), ActorHandleID::FromRandom(), Language::JAVA,
-                      false,
+  ActorHandle handle1(ActorID::Of(JobID::FromInt(1), TaskID::ForDriverTask(), 1),
+                      ActorHandleID::FromRandom(), Language::JAVA, false,
                       {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
   auto forkedHandle1 = handle1.Fork();

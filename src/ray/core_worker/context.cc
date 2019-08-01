@@ -6,9 +6,11 @@ namespace ray {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   WorkerThreadContext()
-      : current_task_id_(TaskID::ForNormalTask()), task_index_(0), put_index_(0) {}
+      : current_task_id_(TaskID::ForDriverTask()), task_index_(0), put_index_(0) {}
 
   int GetNextTaskIndex() { return ++task_index_; }
+
+  int GetTaskIndex() { return task_index_; }
 
   int GetNextPutIndex() { return ++put_index_; }
 
@@ -55,16 +57,20 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
   GetThreadContext().SetCurrentTaskId(
-      (worker_type_ == WorkerType::DRIVER) ? TaskID::ForNormalTask() : TaskID::Nil());
+      (worker_type_ == WorkerType::DRIVER) ? TaskID::ForDriverTask() : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
+// TODO(qwang): Refine this as const and not do increase behavior
+// and add `IncreaseAndGetNextIndex()` instead. And remove `GetCurrentTaskIndex()`
 int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
 
 int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
+
+int WorkerContext::GetCurrentTaskIndex() {return GetThreadContext().GetNextPutIndex(); }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 

@@ -145,7 +145,9 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, TaskID::ForNormalTask(), function, args, task_options.num_returns,
+  const auto task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentTaskID(), worker_context_.GetCurrentTaskIndex() + 1);
+  BuildCommonTaskSpec(builder, task_id, function, args, task_options.num_returns,
                       task_options.resources, {}, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
@@ -154,11 +156,12 @@ Status CoreWorkerTaskInterface::CreateActor(
     const RayFunction &function, const std::vector<TaskArg> &args,
     const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
-  // TODO(qwagng): use an actually job id here.
-  const ActorID actor_id = ActorID::FromRandom(JobID::Nil());
+  const ActorID actor_id = ActorID::Of(worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentTaskID(), worker_context_.GetCurrentTaskIndex() + 1);
+  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, TaskID::ForActorCreationTask(actor_id), function, args, 1,
+  BuildCommonTaskSpec(builder, actor_creation_task_id, function, args, 1,
                       actor_creation_options.resources, actor_creation_options.resources, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    {});
@@ -182,8 +185,11 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   // Build common task spec.
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, TaskID::ForActorTask(actor_handle.ActorID()), function,
-                      args, num_returns, task_options.resources, {}, return_ids);
+  const auto actor_task_id = TaskID::ForActorTask(worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentTaskID(), worker_context_.GetCurrentTaskIndex() + 1,
+      actor_handle.ActorID());
+  BuildCommonTaskSpec(builder, actor_task_id, function, args, num_returns,
+                      task_options.resources, {}, return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.

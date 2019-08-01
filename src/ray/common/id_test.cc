@@ -36,12 +36,14 @@ void TestRandomObjectId() {
   ASSERT_FALSE(random_object_id.CreatedByTask());
 }
 
-const static JobID DEFAULT_JOB_ID = JobID::FromInt(199);
+const static JobID kDefaultJobId = JobID::FromInt(199);
+
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask();
 
 TEST(ActorIDTest, TestActorID) {
   {
     // test from binary
-    const ActorID actor_id_1 = ActorID::FromRandom(DEFAULT_JOB_ID);
+    const ActorID actor_id_1 = ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
     const auto actor_id_1_binary = actor_id_1.Binary();
     const auto actor_id_2 = ActorID::FromBinary(actor_id_1_binary);
     ASSERT_EQ(actor_id_1, actor_id_2);
@@ -49,23 +51,23 @@ TEST(ActorIDTest, TestActorID) {
 
   {
     // test get job id
-    const ActorID actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
-    ASSERT_EQ(DEFAULT_JOB_ID, actor_id.JobId());
+    const ActorID actor_id = ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
+    ASSERT_EQ(kDefaultJobId, actor_id.JobId());
   }
 }
 
 TEST(TaskIDTest, TestTaskID) {
   // Round trip test for task ID.
   {
-    const ActorID actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
-    const TaskID task_id_1 = TaskID::ForActorTask(actor_id);
+    const ActorID actor_id = ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
+    const TaskID task_id_1 = TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, actor_id);
     ASSERT_EQ(actor_id, task_id_1.ActorId());
   }
 }
 
 TEST(ObjectIDTest, TestObjectID) {
-  const static ActorID default_actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
-  const static TaskID default_task_id = TaskID::ForActorTask(default_actor_id);
+  const static ActorID default_actor_id = ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
+  const static TaskID default_task_id = TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, default_actor_id);
 
   {
     // test for put
