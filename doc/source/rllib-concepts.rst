@@ -103,6 +103,11 @@ The above basic policy, when run, will produce batches of observations with the 
         assert "other_value" in samples.keys()
 
 
+Policies in Multi-Agent
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Beyond being agnostic of framework implementation, one of the main reasons to have a Policy abstraction is for use in multi-agent environments. For example, the `rock-paper-scissors example <rllib-env.html#rock-paper-scissors-example>`__ shows how you can leverage the Policy abstraction to evaluate heuristic policies against learned policies.
+
 Building Policies in TensorFlow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
