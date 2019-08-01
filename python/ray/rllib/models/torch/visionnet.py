@@ -7,17 +7,18 @@ import torch.nn as nn
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, valid_padding, \
     SlimConv2d, SlimFC
-from ray.rllib.models.visionnet import _get_filter_config
+from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
 
 
-class VisionNetwork(TorchModelV2):
+class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super(VisionNetwork, self).__init__(obs_space, action_space,
-                                            num_outputs, model_config, name)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
 
         filters = model_config.get("conv_filters")
         if not filters:

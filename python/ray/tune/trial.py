@@ -288,6 +288,7 @@ class Trial(object):
         Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
         self.experiment_tag = experiment_tag
@@ -334,7 +335,6 @@ class Trial(object):
         self.runner = None
         self.result_logger = None
         self.last_debug = 0
-        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
         self.num_failures = 0
         self.custom_trial_name = None
@@ -516,8 +516,7 @@ class Trial(object):
                      or self.max_failures < 0))
 
     def update_last_result(self, result, terminate=False):
-        if terminate:
-            result.update(done=True)
+        result.update(trial_id=self.trial_id, done=terminate)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))

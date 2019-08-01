@@ -2,11 +2,19 @@ pendulum-appo-vt:
     env: Pendulum-v0
     run: APPO
     stop:
-        episode_reward_mean: -900  # just check it learns a bit
+        episode_reward_mean: -1200  # just check it learns a bit
         timesteps_total: 500000
     config:
+        vtrace: False
         num_gpus: 0
         num_workers: 1
+        lambda: 0.1
         gamma: 0.95
-        train_batch_size: 50
-        vtrace: true
+        lr: 0.0003
+        train_batch_size: 100
+        minibatch_buffer_size: 16
+        num_sgd_iter: 10
+        model:
+            fcnet_hiddens: [64, 64]
+        batch_mode: complete_episodes
+        observation_filter: MeanStdFilter
