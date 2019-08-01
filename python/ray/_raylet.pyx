@@ -36,6 +36,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+from ray.exceptions import RayletError
 from ray.utils import decode
 
 cimport cpython
@@ -57,7 +58,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        raise Exception(message)
+        raise RayletError(message)
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
@@ -95,7 +96,7 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
-cdef c_bool is_simple_value(value, int *num_elements_contained):
+cdef c_bool is_simple_value(value, int64_t *num_elements_contained):
     num_elements_contained[0] += 1
 
     if num_elements_contained[0] >= RayConfig.instance().num_elements_limit():
@@ -169,7 +170,7 @@ def check_simple_value(value):
         True if the value should be send by value, False otherwise.
     """
 
-    cdef int num_elements_contained = 0
+    cdef int64_t num_elements_contained = 0
     return is_simple_value(value, &num_elements_contained)
 
 
@@ -219,27 +220,24 @@ cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
     def __cinit__(self, raylet_socket,
-                  ClientID client_id,
+                  WorkerID worker_id,
                   c_bool is_worker,
                   JobID job_id):
         # We know that we are using Python, so just skip the language
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(
-            raylet_socket.encode("ascii"), client_id.native(), is_worker,
+            raylet_socket.encode("ascii"), worker_id.native(), is_worker,
             job_id.native(), LANGUAGE_PYTHON))
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def submit_task(self, TaskSpec task_spec, execution_dependencies):
+    def submit_task(self, TaskSpec task_spec):
         cdef:
             CObjectID c_id
-            c_vector[CObjectID] c_dependencies
-        for dep in execution_dependencies:
-            c_dependencies.push_back((<ObjectID>dep).native())
         check_status(self.client.get().SubmitTask(
-            c_dependencies, task_spec.task_spec.get()[0]))
+            task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:
@@ -376,7 +374,7 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetClientID().Binary())
+        return ClientID(self.client.get().GetWorkerId().Binary())
 
     @property
     def job_id(self):

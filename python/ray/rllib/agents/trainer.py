@@ -24,7 +24,8 @@ from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources, ExportFormat
+from ray.tune.trial import ExportFormat
+from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -67,9 +68,7 @@ COMMON_CONFIG = {
     },
     # Whether to attempt to continue training if a worker crashes.
     "ignore_worker_failures": False,
-    # Execute TF loss functions in eager mode. This is currently experimental
-    # and only really works with the basic PG algorithm.
-    "use_eager": False,
+    # Log system resource metrics to results.
     "log_sys_usage": True,
 
     # === Policy ===
@@ -145,7 +144,8 @@ COMMON_CONFIG = {
     "train_batch_size": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
     "batch_mode": "truncate_episodes",
-    # (Deprecated) Use a background thread for sampling (slightly off-policy)
+    # Use a background thread for sampling (slightly off-policy, usually not
+    # advisable to turn on unless your env specifically requires it)
     "sample_async": False,
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter"
     "observation_filter": "NoFilter",
@@ -174,7 +174,8 @@ COMMON_CONFIG = {
     },
     # Whether to LZ4 compress individual observations
     "compress_observations": False,
-    # Drop metric batches from unresponsive workers after this many seconds
+    # Wait for metric batches for at most this many seconds. Those that
+    # have not returned in time will be collected in the next iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
@@ -193,6 +194,10 @@ COMMON_CONFIG = {
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 0,
+    # This argument, in conjunction with worker_index, sets the random seed of
+    # each worker, so that identically configured trials will have identical
+    # results. This makes experiments reproducible.
+    "seed": None,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -578,12 +583,6 @@ class Trainer(Trainable):
             return res
         else:
             return res[0]  # backwards compatibility
-
-    @property
-    def iteration(self):
-        """Current training iter, auto-incremented with each train() call."""
-
-        return self._iteration
 
     @property
     def _name(self):

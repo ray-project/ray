@@ -1,8 +1,8 @@
 #ifndef RAY_CORE_WORKER_CONTEXT_H
 #define RAY_CORE_WORKER_CONTEXT_H
 
+#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
 
@@ -20,7 +20,9 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  void SetCurrentTask(const raylet::TaskSpecification &spec);
+  void SetCurrentTask(const TaskSpecification &task_spec);
+
+  std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   int GetNextTaskIndex();
 
@@ -28,13 +30,13 @@ class WorkerContext {
 
  private:
   /// Type of the worker.
-  const WorkerType worker_type;
+  const WorkerType worker_type_;
 
   /// ID for this worker.
-  const WorkerID worker_id;
+  const WorkerID worker_id_;
 
   /// Job ID for this worker.
-  JobID current_job_id;
+  JobID current_job_id_;
 
  private:
   static WorkerThreadContext &GetThreadContext();

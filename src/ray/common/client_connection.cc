@@ -230,20 +230,16 @@ ClientConnection<T>::ClientConnection(
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
     : ServerConnection<T>(std::move(socket)),
-      client_id_(ClientID::Nil()),
+      registered_(false),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
       error_message_type_(error_message_type) {}
 
 template <class T>
-const ClientID &ClientConnection<T>::GetClientId() const {
-  return client_id_;
-}
-
-template <class T>
-void ClientConnection<T>::SetClientID(const ClientID &client_id) {
-  client_id_ = client_id;
+void ClientConnection<T>::Register() {
+  RAY_CHECK(!registered_);
+  registered_ = true;
 }
 
 template <class T>
@@ -299,14 +295,13 @@ bool ClientConnection<T>::CheckRayCookie() {
   // is received from local unknown program which crashes raylet.
   std::ostringstream ss;
   ss << " ray cookie mismatch for received message. "
-     << "received cookie: " << read_cookie_ << ", debug label: " << debug_label_
-     << ", remote client ID: " << client_id_;
+     << "received cookie: " << read_cookie_ << ", debug label: " << debug_label_;
   auto remote_endpoint_info = RemoteEndpointInfo();
   if (!remote_endpoint_info.empty()) {
     ss << ", remote endpoint info: " << remote_endpoint_info;
   }
 
-  if (!client_id_.IsNil()) {
+  if (registered_) {
     // This is from a known client, which indicates a bug.
     RAY_LOG(FATAL) << ss.str();
   } else {

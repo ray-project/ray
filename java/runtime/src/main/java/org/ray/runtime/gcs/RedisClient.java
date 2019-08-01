@@ -49,14 +49,18 @@ public class RedisClient {
         return jedis.hset(key, field, value);
       }
     }
-
   }
 
   public String hmset(String key, Map<String, String> hash) {
     try (Jedis jedis = jedisPool.getResource()) {
       return jedis.hmset(key, hash);
     }
+  }
 
+  public Map<byte[], byte[]> hgetAll(byte[] key) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.hgetAll(key);
+    }
   }
 
   public String get(final String key, final String field) {
@@ -67,7 +71,6 @@ public class RedisClient {
         return jedis.hget(key, field);
       }
     }
-
   }
 
   public byte[] get(byte[] key) {
@@ -104,4 +107,9 @@ public class RedisClient {
     }
   }
 
+  public long incr(byte[] key) {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.incr(key).intValue();
+    }
+  }
 }

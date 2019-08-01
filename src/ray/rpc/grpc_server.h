@@ -2,6 +2,7 @@
 #define RAY_RPC_GRPC_SERVER_H
 
 #include <thread>
+#include <utility>
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
@@ -25,15 +26,22 @@ class GrpcService;
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:
-  /// Constructor.
+  /// Construct a gRPC server that listens on a TCP port.
   ///
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] main_service The main event loop, to which service handler functions
-  /// will be posted.
-  GrpcServer(const std::string &name, const uint32_t port)
-      : name_(name), port_(port), is_closed_(true) {}
+  GrpcServer(std::string name, const uint32_t port)
+      : name_(std::move(name)), port_(port), is_closed_(false) {}
+
+  /// Construct a gRPC server that listens on unix domain socket.
+  ///
+  /// \param[in] name Name of this server, used for logging and debugging purpose.
+  /// \param[in] unix_socket_path Unix domain socket full path.
+  GrpcServer(std::string name, const std::string &unix_socket_path)
+      : GrpcServer(std::move(name), 0) {
+    unix_socket_path_ = unix_socket_path;
+  }
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -72,6 +80,10 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
+  /// Indicates whether this server has been closed.
+  bool is_closed_;
+  /// Unix domain socket path.
+  std::string unix_socket_path_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
@@ -82,10 +94,8 @@ class GrpcServer {
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
-  /// The polling thread used to check the completion queue
+  /// The polling thread used to check the completion queue.
   std::thread polling_thread_;
-  /// Flag indicates whether this server has closed
-  bool is_closed_;
 };
 
 /// Base class that represents an abstract gRPC service.
@@ -98,10 +108,11 @@ class GrpcService {
   ///
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  GrpcService(boost::asio::io_service &main_service) : main_service_(main_service) {}
+  explicit GrpcService(boost::asio::io_service &main_service)
+      : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
-  ~GrpcService() {}
+  ~GrpcService() = default;
 
  protected:
   /// Return the underlying grpc::Service object for this class.

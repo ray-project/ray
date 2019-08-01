@@ -30,6 +30,10 @@ Custom Envs and Models
 
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
+- `Custom Keras model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_model.py>`__:
+   Example of using a custom Keras model.
+- `Custom Keras RNN model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_keras_rnn_model.py>`__:
+   Example of using a custom Keras RNN model.
 - `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_env_with_subprocess.py>`__:
@@ -66,7 +70,8 @@ Multi-Agent and Hierarchical
 
 Community Examples
 ------------------
-
+- `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
+   Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 - `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:

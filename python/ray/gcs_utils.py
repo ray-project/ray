@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
-    ClientTableData,
+    GcsNodeInfo,
     JobTableData,
     ErrorTableData,
     ErrorType,
@@ -16,11 +16,12 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceTableData,
 )
 
 __all__ = [
     "ActorCheckpointIdData",
-    "ClientTableData",
+    "GcsNodeInfo",
     "JobTableData",
     "ErrorTableData",
     "ErrorType",
@@ -32,6 +33,7 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "TaskTableData",
+    "ResourceTableData",
     "construct_error_message",
 ]
 

@@ -15,7 +15,8 @@ import traceback
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
+from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.sample import function
@@ -179,6 +180,11 @@ class TrialRunner(object):
         self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
+        self.checkpoint_file = None
+        if self._local_checkpoint_dir:
+            self.checkpoint_file = os.path.join(
+                self._local_checkpoint_dir,
+                TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
@@ -259,10 +265,7 @@ class TrialRunner(object):
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
-        os.rename(
-            tmp_file_name,
-            os.path.join(self._local_checkpoint_dir,
-                         TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
+        os.rename(tmp_file_name, self.checkpoint_file)
         self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
@@ -276,6 +279,7 @@ class TrialRunner(object):
         newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
+            self.checkpoint_file = newest_ckpt_path
 
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
@@ -529,7 +533,8 @@ class TrialRunner(object):
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(trial)
+            self._checkpoint_trial_if_needed(
+                trial, force=result.get(SHOULD_CHECKPOINT, False))
 
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
@@ -554,9 +559,9 @@ class TrialRunner(object):
                     self.trial_executor.stop_trial(
                         trial, error=True, error_msg=error_msg)
 
-    def _checkpoint_trial_if_needed(self, trial):
+    def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
-        if trial.should_checkpoint():
+        if trial.should_checkpoint() or force:
             # Save trial runtime if possible
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
@@ -597,9 +602,20 @@ class TrialRunner(object):
 
         This does not notify the SearchAlgorithm because the function
         evaluation is still in progress.
+
         """
         self._scheduler_alg.on_trial_error(self, trial)
         self.trial_executor.set_status(trial, Trial.PENDING)
+
+        # TODO(rliaw): Right now, this pushes the trial to the end of queue
+        # because restoration can be expensive. However, this is not
+        # ideal since it just hides the issue - a better fix would
+        # be to use an actor table to detect the IP of the Trainable
+        # and rsync the files there.
+        # See https://github.com/ray-project/ray/issues/5168
+        self._trials.pop(self._trials.index(trial))
+        self._trials.append(trial)
+
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
 

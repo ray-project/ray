@@ -23,14 +23,25 @@ class Buffer {
   virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
-    return this->Data() == rhs.Data() && this->Size() == rhs.Size();
+    if (this->Size() != rhs.Size()) {
+      return false;
+    }
+
+    return this->Size() == 0 || memcmp(Data(), rhs.Data(), Size()) == 0;
   }
 };
 
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
-  LocalMemoryBuffer(uint8_t *data, size_t size) : data_(data), size_(size) {}
+  LocalMemoryBuffer(uint8_t *data, size_t size, bool should_copy = false)
+      : data_(data), size_(size) {
+    if (should_copy) {
+      buffer_.insert(buffer_.end(), data, data + size);
+      data_ = buffer_.data();
+      size_ = buffer_.size();
+    }
+  }
 
   uint8_t *Data() const override { return data_; }
 
@@ -43,9 +54,12 @@ class LocalMemoryBuffer : public Buffer {
   uint8_t *data_;
   /// Size of the buffer.
   size_t size_;
+  /// This is only valid when `should_copy` is true.
+  std::vector<uint8_t> buffer_;
 };
 
-/// Represents a byte buffer for plasma object.
+/// Represents a byte buffer for plasma object. This can be used to hold the
+/// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
 class PlasmaBuffer : public Buffer {
  public:
   PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}

@@ -2,16 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import errno
 import logging
-import numpy as np
+import os
 
+import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.lstm import chop_into_sequences
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize
@@ -94,7 +94,7 @@ class TFPolicy(Policy):
             prev_reward_input (Tensor): placeholder for previous rewards
             seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
-                models/lstm.py for more information.
+                policy/rnn_sequencing.py for more information.
             max_seq_len (int): max sequence length for LSTM training.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
@@ -202,7 +202,7 @@ class TFPolicy(Policy):
             self._update_ops = tf.get_collection(
                 tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
         if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
+            logger.info("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
         with tf.control_dependencies(self._update_ops):
             self._apply_op = self.build_apply_op(self._optimizer,
@@ -430,9 +430,11 @@ class TFPolicy(Policy):
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if self._prev_action_input is not None and prev_action_batch:
+        if self._prev_action_input is not None and \
+           prev_action_batch is not None:
             builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and prev_reward_batch:
+        if self._prev_reward_input is not None and \
+           prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
@@ -555,7 +557,7 @@ class LearningRateSchedule(object):
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf.get_variable("lr", initializer=lr)
+        self.cur_lr = tf.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
             self.lr_schedule = ConstantSchedule(lr)
         else:
@@ -572,3 +574,24 @@ class LearningRateSchedule(object):
     @override(TFPolicy)
     def optimizer(self):
         return tf.train.AdamOptimizer(self.cur_lr)
+
+
+@DeveloperAPI
+class EntropyCoeffSchedule(object):
+    """Mixin for TFPolicy that adds entropy coeff decay."""
+
+    @DeveloperAPI
+    def __init__(self, entropy_coeff, entropy_coeff_schedule):
+        self.entropy_coeff = tf.get_variable(
+            "entropy_coeff", initializer=entropy_coeff, trainable=False)
+        self._entropy_schedule = entropy_coeff_schedule
+
+    @override(Policy)
+    def on_global_var_update(self, global_vars):
+        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
+        if self._entropy_schedule is not None:
+            self.entropy_coeff.load(
+                self.entropy_coeff.eval(session=self._sess) *
+                (1 - global_vars["timestep"] /
+                 self.config["entropy_coeff_schedule"]),
+                session=self._sess)

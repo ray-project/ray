@@ -5,16 +5,12 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/raylet/raylet_client.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
-
-using rpc::Language;
-using rpc::TaskType;
-
-/// Type of this worker.
-enum class WorkerType { WORKER, DRIVER };
+using WorkerType = rpc::WorkerType;
 
 /// Information about a remote function.
 struct RayFunction {
@@ -78,34 +74,9 @@ struct TaskInfo {
   const TaskType task_type;
 };
 
-/// Task specification, which includes the immutable information about the task
-/// which are determined at the submission time.
-/// TODO(zhijunfu): this can be removed after everything is moved to protobuf.
-class TaskSpec {
- public:
-  TaskSpec(const raylet::TaskSpecification &task_spec,
-           const std::vector<ObjectID> &dependencies)
-      : task_spec_(task_spec), dependencies_(dependencies) {}
+enum class StoreProviderType { LOCAL_PLASMA, PLASMA };
 
-  TaskSpec(const raylet::TaskSpecification &&task_spec,
-           const std::vector<ObjectID> &&dependencies)
-      : task_spec_(task_spec), dependencies_(dependencies) {}
-
-  const raylet::TaskSpecification &GetTaskSpecification() const { return task_spec_; }
-
-  const std::vector<ObjectID> &GetDependencies() const { return dependencies_; }
-
- private:
-  /// Raylet task specification.
-  raylet::TaskSpecification task_spec_;
-
-  /// Dependencies.
-  std::vector<ObjectID> dependencies_;
-};
-
-enum class StoreProviderType { PLASMA };
-
-enum class TaskTransportType { RAYLET };
+enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 
 }  // namespace ray
 

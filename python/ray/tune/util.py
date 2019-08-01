@@ -43,10 +43,10 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
-        if GPUtil is None:
+        if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
-        if psutil is None:
+        if psutil is None and start:
             logger.warning("Install psutil to monitor system performance.")
 
         if GPUtil is None and psutil is None:
@@ -180,14 +180,15 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
     return original
 
 
-def flatten_dict(dt):
+def flatten_dict(dt, delimiter=":"):
+    dt = copy.deepcopy(dt)
     while any(isinstance(v, dict) for v in dt.values()):
         remove = []
         add = {}
         for key, value in dt.items():
             if isinstance(value, dict):
                 for subkey, v in value.items():
-                    add[":".join([key, subkey])] = v
+                    add[delimiter.join([key, subkey])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -221,6 +222,46 @@ def recursive_fnmatch(dirpath, pattern):
         for filename in fnmatch.filter(filenames, pattern):
             matches.append(os.path.join(root, filename))
     return matches
+
+
+def validate_save_restore(trainable_cls, config=None, use_object_store=False):
+    """Helper method to check if your Trainable class will resume correctly.
+
+    Args:
+        trainable_cls: Trainable class for evaluation.
+        config (dict): Config to pass to Trainable when testing.
+        use_object_store (bool): Whether to save and restore to Ray's object
+            store. Recommended to set this to True if planning to use
+            algorithms that pause training (i.e., PBT, HyperBand).
+    """
+    assert ray.is_initialized(), "Need Ray to be initialized."
+    remote_cls = ray.remote(trainable_cls)
+    trainable_1 = remote_cls.remote(config=config)
+    trainable_2 = remote_cls.remote(config=config)
+
+    from ray.tune.result import TRAINING_ITERATION
+
+    for _ in range(3):
+        res = ray.get(trainable_1.train.remote())
+
+    assert res.get(TRAINING_ITERATION), (
+        "Validation will not pass because it requires `training_iteration` "
+        "to be returned.")
+
+    if use_object_store:
+        restore_check = trainable_2.restore_from_object.remote(
+            trainable_1.save_to_object.remote())
+        ray.get(restore_check)
+    else:
+        restore_check = ray.get(
+            trainable_2.restore.remote(trainable_1.save.remote()))
+
+    res = ray.get(trainable_2.train.remote())
+    assert res[TRAINING_ITERATION] == 4
+
+    res = ray.get(trainable_2.train.remote())
+    assert res[TRAINING_ITERATION] == 5
+    return True
 
 
 if __name__ == "__main__":

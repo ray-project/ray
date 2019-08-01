@@ -7,11 +7,11 @@ import ray
 
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.model import Model
-from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
-from ray.rllib.models.fcnet import FullyConnectedNetwork
-from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
+from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -32,7 +32,7 @@ class CustomModel(Model):
         return tf.constant([[0] * 5]), None
 
 
-class CustomActionDistribution(ActionDistribution):
+class CustomActionDistribution(TFActionDistribution):
     @staticmethod
     def parameter_shape_for_action_space(action_space, model_config=None):
         custom_options = model_config["custom_options"] or {}

@@ -6,6 +6,7 @@ import json
 import numpy as np
 import os
 import pytest
+import sys
 import time
 
 import ray
@@ -13,7 +14,7 @@ from ray.tests.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 
 
-@pytest.fixture(params=[1, 20])
+@pytest.fixture(params=[1, 4])
 def ray_start_sharded(request):
     num_redis_shards = request.param
 
@@ -24,7 +25,10 @@ def ray_start_sharded(request):
 
     # Start the Ray processes.
     ray.init(
-        num_cpus=10, num_redis_shards=num_redis_shards, redis_max_memory=10**7)
+        object_store_memory=int(0.1 * 10**9),
+        num_cpus=10,
+        num_redis_shards=num_redis_shards,
+        redis_max_memory=10**7)
 
     yield None
 
@@ -476,6 +480,8 @@ def test_nondeterministic_task(ray_start_reconstruction):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory):
@@ -521,6 +527,7 @@ def test_driver_put_errors(ray_start_object_store_memory):
 
     errors = wait_for_errors(error_check)
     assert all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+               or "ray.exceptions.UnreconstructableError" in error["message"]
                for error in errors)
 
 

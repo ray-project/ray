@@ -12,12 +12,14 @@ import json
 import logging
 import numpy as np
 import os
+import redis
 import signal
 from six.moves import queue
 import sys
 import threading
 import time
 import traceback
+import random
 
 # Ray modules
 import pyarrow
@@ -39,7 +41,6 @@ import ray.state
 from ray import (
     ActorHandleID,
     ActorID,
-    ClientID,
     WorkerID,
     JobID,
     ObjectID,
@@ -217,6 +218,13 @@ class Worker(object):
     def current_task_id(self):
         return self.task_context.current_task_id
 
+    @property
+    def current_session_and_job(self):
+        """Get the current session index and job id as pair."""
+        assert isinstance(self._session_index, int)
+        assert isinstance(self.current_job_id, ray.JobID)
+        return self._session_index, self.current_job_id
+
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
 
@@ -354,10 +362,14 @@ class Worker(object):
                         logger.warning(warning_message)
 
     def put_object(self, object_id, value):
-        """Put value in the local object store with object id objectid.
+        """Put value in the local object store with object id `objectid`.
 
-        This assumes that the value for objectid has not yet been placed in the
-        local object store.
+        This assumes that the value for `objectid` has not yet been placed in
+        the local object store. If the plasma store is full, the worker will
+        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
+        retry will delay for an exponentially doubling amount of time,
+        starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
+        will be raised.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
@@ -365,10 +377,9 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
+            plasma.PlasmaStoreFull: This is raised if the attempt to store the
+                object fails because the object store is full even after
+                multiple retries.
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
@@ -379,27 +390,48 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        # Serialize and put the object in the object store.
+        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
+        for attempt in reversed(
+                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
+            try:
+                self._try_store_and_register(object_id, value)
+                break
+            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
+                if attempt:
+                    logger.debug(
+                        "Waiting {} secs for plasma to drain.".format(delay))
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    raise plasma_exc
+
+    def _try_store_and_register(self, object_id, value):
+        """Wraps `store_and_register` with cases for existence and pickling.
+
+        Args:
+            object_id (object_id.ObjectID): The object ID of the value to be
+                put.
+            value: The value to put in the object store.
+        """
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
+        except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare the hashes
+            # need to add it again. TODO(rkn): We need to compare hashes
             # and make sure that the objects are in fact the same. We also
-            # should return an error code to the caller instead of printing a
+            # should return an error code to caller instead of printing a
             # message.
-            logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
+            logger.info("The object with ID {} already exists "
+                        "in the object store.".format(object_id))
         except TypeError:
-            # This error can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need these extra
-            # fallbacks here to start from the beginning. Hopefully the object
-            # could have a `__reduce__` method.
+            # TypeError can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need
+            # these extra fallbacks here to start from the beginning.
+            # Hopefully the object could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "falling back to cloudpickle.".format(
+                                   type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
@@ -578,8 +610,8 @@ class Worker(object):
                     actor_counter=0,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
+                    previous_actor_task_dummy_object_id=None,
                     max_actor_reconstructions=0,
-                    execution_dependencies=None,
                     new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
@@ -603,7 +635,9 @@ class Worker(object):
             actor_creation_dummy_object_id: If this task is an actor method,
                 then this argument is the dummy object ID associated with the
                 actor creation task for the corresponding actor.
-            execution_dependencies: The execution dependencies for this task.
+            previous_actor_task_dummy_object_id: If this task is an actor,
+                then this argument is the dummy object ID associated with the
+                task previously submitted to the corresponding actor.
             num_return_vals: The number of return values this function should
                 have.
             resources: The resource requirements for this task.
@@ -643,10 +677,6 @@ class Worker(object):
                     args_for_raylet.append(arg)
                 else:
                     args_for_raylet.append(put(arg))
-
-            # By default, there are no execution dependencies.
-            if execution_dependencies is None:
-                execution_dependencies = []
 
             if new_actor_handles is None:
                 new_actor_handles = []
@@ -697,6 +727,7 @@ class Worker(object):
                 self.task_context.task_index,
                 actor_creation_id,
                 actor_creation_dummy_object_id,
+                previous_actor_task_dummy_object_id,
                 max_actor_reconstructions,
                 actor_id,
                 actor_handle_id,
@@ -705,7 +736,7 @@ class Worker(object):
                 resources,
                 placement_resources,
             )
-            self.raylet_client.submit_task(task, execution_dependencies)
+            self.raylet_client.submit_task(task)
 
             return task.returns()
 
@@ -860,7 +891,7 @@ class Worker(object):
         assert self.current_task_id.is_nil()
         assert self.task_context.task_index == 0
         assert self.task_context.put_index == 1
-        if task.actor_id().is_nil():
+        if not task.is_actor_task():
             # If this worker is not an actor, check that `current_job_id`
             # was reset when the worker finished the previous task.
             assert self.current_job_id.is_nil()
@@ -879,8 +910,7 @@ class Worker(object):
             task.function_descriptor_list())
         args = task.arguments()
         return_object_ids = task.returns()
-        if (not task.actor_id().is_nil()
-                or not task.actor_creation_id().is_nil()):
+        if task.is_actor_task() or task.is_actor_creation_task():
             dummy_return_id = return_object_ids.pop()
         function_executor = function_execution_info.function
         function_name = function_execution_info.function_name
@@ -903,11 +933,10 @@ class Worker(object):
         try:
             self._current_task = task
             with profiling.profile("task:execute"):
-                if (task.actor_id().is_nil()
-                        and task.actor_creation_id().is_nil()):
+                if task.is_normal_task():
                     outputs = function_executor(*arguments)
                 else:
-                    if not task.actor_id().is_nil():
+                    if task.is_actor_task():
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
@@ -916,7 +945,7 @@ class Worker(object):
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
-            task_exception = task.actor_id().is_nil()
+            task_exception = not task.is_actor_task()
             traceback_str = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             self._handle_process_task_failure(
@@ -972,8 +1001,7 @@ class Worker(object):
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
-        if not task.actor_creation_id().is_nil():
-            assert self.actor_id.is_nil()
+        if task.is_actor_creation_task():
             self.actor_id = task.actor_creation_id()
             self.actor_creation_task_id = task.task_id()
             actor_class = self.function_actor_manager.load_actor_class(
@@ -991,8 +1019,8 @@ class Worker(object):
         # Execute the task.
         function_name = execution_info.function_name
         extra_data = {"name": function_name, "task_id": task.task_id().hex()}
-        if task.actor_id().is_nil():
-            if task.actor_creation_id().is_nil():
+        if not task.is_actor_task():
+            if not task.is_actor_creation_task():
                 title = "ray_worker:{}()".format(function_name)
                 next_title = "ray_worker"
             else:
@@ -1516,8 +1544,12 @@ def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
-                                         {"exception": error_message})
+        try:
+            global_worker.redis_client.hmset(
+                b"Drivers:" + global_worker.worker_id,
+                {"exception": error_message})
+        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
+            logger.warning("Could not push exception to redis.")
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1579,6 +1611,8 @@ def print_logs(redis_client, threads_stopped):
                     "The driver may not be able to keep up with the "
                     "stdout/stderr of the workers. To avoid forwarding logs "
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("print_logs: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1677,6 +1711,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 task_error_queue.put((error_message, time.time()))
             else:
                 logger.error(error_message)
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1718,27 +1754,44 @@ def connect(node,
 
     worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
 
+    if mode is not LOCAL_MODE:
+        # Create a Redis client to primary.
+        # The Redis client can safely be shared between threads. However,
+        # that is not true of Redis pubsub clients. See the documentation at
+        # https://github.com/andymccurdy/redis-py#thread-safety.
+        worker.redis_client = node.create_redis_client()
+
     # Initialize some fields.
     if mode is WORKER_MODE:
+        # We should not specify the job_id if it's `WORKER_MODE`.
+        assert job_id is None
+        job_id = JobID.nil()
+        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray_worker")
+    elif mode is LOCAL_MODE:
+        # Code path of local mode
+        if job_id is None:
+            job_id = JobID.from_int(random.randint(1, 100000))
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
     else:
         # This is the code path of driver mode.
         if job_id is None:
-            job_id = JobID.from_random()
+            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
+            job_id = JobID.from_int(
+                int(worker.redis_client.incr("JobCounter")))
+        # When tasks are executed on remote workers in the context of multiple
+        # drivers, the current job ID is used to keep track of which job is
+        # responsible for the task so that error messages will be propagated to
+        # the correct driver.
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
 
-        if not isinstance(job_id, JobID):
-            raise TypeError("The type of given job id must be JobID.")
-
-        worker.worker_id = job_id.binary()
-
-    # When tasks are executed on remote workers in the context of multiple
-    # drivers, the current job ID is used to keep track of which driver is
-    # responsible for the task so that error messages will be propagated to
-    # the correct driver.
-    if mode != WORKER_MODE:
-        worker.current_job_id = JobID(worker.worker_id)
+    if not isinstance(job_id, JobID):
+        raise TypeError("The type of given job id must be JobID.")
+    worker.current_job_id = job_id
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1751,12 +1804,6 @@ def connect(node,
     if mode == LOCAL_MODE:
         worker.local_mode_manager = LocalModeManager()
         return
-
-    # Create a Redis client.
-    # The Redis client can safely be shared between threads. However, that is
-    # not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1836,7 +1883,6 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
-    job_id_str = _random_string()
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1868,10 +1914,11 @@ def connect(node,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
             0,  # num_returns.
-            TaskID(job_id_str[:TaskID.size()]),  # parent_task_id.
+            TaskID(worker.worker_id[:TaskID.size()]),  # parent_task_id.
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
+            ObjectID.nil(),  # previous_actor_task_dummy_object_id.
             0,  # max_actor_reconstructions.
             ActorID.nil(),  # actor_id.
             ActorHandleID.nil(),  # actor_handle_id.
@@ -1899,9 +1946,9 @@ def connect(node,
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,
-        ClientID(worker.worker_id),
+        WorkerID(worker.worker_id),
         (mode == WORKER_MODE),
-        JobID(job_id_str),
+        worker.current_job_id,
     )
 
     # Start the import thread

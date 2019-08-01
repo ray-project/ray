@@ -26,8 +26,10 @@ from gym.spaces import Box, Discrete, Dict
 
 import ray
 from ray import tune
-from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.models.misc import normc_initializer
+from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.tune.registry import register_env
 from ray.rllib.utils import try_import_tf
 
@@ -111,7 +113,7 @@ class ParametricActionCartpole(gym.Env):
         return obs, rew, done, info
 
 
-class ParametricActionsModel(Model):
+class ParametricActionsModel(DistributionalQModel, TFModelV2):
     """Parametric action model that handles the dot product and masking.
 
     This assumes the outputs are logits for a single Categorical action dist.
@@ -120,46 +122,45 @@ class ParametricActionsModel(Model):
     exercise to the reader.
     """
 
-    def _build_layers_v2(self, input_dict, num_outputs, options):
+    def __init__(self,
+                 obs_space,
+                 action_space,
+                 num_outputs,
+                 model_config,
+                 name,
+                 true_obs_shape=(4, ),
+                 action_embed_size=2,
+                 **kw):
+        super(ParametricActionsModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name, **kw)
+        self.action_embed_model = FullyConnectedNetwork(
+            Box(-1, 1, shape=true_obs_shape), action_space, action_embed_size,
+            model_config, name + "_action_embed")
+        self.register_variables(self.action_embed_model.variables())
+
+    def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.
         avail_actions = input_dict["obs"]["avail_actions"]
         action_mask = input_dict["obs"]["action_mask"]
-        action_embed_size = avail_actions.shape[2].value
-        if num_outputs != avail_actions.shape[1].value:
-            raise ValueError(
-                "This model assumes num outputs is equal to max avail actions",
-                num_outputs, avail_actions)
 
-        # Standard FC net component.
-        last_layer = input_dict["obs"]["cart"]
-        hiddens = [256, 256]
-        for i, size in enumerate(hiddens):
-            label = "fc{}".format(i)
-            last_layer = tf.layers.dense(
-                last_layer,
-                size,
-                kernel_initializer=normc_initializer(1.0),
-                activation=tf.nn.tanh,
-                name=label)
-        output = tf.layers.dense(
-            last_layer,
-            action_embed_size,
-            kernel_initializer=normc_initializer(0.01),
-            activation=None,
-            name="fc_out")
+        # Compute the predicted action embedding
+        action_embed, _ = self.action_embed_model({
+            "obs": input_dict["obs"]["cart"]
+        })
 
         # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
         # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
-        intent_vector = tf.expand_dims(output, 1)
+        intent_vector = tf.expand_dims(action_embed, 1)
 
         # Batch dot product => shape of logits is [BATCH, MAX_ACTIONS].
         action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
 
         # Mask out invalid actions (use tf.float32.min for stability)
         inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
-        masked_logits = inf_mask + action_logits
+        return action_logits + inf_mask, state
 
-        return masked_logits, last_layer
+    def value_function(self):
+        return self.action_embed_model.value_function()
 
 
 if __name__ == "__main__":
@@ -168,22 +169,17 @@ if __name__ == "__main__":
 
     ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
     register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
-    if args.run == "PPO":
+    if args.run == "DQN":
         cfg = {
-            "observation_filter": "NoFilter",  # don't filter the action list
-            "vf_share_layers": True,  # don't create duplicate value model
-        }
-    elif args.run in ["SimpleQ", "DQN"]:
-        cfg = {
-            "hiddens": [],  # important: don't postprocess the action scores
-            # TODO(ekl) we could support dueling if the model in this example
-            # was ModelV2 and only emitted -inf values on get_q_values().
-            # The problem with ModelV1 is that the model outputs
-            # are used as state scores and hence cause blowup to inf.
+            # TODO(ekl) we need to set these to prevent the masked values
+            # from being further processed in DistributionalQModel, which
+            # would mess up the masking. It is possible to support these if we
+            # defined a a custom DistributionalQModel that is aware of masking.
+            "hiddens": [],
             "dueling": False,
         }
     else:
-        cfg = {}  # PG, IMPALA, A2C, etc.
+        cfg = {}
     tune.run(
         args.run,
         stop={

@@ -11,6 +11,8 @@
 
 namespace ray {
 
+using rpc::RayletClient;
+
 class CoreWorker;
 class CoreWorkerStoreProvider;
 
@@ -66,13 +68,32 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
+  /// Create a new store provider for the specified type on demand.
+  std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
+      StoreProviderType type) const;
+
+  /// Add a store provider for the specified type.
+  void AddStoreProvider(StoreProviderType type);
+
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
   /// Reference to the parent CoreWorker's raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
 
+  /// Store socket name.
+  std::string store_socket_;
+
   /// All the store providers supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerStoreProvider>> store_providers_;
+  EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
+      store_providers_;
+
+  friend class CoreWorkerTaskInterface;
+
+  /// TODO(zhijunfu): This is necessary as direct call task submitter needs to create
+  /// a local plasma store provider, later we can refactor ObjectInterface to add a
+  /// `ObjectProviderLayer`, which will encapsulate the functionalities to get or create
+  /// a specific `StoreProvider`, and this can be removed then.
+  friend class CoreWorkerDirectActorTaskSubmitter;
 };
 
 }  // namespace ray

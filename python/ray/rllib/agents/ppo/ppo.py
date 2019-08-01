@@ -35,12 +35,16 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 5e-5,
     # Learning rate schedule
     "lr_schedule": None,
-    # Share layers for value function
+    # Share layers for value function. If you set this to True, it's important
+    # to tune vf_loss_coeff.
     "vf_share_layers": False,
-    # Coefficient of the value function loss
+    # Coefficient of the value function loss. It's important to tune this if
+    # you set vf_share_layers: True
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
+    # Decay schedule for the entropy regularizer
+    "entropy_coeff_schedule": None,
     # PPO clip parameter
     "clip_param": 0.3,
     # Clip param for the value function. Note that this is sensitive to the
@@ -57,9 +61,6 @@ DEFAULT_CONFIG = with_common_config({
     # Uses the sync samples optimizer instead of the multi-gpu one. This does
     # not support minibatches.
     "simple_optimizer": False,
-    # (Deprecated) Use the sampling behavior as of 0.6, which launches extra
-    # sampling tasks for performance but can waste a large portion of samples.
-    "straggler_mitigation": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -81,7 +82,6 @@ def choose_policy_optimizer(workers, config):
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
-        straggler_mitigation=config["straggler_mitigation"],
         shuffle_sequences=config["shuffle_sequences"])
 
 
@@ -100,17 +100,6 @@ def update_kl(trainer, fetches):
 
         # multi-agent
         trainer.workers.local_worker().foreach_trainable_policy(update)
-
-
-def warn_about_obs_filter(trainer):
-    if "observation_filter" not in trainer.raw_user_config:
-        # TODO(ekl) remove this message after a few releases
-        logger.info(
-            "Important! Since 0.7.0, observation normalization is no "
-            "longer enabled by default. To enable running-mean "
-            "normalization, set 'observation_filter': 'MeanStdFilter'. "
-            "You can ignore this message if your environment doesn't "
-            "require observation normalization.")
 
 
 def warn_about_bad_reward_scales(trainer, result):
@@ -140,11 +129,11 @@ def validate_config(config):
         raise ValueError(
             "Minibatch size {} must be <= train batch size {}.".format(
                 config["sgd_minibatch_size"], config["train_batch_size"]))
-    if (config["batch_mode"] == "truncate_episodes" and not config["use_gae"]):
+    if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "
             "function. Consider setting batch_mode=complete_episodes.")
-    if (config["multiagent"]["policies"] and not config["simple_optimizer"]):
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "
@@ -162,5 +151,4 @@ PPOTrainer = build_trainer(
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,
-    before_train_step=warn_about_obs_filter,
     after_train_result=warn_about_bad_reward_scales)

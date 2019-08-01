@@ -1,14 +1,13 @@
 #include <iostream>
 
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "ray/protobuf/common.pb.h"
+#include "ray/common/task/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
 #include "gflags/gflags.h"
-
-using ray::rpc::Language;
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -32,14 +31,6 @@ DEFINE_bool(enable_stdout_exporter, false,
             "Whether enable the stdout exporter for stats.");
 
 #ifndef RAYLET_TEST
-
-/// A helper function that parse the worker command string into a vector of arguments.
-static std::vector<std::string> parse_worker_command(std::string worker_command) {
-  std::istringstream iss(worker_command);
-  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-                                  std::istream_iterator<std::string>());
-  return result;
-}
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -74,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.7.2"},
+      {ray::stats::VersionKey, "0.8.0.dev3"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -107,8 +98,7 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
-  node_manager_config.resource_config =
-      ray::raylet::ResourceSet(std::move(static_resource_conf));
+  node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();
   node_manager_config.node_manager_address = node_ip_address;
@@ -120,11 +110,11 @@ int main(int argc, char *argv[]) {
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(Language::PYTHON, parse_worker_command(python_worker_command)));
+        make_pair(ray::Language::PYTHON, SplitStrByWhitespaces(python_worker_command)));
   }
   if (!java_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(
-        make_pair(Language::JAVA, parse_worker_command(java_worker_command)));
+        make_pair(ray::Language::JAVA, SplitStrByWhitespaces(java_worker_command)));
   }
   if (python_worker_command.empty() && java_worker_command.empty()) {
     RAY_CHECK(0)
@@ -157,16 +147,15 @@ int main(int argc, char *argv[]) {
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                  << "rpc_service_threads_number = "
                  << object_manager_config.rpc_service_threads_number
-                 << "object_chunk_size = " << object_manager_config.object_chunk_size;
+                 << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
 
-  //  initialize mock gcs & object directory
-  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>(redis_address, redis_port,
-                                                               redis_password);
-  RAY_LOG(DEBUG) << "Initializing GCS client "
-                 << gcs_client->client_table().GetLocalClientId();
+  // Initialize gcs client
+  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
+  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
       main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
@@ -178,9 +167,11 @@ int main(int argc, char *argv[]) {
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
-    auto shutdown_callback = [&server, &main_service]() {
+    auto shutdown_callback = [&server, &main_service, &gcs_client]() {
       server.reset();
+      gcs_client->Disconnect();
       main_service.stop();
+      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
     // Give a timeout for this Disconnect operation.
