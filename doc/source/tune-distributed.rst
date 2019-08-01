@@ -30,7 +30,6 @@ After, compare single node vs cluster execution. Note that connecting to cluster
     # On the head node, connect to an existing ray cluster
     $ python tune_script.py --ray-redis-address=localhost:XXXX
 
-
 .. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch.py
    :language: python
    :start-after: if __name__ == "__main__":
@@ -65,7 +64,7 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
     ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
 
-Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results.
+Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 Local Cluster Setup
 -------------------
@@ -141,6 +140,12 @@ Example for using spot instances (AWS)
 
 Here is an example for running Tune on spot instances. This assumes your AWS credentials have already been setup (``aws configure``):
 
+To run this example, you will need to install the following:
+
+.. code-block:: bash
+
+    $ pip install ray torch torchvision filelock
+
 1. Download a full example Tune experiment script here: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`
 2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
 3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster is not up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
@@ -157,6 +162,17 @@ Here is an example for running Tune on spot instances. This assumes your AWS cre
 .. code-block:: bash
 
     $ ray kill-random-node $CLUSTER --hard
+
+To summarize, here are the commands to run:
+
+.. code-block:: bash
+
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch_trainable.py
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/quickstart/tune-default.yaml
+    ray submit tune-default.yaml mnist_pytorch_trainable.py --args="--ray-redis-address=localhost:6379" --start
+
+    # wait a while until after all nodes have started
+    ray kill-random-node $CLUSTER --hard
 
 You should see Tune eventually continue the trials on a different worker node. See the `Saving and Recovery <tune-usage.html#saving-and-recovery>`__ section for more details.
 

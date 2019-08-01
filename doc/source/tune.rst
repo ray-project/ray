@@ -20,7 +20,11 @@ Tune is a scalable framework for hyperparameter search and model training with a
 Quick Start
 -----------
 
-This example runs a small grid search to train a CNN using PyTorch and Tune:
+This example runs a small grid search to train a CNN using PyTorch and Tune. Note: to run this example, you will need to install the following:
+
+.. code-block:: bash
+
+    $ pip install ray torch torchvision filelock
 
 .. literalinclude:: ../../python/ray/tune/tests/example.py
    :language: python
@@ -40,6 +44,12 @@ Distributed Quick Start
 -----------------------
 
 *This assumes that you have already setup your AWS account and AWS credentials.* (``aws configure``)
+
+Note: to run this example, you will need to install the following:
+
+.. code-block:: bash
+
+    $ pip install ray torch torchvision filelock
 
 1. Import and initialize Ray by appending the following to your example script.
 
@@ -61,8 +71,15 @@ Alternatively, download a full example script here: :download:`mnist_pytorch.py 
 
 .. code-block:: bash
 
-    export CLUSTER=tune-default.yaml
-    ray submit $CLUSTER mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+
+To summarize, here are the full set of commands:
+
+.. code-block:: bash
+
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/quickstart/tune-default.yaml
+    ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
 This will start 3 AWS machines and run a distributed hyperparameter search across them. Append ``[--stop]`` to automatically shutdown your nodes afterwards.
 
