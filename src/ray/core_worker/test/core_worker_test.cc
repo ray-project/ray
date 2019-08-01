@@ -723,7 +723,7 @@ TEST_F(SingleNodeTest, TestLocalPlasmaStoreProvider) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  TestStoreProvider(StoreProviderType::LOCAL_PLASMA);
+  TestStoreProvider(StoreProviderType::MEMORY);
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {

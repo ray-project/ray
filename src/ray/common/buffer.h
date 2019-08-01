@@ -39,7 +39,7 @@ class LocalMemoryBuffer : public Buffer {
  public:
   /// Constructor.
   ///
-  /// \param data The data pointer to the passed in buffer.
+  /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,
   /// otherwise the buffer only points to the given address.
@@ -65,7 +65,7 @@ class LocalMemoryBuffer : public Buffer {
 
  private:
   /// Disable copy constructor and assignment, as default copy will
-  /// cause invalidata data_.
+  /// cause invalid data_.
   LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
   LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
