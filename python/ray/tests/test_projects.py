@@ -5,10 +5,17 @@ from __future__ import print_function
 import os
 import pytest
 import subprocess
+import yaml
 
 import ray
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def validate_project_test(project_file):
+    path = os.path.join(TEST_DIR, "project_files", project_file)
+    with open(path) as f:
+        ray.projects.validate_project_schema(yaml.load(f))
 
 
 def test_validation_success():
@@ -17,16 +24,14 @@ def test_validation_success():
         "shell_project.yaml"
     ]
     for project_file in project_files:
-        path = os.path.join(TEST_DIR, "project_files", project_file)
-        ray.projects.validate_project(path)
+        validate_project_test(project_file)
 
 
 def test_validation_failure():
     project_files = ["no_project1.yaml", "no_project2.yaml"]
     for project_file in project_files:
-        path = os.path.join(TEST_DIR, "project_files", project_file)
         with pytest.raises(Exception):
-            ray.projects.validate_project(path)
+            validate_project_test(project_file)
 
 
 def test_project_root():

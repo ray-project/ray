@@ -41,16 +41,16 @@
     "commands": {
       "type": "array",
       "items": {
+        "description": "Possible commands to run to start a session",
         "type": "object",
         "properties": {
-          "name": {"type": "string"},
-          "cluster": {"type": "string"},
-          "command": {"type": "string"},
-          "params": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
+          "name": {
+            "description": "Name of the command",
+            "type": "string"
+          },
+          "command": {
+            "description": "Shell command to run on the cluster",
+            "type": "string"
           }
         }
       }
