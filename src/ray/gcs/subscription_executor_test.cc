@@ -125,40 +125,27 @@ TEST_F(SubscriptionExecutorTest, SubscribeOneWithClientIDTest) {
 }
 
 TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
-  size_t sub_factor = 0;
-
-  ++sub_factor;
   ++do_sub_pending_count_;
   Status status =
       actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.ok());
-  ++sub_factor;
   for (const auto &item : id_to_datas_) {
-    ++do_sub_pending_count_;
     status = actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), item.first, subscribe_,
                                                  sub_done_);
-    ASSERT_TRUE(status.ok());
+    ASSERT_FALSE(status.ok());
   }
-  size_t register_count = AsyncRegisterActorToGcs();
-  sub_pending_count_ = register_count * sub_factor;
+  sub_pending_count_ = AsyncRegisterActorToGcs();
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 
 TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
-  size_t sub_factor = 0;
-  // Subscribe to all
-  ++sub_factor;
-  ++do_sub_pending_count_;
-  Status status =
-      actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
-  ASSERT_TRUE(status.ok());
+  Status status;
   for (const auto &item : id_to_datas_) {
     status =
         actor_sub_executor_->AsyncUnsubscribe(ClientID::Nil(), item.first, unsub_done_);
     ASSERT_TRUE(status.IsInvalid());
   }
-  WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
 
   for (const auto &item : id_to_datas_) {
     ++do_sub_pending_count_;
@@ -194,7 +181,6 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_unsub_pending_count_, wait_pending_timeout_);
-  ++sub_factor;
   for (const auto &item : id_to_datas_) {
     ++do_sub_pending_count_;
     status = actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), item.first, subscribe_,
@@ -202,8 +188,7 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
-  size_t register_count = AsyncRegisterActorToGcs();
-  sub_pending_count_ = register_count * sub_factor;
+  sub_pending_count_ = AsyncRegisterActorToGcs();
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 

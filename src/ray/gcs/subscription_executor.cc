@@ -12,12 +12,17 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
   // Consider avoiding locking in single-threaded processes.
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (subscribe != nullptr && subscribe_all_callback_ != nullptr) {
-    RAY_LOG(INFO) << "Duplicate subscription!";
+  if (subscribe_all_callback_ != nullptr) {
+    RAY_LOG(INFO) << "Duplicate subscription! Already subscribed to all elements.";
     return Status::Invalid("Duplicate subscription!");
   }
 
   if (registered_) {
+    if (subscribe != nullptr) {
+      RAY_LOG(INFO) << "Duplicate subscription! Already subscribed to specific elements"
+                       ", can't subscribe to all elements.";
+      return Status::Invalid("Duplicate subscription!");
+    }
     return Status::OK();
   }
 
@@ -43,6 +48,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
       sub_one_callback(id, result.back());
     }
     if (sub_all_callback != nullptr) {
+      RAY_CHECK(sub_one_callback == nullptr);
       sub_all_callback(id, result.back());
     }
   };
@@ -87,7 +93,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     if (it != id_to_callback_map_.end()) {
       RAY_LOG(INFO) << "Duplicate subscription to id " << id << " client_id "
                     << client_id;
-      return Status::Invalid("Duplicate subscription!");
+      return Status::Invalid("Duplicate subscription to element!");
     }
     status = table_.RequestNotifications(JobID::Nil(), id, client_id, on_done);
     if (status.ok()) {
