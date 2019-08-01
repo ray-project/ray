@@ -161,7 +161,7 @@ public class IdUtil {
   /*
    A temp helper to generate a ObjectId according to the given actorId.
    */
-  public static ObjectId computeObjectIdFromActorId(ActorId actorId) {
+  public static ObjectId computeActorCreationDummyObjectId(ActorId actorId) {
     byte[] bytes = new byte[ObjectId.LENGTH];
     System.arraycopy(actorId.getBytes(), 0, bytes, 0, ActorId.LENGTH);
     Arrays.fill(bytes, ActorId.LENGTH, bytes.length, (byte) 0xFF);

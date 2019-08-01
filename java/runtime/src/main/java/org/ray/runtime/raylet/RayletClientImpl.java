@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -15,7 +14,11 @@ import java.util.stream.Collectors;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
-import org.ray.api.id.*;
+import org.ray.api.id.ActorId;
+import org.ray.api.id.UniqueId;
+import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Common;
 import org.ray.runtime.generated.Common.TaskType;
@@ -264,7 +267,7 @@ public class RayletClientImpl implements RayletClient {
       builder.setType(TaskType.ACTOR_TASK);
       List<ByteString> newHandles = Arrays.stream(task.newActorHandles)
           .map(id -> ByteString.copyFrom(id.getBytes())).collect(Collectors.toList());
-      final ObjectId actorCreationDummyObjectId = IdUtil.computeObjectIdFromActorId(
+      final ObjectId actorCreationDummyObjectId = IdUtil.computeActorCreationDummyObjectId(
           ActorId.fromByteBuffer(ByteBuffer.wrap(task.actorId.getBytes())));
       builder.setActorTaskSpec(
           Common.ActorTaskSpec.newBuilder()
@@ -326,9 +329,6 @@ public class RayletClientImpl implements RayletClient {
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
       int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;
-
-  private static native byte[] nativeGenerateTaskId(byte[] jobId, byte[] parentTaskId,
-      int taskIndex);
 
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
       boolean localOnly, boolean deleteCreatingTasks) throws RayException;

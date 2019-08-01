@@ -121,7 +121,7 @@ public class ObjectId extends BaseId implements Serializable {
 
   public TaskId getTaskId() {
     byte[] taskIdBytes = Arrays.copyOf(getBytes(), TaskId.LENGTH);
-    return TaskId.fromByteBuffer(ByteBuffer.wrap(taskIdBytes));
+    return TaskId.fromBytes(taskIdBytes);
   }
 
   private static short setIsTaskFlag(short flags, boolean isTask) {
