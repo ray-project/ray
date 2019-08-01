@@ -1,7 +1,6 @@
 #ifndef RAY_CORE_WORKER_MEMORY_STORE_H
 #define RAY_CORE_WORKER_MEMORY_STORE_H
 
-
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"

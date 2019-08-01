@@ -100,7 +100,8 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     return Status::KeyError("object already exists");
   }
 
-  auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
+  auto object_entry =
+      std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
 
   bool should_add_entry = true;
   auto object_request_iter = object_get_requests_.find(object_id);
@@ -113,7 +114,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
       }
     }
   }
-  
+
   if (should_add_entry) {
     // If there is no existing get request, then add the `RayObject` to map.
     objects_.emplace(object_id, object_entry);
