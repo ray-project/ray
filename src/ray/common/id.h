@@ -156,18 +156,14 @@ class TaskID : public BaseID<TaskID> {
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
-  /// Generate TaskID randomly.
-  ///
-  /// Note that the ActorID of this task should be NIL.
-  ///
-  /// \return A random TaskID.
-  static TaskID FromRandom();
+  static TaskID FromRandom() = delete;
 
-  /// Generate TaskID from the given actor id.
-  ///
-  /// \param actor_id
-  /// \return A random TaskID for the given actor.
-  static TaskID FromRandom(const ActorID &actor_id);
+  // TODO(qwang): Comments
+  static TaskID ForActorCreationTask(const ActorID &actor_id);
+
+  static TaskID ForActorTask(const ActorID &actor_id);
+
+  static TaskID ForNormalTask();
 
   /// Get the id of the actor to which this task belongs.
   ///
@@ -207,12 +203,6 @@ private:
   /// \param from The binary string of the given plasma id.
   /// \return The ObjectID converted from a binary string of the plasma id.
   static ObjectID FromPlasmaIdBinary(const std::string &from);
-
-  /// Generate an random actor cursor object id by the given actor.
-  ///
-  /// \param actor_id TODO(qwang)
-  /// \return
-  static ObjectID GenerateActorDummyObjectId(const ActorID &actor_id);
 
   plasma::ObjectID ToPlasmaId() const;
 
@@ -266,7 +256,7 @@ private:
   ///
   /// \return The computed object ID.
   static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index,
-                                uint8_t transport_type = 0);
+                                uint8_t transport_type);
 
   /// Create an object id randomly.
   ///
@@ -326,15 +316,6 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 // Restore the compiler alignment to defult (8 bytes).
 #pragma pack(pop)
-
-/// Generate a task ID from the given info.
-///
-/// \param job_id The job that creates the task.
-/// \param parent_task_id The parent task of this task.
-/// \param parent_task_counter The task index of the worker.
-/// \return The task ID generated from the given info.
-const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
-                            int parent_task_counter);
 
 /// Compute the next actor handle ID of a new actor handle during a fork operation.
 ///

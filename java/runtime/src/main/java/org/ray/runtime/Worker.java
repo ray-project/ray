@@ -83,7 +83,6 @@ public class Worker {
    */
   public void execute(TaskSpec spec) {
     LOGGER.debug("Executing task {}", spec);
-    // we can compute the actor id: objectId -> taskId -> actorId.
     ObjectId returnId = spec.returnIds[0];
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
@@ -124,7 +123,6 @@ public class Worker {
 
         runtime.put(returnId, result);
       } else {
-        // For actor creation task, the returnId[0] represents its actor id.
         maybeLoadCheckpoint(result, spec.taskId.getActorId());
         currentActor = result;
       }

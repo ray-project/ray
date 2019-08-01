@@ -6,15 +6,15 @@
 namespace ray {
 
 
-void TestReturnObjectId(const TaskID &task_id, int64_t return_index) {
+void TestReturnObjectId(const TaskID &task_id, int64_t return_index, uint8_t transport_type) {
   // Round trip test for computing the object ID for a task's return value,
   // then computing the task ID that created the object.
-  ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index);
+  ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index, transport_type);
   ASSERT_TRUE(return_id.CreatedByTask());
   ASSERT_TRUE(return_id.IsReturnObject());
   ASSERT_FALSE(return_id.IsPutObject());
   ASSERT_EQ(return_id.TaskId(), task_id);
-  ASSERT_TRUE(0 == return_id.GetTransportType());
+  ASSERT_TRUE(transport_type == return_id.GetTransportType());
   ASSERT_EQ(return_id.ObjectIndex(), return_index);
 }
 
@@ -56,17 +56,16 @@ TEST(ActorIDTest, TestActorID) {
 
 TEST(TaskIDTest, TestTaskID) {
   // Round trip test for task ID.
-  const ActorID actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
-  const TaskID task_id_1 = TaskID::FromRandom(actor_id);
-  ASSERT_EQ(actor_id, task_id_1.ActorId());
-
-  const TaskID task_id_2 = TaskID::FromRandom();
-  ASSERT_EQ(ActorID::Nil(), task_id_2.ActorId());
+  {
+    const ActorID actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
+    const TaskID task_id_1 = TaskID::ForActorTask(actor_id);
+    ASSERT_EQ(actor_id, task_id_1.ActorId());
+  }
 }
 
 TEST(ObjectIDTest, TestObjectID) {
   const static ActorID default_actor_id = ActorID::FromRandom(DEFAULT_JOB_ID);
-  const static TaskID default_task_id = TaskID::FromRandom(default_actor_id);
+  const static TaskID default_task_id = TaskID::ForActorTask(default_actor_id);
 
   {
     // test for put
@@ -77,9 +76,9 @@ TEST(ObjectIDTest, TestObjectID) {
 
   {
     // test for return
-    TestReturnObjectId(default_task_id, 1);
-    TestReturnObjectId(default_task_id, 2);
-    TestReturnObjectId(default_task_id, ObjectID::kMaxObjectIndex);
+    TestReturnObjectId(default_task_id, 1, 2);
+    TestReturnObjectId(default_task_id, 2, 3);
+    TestReturnObjectId(default_task_id, ObjectID::kMaxObjectIndex, 4);
   }
 
   {

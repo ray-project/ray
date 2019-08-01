@@ -127,8 +127,8 @@ class LineageCacheTest : public ::testing::Test {
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
-  builder.SetCommonTaskSpec(Language::PYTHON, {"", "", ""}, JobID::Nil(),
-                            TaskID::FromRandom(), 0, num_returns, {}, {});
+  builder.SetCommonTaskSpec(TaskID::ForNormalTask(), Language::PYTHON, {"", "", ""},
+                            JobID::Nil(), TaskID::ForNormalTask(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }

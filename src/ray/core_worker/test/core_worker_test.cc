@@ -505,8 +505,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(function.language, function.function_descriptor,
-                              JobID::FromInt(1), TaskID::FromRandom(), 0, num_returns,
+    builder.SetCommonTaskSpec(TaskID::ForNormalTask(), function.language, function.function_descriptor,
+                              JobID::FromInt(1), TaskID::ForNormalTask(), 0, num_returns,
                               resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
@@ -517,8 +517,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       }
     }
 
-    const auto actor_creation_dummy_object_id =
-        ObjectID::GenerateActorDummyObjectId(actor_handle.ActorID());
+    const auto actor_creation_dummy_object_id = ObjectID::ForTaskReturn(
+        TaskID::ForActorCreationTask(actor_handle.ActorID()), /*index=*/1, /*transport_type=*/0);
     builder.SetActorTaskSpec(
         actor_handle.ActorID(), actor_handle.ActorHandleID(),
         actor_creation_dummy_object_id,
@@ -537,27 +537,22 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
-
   std::unique_ptr<ActorHandle> actor_handle;
 
   // Test creating actor.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-
   RayFunction func{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
-
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
-
   // wait for actor creation finish.
   ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
                                           30 * 1000 /* 30s */));
-
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
   const int num_tasks = 10000;

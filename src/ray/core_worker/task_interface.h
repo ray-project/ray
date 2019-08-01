@@ -170,6 +170,7 @@ class CoreWorkerTaskInterface {
   /// Build common attributes of the task spec, and compute return ids.
   ///
   /// \param[in] builder Builder to build a `TaskSpec`.
+  /// \param[in] task_id The ID of this task.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] num_returns Number of returns.
@@ -179,7 +180,7 @@ class CoreWorkerTaskInterface {
   /// \param[out] return_ids Return IDs.
   /// \return Void.
   void BuildCommonTaskSpec(
-      TaskSpecBuilder &builder, const RayFunction &function,
+      TaskSpecBuilder &builder, const TaskID &task_id, const RayFunction &function,
       const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,

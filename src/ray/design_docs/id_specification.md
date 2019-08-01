@@ -38,7 +38,7 @@ A `TaskID` contains two parts: 1) 6 random bytes, and 2) its `ActorID` (nil if t
 #### ObjectID
 An `ObjectID` contains 3 parts:
 - `index bytes`: 4 bytes to indicate the index of the object.
-- `flags bytes`: 2 bytes to indicate the flags of this object. We have 3 flags now: `is_task`, `object_type` and `transport_type`.
+- `flags bytes`: 2 bytes to indicate the flags of this object. We have 3 flags now: `created_by_task`, `object_type` and `transport_type`.
 - `TaskID`: 14 bytes to indicate the ID of the task to which this object belongs.
 
 **flags bytes format**
@@ -48,7 +48,7 @@ An `ObjectID` contains 3 parts:
 | (1) | (2) |     (3)      |                (4)unused                     |
 +-------------------------------------------------------------------------+
 ```
-- The (1) `is_task` part is one bit to indicate whether this `ObjectID` is generated (put or returned) from a task.
+- The (1) `created_by_task` part is one bit to indicate whether this `ObjectID` is generated (put or returned) from a task.
 
 - The (2) `object_type` part is one bit to indicate the type of this object, whether a `PUT_OBJECT` or a `RETURN_OBJECT`.
     - `PUT_OBJECT` indicates this object is generated through `ray.put` during the task's execution.

@@ -6,7 +6,7 @@ namespace ray {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   WorkerThreadContext()
-      : current_task_id_(TaskID::FromRandom(ActorID::Nil())), task_index_(0), put_index_(0) {}
+      : current_task_id_(TaskID::ForNormalTask()), task_index_(0), put_index_(0) {}
 
   int GetNextTaskIndex() { return ++task_index_; }
 
@@ -55,7 +55,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
   GetThreadContext().SetCurrentTaskId(
-      (worker_type_ == WorkerType::DRIVER) ? TaskID::FromRandom(ActorID::Nil()) : TaskID::Nil());
+      (worker_type_ == WorkerType::DRIVER) ? TaskID::ForNormalTask() : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }

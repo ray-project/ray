@@ -49,8 +49,8 @@ constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffse
 constexpr ObjectIDFlagsType kTransportTypeFlagBitMask = 0x7 << kTransportTypeBitsOffset;
 
 /// The implementations of helper functions.
-inline void SetCreatedByTaskFlag(bool is_task, ObjectIDFlagsType *flags) {
-  const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(is_task) << kCreatedByTaskBitsOffset;
+inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {
+  const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(created_by_task) << kCreatedByTaskBitsOffset;
   *flags = (*flags bitor object_type_bits);
 }
 
@@ -92,6 +92,14 @@ void FillRandom(T *data) {
   }
 }
 
+template <typename T>
+void FillNil(T *data) {
+  RAY_CHECK(data != nullptr);
+  for (int i = 0; i < data->size(); i++) {
+    (*data)[i] = static_cast<uint8_t>(0xFF);
+  }
+}
+
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
   std::vector<uint8_t> data(WorkerID::Size(), 0);
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
@@ -103,12 +111,6 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
 ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
   RAY_CHECK(from.size() == kPlasmaIdSize);
   return ObjectID::FromBinary(from.substr(0, ObjectID::kLength));
-}
-
-ObjectID ObjectID::GenerateActorDummyObjectId(const ActorID &actor_id) {
-  const auto dummy_task_id = TaskID::FromRandom(actor_id);
-  return ObjectID::ForTaskReturn(dummy_task_id, 1);
-
 }
 
 plasma::UniqueID ObjectID::ToPlasmaId() const {
@@ -210,14 +212,23 @@ JobID ActorID::JobId() const {
       std::string(reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
-TaskID TaskID::FromRandom() {
-  return FromRandom(ActorID::Nil());
+TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
+  std::string data(kUniqueBytesLength, 0);
+  FillNil(&data);
+  std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::FromRandom(const ActorID &actor_id) {
+TaskID TaskID::ForActorTask(const ActorID &actor_id) {
   std::string data(kUniqueBytesLength, 0);
   FillRandom(&data);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  return TaskID::FromBinary(data);
+}
+
+TaskID TaskID::ForNormalTask() {
+  std::string data(TaskID::kLength, 0);
+  FillRandom(&data);
   return TaskID::FromBinary(data);
 }
 
@@ -291,22 +302,6 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary, ObjectIDF
   std::memcpy(ret.id_ + TaskID::kLength, &flags, sizeof(flags));
   std::memcpy(ret.id_ + TaskID::kLength + kFlagsBytesLength, &object_index, sizeof(object_index));
   return ret;
-}
-
-const TaskID GenerateTaskId(const JobID &job_id, const TaskID &parent_task_id,
-                            int parent_task_counter) {
-  // Compute hashes.
-  SHA256_CTX ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
-                parent_task_id.Size());
-  sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
-
-  // Compute the final task ID from the hash.
-  BYTE buff[DIGEST_SIZE];
-  sha256_final(&ctx, buff);
-  return TaskID::FromBinary(std::string(buff, buff + TaskID::Size()));
 }
 
 const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
