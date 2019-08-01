@@ -22,11 +22,11 @@ class RayObject {
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
-      if (data_ && !data_->HasDataCopy()) {
+      if (data_ && !data_->OwnsData()) {
         data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(), data_->Size(), true);
       }
 
-      if (metadata_ && !metadata_->HasDataCopy()) {
+      if (metadata_ && !metadata_->OwnsData()) {
         metadata_ = std::make_shared<LocalMemoryBuffer>(metadata_->Data(),
                                                         metadata_->Size(), true);
       }

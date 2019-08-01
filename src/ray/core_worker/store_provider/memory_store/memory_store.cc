@@ -15,6 +15,9 @@ class GetOrWaitRequest {
   const std::vector<ObjectID> &ObjectIds() const;
 
   /// Wait until all requested objects are available, or timeout happens.
+  ///
+  /// \param timeout_ms The maximum time in milliseconds to wait for.
+  /// \return Whether all requested objects are available.
   bool Wait(int64_t timeout_ms);
   /// Set the object content for the specific object id.
   void Set(const ObjectID &object_id, std::shared_ptr<RayObject> buffer);
@@ -200,12 +203,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
 }
 
 Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &object_ids,
-                                   int num_objects, int64_t timeout_ms,
+                                   int64_t timeout_ms,
                                    std::vector<bool> *results) {
-  if (num_objects != object_ids.size()) {
-    return Status::Invalid("num_objects should equal to number of items in object_ids");
-  }
-
   (*results).resize(object_ids.size(), false);
 
   std::vector<std::shared_ptr<RayObject>> result_objects;

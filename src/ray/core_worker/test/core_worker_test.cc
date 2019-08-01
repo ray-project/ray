@@ -794,14 +794,14 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
-  std::vector<LocalMemoryBuffer> buffers;
-  buffers.emplace_back(array1, sizeof(array1));
-  buffers.emplace_back(array2, sizeof(array2));
+  std::vector<std::shared_ptr<LocalMemoryBuffer>> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)));
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_CHECK_OK(worker1.Objects().Put(
-        RayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
+        RayObject(buffers[i], nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.
@@ -810,8 +810,8 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].Size());
-    ASSERT_EQ(*(results[i]->GetData()), buffers[i]);
+    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i]->Size());
+    ASSERT_EQ(*(results[i]->GetData()), *buffers[i]);
   }
 
   // Test Wait() from remote node.

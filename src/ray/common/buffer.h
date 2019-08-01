@@ -21,7 +21,7 @@ class Buffer {
   virtual size_t Size() const = 0;
 
   /// Whether this buffer owns the data.
-  virtual bool HasDataCopy() const = 0;
+  virtual bool OwnsData() const = 0;
 
   virtual ~Buffer(){};
 
@@ -41,13 +41,17 @@ class LocalMemoryBuffer : public Buffer {
   ///
   /// \param data The data pointer to the passed in buffer.
   /// \param size The size of the passed in buffer.
-  /// \param has_data_copy Whether this buffer should own a copy of the data.
-  LocalMemoryBuffer(uint8_t *data, size_t size, bool has_data_copy = false)
-      : data_(data), size_(size), has_data_copy_(has_data_copy) {
-    if (has_data_copy) {
+  /// \param copy_data If true, data will be copied and owned by this buffer,
+  /// otherwise the buffer only points to the given address.
+  LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false)
+      : has_data_copy_(copy_data) {
+    if (copy_data) {
       buffer_.insert(buffer_.end(), data, data + size);
       data_ = buffer_.data();
       size_ = buffer_.size();
+    } else {
+      data_ = data;
+      size_ = size;
     }
   }
 
@@ -55,7 +59,7 @@ class LocalMemoryBuffer : public Buffer {
 
   size_t Size() const override { return size_; }
 
-  bool HasDataCopy() const override { return has_data_copy_; }
+  bool OwnsData() const override { return has_data_copy_; }
 
   ~LocalMemoryBuffer() {}
 
@@ -85,7 +89,7 @@ class PlasmaBuffer : public Buffer {
 
   size_t Size() const override { return buffer_->size(); }
 
-  bool HasDataCopy() const override { return true; }
+  bool OwnsData() const override { return true; }
 
  private:
   /// shared_ptr to arrow buffer which can potentially hold a reference

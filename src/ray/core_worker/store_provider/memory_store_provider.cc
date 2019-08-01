@@ -31,7 +31,11 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
-  return store_->Wait(object_ids, num_objects, timeout_ms, results);
+  if (num_objects != object_ids.size()) {
+    return Status::Invalid("num_objects should equal to number of items in object_ids");
+  }
+
+  return store_->Wait(object_ids, timeout_ms, results);
 }
 
 Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
