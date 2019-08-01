@@ -97,12 +97,12 @@ Status ActorStateAccessor::AsyncSubscribe(
     const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), actor_id, subscribe, done);
+  return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
 }
 
 Status ActorStateAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                             const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(ClientID::Nil(), actor_id, done);
+  return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
 }
 
 }  // namespace gcs

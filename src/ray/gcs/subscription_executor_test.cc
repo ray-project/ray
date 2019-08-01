@@ -23,12 +23,12 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
     };
 
     sub_done_ = [this](Status status) {
-      ASSERT_TRUE(status.ok());
+      ASSERT_TRUE(status.ok()) << status;
       --do_sub_pending_count_;
     };
 
     unsub_done_ = [this](Status status) {
-      ASSERT_TRUE(status.ok());
+      ASSERT_TRUE(status.ok()) << status;
       --do_unsub_pending_count_;
     };
   }
@@ -94,7 +94,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeAllTest) {
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 
-TEST_F(SubscriptionExecutorTest, SubscribeOne) {
+TEST_F(SubscriptionExecutorTest, SubscribeOneTest) {
   Status status;
   for (const auto &item : id_to_datas_) {
     ++do_sub_pending_count_;
@@ -108,6 +108,18 @@ TEST_F(SubscriptionExecutorTest, SubscribeOne) {
                                                  sub_done_);
     ASSERT_TRUE(status.IsInvalid());
   }
+  WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
+  WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
+}
+
+TEST_F(SubscriptionExecutorTest, SubscribeOneWithClientIDTest) {
+  const auto &item = id_to_datas_.begin();
+  ++do_sub_pending_count_;
+  ++sub_pending_count_;
+  Status status = actor_sub_executor_->AsyncSubscribe(ClientID::FromRandom(), item->first,
+                                                      subscribe_, sub_done_);
+  ASSERT_TRUE(status.ok());
+  AsyncRegisterActorToGcs();
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }

@@ -5,6 +5,7 @@
 #include <vector>
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -53,12 +54,8 @@ class AccessorTestBase : public ::testing::Test {
 
   void WaitPendingDone(std::atomic<int> &pending_count,
                        std::chrono::milliseconds timeout) {
-    while (pending_count != 0 && timeout.count() > 0) {
-      std::chrono::milliseconds interval(10);
-      std::this_thread::sleep_for(interval);
-      timeout -= interval;
-    }
-    EXPECT_EQ(pending_count, 0);
+    auto condition = [&pending_count]() { return pending_count == 0; };
+    EXPECT_TRUE(WaitForCondition(condition, timeout.count()));
   }
 
  protected:

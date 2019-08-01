@@ -78,6 +78,13 @@ class ActorStateAccessor {
 
  private:
   RedisGcsClient &client_impl_;
+  // TODO(micafan) Use random ClientID when subscribe to an actor. Reason:
+  // If we use ClientID::Nil when subscribe to an actor,
+  // GCS will still send all actors's updates to GCS Client.
+  // Even we can filter out irrelevant updates, but there will be extra overhead.
+  // And because the new GCS Client will no longer hold the local Client ID, so we use
+  // random ClientID instead.
+  ClientID node_id_{ClientID::FromRandom()};
 
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;

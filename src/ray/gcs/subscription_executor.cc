@@ -27,6 +27,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
       return;
     }
 
+    RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
+
     SubscribeCallback<ID, Data> sub_one_callback = nullptr;
     SubscribeCallback<ID, Data> sub_all_callback = nullptr;
     {
