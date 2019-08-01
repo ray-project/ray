@@ -27,4 +27,7 @@ message ActorHandle {
   // The number of times that this actor handle has been forked.
   // It's used to make sure ids of actor handles are unique.
   int64 num_forks = 7;
+
+  // Whether direct actor call is used.
+  bool is_direct_call = 8;
 }

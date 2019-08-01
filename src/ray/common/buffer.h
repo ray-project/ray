@@ -26,13 +26,22 @@ class Buffer {
   virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
-    return this->Data() == rhs.Data() && this->Size() == rhs.Size();
+    if (this->Size() != rhs.Size()) {
+      return false;
+    }
+
+    return this->Size() == 0 || memcmp(Data(), rhs.Data(), Size()) == 0;
   }
 };
 
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
+  /// Constructor.
+  ///
+  /// \param data The data pointer to the passed in buffer.
+  /// \param size The size of the passed in buffer.
+  /// \param has_data_copy Whether this buffer should own a copy of the data.
   LocalMemoryBuffer(uint8_t *data, size_t size, bool has_data_copy = false)
       : data_(data), size_(size), has_data_copy_(has_data_copy) {
     if (has_data_copy) {

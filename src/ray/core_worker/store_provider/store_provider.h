@@ -23,13 +23,13 @@ class RayObject {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
       if (data_ && !data_->HasDataCopy()) {
-        data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(), data_->Size(),
-                                                    /* should_copy=*/true);
+        data_ = std::make_shared<LocalMemoryBuffer>(
+            data_->Data(), data_->Size(), true);
       }
 
       if (metadata_ && !metadata_->HasDataCopy()) {
         metadata_ = std::make_shared<LocalMemoryBuffer>(
-            metadata_->Data(), metadata_->Size(), /* should_copy=*/true);
+            metadata_->Data(), metadata_->Size(), true);
       }
     }
   }
@@ -42,23 +42,21 @@ class RayObject {
 
   uint64_t GetSize() const {
     uint64_t size = 0;
-    if (data_ != nullptr) {
-      size += data_->Size();
-    }
-    if (metadata_ != nullptr) {
-      size += metadata_->Size();
-    }
+    size += (data_ != nullptr) ? data_->Size() : 0;
+    size += (metadata_ != nullptr) ? metadata_->Size() : 0;
     return size;
   }
 
-  /// Whether this class holds a data copy.
-  bool has_data_copy_;
+  /// Whether this object has metadata.
+  bool HasMetadata() const { return metadata_ != nullptr && metadata_->Size() > 0; }
 
  private:
   /// Data of the ray object.
   std::shared_ptr<Buffer> data_;
   /// Metadata of the ray object.
   std::shared_ptr<Buffer> metadata_;
+  /// Whether this class holds a data copy.
+  bool has_data_copy_;  
 };
 
 /// Provider interface for store access. Store provider should inherit from this class and
