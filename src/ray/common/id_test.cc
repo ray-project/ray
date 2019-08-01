@@ -21,12 +21,12 @@ void TestReturnObjectId(const TaskID &task_id, int64_t return_index, uint8_t tra
 void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
   // Round trip test for computing the object ID for a task's put value, then
   // computing the task ID that created the object.
-  ObjectID put_id = ObjectID::ForPut(task_id, put_index);
+  ObjectID put_id = ObjectID::ForPut(task_id, put_index, 1);
   ASSERT_TRUE(put_id.CreatedByTask());
   ASSERT_FALSE(put_id.IsReturnObject());
   ASSERT_TRUE(put_id.IsPutObject());
   ASSERT_EQ(put_id.TaskId(), task_id);
-  ASSERT_TRUE(0 == put_id.GetTransportType());
+  ASSERT_TRUE(1 == put_id.GetTransportType());
   ASSERT_EQ(put_id.ObjectIndex(), put_index);
 }
 

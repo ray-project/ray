@@ -243,9 +243,11 @@ private:
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param index What index of the object put in the task.
+  /// \param transport_type Which type of the transport that is used to
+  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
+  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index, uint8_t transport_type);
 
   /// Compute the object ID of an object returned by the task.
   ///

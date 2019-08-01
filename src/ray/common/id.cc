@@ -252,15 +252,14 @@ TaskID ObjectID::TaskId() const {
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index) {
+ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index, uint8_t transport_type) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxObjectIndex) << "index=" << put_index;
 
   ObjectIDFlagsType flags = 0x0000;
   SetCreatedByTaskFlag(true, &flags);
   SetObjectTypeFlag(ObjectType::PUT_OBJECT, &flags);
 
-  // Use a default transport_type 0.
-  SetTransportTypeFlag(0, &flags);
+  SetTransportTypeFlag(transport_type, &flags);
 
   return GenerateObjectId(task_id.Binary(), flags, put_index);
 }
