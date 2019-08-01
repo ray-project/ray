@@ -127,10 +127,7 @@ class ActorHandle {
 class CoreWorkerTaskInterface {
  public:
   CoreWorkerTaskInterface(WorkerContext &worker_context,
-                          std::unique_ptr<RayletClient> &raylet_client,
-                          CoreWorkerObjectInterface &object_interface,
-                          boost::asio::io_service &io_service,
-                          gcs::RedisGcsClient &gcs_client);
+                          CoreWorkerTaskSubmitterLayer &task_submitter_layer);
 
   /// Submit a normal task.
   ///
@@ -188,9 +185,8 @@ class CoreWorkerTaskInterface {
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
 
-  /// All the task submitters supported.
-  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
-      task_submitters_;
+  /// Transport layer which abstracts task submitters & receivers.
+  CoreWorkerTransportLayer &transport_layer_;
 
   friend class CoreWorkerTest;
 };

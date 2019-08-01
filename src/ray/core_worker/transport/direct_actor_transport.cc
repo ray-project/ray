@@ -40,6 +40,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+  // Note that task_spec cannot be used from now.
 
   std::unique_lock<std::mutex> guard(mutex_);
   auto iter = actor_states_.find(actor_id);
@@ -52,6 +53,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // to have a timeout to mark it as invalid if it doesn't show up in the
     // specified time.
     pending_requests_[actor_id].emplace_back(std::move(request));
+
+    // record the return object ids for this task.
+    for (int i = 0; i < num_returns; i++) {
+      ObjectID object_id = ObjectID::ForTaskReturn(task_id, i + 1);
+      pending_send_return_objects_[actor_id].push_back(object_id);
+    }
     return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
@@ -63,7 +70,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    return PushTask(*client, *request, task_id, num_returns);
+    return PushTask(*client, *request, actor_id, task_id, num_returns);
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -92,6 +99,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
     } else {
       // Remove rpc client if it's dead or being reconstructed.
       rpc_clients_.erase(actor_id);
+
+      // mark all the return object ids as failed for all tasks that are waiting for replies.
+      // TODO(zhijunfu): if actor state is reconstructing, then delay the delete until
+      // the actor is becoming alive again, so that we can distinguish cases between
+      // actor died and evicted from store.
+      // or it might be better to just put errors for these objects, so that the
+      // worker can simply retrive from store.
+      pending_return_objects_.erase(actor_id);
     }
 
     RAY_LOG(INFO) << "received notification on actor, state="
@@ -116,19 +131,37 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   while (!requests.empty()) {
     const auto &request = *requests.front();
     auto status =
-        PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
+        PushTask(*client, request, actor_id, TaskID::FromBinary(request.task_spec().task_id()),
                  request.task_spec().num_returns());
     requests.pop_front();
   }
+
+  pending_send_return_objects_.erase(actor_id);
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
                                                     const rpc::PushTaskRequest &request,
+                                                    const ActorID &actor_id,
                                                     const TaskID &task_id,
                                                     int num_returns) {
+  // record the return object ids for this task.
+  for (int i = 0; i < num_returns; i++) {
+    ObjectID object_id = ObjectID::ForTaskReturn(task_id, i + 1);
+    pending_return_objects_[actor_id].push_back(object_id);
+  }
+
   auto status = client.PushTask(
       request,
-      [this, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
+      [this, actor_id, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
+        
+        {
+          std::unique_lock<std::mutex> guard(mutex_);
+          for (int i = 0; i < num_returns; i++) {
+            ObjectID object_id = ObjectID::ForTaskReturn(task_id, i + 1);
+            pending_return_objects_[actor_id].erase(object_id);
+          }
+        }
+
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;

@@ -95,18 +95,10 @@ std::vector<ray::ActorHandleID> ActorHandle::NewActorHandles() const {
 void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
-    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    gcs::RedisGcsClient &gcs_client)
-    : worker_context_(worker_context) {
-  task_submitters_.emplace(TaskTransportType::RAYLET,
-                           std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
-                               new CoreWorkerRayletTaskSubmitter(raylet_client)));
-  task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
-                           std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-                               new CoreWorkerDirectActorTaskSubmitter(
-                                   io_service, gcs_client, object_interface)));
-}
+    WorkerContext &worker_context,
+    CoreWorkerTaskSubmitterLayer &task_submitter_layer)
+    : worker_context_(worker_context),
+      task_submitter_layer_(task_submitter_layer) {}
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const RayFunction &function,
@@ -144,7 +136,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(builder, function, args, task_options.num_returns,
                       task_options.resources, {}, return_ids);
-  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
+  return task_submitter_layer_.SubmitTask(TaskTransportType::RAYLET, builder.Build());
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -166,7 +158,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
-  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
+  return task_submitter_layer_.SubmitTask(TaskTransportType::RAYLET, builder.Build());
 }
 
 Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
@@ -203,7 +195,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   const bool is_direct_call = actor_handle.IsDirectCallActor();
   const auto transport_type =
       is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
-  auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());
+  auto status = task_submitter_layer_.SubmitTask(type, builder.Build());
   // Remove cursor from return ids.
   (*return_ids).pop_back();
 

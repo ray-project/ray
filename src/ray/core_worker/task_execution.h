@@ -66,24 +66,12 @@ class CoreWorkerTaskExecutionInterface {
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
-  /// Reference to the parent CoreWorker's objects interface.
-  CoreWorkerObjectInterface &object_interface_;
 
   // Task execution callback.
-  TaskExecutor execution_callback_;
+  const TaskExecutor execution_callback_;
 
-  /// All the task task receivers supported.
-  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
-      task_receivers_;
-
-  /// The RPC server.
-  rpc::GrpcServer worker_server_;
-
-  /// Event loop where tasks are processed.
-  boost::asio::io_service main_service_;
-
-  /// The asio work to keep main_service_ alive.
-  boost::asio::io_service::work main_work_;
+  /// Task receiver layer.
+  std::unique_ptr<CoreWorkerTaskReceiverLayer> task_receiver_layer_;
 
   friend class CoreWorker;
 };

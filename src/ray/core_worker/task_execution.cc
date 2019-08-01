@@ -11,25 +11,14 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor)
     : worker_context_(worker_context),
       object_interface_(object_interface),
-      execution_callback_(executor),
-      worker_server_("Worker", 0 /* let grpc choose port */),
-      main_work_(main_service_) {
+      execution_callback_(executor) {
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
                         std::placeholders::_1, std::placeholders::_2);
-  task_receivers_.emplace(
-      TaskTransportType::RAYLET,
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_, main_service_, worker_server_, func)));
-  task_receivers_.emplace(
-      TaskTransportType::DIRECT_ACTOR,
-      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(object_interface_, main_service_,
-                                                worker_server_, func)));
-
-  // Start RPC server after all the task receivers are properly initialized.
-  worker_server_.Run();
+  
+  task_receiver_layer_ = std::unique_ptr<CoreWorkerTaskReceiverLayer>(
+    new CoreWorkerTaskReceiverLayer(raylet_client, store_provider_layer, func);
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
@@ -68,8 +57,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
 }
 
 void CoreWorkerTaskExecutionInterface::Run() {
-  // Run main IO service.
-  main_service_.run();
+  task_receiver_layer_->Run();
 
   // should never reach here.
   RAY_LOG(FATAL) << "should never reach here after running main io service";

@@ -59,7 +59,6 @@ class CoreWorkerStoreProvider {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   virtual Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-                     const TaskID &task_id,
                      std::vector<std::shared_ptr<RayObject>> *results) = 0;
 
   /// Wait for a list of objects to appear in the object store.
@@ -70,8 +69,7 @@ class CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  virtual Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
-                      int64_t timeout_ms, const TaskID &task_id,
+  virtual Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                       std::vector<bool> *results) = 0;
 
   /// Delete a list of objects from the object store.
@@ -82,8 +80,7 @@ class CoreWorkerStoreProvider {
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects.
   /// \return Status.
-  virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                        bool delete_creating_tasks = false) = 0;
+  virtual Status Delete(const std::vector<ObjectID> &object_ids) = 0;
 };
 
 }  // namespace ray
