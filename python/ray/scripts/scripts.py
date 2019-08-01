@@ -714,18 +714,7 @@ def get_worker_ips(cluster_config_file, cluster_name):
     default=False,
     help="Print actions instead of running them.")
 def session(command, dry):
-    project_definition = ray.projects.load_project(os.getcwd())
-    # root = ray.projects.find_root(os.getcwd())
-    # if not root:
-    #     raise Exception("No project root found")
-    # root = os.path.join(root, ".rayproject")
-    # project_file = os.path.join(root, "project.yaml")
-    # if not os.path.exists(project_file):
-    #     raise Exception(
-    #         "Not project.yaml file found in project root {}".format(root))
-    # ray.projects.validate_project(project_file)
-    # if dry:
-    #     print("project root directory: {}".format(root))
+    ray.projects.load_project(os.getcwd())
 
 
 @cli.command()

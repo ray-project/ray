@@ -21,6 +21,10 @@
       "description": "The environment that needs to be set up to run the project",
       "type": "object",
       "properties": {
+        "dockerimage": {
+          "description": "URL to a docker image that can be pulled to run the project in",
+          "type": "string"
+        },
         "dockerfile": {
           "description": "Path to a Dockerfile to set up an image the project can run in (relative to the project root)",
           "type": "string"
