@@ -84,6 +84,14 @@ class Node(object):
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
+        self._resource_spec = ResourceSpec(
+            ray_params.num_cpus,
+            ray_params.num_gpus,
+            ray_params.memory,
+            ray_params.object_store_memory,
+            ray_params.resources,
+            ray_params.redis_max_memory).resolve(is_head=head)
+
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
         self._config = (json.loads(ray_params._internal_config)
@@ -344,14 +352,14 @@ class Node(object):
          process_infos) = ray.services.start_redis(
              self._node_ip_address,
              redis_log_files,
+             self._resource_spec,
              port=self._ray_params.redis_port,
              redis_shard_ports=self._ray_params.redis_shard_ports,
              num_redis_shards=self._ray_params.num_redis_shards,
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             include_java=self._ray_params.include_java,
-             redis_max_memory=self._ray_params.redis_max_memory)
+             include_java=self._ray_params.include_java)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -406,9 +414,9 @@ class Node(object):
         """Start the plasma store."""
         stdout_file, stderr_file = self.new_log_files("plasma_store")
         process_info = ray.services.start_plasma_store(
+            self._resource_spec,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            object_store_memory=self._ray_params.object_store_memory,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
             plasma_store_socket_name=self._plasma_store_socket_name)
@@ -436,11 +444,7 @@ class Node(object):
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
-            self._ray_params.num_cpus,
-            self._ray_params.num_gpus,
-            self._ray_params.memory,
-            self._ray_params.object_store_memory,
-            self._ray_params.resources,
+            self._resource_spec,
             self._ray_params.object_manager_port,
             self._ray_params.node_manager_port,
             self._ray_params.redis_password,

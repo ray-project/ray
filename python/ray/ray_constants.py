@@ -75,16 +75,16 @@ def to_memory_units(memory_bytes, round_to_nearest_unit=False):
     value = memory_bytes / MEMORY_RESOURCE_UNIT_BYTES
     if round_to_nearest_unit:
         value = int(value)
-    if value <= 0:
-        logger.warn(
-            "The amount of memory specified is less than the minimum "
-            "available granularity of {} bytes, got only {}. Tasks may be "
-            "unable to acquire memory resources.".format(
-                MEMORY_RESOURCE_UNIT_BYTES, int(memory_bytes)))
-    if value < MIN_RESOURCE_GRANULARITY:
+        if value < 1:
+            logger.warn(
+                "Rounding {} byte memory request up to the minimum "
+                "resource creation granularity of {} bytes.".format(
+                    memory_bytes, MEMORY_RESOURCE_UNIT_BYTES))
+            value = 1
+    elif value < MIN_RESOURCE_GRANULARITY:
         logger.warn(
             "Rounding {} byte memory request up to the minimum "
-            "resource granularity of {} bytes.".format(
+            "resource request granularity of {} bytes.".format(
                 memory_bytes,
                 int(MEMORY_RESOURCE_UNIT_BYTES * MIN_RESOURCE_GRANULARITY)))
         value = MIN_RESOURCE_GRANULARITY
