@@ -86,17 +86,17 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     RAY_CHECK_OK(
         raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
 
-    int64_t timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
+    int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
                                int64_t(0.01 * unready.size()));
     if (remaining_timeout >= 0) {
-      timeout = std::min(remaining_timeout, timeout);
-      remaining_timeout -= timeout;
+      batch_timeout = std::min(remaining_timeout, batch_timeout);
+      remaining_timeout = std::max(int64_t(0), remaining_timeout-batch_timeout);
       should_break = remaining_timeout <= 0;
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
     RAY_RETURN_NOT_OK(
-        local_store_provider_.Get(unready_ids, timeout, task_id, &result_objects));
+        local_store_provider_.Get(unready_ids, batch_timeout, task_id, &result_objects));
 
     // Add successfully retrieved objects to the result list and remove them from unready.
     uint64_t successes = 0;
