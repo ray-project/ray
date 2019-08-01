@@ -112,7 +112,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
     const auto it = id_to_callback_map_.find(id);
     if (it == id_to_callback_map_.end()) {
       RAY_LOG(INFO) << "Invalid Unsubscribe! id " << id << " client_id " << client_id;
-      return Status::Invalid("Invalid Unsubscribe, not found subscription.");
+      return Status::Invalid("Invalid Unsubscribe, not existing subscription found.");
     }
   }
 

@@ -17,7 +17,7 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
       return true;
     }
 
-    // sleep 100ms.
+    // sleep 10ms.
     const int wait_interval_ms = 10;
     usleep(wait_interval_ms * 1000);
     wait_time += wait_interval_ms;

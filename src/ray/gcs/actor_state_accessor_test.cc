@@ -23,7 +23,7 @@ class ActorStateAccessorTest : public AccessorTestBase<ActorID, ActorTableData> 
       JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
-      id_to_datas_[actor_id] = actor;
+      id_to_data_[actor_id] = actor;
     }
   }
 };
@@ -31,7 +31,7 @@ class ActorStateAccessorTest : public AccessorTestBase<ActorID, ActorTableData> 
 TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   // register
-  for (const auto &elem : id_to_datas_) {
+  for (const auto &elem : id_to_data_) {
     const auto &actor = elem.second;
     ++pending_count_;
     actor_accessor.AsyncRegister(actor, [this](Status status) {
@@ -43,15 +43,15 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   WaitPendingDone(wait_pending_timeout_);
 
   // get
-  for (const auto &elem : id_to_datas_) {
+  for (const auto &elem : id_to_data_) {
     const auto &actor = elem.second;
     ++pending_count_;
     actor_accessor.AsyncGet(elem.first,
                             [this](Status status, std::vector<ActorTableData> datas) {
                               ASSERT_EQ(datas.size(), 1U);
                               ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
-                              auto it = id_to_datas_.find(actor_id);
-                              ASSERT_TRUE(it != id_to_datas_.end());
+                              auto it = id_to_data_.find(actor_id);
+                              ASSERT_TRUE(it != id_to_data_.end());
                               --pending_count_;
                             });
   }
@@ -66,8 +66,8 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   std::atomic<int> do_sub_pending_count(0);
   auto subscribe = [this, &sub_pending_count](const ActorID &actor_id,
                                               const ActorTableData &data) {
-    const auto it = id_to_datas_.find(actor_id);
-    ASSERT_TRUE(it != id_to_datas_.end());
+    const auto it = id_to_data_.find(actor_id);
+    ASSERT_TRUE(it != id_to_data_.end());
     --sub_pending_count;
   };
   auto done = [&do_sub_pending_count](Status status) {
@@ -82,7 +82,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
 
   // register
   std::atomic<int> register_pending_count(0);
-  for (const auto &elem : id_to_datas_) {
+  for (const auto &elem : id_to_data_) {
     const auto &actor = elem.second;
     ++sub_pending_count;
     ++register_pending_count;

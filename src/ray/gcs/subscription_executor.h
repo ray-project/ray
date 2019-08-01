@@ -13,7 +13,7 @@ namespace gcs {
 /// \class SubscriptionExecutor
 /// SubscriptionExecutor class encapsulates the implementation details of
 /// subscribe/unsubscribe to elements (e.g.: actors or tasks or objects or nodes).
-/// Support subscribe to a specific element or subscribe to all elements.
+/// Support subscribing to a specific element or subscribing to all elements.
 template <typename ID, typename Data, typename Table>
 class SubscriptionExecutor {
  public:

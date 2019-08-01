@@ -46,7 +46,7 @@ class AccessorTestBase : public ::testing::Test {
  protected:
   virtual void GenTestData() = 0;
 
-  void ClearTestData() { id_to_datas_.clear(); }
+  void ClearTestData() { id_to_data_.clear(); }
 
   void WaitPendingDone(std::chrono::milliseconds timeout) {
     WaitPendingDone(pending_count_, timeout);
@@ -65,7 +65,7 @@ class AccessorTestBase : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::unique_ptr<std::thread> work_thread;
 
-  std::unordered_map<ID, std::shared_ptr<Data>> id_to_datas_;
+  std::unordered_map<ID, std::shared_ptr<Data>> id_to_data_;
 
   std::atomic<int> pending_count_{0};
   std::chrono::milliseconds wait_pending_timeout_{10000};

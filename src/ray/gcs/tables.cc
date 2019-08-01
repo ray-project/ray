@@ -167,14 +167,15 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
 
-  auto callback = [this, id, done](const CallbackReply &reply) {
-    if (done != nullptr) {
+  RedisCallback callback = nullptr;
+  if (done != nullptr) {
+    callback = [this, id, done](const CallbackReply &reply) {
       const auto status = reply.IsNil()
                               ? Status::OK()
                               : Status::RedisError("request notifications failed.");
       done(status);
-    }
-  };
+    };
+  }
 
   return GetRedisContext(id)->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id,
                                        client_id.Data(), client_id.Size(), prefix_,
@@ -188,12 +189,13 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
 
-  auto callback = [this, id, done](const CallbackReply &reply) {
-    if (done != nullptr) {
+  RedisCallback callback = nullptr;
+  if (done != nullptr) {
+    callback = [this, id, done](const CallbackReply &reply) {
       const auto status = reply.ReadAsStatus();
       done(status);
-    }
-  };
+    };
+  }
 
   return GetRedisContext(id)->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id,
                                        client_id.Data(), client_id.Size(), prefix_,
