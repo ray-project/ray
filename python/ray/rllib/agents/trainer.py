@@ -119,8 +119,9 @@ COMMON_CONFIG = {
     # === Resources ===
     # Number of actors used for parallelism
     "num_workers": 2,
-    # Number of GPUs to allocate to the driver. Note that not all algorithms
-    # can take advantage of driver GPUs. This can be fraction (e.g., 0.3 GPUs).
+    # Number of GPUs to allocate to the trainer process. Note that not all
+    # algorithms can take advantage of trainer GPUs. This can be fractional
+    # (e.g., 0.3 GPUs).
     "num_gpus": 0,
     # Number of CPUs to allocate per worker.
     "num_cpus_per_worker": 1,
@@ -128,9 +129,17 @@ COMMON_CONFIG = {
     "num_gpus_per_worker": 0,
     # Any custom resources to allocate per worker.
     "custom_resources_per_worker": {},
-    # Number of CPUs to allocate for the driver. Note: this only takes effect
+    # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune.
     "num_cpus_for_driver": 1,
+    # Heap memory to reserve for the trainer process (0 for unlimited)
+    "memory": 0,
+    # Object store memory to reserve for the trainer process.
+    "object_store_memory": 0,
+    # Heap memory to reserve for each worker.
+    "memory_per_worker": 0,
+    # Object store memory to reserve for each worker.
+    "object_store_memory_per_worker": 0,
 
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
@@ -337,8 +346,13 @@ class Trainer(Trainable):
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
+            memory=cf["memory"],
+            object_store_memory=cf["object_store_memory"],
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"],
+            extra_memory=cf["memory_per_worker"] * cf["num_workers"],
+            extra_object_store_memory=cf["object_store_memory_per_worker"] *
+            cf["num_workers"])
 
     @override(Trainable)
     @PublicAPI

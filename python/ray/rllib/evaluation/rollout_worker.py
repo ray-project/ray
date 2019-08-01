@@ -97,9 +97,18 @@ class RolloutWorker(EvaluatorInterface):
 
     @DeveloperAPI
     @classmethod
-    def as_remote(cls, num_cpus=None, num_gpus=None, resources=None):
+    def as_remote(cls,
+                  num_cpus=None,
+                  num_gpus=None,
+                  memory=None,
+                  object_store_memory=None,
+                  resources=None):
         return ray.remote(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources)(cls)
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources)(cls)
 
     @DeveloperAPI
     def __init__(self,

@@ -79,20 +79,18 @@ def from_memory_units(memory_units):
 def to_memory_units(memory_bytes, round_up):
     """Convert from bytes -> memory units."""
     value = memory_bytes / MEMORY_RESOURCE_UNIT_BYTES
-    if value <= 0:
-        value = 1
+    if value < 1:
+        raise ValueError(
+            "The minimum amount of memory that can be requested is {} bytes, "
+            "however {} bytes was asked.".format(MEMORY_RESOURCE_UNIT_BYTES,
+                                                 memory_bytes))
     if isinstance(value, float) and not value.is_integer():
         # TODO(ekl) Ray currently does not support fractional resources when
         # the quantity is greater than one.
-        prev_value = value
         if round_up:
             value = int(math.ceil(value))
         else:
-            value = int(max(1, math.floor(value)))
-        logger.warn("Rounding {} bytes {} to {} MB.".format(
-            int(prev_value * MEMORY_RESOURCE_UNIT_BYTES), "memory request"
-            if round_up else "available memory",
-            value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024)))
+            value = int(math.floor(value))
     return int(value)
 
 

@@ -194,8 +194,32 @@ class ResourceSpec(
         if memory is None:
             memory = (avail_memory - object_store_memory - (redis_max_memory
                                                             if is_head else 0))
+            if memory < 1e9 and memory < 0.1 * system_memory:
+                raise ValueError(
+                    "After taking into account object store and redis memory "
+                    "usage, the amount of memory on this node available for "
+                    "tasks and actors ({} GB) is less than {}% of total. "
+                    "Please decrease object_store_memory, "
+                    "redis_max_memory, or shutting down some "
+                    "applications.".format(
+                        round(memory / 1e9, 2),
+                        int(100 * (memory / system_memory))))
+            elif memory < 0.4 * system_memory:
+                logger.warning(
+                    "WARNING: After taking into account object store and "
+                    "redis memory "
+                    "usage, the amount of memory on this node available for "
+                    "tasks and actors ({} GB) is less than {}% of total. "
+                    "Consider decreasing object_store_memory, "
+                    "redis_max_memory, or shutting down some "
+                    "applications.".format(
+                        round(memory / 1e9, 2),
+                        int(100 * (memory / system_memory))))
+
             logger.info(
-                "Starting Ray with {} GB memory available for workers.".format(
+                "Starting Ray with {} GB memory available for workers. "
+                "You can reserve memory for actors and tasks with "
+                "ray.remote(memory=<bytes>).".format(
                     round(
                         ray_constants.round_to_memory_units(
                             memory, round_up=False) / 1e9, 2)))
