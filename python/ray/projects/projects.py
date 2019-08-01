@@ -57,23 +57,21 @@ def check_project_definition(project_root, project_definition):
         assert os.path.exists(cluster_file)
 
     if "environment" in project_definition:
+        env = project_definition["environment"]
 
-        if sum(["dockerfile" in project_definition["environment"],
-                "dockerimage" in project_definition["environment"]]) > 1:
+        if sum(["dockerfile" in env, "dockerimage" in env]) > 1:
             raise ValueError("Cannot specify both 'dockerfile' and "
                              "'dockerimage' in environment.")
 
-        if "requirements" in project_definition["environment"]:
+        if "requirements" in env:
             requirements_file = os.path.join(
-                project_root,
-                project_definition["environment"]["requirements"])
+                project_root, env["requirements"])
             if not os.path.exists(requirements_file):
                 raise ValueError("'requirements' file in 'environment' does "
                                  "not exist in {}".format(project_root))
 
         if "dockerfile" in project_definition["environment"]:
-            docker_file = os.path.join(
-                project_root, project_definition["environment"]["dockerfile"])
+            docker_file = os.path.join(project_root, env["dockerfile"])
             if not os.path.exists(docker_file):
                 raise ValueError("'dockerfile' file in 'environment' does "
                                  "not exist in {}".format(project_root))
