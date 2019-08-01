@@ -76,10 +76,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
 
     int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
-                               int64_t(0.01 * unready.size()));
+                                     int64_t(0.01 * unready.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
-      remaining_timeout = std::max(int64_t(0), remaining_timeout-batch_timeout);
+      remaining_timeout = std::max(int64_t(0), remaining_timeout - batch_timeout);
       should_break = remaining_timeout <= 0;
     }
 
