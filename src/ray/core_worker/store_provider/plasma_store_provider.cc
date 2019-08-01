@@ -19,54 +19,83 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
+  int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   (*results).resize(ids.size(), nullptr);
+  std::unordered_map<ObjectID, std::vector<int>> unready;
 
-  bool was_blocked = false;
+  // First, attempt to fetch all of the required objects without reconstructing.
+  for (int64_t start = 0; start < ids.size(); start += batch_size) {
+    int64_t end = std::min(start + batch_size, int64_t(ids.size()));
+    const std::vector<ObjectID> ids_slice(ids.cbegin() + start, ids.cbegin() + end);
+    RAY_CHECK_OK(
+        raylet_client_->FetchOrReconstruct(ids_slice, /*fetch_only=*/true, task_id));
+    std::vector<std::shared_ptr<RayObject>> results_slice;
+    RAY_RETURN_NOT_OK(local_store_provider_.Get(ids_slice, 0, task_id, &results_slice));
 
-  std::unordered_map<ObjectID, int> unready;
-  for (size_t i = 0; i < ids.size(); i++) {
-    unready.insert({ids[i], i});
+    // Iterate through the results from the local store, adding them to the unready
+    // map if they weren't successfully fetched from the local store (are nullptr).
+    // Keeps track of the locations of the unready object IDs in the original list
+    // (accounting for duplicates).
+    for (size_t i = 0; i < ids_slice.size(); i++) {
+      if (results_slice[i] != nullptr) {
+        (*results)[start + i] = results_slice[i];
+        continue;
+      }
+      auto it = unready.find(ids_slice[i]);
+      if (it == unready.end()) {
+        std::vector<int> v;
+        v.push_back(start + i);
+        unready.insert({ids[i], v});
+      } else {
+        it->second.push_back(start + i);
+      }
+    }
   }
 
+  // If all objects were fetched already, return.
+  if (unready.empty()) {
+    return Status::OK();
+  }
+
+  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct and
+  // Get from the local object store in batches. This loop will run indefinitely until the
+  // objects are all fetched if timeout is -1.
   int num_attempts = 0;
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
-  // Repeat until we get all objects.
   while (!unready.empty() && !should_break) {
     std::vector<ObjectID> unready_ids;
     for (const auto &entry : unready) {
+      if (unready_ids.size() == batch_size) {
+        break;
+      }
       unready_ids.push_back(entry.first);
     }
 
-    // For the initial fetch, we only fetch the objects, do not reconstruct them.
-    bool fetch_only = num_attempts == 0;
-    if (!fetch_only) {
-      // If fetch_only is false, this worker will be blocked.
-      was_blocked = true;
-    }
+    RAY_CHECK_OK(
+        raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
 
-    // TODO(zhijunfu): can call `fetchOrReconstruct` in batches as an optimization.
-    RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(unready_ids, fetch_only, task_id));
-
-    // Get the objects from the object store, and parse the result.
-    int64_t get_timeout;
+    int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
+                               int64_t(0.01 * unready.size()));
     if (remaining_timeout >= 0) {
-      get_timeout =
-          std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
-      remaining_timeout -= get_timeout;
+      batch_timeout = std::min(remaining_timeout, batch_timeout);
+      remaining_timeout = std::max(int64_t(0), remaining_timeout-batch_timeout);
       should_break = remaining_timeout <= 0;
-    } else {
-      get_timeout = RayConfig::instance().get_timeout_milliseconds();
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
     RAY_RETURN_NOT_OK(
-        local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
+        local_store_provider_.Get(unready_ids, batch_timeout, task_id, &result_objects));
 
+    // Add successfully retrieved objects to the result list and remove them from unready.
+    uint64_t successes = 0;
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
+        successes++;
         const auto &object_id = unready_ids[i];
-        (*results)[unready[object_id]] = result_objects[i];
+        for (int idx : unready[object_id]) {
+          (*results)[idx] = result_objects[i];
+        }
         unready.erase(object_id);
         if (IsException(*result_objects[i])) {
           should_break = true;
@@ -74,15 +103,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       }
     }
 
-    num_attempts += 1;
-    WarnIfAttemptedTooManyTimes(num_attempts, unready);
+    if (successes < unready_ids.size()) {
+      num_attempts++;
+      WarnIfAttemptedTooManyTimes(num_attempts, unready);
+    }
   }
 
-  if (was_blocked) {
-    RAY_CHECK_OK(raylet_client_->NotifyUnblocked(task_id));
-  }
-
-  return Status::OK();
+  // Notify unblocked because we blocked when calling FetchOrReconstruct with
+  // fetch_only=false.
+  return raylet_client_->NotifyUnblocked(task_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
@@ -129,7 +158,7 @@ bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const std::unordered_map<ObjectID, int> &unready) {
+    int num_attempts, const std::unordered_map<ObjectID, std::vector<int>> &unready) {
   if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
       0) {
     std::ostringstream oss;
