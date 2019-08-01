@@ -768,8 +768,7 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
           std::chrono::steady_clock::now() - heartbeat_timer_.expires_at())
           .count();
 
-  // Timer's callback hasn't been called if the execution of the timer's callback is
-  // delayed.
+  // Timer's callback hasn't been called on the desired time.
   if (expiry_delay > RayConfig::instance().heartbeat_timeout_milliseconds()) {
     heartbeat_timer_.cancel();
     Heartbeat();
