@@ -211,5 +211,5 @@ def run_with_custom_entropy_loss():
 if __name__ == "__main__":
     # run_same_policy()
     # run_heuristic_vs_learned(use_lstm=False)
-    run_heuristic_vs_learned(use_lstm=True)
+    run_heuristic_vs_learned(use_lstm=False)
     # run_with_custom_entropy_loss()

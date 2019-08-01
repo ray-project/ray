@@ -55,6 +55,8 @@ Serving and Offline
 Multi-Agent and Hierarchical
 ----------------------------
 
+- `Rock-paper-scissors <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rock_paper_scissors_multiagent.py>`__:
+   Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/twostep_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
 - `Hand-coded policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_custom_policy.py>`__:
