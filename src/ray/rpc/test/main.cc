@@ -59,11 +59,11 @@ class ServiceHandlers : public TestServiceHandler {
     const string &str = request.request_message();
     int idx = GetIndex(str);
     if (idx % 2 == 0) {
-      DebugEchoReply reply;
-      reply.set_reply_message(GenerateMessage("StreamReplyMessage", idx));
-      stream_reply_writer.Write(reply);
+      std::unique_ptr<DebugEchoReply> reply(new DebugEchoReply);
+      reply->set_reply_message(GenerateMessage("StreamReplyMessage", idx));
+      stream_reply_writer.Write(std::move(reply));
     }
-    RAY_LOG(INFO) << "Received stream request in DebugStreamEcho, msg "
+    RAY_LOG(INFO) << "Received stream request from client, request: "
                   << request.request_message();
   }
 };
@@ -108,10 +108,11 @@ class GrpcTest : public ::testing::Test {
 // TEST_F(GrpcTest, ThreadSafeClientTest) {}
 
 TEST_F(GrpcTest, StreamRequestTest) {
-  int num_messages = 10;
+  int num_messages = 20;
   DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
   client.StartEchoStream([](const Status &status, const rpc::DebugEchoReply &reply) {
-    RAY_LOG(INFO) << "Stream client received reply from server, reply: " << reply.reply_message();
+    RAY_LOG(INFO) << "Stream client received reply from server, reply: "
+                  << reply.reply_message();
     auto idx = GetIndex(reply.reply_message());
     ASSERT_TRUE(idx % 2 == 0);
   });
@@ -124,6 +125,7 @@ TEST_F(GrpcTest, StreamRequestTest) {
     usleep(1000);
   }
   client.CloseEchoStream();
+  // usleep(5*1000);
 }
 
 }  // namespace rpc

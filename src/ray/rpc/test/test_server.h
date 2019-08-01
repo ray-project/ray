@@ -50,7 +50,7 @@ class TestService : public GrpcService {
             &TestServiceHandler::HandleDebugEcho));
     // Set `DebugEcho`'s accept concurrency.
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(debug_echo_call_factory), 10);
+        std::move(debug_echo_call_factory), 3);
 
     // Initialize the factory for `DebugStreamEcho` requests.
     std::unique_ptr<ServerCallFactory> debug_stream_echo_call_factory(

@@ -3,6 +3,7 @@
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
+#include <queue>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -40,8 +41,8 @@ enum class ServerCallState {
   PROCESSING,
   /// Request processing is done, and reply is being sent to client.
   SENDING_REPLY,
-  /// Stream requests are done, we can close the stream now.
-  DONE
+  /// Stream has finished.
+  FINISH,
 };
 
 class ServerCallFactory;
@@ -91,9 +92,16 @@ class ServerCall {
   virtual ~ServerCall() = default;
 
  public:
-  virtual void AsyncReadNextRequest() = 0;
+  /// Methods only for the stream call.
+  virtual void AsyncReadNextRequest() {}
+
+  virtual void AsyncWriteNextReply() {}
 
   virtual ServerCallTag *GetReplyWriterTag() {}
+
+  virtual ServerCallTag *GetDoneTag() {}
+
+  virtual void Finish() {}
 
  public:
   /// Common methods for both default server call and stream server call.
@@ -101,7 +109,7 @@ class ServerCall {
 
   const ServerCallType &GetCallType() { return type_; }
 
-  void SetServerCallTag(ServerCallTag* tag) { tag_ = tag; }
+  void SetServerCallTag(ServerCallTag *tag) { tag_ = tag; }
 
   ServerCallTag *GetServerCallTag() { return tag_; }
 
@@ -200,8 +208,6 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  void AsyncReadNextRequest() override {}
-
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
@@ -246,24 +252,55 @@ class ServerCallImpl : public ServerCall {
   friend class ServerCallFactoryImpl;
 };
 
+/// Wrapper of server async reply writer, we should hide details of grpc, user
+/// should just call `Write` to send reply to the client.
 template <class Request, class Reply>
 class StreamReplyWriter {
  public:
   StreamReplyWriter(
       std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream,
       ServerCall *server_call)
-      : server_stream_(server_stream), server_call_(server_call) {}
+      : server_stream_(server_stream), server_call_(server_call), ready_to_write_(true) {}
 
-  void Write(const Reply &reply) {
-    server_call_->SetState(ServerCallState::PENDING);
-    server_stream_->Write(reply,
-                          reinterpret_cast<void *>(server_call_->GetReplyWriterTag()));
+  void SendNextReplyInBuffer() {
+    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    if (!buffer_.empty()) {
+      server_stream_->Write(*buffer_.front(),
+                            reinterpret_cast<void *>(server_call_->GetReplyWriterTag()));
+      buffer_.pop();
+      ready_to_write_ = false;
+    } else {
+      ready_to_write_ = true;
+    }
+  }
+
+  /// Only one write may be outstanding at any given time. This means that
+  /// after calling `Write`, one must wait to receive a tag from the completion
+  /// queue before calling `Write` again. We should put reply into the buffer to avoid
+  /// calling `Write` before getting previous tag from completion queue.
+  void Write(std::unique_ptr<Reply> &&reply) {
+    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    if (ready_to_write_) {
+      server_stream_->Write(*reply,
+                            reinterpret_cast<void *>(server_call_->GetReplyWriterTag()));
+      ready_to_write_ = false;
+    } else {
+      buffer_.emplace(std::move(reply));
+    }
   }
 
  private:
+  // Mutex to protect the buffer.
+  std::mutex buffer_mutex_;
+  // Buffer for writing replies.
+  std::queue<std::unique_ptr<Reply>> buffer_;
+  // Actual grpc writer used to send reply to client.
   std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream_;
   // Weak pointer pointing to server call without reference.
   ServerCall *server_call_;
+  // Ready to write next reply into stream only if we receive the writer tag from the
+  // completion queue.
+  bool ready_to_write_;
 };
 
 template <class ServiceHandler, class Request, class Reply>
@@ -296,10 +333,7 @@ class ServerStreamCallImpl : public ServerCall {
         server_stream_(
             std::make_shared<grpc::ServerAsyncReaderWriter<Reply, Request>>(&context_)),
         io_service_(io_service),
-        stream_reply_writer_(server_stream_, this) {
-    // This is important as the server should know when the client is done.
-    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(tag_));
-  }
+        stream_reply_writer_(server_stream_, this) {}
 
   void AsyncReadNextRequest() override {
     // Wait for next stream request.
@@ -307,11 +341,21 @@ class ServerStreamCallImpl : public ServerCall {
     server_stream_->Read(&request_, reinterpret_cast<void *>(tag_));
   }
 
+  void AsyncWriteNextReply() override { stream_reply_writer_.SendNextReplyInBuffer(); }
+
   ServerCallState GetState() const override { return state_; }
 
   void SetReplyWriterTag(ServerCallTag *writer_tag) { writer_tag_ = writer_tag; }
 
+  void SetStreamDoneTag(ServerCallTag *done_tag) {
+    done_tag_ = done_tag;
+    // This is important as the server should know when the client is done.
+    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(done_tag_));
+  }
+
   ServerCallTag *GetReplyWriterTag() override { return writer_tag_; }
+
+  virtual ServerCallTag *GetDoneTag() { return done_tag_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
@@ -334,6 +378,11 @@ class ServerStreamCallImpl : public ServerCall {
   }
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
+
+  void Finish() {
+    state_ = ServerCallState::FINISH;
+    server_stream_->Finish(grpc::Status::CANCELLED, reinterpret_cast<void *>(tag_));
+  }
 
   /// Only for defaut call, not used yet.
   void OnReplySent() {}
@@ -368,6 +417,8 @@ class ServerStreamCallImpl : public ServerCall {
   /// Server call tag used to write reply.
   ServerCallTag *writer_tag_;
 
+  ServerCallTag *done_tag_;
+
   StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
   template <class T1, class T2, class T3, class T4>
@@ -376,19 +427,29 @@ class ServerStreamCallImpl : public ServerCall {
 
 class ServerCallTag {
  public:
-  explicit ServerCallTag(std::shared_ptr<ServerCall> call, bool is_writer_tag = false)
-      : call_(std::move(call)), is_writer_tag_(is_writer_tag) {}
+  enum class TagType {
+    DEFAULT,
+    STREAM_WRITER,
+    STREAM_DONE,
+  };
+  explicit ServerCallTag(std::shared_ptr<ServerCall> call,
+                         TagType tag_type = TagType::DEFAULT)
+      : call_(std::move(call)), tag_type_(tag_type) {}
 
   /// Get the wrapped `ServerCall`.
   const std::shared_ptr<ServerCall> &GetCall() const { return call_; }
 
-  bool IsWriterTag() { return is_writer_tag_; }
+  bool IsWriterTag() { return tag_type_ == TagType::STREAM_WRITER; }
+
+  bool IsDoneTag() { return tag_type_ == TagType::STREAM_DONE; }
+
+  const TagType &GetType() { return tag_type_; }
 
  private:
   /// Pointer to the server call.
   std::shared_ptr<ServerCall> call_;
   /// Indicates whether the tag is used to write reply.
-  bool is_writer_tag_;
+  const TagType tag_type_;
 };
 
 }  // namespace rpc

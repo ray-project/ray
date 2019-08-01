@@ -85,7 +85,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
-                                       reinterpret_cast<void*>(tag));
+                                       reinterpret_cast<void *>(tag));
   }
 
  private:
@@ -149,13 +149,15 @@ class ServerStreamCallFactoryImpl : public ServerCallFactory {
     auto call = std::make_shared<ServerStreamCallImpl<ServiceHandler, Request, Reply>>(
         *this, service_handler_, handle_stream_request_function_, io_service_);
     auto tag = new ServerCallTag(call);
-    auto writer_tag = new ServerCallTag(call, true);
-    call->SetServerCallTag(tag);
-    call->SetReplyWriterTag(writer_tag);
+    auto writer_tag = new ServerCallTag(call, ServerCallTag::TagType::STREAM_WRITER);
+    auto done_tag = new ServerCallTag(call, ServerCallTag::TagType::STREAM_DONE);
 
     (service_.*request_stream_call_function_)(&call->context_, call->server_stream_.get(),
                                               cq_.get(), cq_.get(),
                                               reinterpret_cast<void *>(tag));
+    call->SetServerCallTag(tag);
+    call->SetReplyWriterTag(writer_tag);
+    call->SetStreamDoneTag(done_tag);
     call->SetState(ServerCallState::CONNECT);
   }
 

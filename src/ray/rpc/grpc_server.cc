@@ -67,7 +67,13 @@ void GrpcServer::PollEventsFromCompletionQueue() {
     auto server_call = tag->GetCall();
     bool delete_call = false;
     if (ok) {
-      if (tag->IsWriterTag()) {
+      if (tag->IsDoneTag()) {
+        RAY_LOG(INFO) << "Server receive a done tag.";
+        delete server_call->GetReplyWriterTag();
+        delete server_call->GetDoneTag();
+        RAY_LOG(INFO) << "After finish.";
+      } else if (tag->IsWriterTag()) {
+        server_call->AsyncWriteNextReply();
         RAY_LOG(INFO) << "Server receive a writer tag.";
       } else {
         switch (server_call->GetState()) {
@@ -92,21 +98,28 @@ void GrpcServer::PollEventsFromCompletionQueue() {
           // The rpc call has finished and can be deleted now.
           delete_call = true;
           break;
-        case ServerCallState::DONE:
-          RAY_LOG(INFO) << "Received done.";
-          delete_call = true;
+        case ServerCallState::FINISH:
+          RAY_LOG(INFO) << "Received FINISH state.";
+          delete server_call->GetReplyWriterTag();
+          delete server_call->GetDoneTag();
+          delete tag;
         default:
           RAY_LOG(FATAL) << "Shouldn't reach here.";
           break;
         }
       }
     } else {
-      // `ok == false` will occur in two situations:
-      // First, the server has been shut down, the server call's status is PENDING
-      // Second, server has sent reply to client and failed, the server call's status is
-      // SENDING_REPLY
-      if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
-        server_call->OnReplyFailed();
+      RAY_LOG(INFO) << "ok == false, tag type: " << static_cast<int>(tag->GetType())
+                    << ", call type: " << static_cast<int>(tag->GetCall()->GetCallType());
+      if (tag->GetCall()->GetCallType() == ServerCallType::STREAM_ASYNC_CALL) {
+      } else {
+        // `ok == false` will occur in two situations:
+        // First, the server has been shut down, the server call's status is PENDING
+        // Second, server has sent reply to client and failed, the server call's status is
+        // SENDING_REPLY
+        if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
+          server_call->OnReplyFailed();
+        }
       }
       delete_call = true;
     }

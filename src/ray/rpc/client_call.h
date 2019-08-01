@@ -20,7 +20,6 @@ enum class ClientCallState {
   WRITING,
   PENDING,
   STREAM_WRITES_DONE,
-  FINISH,
 };
 
 class ClientCallTag;
@@ -46,7 +45,7 @@ class ClientCall {
 
   virtual void AsyncReadNextReply() = 0;
 
-  virtual ClientCallTag* GetReplyReaderTag() {}
+  virtual ClientCallTag *GetReplyReaderTag() {}
 
   /// Common implementations for gRPC client call.
  public:
@@ -57,6 +56,8 @@ class ClientCall {
   void SetState(ClientCallState state) { state_ = state; }
 
   const ClientCallState &GetState() { return state_; }
+
+  void TryCancel() { context_.TryCancel(); }
 
   virtual ~ClientCall() = default;
 
@@ -147,8 +148,12 @@ class ClientStreamCallImpl : public ClientCall {
   }
 
   void WritesDone() override {
-    state_ = ClientCallState::STREAM_WRITES_DONE;
-    client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
+    // Server will receive a done tag after client cancels.
+    TryCancel();
+    // delete reader_tag_;
+    // delete tag_;
+    // state_ = ClientCallState::STREAM_WRITES_DONE;
+    // client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
   }
 
   bool WriteStream(const ::google::protobuf::Message &from) override {
@@ -157,11 +162,13 @@ class ClientStreamCallImpl : public ClientCall {
       RAY_LOG(INFO) << "Stream is still in writing state.";
       return false;
     }
-    RAY_LOG(INFO) << "Write stream success.";
     // Construct the request with the specific type.
     Request request;
     request.CopyFrom(from);
     state_ = ClientCallState::WRITING;
+    /// Only one write may be outstanding at any given time. This means that
+    /// after calling `Write`, one must wait to receive a tag from the completion
+    /// queue before calling `Write` again.
     client_stream_->Write(request, reinterpret_cast<void *>(tag_));
     return true;
   }
@@ -176,7 +183,7 @@ class ClientStreamCallImpl : public ClientCall {
 
   void SetReplyReaderTag(ClientCallTag *reader_tag) { reader_tag_ = reader_tag; }
 
-  ClientCallTag* GetReplyReaderTag() override { return reader_tag_; }
+  ClientCallTag *GetReplyReaderTag() override { return reader_tag_; }
 
   ClientCallTag *GetClientCallTag() { return tag_; }
 
@@ -223,23 +230,28 @@ class ClientStreamCallImpl : public ClientCall {
 /// `GetCall()->OnReplyReceived()` and then delete this object.
 class ClientCallTag {
  public:
+  enum class TagType {
+    DEFAULT,
+    STREAM_READER,
+  };
   /// Constructor.
   ///
   /// \param call A `ClientCall` that represents a request.
   /// \param is_reader_tag Indicates whether it's a tag for reading reply from server.
-  explicit ClientCallTag(std::shared_ptr<ClientCall> call, bool is_reader_tag = false)
-      : call_(std::move(call)), is_reader_tag_(is_reader_tag) {}
+  explicit ClientCallTag(std::shared_ptr<ClientCall> call,
+                         TagType tag_type = TagType::DEFAULT)
+      : call_(std::move(call)), tag_type_(tag_type) {}
 
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
-  bool IsReaderTag() { return is_reader_tag_; }
+  bool IsReaderTag() { return tag_type_ == TagType::STREAM_READER; }
 
  private:
   /// Pointer to the client call.
   std::shared_ptr<ClientCall> call_;
-  /// Indicates whether the tag is used to read reply.
-  bool is_reader_tag_;
+  /// The type of this tag.
+  const TagType tag_type_;
 };
 
 }  // namespace rpc

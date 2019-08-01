@@ -90,9 +90,9 @@ class ClientCallManager {
     auto call =
         std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(callback);
     auto tag = new ClientCallTag(call);
-    auto reader_tag = new ClientCallTag(call, true);
-    // Should set tag before connect because the tag will be set into completion queue in
-    // connect function.
+    auto reader_tag = new ClientCallTag(call, ClientCallTag::TagType::STREAM_READER);
+    // Should set tag before `Connect` because the tag will be put into completion queue
+    // in connect function.
     call->SetClientCallTag(tag);
     call->SetReplyReaderTag(reader_tag);
     // Setup connection with remote server.
@@ -110,9 +110,9 @@ class ClientCallManager {
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     while (cq_.Next(&got_tag, &ok)) {
       auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+      auto call = tag->GetCall();
+      auto type = call->GetType();
       if (ok) {
-        auto call = tag->GetCall();
-        auto type = call->GetType();
         auto state = call->GetState();
         if (type == ClientCallType::DEFAULT_ASYNC_CALL) {
           // Post the callback to the main event loop.
@@ -137,17 +137,17 @@ class ClientCallManager {
               delete call->GetReplyReaderTag();
               delete tag;
               break;
-            case ClientCallState::FINISH:
-              RAY_LOG(INFO) << "Client call finish.";
-              delete tag;
-              break;
             default:
-              RAY_LOG(INFO) << "Should not reach here.";
+              RAY_LOG(INFO) << "Shouldn't reach here.";
               break;
             }
           }
         }
       } else {
+        RAY_LOG(INFO) << "Try to remove tag.";
+        if (type == ClientCallType::STREAM_ASYNC_CALL) {
+          // delete call->GetReplyReaderTag();
+        }
         delete tag;
       }
     }
