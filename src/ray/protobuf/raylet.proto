@@ -5,8 +5,8 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
-/// NOTE(Joey Jiang) Every request defined in this file should have a `worker_id` field, which
-/// will be used in `NodeManager::PreprocessRequest`.
+/// NOTE(Joey Jiang) Every request defined in this file should have a `worker_id` field,
+/// which will be used in `NodeManager::PreprocessRequest`.
 
 /// Service request and reply messages.
 message RegisterClientRequest {

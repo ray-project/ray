@@ -96,7 +96,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
   /// Preprocess request from raylet client. We will check whether the worker is being
-  /// killed due to exitting of driver. Also we will send the heartbeat to monitor
+  /// killed due to job finishing. Also we will send the heartbeat to monitor
   /// proactively if the callback of timer is not trigger at the desired time.
   ///
   /// \param worker_id The worker id.
