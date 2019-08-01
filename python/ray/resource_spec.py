@@ -135,6 +135,7 @@ class ResourceSpec(
 
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
+        avail_memory = ray.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(system_memory * 0.3)
@@ -153,7 +154,6 @@ class ResourceSpec(
             # Other applications may also be using a lot of memory on the same
             # node. Try to detect when this is happening and log a warning or
             # error in more severe cases.
-            avail_memory = ray.utils.estimate_available_memory()
             object_store_fraction = object_store_memory / avail_memory
             # Escape hatch, undocumented for now.
             no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
@@ -192,9 +192,8 @@ class ResourceSpec(
 
         memory = self.memory
         if memory is None:
-            memory = (ray.utils.estimate_available_memory() -
-                      object_store_memory - (redis_max_memory
-                                             if is_head else 0))
+            memory = (avail_memory - object_store_memory - (redis_max_memory
+                                                            if is_head else 0))
             logger.info(
                 "Starting Ray with {} GB memory available for workers.".format(
                     round(
