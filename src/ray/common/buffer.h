@@ -39,7 +39,7 @@ class LocalMemoryBuffer : public Buffer {
  public:
   /// Constructor.
   ///
-  /// \param data The data pointer to the passed in buffer.
+  /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
   /// \param has_data_copy Whether this buffer should own a copy of the data.
   LocalMemoryBuffer(uint8_t *data, size_t size, bool has_data_copy = false)
