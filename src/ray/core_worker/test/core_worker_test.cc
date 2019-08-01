@@ -520,7 +520,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
-  // wait a while for plasma store to process the command.
   usleep(200 * 1000);
   RAY_CHECK_OK(provider.Get(ids, 0, TaskID::FromRandom(), &results));
   ASSERT_EQ(results.size(), 2);

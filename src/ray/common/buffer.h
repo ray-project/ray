@@ -60,6 +60,11 @@ class LocalMemoryBuffer : public Buffer {
   ~LocalMemoryBuffer() {}
 
  private:
+  /// Disable copy constructor and assignment, as default copy will
+  /// cause invalidata data_.
+  LocalMemoryBuffer & operator=(const LocalMemoryBuffer&) = delete;
+  LocalMemoryBuffer(const LocalMemoryBuffer&) = delete;
+
   /// Pointer to the data.
   uint8_t *data_;
   /// Size of the buffer.
