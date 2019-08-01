@@ -61,7 +61,7 @@ class LocalMemoryBuffer : public Buffer {
 
  private:
   /// Disable copy constructor and assignment, as default copy will
-  /// cause invalidata data_.
+  /// cause invalid data_.
   LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
   LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
