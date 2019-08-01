@@ -520,8 +520,8 @@ class TrialRunner(object):
                     decision = self._scheduler_alg.on_trial_result(
                         self, trial, flat_result)
                 with warn_if_slow("search_alg.on_trial_result"):
-                    self._search_alg.on_trial_result(
-                        trial.trial_id, flat_result)
+                    self._search_alg.on_trial_result(trial.trial_id,
+                                                     flat_result)
                 if decision == TrialScheduler.STOP:
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
