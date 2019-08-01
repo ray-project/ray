@@ -37,6 +37,48 @@ def validate_project_schema(project_definition):
     jsonschema.validate(instance=project_definition, schema=schema)
 
 
+def check_project_definition(project_root, project_definition):
+    """Checks if the project definition is valid.
+
+    Raises an exception if the schema is not valid or if there are
+    other errors in the project definition (e.g. files not existing).
+
+    Args:
+        project_root (str): Path containing the .rayproject
+        project_definition (dict): Project definition
+    """
+
+    validate_project_schema(project_definition)
+
+    # Make sure the cluster yaml file exists
+    if "cluster" in project_definition:
+        cluster_file = os.path.join(project_root,
+                                    project_definition["cluster"])
+        assert os.path.exists(cluster_file)
+
+    if "environment" in project_definition:
+
+        if sum(["dockerfile" in project_definition["environment"],
+                    "dockerimage" in project_definition["environment"]]) > 1:
+            raise ValueError("Cannot specify both 'dockerfile' and "
+                             "'dockerimage' in environment.")
+
+        if "requirements" in project_definition["environment"]:
+            requirements_file = os.path.join(
+                project_root,
+                project_definition["environment"]["requirements"])
+            if not os.path.exists(requirements_file):
+                raise ValueError("'requirements' file in 'environment' does "
+                                 "not exist in {}".format(project_root))
+
+        if "dockerfile" in project_definition["environment"]:
+            docker_file = os.path.join(
+                project_root, project_definition["environment"]["dockerfile"])
+            if not os.path.exists(docker_file):
+                raise ValueError("'dockerfile' file in 'environment' does "
+                                 "not exist in {}".format(project_root))
+
+
 def load_project(current_dir):
     """Finds .rayproject folder for current project, parse and validates it.
 
@@ -49,34 +91,16 @@ def load_project(current_dir):
     project_root = find_root(current_dir)
 
     if not project_root:
-        raise Exception("No project root found")
+        raise ValueError("No project root found")
 
     project_file = os.path.join(project_root, ".rayproject", "project.yaml")
 
     if not os.path.exists(project_file):
-        raise Exception("Project file {} not found".format(project_file))
+        raise ValueError("Project file {} not found".format(project_file))
 
     with open(project_file) as f:
         project_definition = yaml.load(f)
 
-    validate_project_schema(project_definition)
-
-    # Make sure the cluster yaml file exists
-    if "cluster" in project_definition:
-        cluster_file = os.path.join(project_root,
-                                    project_definition["cluster"])
-        assert os.path.exists(cluster_file)
-
-    if "environment" in project_definition:
-        if "requirements" in project_definition["environment"]:
-            requirements_file = os.path.join(
-                project_root,
-                project_definition["environment"]["requirements"])
-            assert os.path.exists(requirements_file)
-
-        if "dockerfile" in project_definition["environment"]:
-            docker_file = os.path.join(
-                project_root, project_definition["environment"]["dockerfile"])
-            assert os.path.exists(docker_file)
+    check_project_definition(project_root, project_definition)
 
     return project_definition

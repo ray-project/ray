@@ -1,0 +1,6 @@
+name: testproject3
+
+environment:
+  dockerfile: "Dockerfile"
+
+  dockerimage: "some docker image"
