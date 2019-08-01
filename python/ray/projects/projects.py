@@ -59,7 +59,7 @@ def check_project_definition(project_root, project_definition):
     if "environment" in project_definition:
 
         if sum(["dockerfile" in project_definition["environment"],
-                    "dockerimage" in project_definition["environment"]]) > 1:
+                "dockerimage" in project_definition["environment"]]) > 1:
             raise ValueError("Cannot specify both 'dockerfile' and "
                              "'dockerimage' in environment.")
 
