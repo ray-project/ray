@@ -35,9 +35,9 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
   CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
-                               CoreWorkerObjectInterface &object_interface,
+                               CoreWorkerStoreProviderLayer &store_provider_layer,
                                boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server, const TaskHandler &task_handler);
+                               const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -50,11 +50,13 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Return the underlying rpc service.
+  rpc::GrpcService &GetRpcService() override;
  private:
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
+  // Reference to `CoreWorkerStoreProviderLayer`.
+  CoreWorkerStoreProviderLayer &store_provider_layer_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.

@@ -64,10 +64,15 @@ Status CoreWorkerLocalPlasmaStoreProvider::Get(
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
+                                                int num_objects,
                                                 int64_t timeout_ms,
                                                 std::vector<bool> *results) {
+  if (num_objects != object_ids.size()) {
+    return Status::Invalid("num_objects should equal to number of items in object_ids");
+  }
+                                                  
   std::vector<std::shared_ptr<RayObject>> objects;
-  RAY_RETURN_NOT_OK(Get(object_ids, timeout_ms, task_id, &objects));
+  RAY_RETURN_NOT_OK(Get(object_ids, timeout_ms, &objects));
 
   (*results).resize(object_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
@@ -77,7 +82,13 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
   return Status::OK();
 }
 
-Status CoreWorkerLocalPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids) {
+Status CoreWorkerLocalPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
+                                                  bool local_only,
+                                                  bool delete_creating_tasks) {
+  if (!local_only || delete_creating_tasks) {
+    return Status::Invalid("local_only should be true, and delete_creating_tasks should be false");
+  }
+
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {

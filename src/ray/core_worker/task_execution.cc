@@ -8,9 +8,9 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor)
+    CoreWorkerStoreProviderLayer &store_provider_layer, const TaskExecutor &executor)
     : worker_context_(worker_context),
-      object_interface_(object_interface),
+      store_provider_layer_(store_provider_layer),
       execution_callback_(executor) {
   RAY_CHECK(execution_callback_ != nullptr);
 
@@ -18,7 +18,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
                         std::placeholders::_1, std::placeholders::_2);
   
   task_receiver_layer_ = std::unique_ptr<CoreWorkerTaskReceiverLayer>(
-    new CoreWorkerTaskReceiverLayer(raylet_client, store_provider_layer, func);
+    new CoreWorkerTaskReceiverLayer(raylet_client, store_provider_layer, func));
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
@@ -88,7 +88,8 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
+  auto status = store_provider_layer_.Get(StoreProviderType::PLASMA,
+      object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];
@@ -96,6 +97,10 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   return status;
+}
+
+int CoreWorkerTaskExecutionInterface::GetRpcServerPort() const {
+  return task_receiver_layer_->GetRpcServerPort();
 }
 
 }  // namespace ray

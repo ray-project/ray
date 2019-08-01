@@ -2,8 +2,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/task_interface.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
@@ -195,7 +193,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   const bool is_direct_call = actor_handle.IsDirectCallActor();
   const auto transport_type =
       is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
-  auto status = task_submitter_layer_.SubmitTask(type, builder.Build());
+  auto status = task_submitter_layer_.SubmitTask(transport_type, builder.Build());
   // Remove cursor from return ids.
   (*return_ids).pop_back();
 

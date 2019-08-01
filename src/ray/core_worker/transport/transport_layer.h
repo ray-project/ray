@@ -32,6 +32,8 @@ class CoreWorkerTaskSubmitterLayer {
   /// All the task submitters supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
       task_submitters_;
+
+  friend class CoreWorkerTest;
 };
 
 /// This class encapsulates all the supported transports, including 
@@ -43,6 +45,8 @@ class CoreWorkerTaskReceiverLayer {
                           CoreWorkerTaskReceiver::TaskHandler executor_func);
   
   void Run();
+
+  int GetRpcServerPort() const;
 
  private:
   /// All the task task receivers supported.

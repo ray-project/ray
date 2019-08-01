@@ -31,7 +31,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
                                      gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
+                                     CoreWorkerStoreProviderLayer &store_provider_layer);
 
   /// Submit a task to an actor for execution.
   ///
@@ -124,9 +124,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                                           public rpc::DirectActorHandler {
  public:
-  CoreWorkerDirectActorTaskReceiver(CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
-                                    rpc::GrpcServer &server,
+  CoreWorkerDirectActorTaskReceiver(boost::asio::io_service &io_service,
                                     const TaskHandler &task_handler);
 
   /// Handle a `PushTask` request.
@@ -139,9 +137,10 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Return the underlying rpc service.
+  rpc::GrpcService &GetRpcService() override;
+
  private:
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.

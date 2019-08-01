@@ -16,9 +16,9 @@ using rpc::RayletClient;
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerStoreProviderLayer {
  public:
-  CoreWorkerStoreProviderLayer(WorkerContext &worker_context,
-                            std::unique_ptr<RayletClient> &raylet_client,
-                            const std::string &store_socket);
+  CoreWorkerStoreProviderLayer(const WorkerContext &worker_context,
+                            const std::string &store_socket,
+                            std::unique_ptr<RayletClient> &raylet_client);
 
   ~CoreWorkerStoreProviderLayer() {}
 
@@ -39,14 +39,15 @@ class CoreWorkerStoreProviderLayer {
   ///
   /// \param[in] type The type of the store provider to use.
   /// For the rest see `CoreWorkerStoreProvider` for semantics.
-  Status Wait(StoreProviderType type, const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-              std::vector<bool> *results);
+  Status Wait(StoreProviderType type, const std::vector<ObjectID> &object_ids,
+              int num_objects, int64_t timeout_ms, std::vector<bool> *results);
 
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] type The type of the store provider to use.
   /// For the rest see `CoreWorkerStoreProvider` for semantics.
-  Status Delete(StoreProviderType type, const std::vector<ObjectID> &object_ids);
+  Status Delete(StoreProviderType type, const std::vector<ObjectID> &object_ids,
+                bool local_only = true, bool delete_creating_tasks = false);
 
   /// Create a new store provider for the specified type on demand.
   ///
@@ -60,11 +61,14 @@ class CoreWorkerStoreProviderLayer {
   /// Helper function to add a store provider for the specified type.
   void AddStoreProvider(StoreProviderType type);
 
-  /// Reference to the CoreWorker's raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
+  /// Reference to `WorkerContext`.
+  const WorkerContext &worker_context_;
 
   /// Store socket name.
   const std::string store_socket_;
+
+  /// Reference to the CoreWorker's raylet client.
+  std::unique_ptr<RayletClient> &raylet_client_;
 
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>

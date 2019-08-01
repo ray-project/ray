@@ -26,11 +26,14 @@ class CoreWorkerLocalPlasmaStoreProvider : public CoreWorkerStoreProvider {
              std::vector<std::shared_ptr<RayObject>> *results) override;
 
   /// See `CoreWorkerStoreProvider::Wait` for semantics.
-  Status Wait(const std::vector<ObjectID> &object_ids,
+  /// Note that `num_objects` must equal to number of items in `object_ids`.
+  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, std::vector<bool> *results) override;
 
   /// See `CoreWorkerStoreProvider::Delete` for semantics.
-  Status Delete(const std::vector<ObjectID> &object_ids) override;
+  /// Note that `local_only` msut be true, and `delete_creating_tasks` must be false here.
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                bool delete_creating_tasks = false) override;
 
  private:
   /// Plasma store client.

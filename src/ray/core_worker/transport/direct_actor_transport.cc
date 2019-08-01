@@ -17,12 +17,12 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
-    CoreWorkerObjectInterface &object_interface)
+    CoreWorkerStoreProviderLayer &store_provider_layer)
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_(
-          object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
+          store_provider_layer.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
@@ -206,13 +206,10 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : object_interface_(object_interface),
-      task_service_(io_service, *this),
-      task_handler_(task_handler) {
-  server.RegisterService(task_service_);
-}
+   boost::asio::io_service &io_service,
+   const TaskHandler &task_handler)
+    : task_service_(io_service, *this),
+      task_handler_(task_handler) {}
 
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
@@ -250,6 +247,10 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   }
 
   send_reply_callback(status, nullptr, nullptr);
+}
+
+rpc::GrpcService &CoreWorkerDirectActorTaskReceiver::GetRpcService() {
+  return task_service_;
 }
 
 }  // namespace ray

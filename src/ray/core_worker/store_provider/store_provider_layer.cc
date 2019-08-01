@@ -8,37 +8,42 @@
 namespace ray {
 
 CoreWorkerStoreProviderLayer::CoreWorkerStoreProviderLayer(
-    std::unique_ptr<RayletClient> &raylet_client,
-    const std::string &store_socket)
-    : raylet_client_(raylet_client),
-      store_socket_(store_socket) {
+    const WorkerContext &worker_context,
+    const std::string &store_socket,
+    std::unique_ptr<RayletClient> &raylet_client)
+    : worker_context_(worker_context),
+      store_socket_(store_socket),
+      raylet_client_(raylet_client) {
   AddStoreProvider(StoreProviderType::LOCAL_PLASMA);
   AddStoreProvider(StoreProviderType::PLASMA);
 }
 
-Status CoreWorkerObjectInterface::Put(StoreProviderType type, 
+Status CoreWorkerStoreProviderLayer::Put(StoreProviderType type, 
                                       const RayObject &object,
                                       const ObjectID &object_id) {
   return store_providers_[type]->Put(object, object_id);
 }
 
-Status CoreWorkerObjectInterface::Get(StoreProviderType type,
+Status CoreWorkerStoreProviderLayer::Get(StoreProviderType type,
                                       const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
   return store_providers_[type]->Get(ids, timeout_ms, results);
 }
 
-Status CoreWorkerObjectInterface::Wait(StoreProviderType type,
+Status CoreWorkerStoreProviderLayer::Wait(StoreProviderType type,
                                        const std::vector<ObjectID> &object_ids,
+                                       int num_objects, 
                                        int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  return store_providers_[type]->Wait(object_ids, timeout_ms, results);
+  return store_providers_[type]->Wait(object_ids, num_objects, timeout_ms, results);
 }
 
-Status CoreWorkerObjectInterface::Delete(StoreProviderType type,
-                                         const std::vector<ObjectID> &object_ids) {
-  return store_providers_[type]->Delete(object_ids);
+Status CoreWorkerStoreProviderLayer::Delete(StoreProviderType type,
+                                         const std::vector<ObjectID> &object_ids,
+                                         bool local_only,
+                                         bool delete_creating_tasks) {
+  return store_providers_[type]->Delete(object_ids, local_only, delete_creating_tasks);
 }
 
 void CoreWorkerStoreProviderLayer::AddStoreProvider(StoreProviderType type) {
@@ -54,7 +59,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerStoreProviderLayer::CreateSto
     break;
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
+        new CoreWorkerPlasmaStoreProvider(worker_context_, store_socket_, raylet_client_));
     break;
   default:
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);

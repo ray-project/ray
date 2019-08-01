@@ -1,5 +1,7 @@
 
 #include "ray/core_worker/transport/transport_layer.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/common/task/task.h"
 
 using ray::rpc::ActorTableData;
@@ -22,7 +24,7 @@ CoreWorkerTaskSubmitterLayer::CoreWorkerTaskSubmitterLayer(
                                    io_service, gcs_client, store_provider_layer)));
 }
 
-Status CoreWorkerTaskSubmitterLayer::SubmitTask(const TaskSpecification &task_spec) {
+Status CoreWorkerTaskSubmitterLayer::SubmitTask(TaskTransportType type, const TaskSpecification &task_spec) {
   return task_submitters_[type]->SubmitTask(task_spec);
 }
 
@@ -38,19 +40,26 @@ CoreWorkerTaskReceiverLayer::CoreWorkerTaskReceiverLayer(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, store_provider_layer, main_service, worker_server_, executor_func)));
+          raylet_client, store_provider_layer, main_service_, executor_func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(store_provider_layer, main_service,
-                                                worker_server_, executor_func)));
+          new CoreWorkerDirectActorTaskReceiver(main_service_, executor_func)));
   
+  for (const auto &entry : task_receivers_) {
+    worker_server_.RegisterService(entry.second->GetRpcService());
+  }
+
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
 void CoreWorkerTaskReceiverLayer::Run() {
   main_service_.run();
+}
+
+int CoreWorkerTaskReceiverLayer::GetRpcServerPort() const {
+  return worker_server_.GetPort();
 }
 
 }  // namespace ray

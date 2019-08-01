@@ -6,7 +6,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/core_worker/transport/transport_layer.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/worker/worker_client.h"
 #include "ray/rpc/worker/worker_server.h"
@@ -37,7 +37,7 @@ class CoreWorkerTaskExecutionInterface {
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
-                                   CoreWorkerObjectInterface &object_interface,
+                                   CoreWorkerStoreProviderLayer &store_provider_layer,
                                    const TaskExecutor &executor);
 
   /// Start receving and executes tasks in a infinite loop.
@@ -64,8 +64,13 @@ class CoreWorkerTaskExecutionInterface {
   Status ExecuteTask(const TaskSpecification &spec,
                      std::vector<std::shared_ptr<RayObject>> *results);
 
+  int GetRpcServerPort() const;
+
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
+
+  /// Reference to `CoreWorkerStoreProviderLayer`.
+  CoreWorkerStoreProviderLayer &store_provider_layer_;
 
   // Task execution callback.
   const TaskExecutor execution_callback_;

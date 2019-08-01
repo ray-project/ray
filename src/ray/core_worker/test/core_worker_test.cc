@@ -5,7 +5,7 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/test/util.h"
+#include "ray/util/test_util.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "src/ray/util/test_util.h"
@@ -191,10 +191,9 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
                                                  const ActorID &actor_id, bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [&worker, actor_id, wait_alive]() -> bool {
-    auto &task_submitters = worker.Tasks().task_submitters_;
+    auto &task_submitters = worker.task_submitter_layer_->task_submitters_;
     RAY_CHECK(task_submitters.count(TaskTransportType::DIRECT_ACTOR) > 0);
-    auto submitter =
-        worker.Tasks().task_submitters_[TaskTransportType::DIRECT_ACTOR].get();
+    auto submitter = task_submitters[TaskTransportType::DIRECT_ACTOR].get();
     auto direct_actor_submitter =
         dynamic_cast<CoreWorkerDirectActorTaskSubmitter *>(submitter);
     RAY_CHECK(direct_actor_submitter != nullptr);

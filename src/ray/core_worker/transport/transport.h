@@ -12,6 +12,9 @@
 
 namespace ray {
 
+namespace rpc {
+  class GrpcService;
+}
 /// Interfaces for task submitter and receiver. They are separate classes but should be
 /// used in pairs - one type of task submitter should be used together with task
 /// with the same type, so these classes are put together in this same file.
@@ -40,6 +43,9 @@ class CoreWorkerTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *results)>;
 
   virtual ~CoreWorkerTaskReceiver() {}
+
+  /// Return the underlying rpc service.
+  virtual rpc::GrpcService &GetRpcService() = 0;
 };
 
 }  // namespace ray

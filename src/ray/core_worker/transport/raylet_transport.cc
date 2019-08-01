@@ -15,13 +15,12 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) 
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    CoreWorkerStoreProviderLayer &store_provider_layer, boost::asio::io_service &io_service,
+    const TaskHandler &task_handler)
     : raylet_client_(raylet_client),
-      object_interface_(object_interface),
+      store_provider_layer_(store_provider_layer),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
-  server.RegisterService(task_service_);
 }
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
@@ -42,7 +41,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   RAY_CHECK(results.size() == num_returns);
   for (int i = 0; i < num_returns; i++) {
     ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
-    object_interface_.Put(*results[i], id);
+    store_provider_layer_.Put(StoreProviderType::PLASMA, *results[i], id);
   }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
@@ -59,6 +58,10 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   RAY_UNUSED(raylet_client_->TaskDone());
   // Send rpc reply.
   send_reply_callback(status, nullptr, nullptr);
+}
+
+rpc::GrpcService &CoreWorkerRayletTaskReceiver::GetRpcService() {
+  return task_service_;
 }
 
 }  // namespace ray

@@ -81,17 +81,23 @@ class CoreWorker {
   std::unique_ptr<RayletClient> raylet_client_;
 
   /// GCS client.
-  std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
+  gcs::RedisGcsClient gcs_client_;
 
-  /// The `CoreWorkerTaskInterface` instance.
-  std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
+  std::unique_ptr<CoreWorkerStoreProviderLayer> object_provider_layer_;
+
+  std::unique_ptr<CoreWorkerTaskSubmitterLayer> task_submitter_layer_;
 
   /// The `CoreWorkerObjectInterface` instance.
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
+  /// The `CoreWorkerTaskInterface` instance.
+  std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
+
   /// The `CoreWorkerTaskExecutionInterface` instance.
   /// This is only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
+
+  friend class CoreWorkerTest;
 };
 
 }  // namespace ray

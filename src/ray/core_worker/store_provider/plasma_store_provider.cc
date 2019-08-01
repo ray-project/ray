@@ -8,8 +8,12 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, std::unique_ptr<RayletClient> &raylet_client)
-    : local_store_provider_(store_socket), raylet_client_(raylet_client) {}
+    const WorkerContext &worker_context,
+    const std::string &store_socket,
+    std::unique_ptr<RayletClient> &raylet_client)
+    : worker_context_(worker_context),
+      local_store_provider_(store_socket),
+      raylet_client_(raylet_client) {}
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
@@ -17,10 +21,11 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
-    const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+    const std::vector<ObjectID> &ids, int64_t timeout_ms, 
     std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
+  const TaskID &task_id = worker_context_.GetCurrentTaskID();
   bool was_blocked = false;
 
   std::unordered_map<ObjectID, int> unready;
@@ -61,7 +66,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
     RAY_RETURN_NOT_OK(
-        local_store_provider_.Get(unready_ids, get_timeout, task_id, &result_objects));
+        local_store_provider_.Get(unready_ids, get_timeout, &result_objects));
 
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
@@ -87,8 +92,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
-                                           const TaskID &task_id,
                                            std::vector<bool> *results) {
+  const TaskID &task_id = worker_context_.GetCurrentTaskID();
   WaitResultPair result_pair;
   auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms, false, task_id,
                                      &result_pair);
@@ -98,8 +103,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
   }
 
   // TODO(zhijunfu): change RayletClient::Wait() to return a bit set, so that we don't
-  // need
-  // to do this translation.
+  // need to do this translation.
   (*results).resize(object_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
     (*results)[i] = ready_ids.count(object_ids[i]) > 0;

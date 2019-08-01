@@ -11,7 +11,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/core_worker/transport/transport_layer.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/protobuf/core_worker.pb.h"
 
@@ -186,7 +186,7 @@ class CoreWorkerTaskInterface {
   WorkerContext &worker_context_;
 
   /// Transport layer which abstracts task submitters & receivers.
-  CoreWorkerTransportLayer &transport_layer_;
+  CoreWorkerTaskSubmitterLayer &task_submitter_layer_;
 
   friend class CoreWorkerTest;
 };
