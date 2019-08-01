@@ -24,7 +24,8 @@ from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources, ExportFormat
+from ray.tune.trial import ExportFormat
+from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
