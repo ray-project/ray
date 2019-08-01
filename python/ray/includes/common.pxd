@@ -2,11 +2,13 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 
-from libc.stdint cimport uint8_t
+from libc.stdint cimport uint8_t, uint64_t, int64_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
+    CActorID,
+    CActorHandleID,
     CJobID,
     CWorkerID,
     CObjectID,
@@ -139,6 +141,34 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size)
+
+cdef extern from "ray/core_worker/common.h" namespace "ray" nogil:
+    cdef struct CRayFunction "ray::RayFunction":
+        const CLanguage language
+        const c_vector[c_string] function_descriptor
+
+    cdef cppclass CTaskArg "ray:TaskArg":
+        CTaskArg PassByReference(const CObjectID &object_id)
+        CTaskArg PassByValue(const shared_ptr[CBuffer] &data)
+
+    cdef struct CTaskOptions "ray::TaskOptions":
+        CTaskOptions(int num_returns, const unordered_map[c_string, double] &resources)
+
+    cdef struct CActorCreationOptions "ray::ActorCreationOptions":
+        CActorCreationOptions(uint64_t max_reconstructions, const unordered_map[c_string, double] &resources)
+
+    cdef cppclass CActorHandle "ray::ActorHandle":
+        CActorHandle(const CActorID &actor_id, const CActorHandleID &actor_handle_id, const CLanguage actor_language, const c_vector[c_string] &actor_creation_task_function_descriptor)
+        CActorHandle(const CActorHandle &other)
+        CActorID ActorID() const
+        CActorHandleID ActorHandleID() const
+        c_vector[c_string] ActorCreationTaskFunctionDescriptor() const
+        CObjectID ActorCursor() const
+        int64_t TaskCursor() const
+        int64_t NumForks() const
+        CActorHandle Fork()
+        void Serialize(c_string *output)
+        CActorHandle Deserialize(const c_string &data)
 
 cdef extern from "ray/core_worker/store_provider/store_provider.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
