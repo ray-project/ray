@@ -54,6 +54,6 @@ An `ObjectID` contains 3 parts:
     - `PUT_OBJECT` indicates this object is generated through `ray.put` during the task's execution.
     - `RETURN_OBJECT` indicates this object is the return value of a task.
 
-- The (3) `transport_type` part is 3 bits to indicate the type of the transport which is used to transfer this object. So it can support 8 typess.
+- The (3) `transport_type` part is 3 bits to indicate the type of the transport which is used to transfer this object. So it can support 8 types.
 
 - There are 11 bits unused in `flags bytes`.
