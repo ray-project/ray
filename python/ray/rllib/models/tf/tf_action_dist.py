@@ -125,8 +125,8 @@ class MultiCategorical(TFActionDistribution):
 
     @staticmethod
     @override(ActionDistribution)
-    def parameter_shape_for_action_space(action_space, model_config=None):
-        return action_space.shape[0] * 2
+    def parameter_shape_for_action_space(action_space, model_config):
+        return np.sum(action_space.nvec)
 
 
 class DiagGaussian(TFActionDistribution):
@@ -168,6 +168,11 @@ class DiagGaussian(TFActionDistribution):
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+
+    @staticmethod
+    @override(ActionDistribution)
+    def parameter_shape_for_action_space(action_space, model_config=None):
+        return action_space.shape[0] * 2
 
 
 class Deterministic(TFActionDistribution):
