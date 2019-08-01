@@ -88,11 +88,11 @@ def to_memory_units(memory_bytes, round_up):
         if round_up:
             value = int(math.ceil(value))
         else:
-            value = int(math.floor(value))
-        logger.warn("Rounding {} byte {} {} to {} MB.".format(
+            value = int(max(1, math.floor(value)))
+        logger.warn("Rounding {} bytes {} to {} MB.".format(
             int(prev_value * MEMORY_RESOURCE_UNIT_BYTES), "memory request"
-            if round_up else "available memory config", "up" if round_up else
-            "down", value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024)))
+            if round_up else "available memory",
+            value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024)))
     return int(value)
 
 
