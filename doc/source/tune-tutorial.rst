@@ -8,6 +8,14 @@ This tutorial will walk you through the following process to setup a Tune experi
   3. Adding a SearchAlgorithm
   4. Getting the best model and analyzing results
 
+.. note::
+
+    To run this example, you will need to install the following:
+
+    .. code-block:: bash
+
+        $ pip install ray torch torchvision filelock
+
 We first run some imports:
 
 .. literalinclude:: ../../python/ray/tune/tests/tutorial.py
@@ -47,10 +55,11 @@ Let's run 1 trial, randomly sampling from a uniform distribution for learning ra
 
 We can then plot the performance of this trial.
 
-.. code:: python
+.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+   :language: python
+   :start-after: __plot_begin__
+   :end-before: __plot_end__
 
-    dfs = analysis.get_all_trial_dataframes()
-    [d.mean_accuracy.plot() for d in dfs.values()]
 
 Early Stopping with ASHA
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,17 +78,14 @@ We can afford to **increase the search space by 5x**, by adjusting the parameter
 
 You can run the below in a Jupyter notebook to visualize trial progress.
 
-.. code:: python
+.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+   :language: python
+   :start-after: __plot_scheduler_begin__
+   :end-before: __plot_scheduler_end__
 
-    # This plots everything on the same plot
-    ax = None
-    for d in dfs.values():
-        ax = d.plot("timestamp", "mean_accuracy", ax=ax, legend=False)
-
-    # Plot by epoch
-    ax = None
-    for d in dfs.values():
-        ax = d.mean_accuracy.plot(ax=ax, legend=False)
+.. image:: images/tune-df-plot.png
+    :scale: 50%
+    :align: center
 
 You can also use Tensorboard for visualizing results.
 

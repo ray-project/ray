@@ -121,7 +121,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.ray_redis_address:
         ray.init(redis_address=args.ray_redis_address)
-    datasets.MNIST("~/data", train=True, download=True)
     sched = AsyncHyperBandScheduler(
         time_attr="training_iteration", metric="mean_accuracy")
     analysis = tune.run(

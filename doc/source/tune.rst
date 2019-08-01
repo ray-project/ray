@@ -20,11 +20,16 @@ Tune is a scalable framework for hyperparameter search and model training with a
 Quick Start
 -----------
 
-This example runs a small grid search to train a CNN using PyTorch and Tune. Note: to run this example, you will need to install the following:
+.. note::
 
-.. code-block:: bash
+    To run this example, you will need to install the following:
 
-    $ pip install ray torch torchvision filelock
+    .. code-block:: bash
+
+        $ pip install ray torch torchvision filelock
+
+
+This example runs a small grid search to train a CNN using PyTorch and Tune.
 
 .. literalinclude:: ../../python/ray/tune/tests/example.py
    :language: python
@@ -43,13 +48,13 @@ If TensorBoard is installed, automatically visualize all trial results:
 Distributed Quick Start
 -----------------------
 
-*This assumes that you have already setup your AWS account and AWS credentials.* (``aws configure``)
+.. note::
 
-Note: to run this example, you will need to install the following:
+    This assumes that you have already setup your AWS account and AWS credentials (``aws configure``). To run this example, you will need to install the following:
 
-.. code-block:: bash
+    .. code-block:: bash
 
-    $ pip install ray torch torchvision filelock
+        $ pip install ray torch torchvision filelock
 
 1. Import and initialize Ray by appending the following to your example script.
 
@@ -66,22 +71,23 @@ Note: to run this example, you will need to install the following:
 
 Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
-3. Run ``ray submit`` like the following:
+2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`
+3. Run ``ray submit`` like the following.
 
 .. code-block:: bash
 
     ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+
+This will start 3 AWS machines and run a distributed hyperparameter search across them. Append ``[--stop]`` to automatically shutdown your nodes afterwards.
 
 To summarize, here are the full set of commands:
 
 .. code-block:: bash
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/quickstart/tune-default.yaml
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-default.yaml
     ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
-This will start 3 AWS machines and run a distributed hyperparameter search across them. Append ``[--stop]`` to automatically shutdown your nodes afterwards.
 
 Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
 

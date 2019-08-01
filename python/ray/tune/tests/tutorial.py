@@ -45,6 +45,11 @@ search_space = {
 analysis = tune.run(train_mnist, config=search_space)
 # __eval_func_end__
 
+#__plot_begin__
+dfs = analysis.trial_dataframes
+[d.mean_accuracy.plot() for d in dfs.values()]
+#__plot_end__
+
 # __run_scheduler_begin__
 analysis = tune.run(
     train_mnist,
@@ -53,8 +58,17 @@ analysis = tune.run(
     config=search_space)
 
 # Obtain a trial dataframe from all run trials of this `tune.run` call.
-dfs = analysis.get_all_trial_dataframes()
+dfs = analysis.trial_dataframes
 # __run_scheduler_end__
+
+# yapf: disable
+# __plot_scheduler_begin__
+# Plot by epoch
+ax = None  # This plots everything on the same plot
+for d in dfs.values():
+    ax = d.mean_accuracy.plot(ax=ax, legend=False)
+# __plot_scheduler_end__
+# yapf: enable
 
 # __run_searchalg_begin__
 from hyperopt import hp
@@ -71,8 +85,7 @@ hyperopt_search = HyperOptSearch(
 analysis = tune.run(
     train_mnist,
     num_samples=10,
-    search_alg=hyperopt_search,
-    **experiment_config)
+    search_alg=hyperopt_search)
 # __run_searchalg_end__
 
 # __run_analysis_begin__
@@ -83,40 +96,7 @@ logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
 model = torch.load(os.path.join(logdir, "model.pth"))
 # __run_analysis_end__
 
-# yapf: disable
-# __trainable_example_begin__
-from ray.tune import Trainable
-
-class TrainMNIST(Trainable):
-    def _setup(self, config):
-        torch.manual_seed(config.get("seed"))
-        if config.get("use_gpu"):
-            torch.cuda.manual_seed(config.get("seed"))
-
-        use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-        self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.train_loader, self.test_loader = get_data_loaders()
-        self.model = ConvNet().to(self.device)
-        self.optimizer = optim.SGD(
-            self.model.parameters(),
-            lr=config.get("lr", 0.01),
-            momentum=config.get("momentum", 0.9))
-
-    def _train(self):
-        train(
-            self.model, self.optimizer, self.train_loader, device=self.device)
-        acc = test(self.model, self.test_loader, self.device)
-        return {"mean_accuracy": acc}
-
-    def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
-        torch.save(self.model.state_dict(), checkpoint_path)
-        return checkpoint_path
-
-    def _restore(self, checkpoint_path):
-        self.model.load_state_dict(torch.load(checkpoint_path))
-# __trainable_example_end__
-# yapf: enable
+from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
 # __trainable_run_begin__
 search_space = {
@@ -124,5 +104,5 @@ search_space = {
     "momentum": tune.uniform(0.1, 0.9)
 }
 
-analysis = tune.run(TrainMNIST, num_samples=10, config=search_space)
+analysis = tune.run(TrainMNIST, config=search_space)
 # __trainable_run_end__

@@ -8,7 +8,9 @@ import torch
 import torch.optim as optim
 from torchvision import datasets
 
-from ray.tune import Trainable
+import ray
+from ray import tune
+from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              ConvNet)
 
@@ -26,21 +28,13 @@ parser.add_argument(
 parser.add_argument(
     "--ray-redis-address", type=str, help="The Redis address of the cluster.")
 parser.add_argument(
-    "--seed",
-    type=int,
-    default=1,
-    metavar="S",
-    help="random seed (default: 1)")
-parser.add_argument(
     "--smoke-test", action="store_true", help="Finish quickly for testing")
 
-
-class TrainMNIST(Trainable):
+# Below comments are for documentation purposes only.
+# yapf: disable
+# __trainable_example_begin__
+class TrainMNIST(tune.Trainable):
     def _setup(self, config):
-        torch.manual_seed(config.get("seed", 0))
-        if config.get("use_gpu"):
-            torch.cuda.manual_seed(config.get("seed", 0))
-
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.train_loader, self.test_loader = get_data_loaders()
@@ -63,19 +57,15 @@ class TrainMNIST(Trainable):
 
     def _restore(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
+# __trainable_example_end__
+# yapf: enable
 
 
 if __name__ == "__main__":
-    datasets.MNIST("~/data", train=True, download=True)
     args = parser.parse_args()
-
-    import ray
-    from ray import tune
-    from ray.tune.schedulers import ASHAScheduler
-
     ray.init(redis_address=args.ray_redis_address)
     sched = ASHAScheduler(metric="mean_accuracy")
-    tune.run(
+    analysis = tune.run(
         TrainMNIST,
         scheduler=sched,
         **{
@@ -96,3 +86,5 @@ if __name__ == "__main__":
                 "momentum": tune.uniform(0.1, 0.9),
             }
         })
+
+    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))

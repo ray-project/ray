@@ -44,7 +44,7 @@ Launching a cloud cluster
 
 Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_.
 
-.. literalinclude:: ../../python/ray/tune/examples/quickstart/tune-default.yaml
+.. literalinclude:: ../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
    :name: tune-default.yaml
 
@@ -55,6 +55,8 @@ This code starts a cluster as specified by the given cluster configuration YAML 
     ray submit tune-default.yaml tune_script.py --start
 
 .. image:: images/tune-upload.png
+    :scale: 50%
+    :align: center
 
 Analyze your results on TensorBoard by starting TensorBoard on the remote head machine.
 
@@ -128,32 +130,36 @@ Spot instances may be removed suddenly while trials are still running. Often tim
 
 The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in the example below:
 
-.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch_trainable.py
    :language: python
    :start-after: __trainable_example_begin__
    :end-before: __trainable_example_end__
 
-This can then be used similarly to the Function API as before: ``tune.run(TrainMNIST, ...)``.
+This can then be used similarly to the Function API as before:
+
+.. literalinclude:: ../../python/ray/tune/tests/tutorial.py
+    :language: python
+    :start-after: __trainable_run_begin__
+    :end-before: __trainable_run_end__
+
 
 Example for using spot instances (AWS)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here is an example for running Tune on spot instances. This assumes your AWS credentials have already been setup (``aws configure``):
 
-To run this example, you will need to install the following:
+1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`. To run this example, you will need to install the following:
 
 .. code-block:: bash
 
     $ pip install ray torch torchvision filelock
 
-1. Download a full example Tune experiment script here. This includes a Trainable with checkpointing: :download:`mnist_pytorch_trainable.py <../../python/ray/tune/examples/mnist_pytorch_trainable.py>`
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/quickstart/tune-default.yaml>`
+2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`
 3. Run ``ray submit`` as below to run Tune across them. Append ``[--start]`` if the cluster is not up yet. Append ``[--stop]`` to automatically shutdown your nodes after running.
 
 .. code-block:: bash
 
-    export CLUSTER=tune-default.yaml
-    ray submit $CLUSTER mnist_pytorch_trainable.py \
+    ray submit tune-default.yaml mnist_pytorch_trainable.py \
         --args="--ray-redis-address=localhost:6379" \
         --start
 
@@ -161,18 +167,18 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ ray kill-random-node $CLUSTER --hard
+    $ ray kill-random-node tune-default.yaml --hard
 
 To summarize, here are the commands to run:
 
 .. code-block:: bash
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch_trainable.py
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/quickstart/tune-default.yaml
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-default.yaml
     ray submit tune-default.yaml mnist_pytorch_trainable.py --args="--ray-redis-address=localhost:6379" --start
 
     # wait a while until after all nodes have started
-    ray kill-random-node $CLUSTER --hard
+    ray kill-random-node tune-default.yaml --hard
 
 You should see Tune eventually continue the trials on a different worker node. See the `Saving and Recovery <tune-usage.html#saving-and-recovery>`__ section for more details.
 
