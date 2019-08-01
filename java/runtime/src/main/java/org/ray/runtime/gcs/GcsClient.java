@@ -16,7 +16,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
-import org.ray.runtime.generated.Gcs.ClientTableData;
+import org.ray.runtime.generated.Gcs.GcsNodeInfo;
 import org.ray.runtime.generated.Gcs.TablePrefix;
 import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
@@ -60,40 +60,40 @@ public class GcsClient {
       return new ArrayList<>();
     }
 
-    // This map is used for deduplication of client entries.
-    Map<UniqueId, NodeInfo> clients = new HashMap<>();
+    // This map is used for deduplication of node entries.
+    Map<UniqueId, NodeInfo> nodes = new HashMap<>();
     for (byte[] result : results) {
       Preconditions.checkNotNull(result);
-      ClientTableData data = null;
+      GcsNodeInfo data = null;
       try {
-        data = ClientTableData.parseFrom(result);
+        data = GcsNodeInfo.parseFrom(result);
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
-      final UniqueId clientId = UniqueId
-          .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
+      final UniqueId nodeId = UniqueId
+          .fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
 
-      if (data.getIsInsertion()) {
+      if (data.getState() == GcsNodeInfo.GcsNodeState.ALIVE) {
         //Code path of node insertion.
         NodeInfo nodeInfo = new NodeInfo(
-            clientId, data.getNodeManagerAddress(), true, new HashMap<>());
-        clients.put(clientId, nodeInfo);
+            nodeId, data.getNodeManagerAddress(), true, new HashMap<>());
+        nodes.put(nodeId, nodeInfo);
       } else {
         // Code path of node deletion.
-        NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
+        NodeInfo nodeInfo = new NodeInfo(nodeId, nodes.get(nodeId).nodeAddress,
             false, new HashMap<>());
-        clients.put(clientId, nodeInfo);
+        nodes.put(nodeId, nodeInfo);
       }
     }
 
     // Fill resources.
-    for (Map.Entry<UniqueId, NodeInfo> client : clients.entrySet()) {
-      if (client.getValue().isAlive) {
-        client.getValue().resources.putAll(getResourcesForClient(client.getKey()));
+    for (Map.Entry<UniqueId, NodeInfo> node : nodes.entrySet()) {
+      if (node.getValue().isAlive) {
+        node.getValue().resources.putAll(getResourcesForClient(node.getKey()));
       }
     }
 
-    return new ArrayList<>(clients.values());
+    return new ArrayList<>(nodes.values());
   }
 
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {

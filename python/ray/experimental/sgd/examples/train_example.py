@@ -16,9 +16,11 @@ def train_example(num_replicas=1, use_gpu=False):
         data_creator,
         optimizer_creator,
         num_replicas=num_replicas,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        backend="gloo")
     trainer1.train()
     trainer1.shutdown()
+    print("success!")
 
 
 def tune_example(num_replicas=1, use_gpu=False):
@@ -43,6 +45,12 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Redis")
     parser.add_argument(
+        "--num-replicas",
+        "-n",
+        type=int,
+        default=1,
+        help="Sets number of replicas for training.")
+    parser.add_argument(
         "--use-gpu",
         action="store_true",
         default=False,
@@ -50,5 +58,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     import ray
+
     ray.init(redis_address=args.redis_address)
-    train_example(num_replicas=2, use_gpu=args.use_gpu)
+    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
