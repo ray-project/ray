@@ -18,6 +18,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
+from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory
 
 # Logger for this module. It should be configured at the entry point
@@ -85,11 +86,8 @@ class Node(object):
                 "workers/default_worker.py"))
 
         self._resource_spec = ResourceSpec(
-            ray_params.num_cpus,
-            ray_params.num_gpus,
-            ray_params.memory,
-            ray_params.object_store_memory,
-            ray_params.resources,
+            ray_params.num_cpus, ray_params.num_gpus, ray_params.memory,
+            ray_params.object_store_memory, ray_params.resources,
             ray_params.redis_max_memory).resolve(is_head=head)
 
         self._ray_params = ray_params

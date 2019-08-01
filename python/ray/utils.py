@@ -445,8 +445,7 @@ def estimate_available_memory():
 
     # check cgroup memory first
     try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
-                  "rb") as f:
+        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
             cgroup_memory_usage = int(f.read())
     except IOError:
         cgroup_memory_usage = None

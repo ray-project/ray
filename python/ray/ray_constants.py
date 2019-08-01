@@ -65,6 +65,12 @@ MIN_RESOURCE_GRANULARITY = 0.0001
 PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
 
+def round_to_memory_units(memory_bytes):
+    """Round bytes to the nearest memory unit."""
+    return from_memory_units(
+        to_memory_units(memory_bytes, round_to_nearest_unit=True))
+
+
 def from_memory_units(memory_units):
     """Convert from memory units -> bytes."""
     return memory_units * MEMORY_RESOURCE_UNIT_BYTES
@@ -76,10 +82,9 @@ def to_memory_units(memory_bytes, round_to_nearest_unit=False):
     if round_to_nearest_unit:
         value = int(value)
         if value < 1:
-            logger.warn(
-                "Rounding {} byte memory request up to the minimum "
-                "resource creation granularity of {} bytes.".format(
-                    memory_bytes, MEMORY_RESOURCE_UNIT_BYTES))
+            logger.warn("Rounding {} byte memory request up to the minimum "
+                        "resource creation granularity of {} bytes.".format(
+                            memory_bytes, MEMORY_RESOURCE_UNIT_BYTES))
             value = 1
     elif value < MIN_RESOURCE_GRANULARITY:
         logger.warn(

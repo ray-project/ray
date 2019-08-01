@@ -3,6 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import logging
+import multiprocessing
+import os
+
+import ray
+import ray.ray_constants as ray_constants
+
+logger = logging.getLogger(__name__)
 
 
 class ResourceSpec(
@@ -40,9 +48,9 @@ class ResourceSpec(
                 object_store_memory=None,
                 resources=None,
                 redis_max_memory=None):
-        return super(ResourceSpec,
-                     cls).__new__(num_cpus, num_gpus, memory,
-                         object_store_memory, resources, redis_max_memory)
+        return super(ResourceSpec, cls).__new__(cls, num_cpus, num_gpus,
+                                                memory, object_store_memory,
+                                                resources, redis_max_memory)
 
     def resolved(self):
         """Returns if this ResourceSpec has default values filled out."""
@@ -59,11 +67,11 @@ class ResourceSpec(
         """
         assert self.resolved()
 
-        memory = ray_constants.to_memory_units(
+        memory_units = ray_constants.to_memory_units(
             self.memory, round_to_nearest_unit=True)
         object_store_memory_units = ray_constants.to_memory_units(
             self.object_store_memory *
-                ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
+            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
             round_to_nearest_unit=True)
 
         resources = dict(
@@ -89,9 +97,8 @@ class ResourceSpec(
                     "Resource quantities must all be whole numbers. "
                     "Received {}.".format(resources))
             if resource_quantity < 0:
-                raise ValueError(
-                    "Resource quantities must be nonnegative. "
-                    "Received {}.".format(resources))
+                raise ValueError("Resource quantities must be nonnegative. "
+                                 "Received {}.".format(resources))
             if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
                 raise ValueError(
                     "Resource quantities must be at most {}.".format(
@@ -114,7 +121,7 @@ class ResourceSpec(
         gpu_ids = ray.utils.get_cuda_visible_devices()
         # Check that the number of GPUs that the raylet wants doesn't
         # excede the amount allowed by CUDA_VISIBLE_DEVICES.
-        if (num_gpus is not None and and gpu_ids is not None
+        if (num_gpus is not None and gpu_ids is not None
                 and num_gpus > len(gpu_ids)):
             raise Exception("Attempting to start raylet with {} GPUs, "
                             "but CUDA_VISIBLE_DEVICES contains {}.".format(
@@ -136,8 +143,9 @@ class ResourceSpec(
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
                 logger.warning(
                     "Warning: Capping object memory store to {}GB. ".format(
-                        ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES // 1e9)
-                    + "To increase this further, specify `object_store_memory` "
+                        ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
+                        1e9) +
+                    "To increase this further, specify `object_store_memory` "
                     "when calling ray.init() or ray start.")
                 object_store_memory = (
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
@@ -152,8 +160,8 @@ class ResourceSpec(
             if object_store_fraction > 0.9 and not no_check:
                 raise ValueError(
                     "The default object store size of {} GB "
-                    "will use more than 90% of the available memory on this node "
-                    "({} GB). Please reduce the object store memory size "
+                    "will use more than 90% of the available memory on this "
+                    "node ({} GB). Please reduce the object store memory size "
                     "to avoid memory contention with other applications, or "
                     "shut down the applications using this memory.".format(
                         round(object_store_memory / 1e9, 2),
@@ -161,10 +169,10 @@ class ResourceSpec(
             elif object_store_fraction > 0.5:
                 logger.warning(
                     "WARNING: The default object store size of {} GB "
-                    "will use more than 50% of the available memory on this node "
-                    "({} GB). Consider setting the object store memory manually "
-                    "to a smaller size to avoid memory contention with other "
-                    "applications.".format(
+                    "will use more than 50% of the available memory on this "
+                    "node ({} GB). Consider setting the object store memory "
+                    "manually to a smaller size to avoid memory contention "
+                    "with other applications.".format(
                         round(object_store_memory / 1e9, 2),
                         round(avail_memory / 1e9, 2)))
 
@@ -176,22 +184,24 @@ class ResourceSpec(
                     int(system_memory * 0.2),
                     ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
         if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
-            raise ValueError("Attempting to cap Redis memory usage at {} bytes, "
-                             "but the minimum allowed is {} bytes.".format(
-                                 redis_max_memory,
-                                 ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
+            raise ValueError(
+                "Attempting to cap Redis memory usage at {} bytes, "
+                "but the minimum allowed is {} bytes.".format(
+                    redis_max_memory,
+                    ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
 
+        memory = self.memory
         if memory is None:
-            memory = (
-                ray.utils.estimate_available_memory() -
-                    object_store_memory - (redis_max_memory if is_head else 0))
+            memory = (ray.utils.estimate_available_memory() -
+                      object_store_memory - (redis_max_memory
+                                             if is_head else 0))
             logger.info(
                 "Starting Ray with {} GB memory available for workers.".format(
-                    round(memory / 1e9, 2)))
+                    round(
+                        ray_constants.round_to_memory_units(memory) / 1e9, 2)))
 
-        spec = ResourceSpec(
-            num_cpus, num_gpus, memory, object_store_memory, resources,
-            redis_max_memory)
+        spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
+                            resources, redis_max_memory)
         assert spec.resolved()
         return spec
 

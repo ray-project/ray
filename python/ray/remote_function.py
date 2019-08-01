@@ -53,8 +53,8 @@ class RemoteFunction(object):
             different workers.
     """
 
-    def __init__(self, function, num_cpus, num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls):
+    def __init__(self, function, num_cpus, num_gpus, memory,
+                 object_store_memory, resources, num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
         self._function_name = (
@@ -135,8 +135,9 @@ class RemoteFunction(object):
             num_return_vals = self._num_return_vals
 
         resources = ray.utils.resources_from_resource_arguments(
-            self._num_cpus, self._num_gpus, self._memory, self._object_store_memory,
-            self._resources, num_cpus, num_gpus, memory, object_store_memory, resources)
+            self._num_cpus, self._num_gpus, self._memory,
+            self._object_store_memory, self._resources, num_cpus, num_gpus,
+            memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
             args = ray.signature.extend_args(self._function_signature, args,
