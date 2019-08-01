@@ -169,8 +169,7 @@ class ModelCatalog(object):
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
 
-        return dist, dist.parameter_shape_for_action_space(
-            action_space, config)
+        return dist, dist.required_model_output_shape(action_space, config)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
@@ -381,8 +380,8 @@ class ModelCatalog(object):
         {"custom_action_dist": action_dist_name} in the model config.
 
         Args:
-            model_name (str): Name to register the model under.
-            model_class (type): Python class of the model.
+            model_name (str): Name to register the action distribution under.
+            model_class (type): Python class of the action distribution.
         """
         _global_registry.register(RLLIB_ACTION_DIST, action_dist_name,
                                   action_dist_class)

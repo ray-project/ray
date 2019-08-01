@@ -16,7 +16,7 @@ class ActionDistribution(object):
     """
 
     @DeveloperAPI
-    def __init__(self, inputs, model_config=None):
+    def __init__(self, inputs, model_config):
         self.inputs = inputs
         self.model_config = model_config
 
@@ -58,7 +58,7 @@ class ActionDistribution(object):
 
     @DeveloperAPI
     @staticmethod
-    def parameter_shape_for_action_space(action_space, model_config=None):
+    def required_model_output_shape(action_space, model_config):
         """Returns the required shape of an input parameter tensor for a
         particular action space and an optional dict of distribution-specific
         options.
@@ -70,7 +70,7 @@ class ActionDistribution(object):
             model_config (dict): Model's config dict (as defined in catalog.py)
 
         Returns:
-            dist_dim (int or np.ndarray of ints): size of the required
-                input vector (minus leading batch dimension).
+            model_output_shape (int or np.ndarray of ints): size of the
+                required input vector (minus leading batch dimension).
         """
         raise NotImplementedError

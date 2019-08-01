@@ -18,7 +18,7 @@ def policy_gradient_loss(policy, batch_tensors):
     logits, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
     })
-    action_dist = policy.dist_class(logits)
+    action_dist = policy.dist_class(logits, policy.config["model"])
     log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
     return -batch_tensors[SampleBatch.REWARDS].dot(log_probs)
 

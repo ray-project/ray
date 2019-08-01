@@ -34,7 +34,7 @@ class CustomModel(Model):
 
 class CustomActionDistribution(TFActionDistribution):
     @staticmethod
-    def parameter_shape_for_action_space(action_space, model_config=None):
+    def required_model_output_shape(action_space, model_config=None):
         custom_options = model_config["custom_options"] or {}
         if custom_options is not None and custom_options.get("output_dim"):
             return custom_options.get("output_dim")
