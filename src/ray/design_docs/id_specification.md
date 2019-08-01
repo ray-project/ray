@@ -48,7 +48,7 @@ An `ObjectID` contains 3 parts:
 | (1) | (2) |     (3)      |                (4)unused                     |
 +-------------------------------------------------------------------------+
 ```
-- The (1) `is_task` part is one bit to indicate whether this `ObjectID` generated from a task.
+- The (1) `is_task` part is one bit to indicate whether this `ObjectID` is generated (put or returned) from a task.
 
 - The (2) `object_type` part is one bit to indicate the type of this object, whether a `PUT_OBJECT` or a `RETURN_OBJECT`.
     - `PUT_OBJECT` indicates this object is generated through `ray.put` during the task's execution.
