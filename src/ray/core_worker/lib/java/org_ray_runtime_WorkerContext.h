@@ -57,19 +57,19 @@ Java_org_ray_runtime_WorkerContext_nativeGetCurrentWorkerId(JNIEnv *, jclass, jl
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetNextTaskIndex
+ * Method:    nativeNextAndGetTaskIndex
  * Signature: (J)I
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextTaskIndex(JNIEnv *,
-                                                                                 jclass,
-                                                                                 jlong);
+JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeNextAndGetTaskIndex(JNIEnv *,
+                                                                                    jclass,
+                                                                                    jlong);
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetNextPutIndex
+ * Method:    nativeNextAndPutIndex
  * Signature: (J)I
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextPutIndex(JNIEnv *,
+JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeNextAndPutIndex(JNIEnv *,
                                                                                 jclass,
                                                                                 jlong);
 

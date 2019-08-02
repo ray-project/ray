@@ -24,9 +24,18 @@ class WorkerContext {
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
-  int GetNextTaskIndex();
+  /// \return The next index of the task which will be submitted by current task.
+  /// It also means the number of tasks submitted by current task in this context.
+  int GetNextTaskIndex() const;
 
-  int GetNextPutIndex();
+  /// Increase the task index and then return the result.
+  int NextAndGetTaskIndex();
+
+  /// \return The number of objects putted by current task in this context.
+  int GetNextPutIndex() const;
+
+  /// Increase the put index and then return the result.
+  int NextAndGetPutIndex();
 
  private:
   /// Type of the worker.

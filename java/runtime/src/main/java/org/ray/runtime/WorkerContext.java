@@ -73,14 +73,14 @@ public class WorkerContext {
    * Increment the put index and return the new value.
    */
   public int nextPutIndex() {
-    return nativeGetNextPutIndex(nativeWorkerContextPointer);
+    return nativeNextAndGetPutIndex(nativeWorkerContextPointer);
   }
 
   /**
    * Increment the task index and return the new value.
    */
   public int nextTaskIndex() {
-    return nativeGetNextTaskIndex(nativeWorkerContextPointer);
+    return nativeNextAndGetTaskIndex(nativeWorkerContextPointer);
   }
 
   /**
@@ -131,9 +131,9 @@ public class WorkerContext {
 
   private static native byte[] nativeGetCurrentWorkerId(long nativeWorkerContextPointer);
 
-  private static native int nativeGetNextTaskIndex(long nativeWorkerContextPointer);
+  private static native int nativeNextAndGetTaskIndex(long nativeWorkerContextPointer);
 
-  private static native int nativeGetNextPutIndex(long nativeWorkerContextPointer);
+  private static native int nativeNextAndGetPutIndex(long nativeWorkerContextPointer);
 
   private static native void nativeDestroy(long nativeWorkerContextPointer);
 }

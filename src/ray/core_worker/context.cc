@@ -8,9 +8,13 @@ struct WorkerThreadContext {
   WorkerThreadContext()
       : current_task_id_(TaskID::FromRandom()), task_index_(0), put_index_(0) {}
 
-  int GetNextTaskIndex() { return ++task_index_; }
+  int GetNextTaskIndex() const { return 1 + task_index_; }
 
-  int GetNextPutIndex() { return ++put_index_; }
+  int NextAndGetTaskIndex() const { return ++task_index_; }
+
+  int GetNextPutIndex() const { return 1 + put_index_; }
+
+  int NextAndGetTaskIndex() const { return ++put_index_; }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
 
@@ -62,9 +66,13 @@ const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
-int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
+int WorkerContext::GetNextTaskIndex() const { return GetThreadContext().GetNextTaskIndex(); }
 
-int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
+int NextAndGetTaskIndex() { return GetThreadContext().NextAndGetTaskIndex(); }
+
+int WorkerContext::GetNextPutIndex() const { return GetThreadContext().GetNextPutIndex(); }
+
+int NextAndGetPutIndex() { return GetThreadContext().NextAndGetPutIndex(); }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 

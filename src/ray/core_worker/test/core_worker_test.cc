@@ -584,24 +584,28 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
   WorkerContext context(WorkerType::WORKER, job_id);
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
+  ASSERT_EQ(context.NextAndGetTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
+  ASSERT_EQ(context.NextAndGetTaskIndex(), 2);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
+  ASSERT_EQ(context.NextAndGetPutIndex(), 1);
   ASSERT_EQ(context.GetNextPutIndex(), 1);
+  ASSERT_EQ(context.NextAndGetPutIndex(), 2);
   ASSERT_EQ(context.GetNextPutIndex(), 2);
 
   auto thread_func = [&context]() {
     // Verify that task_index, put_index are thread-local.
     ASSERT_TRUE(!context.GetCurrentTaskID().IsNil());
-    ASSERT_EQ(context.GetNextTaskIndex(), 1);
-    ASSERT_EQ(context.GetNextPutIndex(), 1);
+    ASSERT_EQ(context.NextAndGetPutIndex(), 1);
+    ASSERT_EQ(context.NextAndGetPutIndex(), 1);
   };
 
   std::thread async_thread(thread_func);
   async_thread.join();
 
   // Verify that these fields are thread-local.
-  ASSERT_EQ(context.GetNextTaskIndex(), 3);
-  ASSERT_EQ(context.GetNextPutIndex(), 3);
+  ASSERT_EQ(context.NextAndGetPutIndex(), 3);
+  ASSERT_EQ(context.NextAndGetPutIndex(), 3);
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {

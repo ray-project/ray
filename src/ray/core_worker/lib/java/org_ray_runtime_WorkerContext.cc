@@ -101,22 +101,22 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContext_nativeGetCurrent
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetNextTaskIndex
+ * Method:    nativeNextAndGetTaskIndex
  * Signature: (J)I
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextTaskIndex(
+JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeNextAndGetTaskIndex(
     JNIEnv *env, jclass, jlong nativeWorkerContextFromPointer) {
-  return GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->GetNextTaskIndex();
+  return GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->NextAndGetTaskIndex();
 }
 
 /*
  * Class:     org_ray_runtime_WorkerContext
- * Method:    nativeGetNextPutIndex
+ * Method:    nativeNextAndPutIndex
  * Signature: (J)I
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeGetNextPutIndex(
+JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContext_nativeNextAndPutIndex(
     JNIEnv *env, jclass, jlong nativeWorkerContextFromPointer) {
-  return GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->GetNextPutIndex();
+  return GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->NextAndPutIndex();
 }
 
 /*

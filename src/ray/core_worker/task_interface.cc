@@ -114,7 +114,7 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids) {
-  auto next_task_index = worker_context_.GetNextTaskIndex();
+  auto next_task_index = worker_context_.NextAndGetTaskIndex();
   // Build common task spec.
   builder.SetCommonTaskSpec(
       function.language, function.function_descriptor, worker_context_.GetCurrentJobID(),
