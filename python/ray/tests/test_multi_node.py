@@ -458,9 +458,11 @@ print("success")
         # Make sure the first driver ran to completion.
         assert "success" in out
 
+    nonexistent_id_bytes = _random_string()
+    nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
     # Define a driver that creates one task that depends on a nonexistent
     # object. This task will be queued as waiting to execute.
-    driver_script_template = """
+    driver_script = """
 import time
 import ray
 ray.init(redis_address="{}")
@@ -470,15 +472,11 @@ def g(x):
 g.remote(ray.ObjectID(ray.utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
-"""
+""".format(redis_address, nonexistent_id_hex)
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id_bytes = _random_string()
-        nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
-        driver_script = driver_script_template.format(redis_address,
-                                                      nonexistent_id_hex)
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
         ray.worker.global_worker.put_object(
@@ -486,8 +484,10 @@ print("success")
         # Make sure the first driver ran to completion.
         assert "success" in out
 
+    nonexistent_id_bytes = _random_string()
+    nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
     # Define a driver that calls `ray.wait` on a nonexistent object.
-    driver_script_template = """
+    driver_script = """
 import time
 import ray
 ray.init(redis_address="{}")
@@ -497,15 +497,11 @@ def g():
 g.remote()
 time.sleep(1)
 print("success")
-"""
+""".format(redis_address, nonexistent_id_hex)
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id_bytes = _random_string()
-        nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
-        driver_script = driver_script_template.format(redis_address,
-                                                      nonexistent_id_hex)
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
         ray.worker.global_worker.put_object(
