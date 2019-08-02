@@ -39,47 +39,8 @@ public class TaskId extends BaseId implements Serializable {
   }
 
   /**
-   * Creates a TaskId for actor creation task.
+   * Get the id of the actor which creates this task.
    */
-  public static TaskId forActorCreationTask(ActorId actorId) {
-    byte[] nilBytes = new byte[TaskId.UNIQUE_BYTES_LENGTH];
-    Arrays.fill(nilBytes, 0, TaskId.UNIQUE_BYTES_LENGTH, (byte) 0xFF);
-
-    byte[] bytes = new byte[TaskId.LENGTH];
-    ByteBuffer wbb = ByteBuffer.wrap(bytes);
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-
-    System.arraycopy(nilBytes, 0, bytes, 0, TaskId.UNIQUE_BYTES_LENGTH);
-    System.arraycopy(actorId.getBytes(), 0, bytes, TaskId.UNIQUE_BYTES_LENGTH, ActorId.LENGTH);
-    return new TaskId(bytes);
-  }
-
-  // TODO(qwang): Fix
-  /**
-   * Creates a TaskId for actor task.
-   */
-  public static TaskId forActorTask(ActorId actorId) {
-    byte[] uniqueBytes = new byte[TaskId.UNIQUE_BYTES_LENGTH];
-    new Random().nextBytes(uniqueBytes);
-
-    byte[] bytes = new byte[TaskId.LENGTH];
-    ByteBuffer wbb = ByteBuffer.wrap(bytes);
-    wbb.order(ByteOrder.LITTLE_ENDIAN);
-
-    System.arraycopy(uniqueBytes, 0, bytes, 0, TaskId.UNIQUE_BYTES_LENGTH);
-    System.arraycopy(actorId.getBytes(), 0, bytes, TaskId.UNIQUE_BYTES_LENGTH, ActorId.LENGTH);
-    return new TaskId(bytes);
-  }
-
-  /**
-   * Creates a TaskId for normal task.
-   */
-  public static TaskId forNormalTask() {
-    byte[] bytes = new byte[TaskId.LENGTH];
-    new Random().nextBytes(bytes);
-    return new TaskId(bytes);
-  }
-
   public ActorId getActorId() {
     byte[] actorIdBytes = new byte[ActorId.LENGTH];
     System.arraycopy(getBytes(), UNIQUE_BYTES_LENGTH, actorIdBytes, 0, ActorId.LENGTH);

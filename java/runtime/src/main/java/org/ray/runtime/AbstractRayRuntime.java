@@ -23,10 +23,7 @@ import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
-import org.ray.api.id.ActorId;
-import org.ray.api.id.ObjectId;
-import org.ray.api.id.TaskId;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.*;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.BaseTaskOptions;
 import org.ray.api.options.CallOptions;
@@ -402,13 +399,16 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     ActorId actorCreationId = ActorId.NIL;
     TaskId taskId = null;
+    final JobId currentJobId = workerContext.getCurrentJobId();
+    final TaskId currentTaskId = workerContext.getCurrentTaskId();
+    final int taskIndex = workerContext.nextTaskIndex();
     if (isActorCreationTask) {
-      actorCreationId = RayletClientImpl.generateActorId(workerContext.getCurrentJobId(), workerContext.getCurrentTaskId(), workerContext.nextTaskIndex()).;
-      taskId = TaskId.forActorCreationTask(actorCreationId);
+      taskId = RayletClientImpl.generateActorCreationTaskId(currentJobId, currentTaskId, taskIndex);
+      actorCreationId = taskId.getActorId();
     } else if (isActorTask) {
-      taskId = TaskId.forActorTask(actor.getId());
+      taskId = RayletClientImpl.generateActorTaskId(currentJobId, currentTaskId, taskIndex, actor.getId());
     } else {
-      taskId = TaskId.forNormalTask();
+      taskId = RayletClientImpl.generateNormalTaskId(currentJobId, currentTaskId, taskIndex);
     }
 
     int numReturns = actor.getId().isNil() ? 1 : 2;

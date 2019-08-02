@@ -128,9 +128,19 @@ public class RayletClientImpl implements RayletClient {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
-  public static ActorId generateActorId(JobId jobId, TaskId parentTaskId, int taskIndex) {
-    byte[] bytes = nativeGenerateActorId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
-    return ActorId.fromBytes(bytes);
+  public static TaskId generateActorCreationTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateActorCreationTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return TaskId.fromBytes(bytes);
+  }
+
+  public static TaskId generateActorTaskId(JobId jobId, TaskId parentTaskId, int taskIndex, ActorId actorId) {
+    byte[] bytes = nativeGenerateActorTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex, actorId.getBytes());
+    return TaskId.fromBytes(bytes);
+  }
+
+  public static TaskId generateNormalTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateNormalTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return TaskId.fromBytes(bytes);
   }
 
   /**
@@ -346,12 +356,12 @@ public class RayletClientImpl implements RayletClient {
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
       byte[] nodeId) throws RayException;
 
-  private static native byte[] nativeGenerateActorId(byte[] jobId, byte[] parentTaskId,
-                                                     int taskIndex);
+  private static native byte[] nativeGenerateActorCreationTaskId(byte[] jobId, byte[] parentTaskId,
+                                                                 int taskIndex);
 
-//  private static native byte[] nativeGenerateNormalTaskId(byte[] jobId, byte[] parentTaskId,
-//                                                          int taskIndex);
-//
-//  private static native byte[] nativeGenerateActorTaskId(byte[] jobId, byte[] parentTaskId,
-//                                                          int taskIndex, byte[] actorId);
+  private static native byte[] nativeGenerateActorTaskId(byte[] jobId, byte[] parentTaskId,
+                                                          int taskIndex, byte[] actorId);
+
+  private static native byte[] nativeGenerateNormalTaskId(byte[] jobId, byte[] parentTaskId,
+                                                          int taskIndex);
 }
