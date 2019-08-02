@@ -202,12 +202,14 @@ class MultiActionDistribution(TFActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, action_space, child_distributions, input_lens):
+    def __init__(self, inputs, action_space, child_distributions, input_lens,
+                 model_config):
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i]))
+            child_list.append(
+                distribution(split_inputs[i], model_config=model_config))
         self.child_distributions = child_list
 
     @override(ActionDistribution)
