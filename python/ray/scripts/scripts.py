@@ -397,7 +397,7 @@ def stop():
     ]
 
     for process in processes_to_kill:
-        command = ("kill $(ps aux | grep '" + process + "' | grep -v grep | " +
+        command = ("kill -9 $(ps aux | grep '" + process + "' | grep -v grep | " +
                    "awk '{ print $2 }') 2> /dev/null")
         subprocess.call([command], shell=True)
 
