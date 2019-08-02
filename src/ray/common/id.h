@@ -135,6 +135,13 @@ class ActorID : public BaseID<ActorID> {
   /// \return The random `ActorID`.
   static ActorID Of(const JobID &job_id, const TaskID &parent_task_id, const size_t parent_task_counter);
 
+  /// Creates an nil ActorID with the given job.
+  ///
+  /// \param job_id The job id to which this actor belongs.
+  ///
+  /// \return The `ActorID` with unique bytes being nil.
+  static ActorID NilFromJob(const JobID &job_id);
+
   static ActorID FromRandom() = delete;
 
   /// Constructor of `ActorID`.

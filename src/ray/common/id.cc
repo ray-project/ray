@@ -222,6 +222,14 @@ ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id, const siz
   return ActorID::FromBinary(data);
 }
 
+ActorID ActorID::NilFromJob(const JobID &job_id) {
+  std::string data(kUniqueBytesLength, 0);
+  FillNil(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return ActorID::FromBinary(data);
+}
+
 JobID ActorID::JobId() const {
   RAY_CHECK(!IsNil());
   return JobID::FromBinary(
@@ -255,8 +263,8 @@ TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
 
 TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter) {
   std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, TaskID::kUniqueBytesLength);
-  const auto nil_actor_id = ActorID::Nil();
-  std::copy_n(nil_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  const auto dummy_actor_id = ActorID::NilFromJob(job_id);
+  std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }

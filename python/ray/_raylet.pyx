@@ -89,9 +89,9 @@ def compute_put_id(TaskID task_id, int64_t put_index):
     if put_index < 1 or put_index > CObjectID.MaxObjectIndex():
         raise ValueError("The range of 'put_index' should be [1, %d]"
                          % CObjectID.MaxObjectIndex())
-    return ObjectID(CObjectID.ForPut(task_id.native(), put_index).Binary())
+    return ObjectID(CObjectID.ForPut(task_id.native(), put_index, 0).Binary())
 
-
+# TODO(qwang): fix this and compute return id.
 def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
