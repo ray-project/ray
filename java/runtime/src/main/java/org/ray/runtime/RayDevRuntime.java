@@ -18,9 +18,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public void start() {
-    // Reset library path at runtime.
-    resetLibraryPath();
-
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
