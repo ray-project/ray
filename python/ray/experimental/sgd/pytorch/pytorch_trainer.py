@@ -171,20 +171,30 @@ class PyTorchTrainer(object):
 class PyTorchTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
-        return Resources(cpu=1, gpu=int(config['use_gpu']))
+        return Resources(
+            cpu=0,
+            gpu=0,
+            extra_cpu=config["num_replicas"],
+            extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
     def _setup(self, config):
         self._trainer = PyTorchTrainer(
-            model_creator = config["model_creator"],
-            data_creator = config["data_creator"],
-            optimizer_creator = config["optimizer_creator"],
-            config = config,
-            num_replicas = config["num_replicas"],
+            model_creator=config["model_creator"],
+            data_creator=config["data_creator"],
+            optimizer_creator=config["optimizer_creator"],
+            config=config,
+            num_replicas=config["num_replicas"],
             use_gpu=config["use_gpu"])
 
-
     def _train(self):
-        return self._trainer.train()
+
+        train_stats = self._trainer.train()
+        validation_stats = self._trainer.validate()
+
+        train_stats.update(validation_stats)
+
+        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
+        return train_stats
 
     def _save(self, checkpoint_dir):
         return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))

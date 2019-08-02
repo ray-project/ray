@@ -4,7 +4,8 @@ from __future__ import print_function
 
 import argparse
 from ray import tune
-from ray.experimental.sgd.pytorch_trainer import PyTorchTrainer, PyTorchTrainable
+from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
+                                                          PyTorchTrainable)
 
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
@@ -28,13 +29,18 @@ def tune_example(num_replicas=1, use_gpu=False):
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
-        "lr": tune.grid_search([0.1, 0.01, 0.001]),
         "num_replicas": num_replicas,
         "use_gpu": use_gpu
     }
 
-    analysis = tune.run(PyTorchTrainable, num_samples=4, config=config)
-    return analysis.get_best_config(mean_accuracy="mean_accuracy")
+    # analysis = tune.run(PyTorchTrainable, num_samples=1, config=config)
+    analysis = tune.run(
+        PyTorchTrainable,
+        num_samples=12,
+        config=config,
+        stop={"training_iteration": 10},
+        verbose=1)
+    return analysis.get_best_config(metric="validation_loss", mode="min")
 
 
 if __name__ == "__main__":
@@ -60,5 +66,4 @@ if __name__ == "__main__":
     import ray
 
     ray.init(redis_address=args.redis_address)
-    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
-    # tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
