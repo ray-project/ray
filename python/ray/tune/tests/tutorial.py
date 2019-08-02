@@ -101,5 +101,6 @@ search_space = {
     "momentum": tune.uniform(0.1, 0.9)
 }
 
-analysis = tune.run(TrainMNIST, config=search_space)
+analysis = tune.run(
+    TrainMNIST, config=search_space, stop={"training_iteration": 10})
 # __trainable_run_end__
