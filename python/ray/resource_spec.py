@@ -206,7 +206,7 @@ class ResourceSpec(
                     "applications.".format(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
-            elif memory < 0.4 * system_memory:
+            elif memory < 0.2 * system_memory:
                 logger.warning(
                     "WARNING: After taking into account object store and "
                     "redis memory "
