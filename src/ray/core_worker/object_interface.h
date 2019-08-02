@@ -88,6 +88,12 @@ class CoreWorkerObjectInterface {
       store_providers_;
 
   friend class CoreWorkerTaskInterface;
+
+  /// TODO(zhijunfu): This is necessary as direct call task submitter needs to create
+  /// a local plasma store provider, later we can refactor ObjectInterface to add a
+  /// `ObjectProviderLayer`, which will encapsulate the functionalities to get or create
+  /// a specific `StoreProvider`, and this can be removed then.
+  friend class CoreWorkerDirectActorTaskSubmitter;
 };
 
 }  // namespace ray

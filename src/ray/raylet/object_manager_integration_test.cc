@@ -139,8 +139,8 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
         [this](gcs::RedisGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.client_id);
+               const rpc::GcsNodeInfo &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.node_id);
           if (parsed_id == client_id_1 || parsed_id == client_id_2) {
             num_connected_clients += 1;
           }
@@ -208,17 +208,17 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    ClientTableDataT data;
+    rpc::GcsNodeInfo data;
     gcs_client_2->client_table().GetClient(client_id_1, data);
-    RAY_LOG(INFO) << (ClientID::FromBinary(data.client_id).IsNil());
-    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data.client_id);
-    RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
-    ClientTableDataT data2;
+    RAY_LOG(INFO) << (ClientID::FromBinary(data.node_id()).IsNil());
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data.node_id());
+    RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address();
+    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port();
+    rpc::GcsNodeInfo data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2.client_id);
-    RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2.node_id());
+    RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address();
+    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port();
   }
 };
 

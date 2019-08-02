@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
+from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
 
 # yapf: disable
@@ -23,12 +24,17 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     # == PPO surrogate loss options ==
     "clip_param": 0.4,
 
+    # == PPO KL Loss options ==
+    "use_kl_loss": False,
+    "kl_coeff": 1.0,
+    "kl_target": 0.01,
+
     # == IMPALA optimizer params (see documentation in impala.py) ==
     "sample_batch_size": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
-    "num_gpus": 1,
+    "num_gpus": 0,
     "num_data_loader_buffers": 1,
     "minibatch_buffer_size": 1,
     "num_sgd_iter": 1,
@@ -52,8 +58,34 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
 # __sphinx_doc_end__
 # yapf: enable
 
+
+def update_target_and_kl(trainer, fetches):
+    # Update the KL coeff depending on how many steps LearnerThread has stepped
+    # through
+    learner_steps = trainer.optimizer.learner.num_steps
+    if learner_steps >= trainer.target_update_frequency:
+
+        # Update Target Network
+        trainer.optimizer.learner.num_steps = 0
+        trainer.workers.local_worker().foreach_trainable_policy(
+            lambda p, _: p.update_target())
+
+        # Also update KL Coeff
+        if trainer.config["use_kl_loss"]:
+            update_kl(trainer, trainer.optimizer.learner.stats)
+
+
+def initialize_target(trainer):
+    trainer.workers.local_worker().foreach_trainable_policy(
+        lambda p, _: p.update_target())
+    trainer.target_update_frequency = trainer.config["num_sgd_iter"] \
+        * trainer.config["minibatch_buffer_size"]
+
+
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
     default_policy=AsyncPPOTFPolicy,
-    get_policy_class=lambda _: AsyncPPOTFPolicy)
+    get_policy_class=lambda _: AsyncPPOTFPolicy,
+    after_init=initialize_target,
+    after_optimizer_step=update_target_and_kl)

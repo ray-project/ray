@@ -23,7 +23,11 @@ class Buffer {
   virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
-    return this->Data() == rhs.Data() && this->Size() == rhs.Size();
+    if (this->Size() != rhs.Size()) {
+      return false;
+    }
+
+    return this->Size() == 0 || memcmp(Data(), rhs.Data(), Size()) == 0;
   }
 };
 
@@ -54,7 +58,8 @@ class LocalMemoryBuffer : public Buffer {
   std::vector<uint8_t> buffer_;
 };
 
-/// Represents a byte buffer for plasma object.
+/// Represents a byte buffer for plasma object. This can be used to hold the
+/// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
 class PlasmaBuffer : public Buffer {
  public:
   PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
