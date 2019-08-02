@@ -88,7 +88,7 @@ class MultiCategorical(TFActionDistribution):
 
     def __init__(self, inputs, input_lens, model_config):
         self.cats = [
-            Categorical(input_)
+            Categorical(input_, model_config=model_config)
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
