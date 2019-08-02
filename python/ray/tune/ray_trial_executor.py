@@ -86,6 +86,8 @@ class RayTrialExecutor(TrialExecutor):
             cls = ray.remote(
                 num_cpus=trial.resources.cpu,
                 num_gpus=trial.resources.gpu,
+                memory=trial.resources.memory,
+                object_store_memory=trial.resources.object_store_memory,
                 resources=trial.resources.custom_resources)(
                     trial._get_trainable_cls())
 

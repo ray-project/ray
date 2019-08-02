@@ -132,14 +132,25 @@ COMMON_CONFIG = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune.
     "num_cpus_for_driver": 1,
-    # Heap memory to reserve for the trainer process (0 for unlimited)
+
+    # === Memory quota ===
+    # You can set these memory quotas to tell Ray to reserve memory for your
+    # training run. This guarantees predictable execution, but the tradeoff is
+    # if your workload exceeeds the memory quota it will fail.
+    # Heap memory to reserve for the trainer process (0 for unlimited). This
+    # can be large if your are using large train batches, replay buffers, etc.
     "memory": 0,
-    # Object store memory to reserve for the trainer process.
+    # Object store memory to reserve for the trainer process. This can be
+    # large if the trainer is gathering large batches (e.g., in PPO), but
+    # otherwise being large enough to fit a few sample batches is sufficient.
     "object_store_memory": 0,
-    # Heap memory to reserve for each worker.
+    # Heap memory to reserve for each worker. Should generally be small unless
+    # your environment is very heavyweight.
     "memory_per_worker": 0,
-    # Object store memory to reserve for each worker.
-    "object_store_memory_per_worker": 0,
+    # Object store memory to reserve for each worker. This only needs to be
+    # large enough to fit a few sample batches at a time. This is enabled
+    # by default since it almost never needs to be larger than ~200MB.
+    "object_store_memory_per_worker": 200 * 1024 * 1024,
 
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.

@@ -66,6 +66,8 @@ class MemoryMonitor(object):
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
         self.last_checked = time.time()
+        self.heap_limit = None
+        self.worker_name = None
         try:
             self.error_threshold = float(
                 os.getenv("RAY_MEMORY_MONITOR_ERROR_THRESHOLD"))
@@ -83,6 +85,10 @@ class MemoryMonitor(object):
                   "installed. Install this with `pip install psutil` "
                   "(or ray[debug]) to enable debugging of memory-related "
                   "crashes.")
+
+    def set_heap_limit(self, worker_name, limit_bytes):
+        self.heap_limit = limit_bytes
+        self.worker_name = worker_name
 
     def raise_if_low_memory(self):
         if not psutil:
@@ -107,3 +113,17 @@ class MemoryMonitor(object):
             else:
                 logger.debug("Memory usage is {} / {}".format(
                     used_gb, total_gb))
+
+            if self.heap_limit:
+                mem_info = psutil.Process(os.getpid()).memory_info()
+                heap_size = mem_info.rss - mem_info.shared
+                if heap_size > self.heap_limit:
+                    raise RayOutOfMemoryError(
+                        "Heap memory usage for {} is {} / {} GB limit".format(
+                            self.worker_name, round(heap_size / 1e9, 4),
+                            round(self.heap_limit / 1e9, 4)))
+                elif heap_size > 0.8 * self.heap_limit:
+                    logger.warn(
+                        "Heap memory usage for {} is {} / {} GB limit".format(
+                            self.worker_name, round(heap_size / 1e9, 4),
+                            round(self.heap_limit / 1e9, 4)))

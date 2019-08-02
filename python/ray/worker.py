@@ -940,11 +940,16 @@ class Worker(object):
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
+                    worker_name = "ray_{}_{}".format(
+                        self.actors[key].__class__.__name__, os.getpid())
+                    if "memory" in task.required_resources():
+                        self.memory_monitor.set_heap_limit(
+                            worker_name,
+                            ray_constants.from_memory_units(
+                                task.required_resources()["memory"]))
                     if "object_store_memory" in task.required_resources():
                         self._set_plasma_client_options(
-                            "ray_{}_{}".format(
-                                self.actors[key].__class__.__name__,
-                                os.getpid()),
+                            worker_name,
                             int(
                                 ray_constants.from_memory_units(
                                     task.required_resources()[

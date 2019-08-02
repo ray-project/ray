@@ -181,7 +181,7 @@ class ResourceSpec(
             redis_max_memory = min(
                 ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
                 max(
-                    int(system_memory * 0.2),
+                    int(system_memory * 0.1),
                     ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
         if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
             raise ValueError(
