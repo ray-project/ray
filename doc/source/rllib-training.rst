@@ -258,7 +258,7 @@ You can provide callback functions to be called at points during policy evaluati
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
     ray.init()
-    trials = tune.run(
+    analysis = tune.run(
         "PG",
         config={
             "env": "CartPole-v0",

@@ -266,6 +266,9 @@ def run(run_or_experiment,
     trials = runner.get_trials()
     if return_trials:
         return trials
+    logger.info("Returning an analysis object by default. You can call "
+                "`analysis.trials` to retrieve a list of trials. "
+                "This message will be removed in future versions of Tune.")
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
 
 
