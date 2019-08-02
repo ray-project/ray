@@ -174,9 +174,10 @@ class TaskID : public BaseID<TaskID> {
   /// \return The ID generated for driver task.
   static TaskID ForDriverTask();
 
-  /// Creates a TaskID for actor creation task.
+  /// Creates a TaskID for an actor creation task.
   ///
-  /// \param actor_id The ID of the actor to which this creation task belongs.
+  /// \param actor_id The ID of the actor that will be created
+  ///        by this actor creation task.
   ///
   /// \return The ID of the actor creation task.
   static TaskID ForActorCreationTask(const ActorID &actor_id);
@@ -185,7 +186,8 @@ class TaskID : public BaseID<TaskID> {
   ///
   /// \param job_id The ID of the job to which this task belongs.
   /// \param parent_task_id The ID of the parent task which submitted this task.
-  /// \param parent_task_counter The number of the tasks which the parent task submitted.
+  /// \param parent_task_counter A count of the number of tasks submitted by the
+  ///        parent task before this one.
   /// \param actor_id The ID of the actor to which this task belongs.
   ///
   /// \return The ID of the actor task.
@@ -196,7 +198,8 @@ class TaskID : public BaseID<TaskID> {
   ///
   /// \param job_id The ID of the job to which this task belongs.
   /// \param parent_task_id The ID of the parent task which submitted this task.
-  /// \param parent_task_counter The number of the tasks which the parent task submitted.
+  /// \param parent_task_counter A count of the number of tasks submitted by the
+  ///        parent task before this one.
   ///
   /// \return The ID of the normal task.
   static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter);
