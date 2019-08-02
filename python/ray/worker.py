@@ -719,17 +719,20 @@ class Worker(object):
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(job_id, JobID)
 
-            if actor_creation_id is not None and not actor_creation_id.is_nil():
+            if actor_creation_id is not None and not actor_creation_id.is_nil(
+            ):
                 # This is an actor creation task.
                 task_id = TaskID.for_actor_creation_task(actor_creation_id)
             elif actor_id is not None and not actor_id.is_nil():
                 # This is an actor task.
-                task_id = TaskID.for_actor_task(self.current_job_id,
-                    self.current_task_id, self.task_context.task_index, actor_id)
+                task_id = TaskID.for_actor_task(
+                    self.current_job_id, self.current_task_id,
+                    self.task_context.task_index, actor_id)
             else:
                 # This is a normal task.
                 task_id = TaskID.for_normal_task(self.current_job_id,
-                    self.current_task_id, self.task_context.task_index)
+                                                 self.current_task_id,
+                                                 self.task_context.task_index)
 
             task = ray._raylet.TaskSpec(
                 task_id,
