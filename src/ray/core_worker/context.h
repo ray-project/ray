@@ -28,8 +28,6 @@ class WorkerContext {
 
   int GetNextPutIndex();
 
-  int GetCurrentTaskIndex();
-
  private:
   /// Type of the worker.
   const WorkerType worker_type_;
