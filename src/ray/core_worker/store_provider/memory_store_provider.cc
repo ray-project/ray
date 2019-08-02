@@ -22,9 +22,9 @@ Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(
-    const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+    const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
-  return store_->Get(ids, timeout_ms, results);
+  return store_->Get(object_ids, timeout_ms, results, true);
 }
 
 Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
@@ -35,7 +35,18 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
     return Status::Invalid("num_objects should equal to number of items in object_ids");
   }
 
-  return store_->Wait(object_ids, timeout_ms, results);
+  (*results).resize(object_ids.size(), false);
+
+  std::vector<std::shared_ptr<RayObject>> result_objects;
+  auto status = store_->Get(object_ids, timeout_ms, &result_objects, false);
+  if (status.ok()) {
+    RAY_CHECK(result_objects.size() == object_ids.size());
+    for (int i = 0; i < object_ids.size(); i++) {
+      (*results)[i] = (result_objects[i] != nullptr);
+    }
+  }
+
+  return status;
 }
 
 Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,

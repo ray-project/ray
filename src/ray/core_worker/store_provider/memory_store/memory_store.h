@@ -8,7 +8,7 @@
 
 namespace ray {
 
-class GetOrWaitRequest;
+class GetRequest;
 class CoreWorkerMemoryStore;
 
 /// The class provides implementations for local process memory store.
@@ -21,20 +21,16 @@ class CoreWorkerMemoryStore {
 
   Status Put(const RayObject &object, const ObjectID &object_id);
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
-  Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-              std::vector<bool> *results);
+             std::vector<std::shared_ptr<RayObject>> *results,
+             bool should_remove);
   void Delete(const std::vector<ObjectID> &object_ids);
 
  private:
-  Status GetOrWait(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-                   std::vector<std::shared_ptr<RayObject>> *results, bool is_get);
-
   /// Map from object ID to `RayObject`.
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
 
-  /// Map from object ID to its get/wait requests.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetOrWaitRequest>>>
+  /// Map from object ID to its get requests.
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_;
 
   /// Protect the two maps above.

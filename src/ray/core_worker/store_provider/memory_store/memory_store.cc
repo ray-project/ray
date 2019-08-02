@@ -8,9 +8,9 @@
 namespace ray {
 
 /// A class that represents a `Get` or `Wait` reuquest.
-class GetOrWaitRequest {
+class GetRequest {
  public:
-  GetOrWaitRequest(const std::vector<ObjectID> &object_ids, bool is_get);
+  GetRequest(const std::vector<ObjectID> &object_ids, bool should_remove);
 
   const std::vector<ObjectID> &ObjectIds() const;
 
@@ -24,7 +24,7 @@ class GetOrWaitRequest {
   /// Get the object content for the specific object id.
   std::shared_ptr<RayObject> Get(const ObjectID &object_id) const;
   /// Whether this is a `get` request.
-  bool IsGetRequest() const;
+  bool ShouldRemoveObjects() const;
 
  private:
   /// Wait until all requested objects are available.
@@ -35,22 +35,23 @@ class GetOrWaitRequest {
   /// The object information for the objects in this request.
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
 
-  // Whether this request is a `get` request.
-  const bool is_get_;
+  // Whether the requested objects should be removed from store
+  // after `get` returns.
+  const bool should_remove_;
   // Whether all the requested objects are available.
   bool is_ready_;
   mutable std::mutex mutex_;
   std::condition_variable cv_;
 };
 
-GetOrWaitRequest::GetOrWaitRequest(const std::vector<ObjectID> &object_ids, bool is_get)
-    : object_ids_(object_ids), is_get_(is_get) {}
+GetRequest::GetRequest(const std::vector<ObjectID> &object_ids, bool should_remove)
+    : object_ids_(object_ids), should_remove_(should_remove) {}
 
-const std::vector<ObjectID> &GetOrWaitRequest::ObjectIds() const { return object_ids_; }
+const std::vector<ObjectID> &GetRequest::ObjectIds() const { return object_ids_; }
 
-bool GetOrWaitRequest::IsGetRequest() const { return is_get_; }
+bool GetRequest::ShouldRemoveObjects() const { return should_remove_; }
 
-bool GetOrWaitRequest::Wait(int64_t timeout_ms) {
+bool GetRequest::Wait(int64_t timeout_ms) {
   if (timeout_ms < 0) {
     // Wait forever until the object is ready.
     Wait();
@@ -68,14 +69,14 @@ bool GetOrWaitRequest::Wait(int64_t timeout_ms) {
   return true;
 }
 
-void GetOrWaitRequest::Wait() {
+void GetRequest::Wait() {
   std::unique_lock<std::mutex> lock(mutex_);
   while (!is_ready_) {
     cv_.wait(lock);
   }
 }
 
-void GetOrWaitRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
+void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
   std::unique_lock<std::mutex> lock(mutex_);
   objects_.emplace(object_id, object);
   if (objects_.size() == object_ids_.size()) {
@@ -84,7 +85,7 @@ void GetOrWaitRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject>
   }
 }
 
-std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) const {
+std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   std::unique_lock<std::mutex> lock(mutex_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
@@ -112,7 +113,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     auto &get_requests = object_request_iter->second;
     for (auto &get_req : get_requests) {
       get_req->Set(object_id, object_entry);
-      if (get_req->IsGetRequest()) {
+      if (get_req->ShouldRemoveObjects()) {
         should_add_entry = false;
       }
     }
@@ -125,14 +126,14 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStore::GetOrWait(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                         int64_t timeout_ms,
                                         std::vector<std::shared_ptr<RayObject>> *results,
-                                        bool is_get) {
+                                        bool should_remove) {
   (*results).resize(object_ids.size(), nullptr);
   std::vector<ObjectID> remaining_ids;
 
-  std::shared_ptr<GetOrWaitRequest> get_request;
+  std::shared_ptr<GetRequest> get_request;
 
   {
     std::unique_lock<std::mutex> lock(lock_);
@@ -142,7 +143,7 @@ Status CoreWorkerMemoryStore::GetOrWait(const std::vector<ObjectID> &object_ids,
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
         (*results)[i] = iter->second;
-        if (is_get) {
+        if (should_remove) {
           objects_.erase(object_id);
         }
       } else {
@@ -155,8 +156,8 @@ Status CoreWorkerMemoryStore::GetOrWait(const std::vector<ObjectID> &object_ids,
       return Status::OK();
     }
 
-    // Otherwise, create a GetOrWaitRequest to track remaining objects.
-    get_request = std::make_shared<GetOrWaitRequest>(remaining_ids, is_get);
+    // Otherwise, create a GetRequest to track remaining objects.
+    get_request = std::make_shared<GetRequest>(remaining_ids, should_remove);
     for (const auto &object_id : remaining_ids) {
       object_get_requests_[object_id].push_back(get_request);
     }
@@ -190,28 +191,6 @@ Status CoreWorkerMemoryStore::GetOrWait(const std::vector<ObjectID> &object_ids,
           }
         }
       }
-    }
-  }
-
-  return Status::OK();
-}
-
-Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
-                                  int64_t timeout_ms,
-                                  std::vector<std::shared_ptr<RayObject>> *results) {
-  return GetOrWait(object_ids, timeout_ms, results, /* is_get */ true);
-}
-
-Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &object_ids,
-                                   int64_t timeout_ms, std::vector<bool> *results) {
-  (*results).resize(object_ids.size(), false);
-
-  std::vector<std::shared_ptr<RayObject>> result_objects;
-  auto status = GetOrWait(object_ids, timeout_ms, &result_objects, /* is_get */ false);
-  if (status.ok()) {
-    RAY_CHECK(result_objects.size() == object_ids.size());
-    for (int i = 0; i < object_ids.size(); i++) {
-      (*results)[i] = (result_objects[i] != nullptr);
     }
   }
 

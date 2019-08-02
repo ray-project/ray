@@ -488,6 +488,16 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
+  // Test Wait().
+  ObjectID non_existent_id = ObjectID::FromRandom();
+  std::vector<ObjectID> all_ids(ids);
+  all_ids.push_back(non_existent_id);
+
+  std::vector<bool> wait_results;
+  RAY_CHECK_OK(provider.Wait(all_ids, 3, 100, TaskID::FromRandom(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 3);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
+
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(provider.Get(ids, -1, TaskID::FromRandom(), &results));
@@ -503,16 +513,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
                      buffers[i].GetMetadata()->Size()),
               0);
   }
-
-  // Test Wait().
-  ObjectID non_existent_id = ObjectID::FromRandom();
-  std::vector<ObjectID> all_ids(ids);
-  all_ids.push_back(non_existent_id);
-
-  std::vector<bool> wait_results;
-  RAY_CHECK_OK(provider.Wait(all_ids, 3, 100, TaskID::FromRandom(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   // Test Delete().
   // clear the reference held.
