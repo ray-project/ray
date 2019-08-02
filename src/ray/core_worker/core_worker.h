@@ -57,15 +57,6 @@ class CoreWorker {
     return *task_execution_interface_;
   }
 
-  ~CoreWorker() {
-    if (task_execution_interface_) {
-      task_execution_interface_->Stop();
-    }
-    if (raylet_client_) {
-      raylet_client_->Disconnect();
-    }
-  }
-
  private:
   void StartIOService();
 

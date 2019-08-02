@@ -7,6 +7,7 @@ import org.ray.runtime.util.StringUtil;
 
 public class NativeActorCreationOptions {
   public long maxReconstructions;
+  public boolean isDirectCall;
   public NativeResources resources;
   public List<String> dynamicWorkerOptions;
 

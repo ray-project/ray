@@ -68,10 +68,23 @@ extern jfieldID java_native_task_options_resources;
 extern jclass java_native_actor_creation_options_class;
 /// maxReconstructions field of ActorCreationOptions class
 extern jfieldID java_native_actor_creation_options_max_reconstructions;
+/// isDirectCall field of ActorCreationOptions class
+extern jfieldID java_native_actor_creation_options_is_direct_call;
 /// resources field of ActorCreationOptions class
 extern jfieldID java_native_actor_creation_options_resources;
 /// dynamicWorkerOptions field of ActorCreationOptions class
 extern jfieldID java_native_actor_creation_options_dynamic_worker_options;
+
+/// NativeGcsClientOptions class
+extern jclass java_native_gcs_client_options_class;
+/// ip field of NativeGcsClientOptions class
+extern jfieldID java_native_gcs_client_options_ip;
+/// port field of NativeGcsClientOptions class
+extern jfieldID java_native_gcs_client_options_port;
+/// password field of NativeGcsClientOptions class
+extern jfieldID java_native_gcs_client_options_password;
+/// isTestClient field of NativeGcsClientOptions class
+extern jfieldID java_native_gcs_client_options_is_test_client;
 
 /// NativeRayObject class
 extern jclass java_native_ray_object_class;
