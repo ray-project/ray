@@ -76,7 +76,7 @@ if __name__ == "__main__":
             },
             "resources_per_trial": {
                 "cpu": 3,
-                "gpu": int(not args.no_cuda)
+                "gpu": int(args.use_gpu)
             },
             "num_samples": 1 if args.smoke_test else 20,
             "checkpoint_at_end": True,
