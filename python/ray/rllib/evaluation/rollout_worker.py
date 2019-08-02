@@ -132,6 +132,7 @@ class RolloutWorker(EvaluatorInterface):
                  remote_worker_envs=False,
                  remote_env_batch_wait_ms=0,
                  soft_horizon=False,
+                 no_done_at_end=False,
                  seed=None,
                  _fake_sampler=False):
         """Initialize a rollout worker.
@@ -218,6 +219,8 @@ class RolloutWorker(EvaluatorInterface):
                 step / reset and model inference perf.
             soft_horizon (bool): Calculate rewards but don't reset the
                 environment when the horizon is hit.
+            no_done_at_end (bool): Ignore the done=True at the end of the
+                episode and instead record done=False.
             seed (int): Set the seed of both np and tf to this value to
                 to ensure each remote worker has unique exploration behavior.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
@@ -408,7 +411,8 @@ class RolloutWorker(EvaluatorInterface):
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
-                soft_horizon=soft_horizon)
+                soft_horizon=soft_horizon,
+                no_done_at_end=no_done_at_end)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
@@ -424,7 +428,8 @@ class RolloutWorker(EvaluatorInterface):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                soft_horizon=soft_horizon)
+                soft_horizon=soft_horizon,
+                no_done_at_end=no_done_at_end)
 
         self.input_reader = input_creator(self.io_context)
         assert isinstance(self.input_reader, InputReader), self.input_reader
