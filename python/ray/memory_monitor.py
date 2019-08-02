@@ -65,7 +65,7 @@ class MemoryMonitor(object):
         # Note: it takes ~50us to check the memory usage through psutil, so
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
-        self.last_checked = time.time()
+        self.last_checked = 0
         self.heap_limit = None
         self.worker_name = None
         try:
