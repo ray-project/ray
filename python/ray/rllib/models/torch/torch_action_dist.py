@@ -7,6 +7,8 @@ try:
 except ImportError:
     pass  # soft dep
 
+import numpy as np
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 

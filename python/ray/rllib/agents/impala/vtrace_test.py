@@ -98,8 +98,7 @@ class LogProbsFromLogitsAndActionsTest(tf.test.TestCase,
             0, num_actions - 1, size=(seq_len, batch_size), dtype=np.int32)
 
         action_log_probs_tensor = vtrace.log_probs_from_logits_and_actions(
-            policy_logits, actions,
-            {"model": None}) # dummy config dict
+            policy_logits, actions, {"model": None})  # dummy config dict
 
         # Ground Truth
         # Using broadcasting to create a mask that indexes action logits

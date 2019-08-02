@@ -55,8 +55,8 @@ def log_probs_from_logits_and_actions(policy_logits,
                                                    dist_class, config)[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions,
-                                            dist_class, config):
+def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
+                                            config):
     """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
@@ -100,9 +100,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
                                   tf.concat([[-1], a_shape[2:]], axis=0))
         log_probs.append(
             tf.reshape(
-                dist_class(
-                    policy_logits_flat, model_config=config["model"]).logp(
-                        actions_flat),
+                dist_class(policy_logits_flat,
+                           model_config=config["model"]).logp(actions_flat),
                 a_shape[:2]))
 
     return log_probs
