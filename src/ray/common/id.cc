@@ -36,8 +36,8 @@ std::string GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_i
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()), parent_task_id.Size());
   sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
 
-  // TODO(qwang): I don't if DIGEST_SIZE is ok here,
-  // maybe we can use a fixed size which is smaller than DIGEST_SIZE.
+  // TODO(qwang): I can't make sure if DIGEST_SIZE is ok here,
+  // maybe we can use a fixed size which is smaller than DIGEST_SIZE?
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
   return std::string(buff, buff + length);

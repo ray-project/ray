@@ -164,14 +164,34 @@ class TaskID : public BaseID<TaskID> {
 
   static TaskID FromRandom() = delete;
 
-  // TODO(qwang): Comments
+  /// \return The ID generated for driver task.
   static TaskID ForDriverTask();
 
+  /// Creates a TaskID for actor creation task.
+  ///
+  /// \param actor_id The ID of the actor to which this creation task belongs.
+  ///
+  /// \return The ID of the actor creation task.
   static TaskID ForActorCreationTask(const ActorID &actor_id);
 
+  /// Creates a TaskID for actor task.
+  ///
+  /// \param job_id The ID of the job to which this task belongs.
+  /// \param parent_task_id The ID of the parent task which submitted this task.
+  /// \param parent_task_counter The number of the tasks which the parent task submitted.
+  /// \param actor_id The ID of the actor to which this task belongs.
+  ///
+  /// \return The ID of the actor task.
   static TaskID ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
                              size_t parent_task_counter, const ActorID &actor_id);
 
+  /// Creates a TaskID for normal task.
+  ///
+  /// \param job_id The ID of the job to which this task belongs.
+  /// \param parent_task_id The ID of the parent task which submitted this task.
+  /// \param parent_task_counter The number of the tasks which the parent task submitted.
+  ///
+  /// \return The ID of the normal task.
   static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter);
 
   /// Get the id of the actor to which this task belongs.
