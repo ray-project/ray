@@ -21,8 +21,7 @@ class CoreWorkerMemoryStore {
 
   Status Put(const RayObject &object, const ObjectID &object_id);
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool should_remove);
+             std::vector<std::shared_ptr<RayObject>> *results, bool should_remove);
   void Delete(const std::vector<ObjectID> &object_ids);
 
  private:

@@ -127,9 +127,9 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
-                                        int64_t timeout_ms,
-                                        std::vector<std::shared_ptr<RayObject>> *results,
-                                        bool should_remove) {
+                                  int64_t timeout_ms,
+                                  std::vector<std::shared_ptr<RayObject>> *results,
+                                  bool should_remove) {
   (*results).resize(object_ids.size(), nullptr);
   std::vector<ObjectID> remaining_ids;
 
