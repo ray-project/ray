@@ -11,6 +11,7 @@ import logging
 import ray
 
 from ray.tune import Trainable
+from ray.tune.resources import Resources
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
@@ -170,10 +171,17 @@ class PyTorchTrainer(object):
 class PyTorchTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
-        pass
+        return Resources(cpu=1, gpu=int(config['use_gpu']))
 
     def _setup(self, config):
-        self._trainer = PyTorchTrainer(...)
+        self._trainer = PyTorchTrainer(
+            model_creator = config["model_creator"],
+            data_creator = config["data_creator"],
+            optimizer_creator = config["optimizer_creator"],
+            config = config,
+            num_replicas = config["num_replicas"],
+            use_gpu=config["use_gpu"])
+
 
     def _train(self):
         return self._trainer.train()

@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import argparse
 from ray import tune
-from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
+from ray.experimental.sgd.pytorch_trainer import PyTorchTrainer, PyTorchTrainable
 
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
@@ -61,3 +61,4 @@ if __name__ == "__main__":
 
     ray.init(redis_address=args.redis_address)
     train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    # tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
