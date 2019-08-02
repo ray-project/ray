@@ -14,7 +14,6 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       execution_callback_(executor),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_work_(main_service_) {
-  RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
                         std::placeholders::_1, std::placeholders::_2);
