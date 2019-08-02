@@ -21,6 +21,10 @@ public class ActorId extends BaseId implements Serializable {
     return new ActorId(byteBuffer2Bytes(bb));
   }
 
+  public static ActorId fromBytes(byte[] bytes) {
+    return new ActorId(bytes);
+  }
+
   public static ActorId generateActorId(JobId jobId) {
     byte[] uniqueBytes = new byte[ActorId.UNIQUE_BYTES_LENGTH];
     new Random().nextBytes(uniqueBytes);

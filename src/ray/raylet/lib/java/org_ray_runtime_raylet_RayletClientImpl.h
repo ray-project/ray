@@ -78,6 +78,16 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, 
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeGenerateActorId
+ * Signature: ([B[BI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorId(JNIEnv *, jclass,
+                                                                       jbyteArray, jbyteArray,
+                                                                       jint);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeFreePlasmaObjects
  * Signature: (J[[BZZ)V
  */

@@ -128,6 +128,11 @@ public class RayletClientImpl implements RayletClient {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
   }
 
+  public static ActorId generateActorId(JobId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateActorId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return ActorId.fromBytes(bytes);
+  }
+
   /**
    * Parse `TaskSpec` protobuf bytes.
    */
@@ -340,4 +345,13 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
       byte[] nodeId) throws RayException;
+
+  private static native byte[] nativeGenerateActorId(byte[] jobId, byte[] parentTaskId,
+                                                     int taskIndex);
+
+//  private static native byte[] nativeGenerateNormalTaskId(byte[] jobId, byte[] parentTaskId,
+//                                                          int taskIndex);
+//
+//  private static native byte[] nativeGenerateActorTaskId(byte[] jobId, byte[] parentTaskId,
+//                                                          int taskIndex, byte[] actorId);
 }

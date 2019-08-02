@@ -40,6 +40,7 @@ import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
+import org.ray.runtime.raylet.RayletClientImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
@@ -402,7 +403,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     ActorId actorCreationId = ActorId.NIL;
     TaskId taskId = null;
     if (isActorCreationTask) {
-      actorCreationId = ActorId.generateActorId(workerContext.getCurrentJobId());
+      actorCreationId = RayletClientImpl.generateActorId(workerContext.getCurrentJobId(), workerContext.getCurrentTaskId(), workerContext.nextTaskIndex()).;
       taskId = TaskId.forActorCreationTask(actorCreationId);
     } else if (isActorTask) {
       taskId = TaskId.forActorTask(actor.getId());

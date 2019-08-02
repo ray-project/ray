@@ -184,6 +184,29 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeGenerateActorId
+ * Signature: ([B[BI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorId(
+    JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId,
+    jint parent_task_counter) {
+const auto job_id = JavaByteArrayToId<JobID>(env, jobId);
+const auto parent_task_id = JavaByteArrayToId<TaskID>(env, parentTaskId);
+
+ActorID actor_id = ray::ActorID::Of(job_id, parent_task_id, parent_task_counter);
+jbyteArray result = env->NewByteArray(actor_id.Size());
+if (nullptr == result) {
+return nullptr;
+}
+env->SetByteArrayRegion(result, 0, actor_id.Size(),
+reinterpret_cast<const jbyte *>(actor_id.Data()));
+
+return result;
+}
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeFreePlasmaObjects
  * Signature: (J[[BZZ)V
  */
