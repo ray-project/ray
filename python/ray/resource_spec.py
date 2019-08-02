@@ -107,6 +107,8 @@ class ResourceSpec(
         return resources
 
     def resolve(self, is_head):
+        """Returns a copy with values filled out with system defaults."""
+
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
         assert "GPU" not in resources, resources
