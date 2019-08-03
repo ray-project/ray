@@ -284,9 +284,7 @@ ActorID TaskID::ActorId() const {
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
 }
 
-JobID TaskID::JobId() const {
-  return ActorId().JobId();
-}
+JobID TaskID::JobId() const { return ActorId().JobId(); }
 
 TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
