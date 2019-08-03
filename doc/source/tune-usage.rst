@@ -10,16 +10,6 @@ Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined
 
 More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__.
 
-Start by installing, importing, and initializing Ray.
-
-.. code-block:: python
-
-    import ray
-    import ray.tune as tune
-
-    ray.init()
-
-
 Experiment Configuration
 ------------------------
 
@@ -30,36 +20,47 @@ You can checkout out our `examples page <tune-examples.html>`__ for more code ex
 Training API
 ~~~~~~~~~~~~
 
-Training can be done with either the **function-based API** or **Trainable API**.
+Training can be done with either the **Trainable Class API** or **function-based API**.
 
-**Python functions** will need to have the following signature:
+**Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__. Here is an example:
+
 
 .. code-block:: python
 
-    def trainable(config, reporter):
+    class Example(Trainable):
+        def _setup(self, config):
+            ...
+
+        def _train(self):
+            # run training code
+            result_dict = {"accuracy": 0.5, "f1": 0.1, ...}
+            return result_dict
+
+**Python functions** will need to have the following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping.:
+
+.. code-block:: python
+
+    def trainable(config):
         """
         Args:
             config (dict): Parameters provided from the search algorithm
                 or variant generation.
-            reporter (Reporter): Handle to report intermediate metrics to Tune.
         """
 
         while True:
             # ...
-            reporter(**kwargs)
+            tune.track.log(**kwargs)
 
-The reporter will allow you to report metrics used for scheduling, search, or early stopping.
 
-Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. The reporter documentation can be `found here <tune-package-ref.html#ray.tune.function_runner.StatusReporter>`__.
+Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be `found here <tune-package-ref.html#module-ray.tune.track>`__.
+
+Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
 
 .. note::
     If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
 
-**Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
-
-Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
-
-See the `experiment specification <tune-usage.html#specifying-experiments>`__ section on how to specify and execute your training.
+.. note::
+    See previous versions of the documentation for the ``reporter`` API.
 
 
 Launching an Experiment
@@ -67,8 +68,13 @@ Launching an Experiment
 
 Tune provides a ``run`` function that generates and runs the trials.
 
-.. autofunction:: ray.tune.run
-    :noindex:
+.. code-block:: python
+
+    tune.run(
+        trainable,
+        name="example-experiment",
+        num_samples=10,
+    )
 
 This function will report status on the command line until all Trials stop:
 
@@ -86,34 +92,53 @@ This function will report status on the command line until all Trials stop:
      - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
 
-Custom Trial Names
-~~~~~~~~~~~~~~~~~~
+All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/example-experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
 
-To specify custom trial names, you can pass use the ``trial_name_creator`` argument
-to `tune.run`.  This takes a function with the following signature, and
-be sure to wrap it with `tune.function`:
+
+Analyzing Results
+-----------------
+
+Tune provides an ``ExperimentAnalysis`` object for analyzing results from ``tune.run``.
 
 .. code-block:: python
 
-    def trial_name_string(trial):
-        """
-        Args:
-            trial (Trial): A generated trial object.
-
-        Returns:
-            trial_name (str): String representation of Trial.
-        """
-        return str(trial)
-
-    tune.run(
-        MyTrainableClass,
-        name="hyperband_test",
-        num_samples=1,
-        trial_name_creator=tune.function(trial_name_string)
+    analysis = tune.run(
+        trainable,
+        name="example-experiment",
+        num_samples=10,
     )
 
-An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+You can use the ``ExperimentAnalysis`` object to obtain the best configuration of the experiment:
 
+.. code-block:: python
+
+    >>> print("Best config is", analysis.get_best_config(metric="mean_accuracy"))
+    Best config is: {'lr': 0.011537575723482687, 'momentum': 0.8921971713692662}
+
+Here are some example operations for obtaining a summary of your experiment:
+
+.. code-block:: python
+
+    # Get a dataframe for the last reported results of all of the trials
+    df = analysis.dataframe()
+
+    # Get a dataframe for the max accuracy seen for each trial
+    df = analysis.dataframe(metric="mean_accuracy", mode="max")
+
+    # Get a dict mapping {trial logdir -> dataframes} for all trials in the experiment.
+    all_dataframes = analysis.trial_dataframes
+
+    # Get a list of trials
+    trials = analysis.trials
+
+You may want to get a summary of multiple experiments that point to the same ``local_dir``. For this, you can use the ``Analysis`` class.
+
+.. code-block:: python
+
+    from ray.tune import Analysis
+    analysis = Analysis("~/ray_results/example-experiment")
+
+See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
 
 Training Features
 -----------------
@@ -150,6 +175,34 @@ The following shows grid search over two nested parameters combined with random 
     Use ``tune.sample_from(...)`` to sample from a function during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
+
+Custom Trial Names
+~~~~~~~~~~~~~~~~~~
+
+To specify custom trial names, you can pass use the ``trial_name_creator`` argument
+to `tune.run`.  This takes a function with the following signature, and
+be sure to wrap it with `tune.function`:
+
+.. code-block:: python
+
+    def trial_name_string(trial):
+        """
+        Args:
+            trial (Trial): A generated trial object.
+
+        Returns:
+            trial_name (str): String representation of Trial.
+        """
+        return str(trial)
+
+    tune.run(
+        MyTrainableClass,
+        name="example-experiment",
+        num_samples=1,
+        trial_name_creator=tune.function(trial_name_string)
+    )
+
+An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 Sampling Multiple Times
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -202,23 +255,29 @@ If your trainable function / class creates further Ray actors or tasks that also
         }
     )
 
+Saving and Recovery
+-------------------
 
-Trial Checkpointing
-~~~~~~~~~~~~~~~~~~~
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
 
-To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. Implementing this interface is required to support resource multiplexing in  Trial Schedulers such as HyperBand and PBT.
+ * saving a model at the end of training
+ * modifying a model in the middle of training
+ * fault-tolerance in experiments with pre-emptible machines.
+ * enables certain Trial Schedulers such as HyperBand and PBT.
 
-For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
+To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
+
+For TensorFlow model training, this would look something like this `tensorflow example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
 
 .. code-block:: python
 
-    class MyClass(Trainable):
+    class MyTrainableClass(Trainable):
         def _setup(self, config):
             self.saver = tf.train.Saver()
             self.sess = ...
 
         def _train(self):
-            self.sess.run(...)
+            return {"mean_accuracy: self.sess.run(...)}
 
         def _save(self, checkpoint_dir):
             return self.saver.save(self.sess, os.path.join(checkpoint_dir, save))
@@ -226,11 +285,36 @@ For TensorFlow model training, this would look something like this `(full tensor
         def _restore(self, checkpoint_prefix):
             self.saver.restore(self.sess, checkpoint_prefix)
 
+Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``. To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
 
-Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=N`` and ``max_failures=M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+ .. code-block:: python
+
+    from ray.tune.util import validate_save_restore
+
+    validate_save_restore(MyTrainableClass)
+    validate_save_restore(MyTrainableClass, use_object_store=True)
+
+
+Trainable (Trial) Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. You can checkpoint with three different mechanisms: manually, periodically, and at termination.
+
+**Manual Checkpointing**: A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True`` (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `_train`. This can be especially helpful in spot instances:
 
 .. code-block:: python
-   :emphasize-lines: 4,5
+
+    def _train(self):
+        # training code
+        result = {"mean_accuracy": accuracy}
+        if detect_instance_preemption():
+            result.update(should_checkpoint=True)
+        return result
+
+
+**Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
 
     tune.run(
         my_trainable,
@@ -238,8 +322,8 @@ Additionally, checkpointing can be used to provide fault-tolerance for experimen
         max_failures=5,
     )
 
-The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
-of a trial, you can additionally set the checkpoint_at_end to True. An example is shown below:
+**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
+of a trial, you can additionally set the ``checkpoint_at_end=True``:
 
 .. code-block:: python
    :emphasize-lines: 5
@@ -251,11 +335,41 @@ of a trial, you can additionally set the checkpoint_at_end to True. An example i
         max_failures=5,
     )
 
+The checkpoint will be saved at a path that looks like ``local_dir/exp_name/trial_name/checkpoint_x/``, where the x is the number of iterations so far when the checkpoint is saved. To restore the checkpoint, you can use the ``restore`` argument and specify a checkpoint file. By doing this, you can change whatever experiments' configuration such as the experiment's name, the training iteration or so:
 
-Recovering From Failures (Experimental)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: python
 
-Tune automatically persists the progress of your experiments, so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. The default setting of ``resume=False`` creates a new experiment. ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``. ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``. ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+    # Restored previous trial from the given checkpoint
+    tune.run(
+        "PG",
+        name="RestoredExp", # The name can be different.
+        stop={"training_iteration": 10}, # train 5 more iterations than previous
+        restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
+        config={"env": "CartPole-v0"},
+    )
+
+Fault Tolerance
+~~~~~~~~~~~~~~~
+
+Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
+
+In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+
+If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
+
+Take a look at `an example <tune-distributed.html#example-for-using-spot-instances-aws>`_.
+
+Recovering From Failures
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune automatically persists the progress of your entire experiment (a ``tune.run`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. Note that this only works if trial checkpoints are detected, whether it be by manual or periodic checkpointing.
+
+**Settings:**
+
+ - The default setting of ``resume=False`` creates a new experiment.
+ - ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
+ - ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
+ - ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 
 Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
 
@@ -270,10 +384,11 @@ E.g.:
         resume=True
     )
 
+Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion makes no effect: the new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
 
-Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored.
+.. warning::
 
-This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
+    This feature is still experimental, so any provided Trial Scheduler or Search Algorithm will not be preserved. Only ``FIFOScheduler`` and ``BasicVariantGenerator`` will be supported.
 
 
 Handling Large Datasets
@@ -323,21 +438,8 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Logging, Analyzing, and Visualizing Results
--------------------------------------------
-
-All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
-
-Tune provides an ``ExperimentAnalysis`` object for analyzing results which can be used by providing the directory path as follows:
-
-.. code-block:: python
-
-    from ray.tune.analysis import ExperimentAnalysis
-
-    ea = ExperimentAnalysis("~/ray_results/my_experiment")
-    trials_dataframe = ea.dataframe()
-
-You can check out `experiment_analysis.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/analysis/experiment_analysis.py>`__ for more interesting analysis operations.
+Visualizing Results
+-------------------
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -369,8 +471,8 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 .. image:: ray-tune-viskit.png
 
 
-Custom Loggers
-~~~~~~~~~~~~~~
+Logging
+-------
 
 You can pass in your own logging mechanisms to output logs in custom formats as follows:
 
@@ -384,16 +486,10 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
-These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__.
+These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune has default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
-Tune has default loggers for Tensorboard, CSV, and JSON formats.
-
-You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
-
-An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
-
-Custom Sync/Upload Commands
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Uploading/Syncing
+-----------------
 
 Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the `autoscaler <autoscaling.html>`__.
 By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
@@ -457,14 +553,25 @@ The API also supports curl. Here are the examples for getting trials (``GET /tri
 
 .. code-block:: bash
 
-    curl http://<address>:<port>/trials
-    curl http://<address>:<port>/trials/<trial_id>
+    $ curl http://<address>:<port>/trials
+    $ curl http://<address>:<port>/trials/<trial_id>
 
 And stopping a trial (``PUT /trials/:id``):
 
 .. code-block:: bash
 
-    curl -X PUT http://<address>:<port>/trials/<trial_id>
+    $ curl -X PUT http://<address>:<port>/trials/<trial_id>
+
+Debugging (Single Process)
+--------------------------
+
+By default, Tune will run hyperparameter evaluations on multiple processes. However, if you need to debug your training process, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following before ``tune.run``.
+
+.. code-block:: python
+
+    ray.init(local_mode=True)
+
+Note that some behavior such as writing to files by depending on the current working directory in a Trainable and setting global process variables may not work as expected. Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
 
 Tune CLI (Experimental)

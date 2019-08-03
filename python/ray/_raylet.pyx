@@ -96,7 +96,7 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
-cdef c_bool is_simple_value(value, int *num_elements_contained):
+cdef c_bool is_simple_value(value, int64_t *num_elements_contained):
     num_elements_contained[0] += 1
 
     if num_elements_contained[0] >= RayConfig.instance().num_elements_limit():
@@ -170,7 +170,7 @@ def check_simple_value(value):
         True if the value should be send by value, False otherwise.
     """
 
-    cdef int num_elements_contained = 0
+    cdef int64_t num_elements_contained = 0
     return is_simple_value(value, &num_elements_contained)
 
 

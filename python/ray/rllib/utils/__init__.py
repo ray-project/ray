@@ -76,6 +76,19 @@ def try_import_tf():
             return None
 
 
+def try_import_tfp():
+    if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
+        logger.warning(
+            "Not importing TensorFlow Probability for test purposes.")
+        return None
+
+    try:
+        import tensorflow_probability as tfp
+        return tfp
+    except ImportError:
+        return None
+
+
 __all__ = [
     "Filter",
     "FilterManager",
