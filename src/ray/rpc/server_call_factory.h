@@ -148,16 +148,16 @@ class ServerStreamCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     auto call = std::make_shared<ServerStreamCallImpl<ServiceHandler, Request, Reply>>(
         *this, service_handler_, handle_stream_request_function_, io_service_);
-    auto tag = new ServerCallTag(call);
-    auto writer_tag = new ServerCallTag(call, ServerCallTag::TagType::STREAM_WRITER);
+    auto request_reader_tag = new ServerCallTag(call);
+    auto reply_writer_tag = new ServerCallTag(call, ServerCallTag::TagType::REPLY_WRITER);
     auto done_tag = new ServerCallTag(call, ServerCallTag::TagType::STREAM_DONE);
 
     (service_.*request_stream_call_function_)(&call->context_, call->server_stream_.get(),
                                               cq_.get(), cq_.get(),
                                               reinterpret_cast<void *>(tag));
-    call->SetServerCallTag(tag);
-    call->SetReplyWriterTag(writer_tag);
-    call->SetStreamDoneTag(done_tag);
+    call->SetServerCallTag(request_reader_tag);
+    call->SetReplyWriterTag(reply_writer_tag);
+    call->ListenWritesDone(done_tag);
     call->SetState(ServerCallState::CONNECT);
   }
 

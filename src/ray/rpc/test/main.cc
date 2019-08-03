@@ -72,9 +72,10 @@ class ServiceHandlers : public TestServiceHandler {
 class GrpcTest : public ::testing::Test {
  public:
   GrpcTest()
-      : work_(io_service_),
-        client_call_manager_(io_service_),
-        service_(io_service_, service_handlers_) {
+      : client_work_(client_service_),
+        server_work_(server_service_),
+        client_call_manager_(client_service_),
+        service_(server_service_, service_handlers_) {
     // Setup grpc server.
     server_.reset(new GrpcServer("DebugTestServer", 12345));
     server_->RegisterService(service_);
@@ -89,19 +90,32 @@ class GrpcTest : public ::testing::Test {
   }
 
   void SetUp() {
-    handle_thread_.reset(new std::thread([this]() { io_service_.run(); }));
+    client_thread_.reset(new std::thread([this]() { client_service_.run(); }));
+    server_thread_.reset(new std::thread([this]() { server_service_.run(); }));
   }
 
   void TearDown() {
-    io_service_.stop();
-    handle_thread_->join();
-    handle_thread_.reset();
+    client_service_.stop();
+    client_thread_->join();
+
+    server_service_.stop();
+    server_thread_->join();
+
+    client_thread_.reset();
+    server_thread_.reset();
   }
 
  protected:
-  boost::asio::io_service io_service_;
-  boost::asio::io_service::work work_;
-  std::unique_ptr<std::thread> handle_thread_;
+  // The thread for client to handle reply from the server.
+  boost::asio::io_service client_service_;
+  boost::asio::io_service::work client_work_;
+  std::unique_ptr<std::thread> client_thread_;
+
+  // The thread for server to handle request from the client.
+  boost::asio::io_service server_service_;
+  boost::asio::io_service::work server_work_;
+  std::unique_ptr<std::thread> server_thread_;
+
   unique_ptr<GrpcServer> server_;
   ClientCallManager client_call_manager_;
   ServiceHandlers service_handlers_;

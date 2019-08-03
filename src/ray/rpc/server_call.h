@@ -2,6 +2,7 @@
 #define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
+#include <atomic>
 #include <boost/asio.hpp>
 #include <queue>
 
@@ -28,8 +29,8 @@ using SendReplyCallback = std::function<void(Status status, std::function<void()
 ///         and receive a sequence of reply messages, and the number of reply messages is
 ///         determined by user.
 enum class ServerCallType {
-  DEFAULT_ASYNC_CALL = 1,
-  STREAM_ASYNC_CALL = 2,
+  DEFAULT_ASYNC_CALL,
+  STREAM_ASYNC_CALL,
 };
 
 /// Represents state of a `ServerCall`.
@@ -100,6 +101,8 @@ class ServerCall {
   virtual void SetReplyWriterTag(ServerCallTag *writer_tag) {}
 
   virtual ServerCallTag *GetReplyWriterTag() {}
+
+  virtual void DeleteReplyWriterTag() {}
 
   virtual ServerCallTag *GetDoneTag() {}
 
@@ -269,7 +272,7 @@ class StreamReplyWriter {
       : server_stream_(server_stream), server_call_(server_call), ready_to_write_(true) {}
 
   void SendNextReplyInBuffer() {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    std::lock_guard<std::mutex> lock(stream_buffer_mutex_);
     if (!buffer_.empty()) {
       ready_to_write_ = false;
       auto reply_writer_tag = server_call_->GetReplyWriterTag();
@@ -288,7 +291,7 @@ class StreamReplyWriter {
   /// queue before calling `Write` again. We should put reply into the buffer to avoid
   /// calling `Write` before getting previous tag from completion queue.
   void Write(std::unique_ptr<Reply> &&reply) {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    std::lock_guard<std::mutex> lock(stream_buffer_mutex_);
     if (ready_to_write_) {
       server_stream_->Write(*reply,
                             reinterpret_cast<void *>(server_call_->GetReplyWriterTag()));
@@ -299,8 +302,9 @@ class StreamReplyWriter {
   }
 
  private:
-  // Mutex to protect the buffer.
-  std::mutex buffer_mutex_;
+  // Mutex to protect the common variable in stream call.
+  // Variables `buffer_` and `is_running_` are used in separate threads.
+  std::mutex stream_buffer_mutex_;
   // Buffer for writing replies.
   std::queue<std::unique_ptr<Reply>> buffer_;
   // Actual grpc writer used to send reply to client.
@@ -365,10 +369,18 @@ class ServerStreamCallImpl : public ServerCall {
 
   void SetReplyWriterTag(ServerCallTag *writer_tag) { writer_tag_ = writer_tag; }
 
-  void SetStreamDoneTag(ServerCallTag *done_tag) {
+  /// We need to make sure that the tag cann't be deleted more than once.
+  void DeleteReplyWriterTag() {
+    RAY_LOG(INFO) << "Delete reply writer tag.";
+    if (writer_tag_) {
+      delete writer_tag_;
+      writer_tag_ = nullptr;
+    }
+  }
+
+  void ListenWritesDone(ServerCallTag *done_tag) {
     done_tag_ = done_tag;
-    // Only calling `TryCancel` in client side can trigger this tag.
-    // context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(done_tag_));
+    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(done_tag_));
   }
 
   ServerCallTag *GetReplyWriterTag() override { return writer_tag_; }
@@ -433,7 +445,7 @@ class ServerStreamCallImpl : public ServerCall {
   StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
   // Indicates whether the stream call is running.
-  bool is_running_;
+  std::atomic<bool> is_running_;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerStreamCallFactoryImpl;
@@ -443,7 +455,7 @@ class ServerCallTag {
  public:
   enum class TagType {
     DEFAULT,
-    STREAM_WRITER,
+    REPLY_WRITER,
     STREAM_DONE,
   };
   explicit ServerCallTag(std::shared_ptr<ServerCall> call,
@@ -453,7 +465,7 @@ class ServerCallTag {
   /// Get the wrapped `ServerCall`.
   const std::shared_ptr<ServerCall> &GetCall() const { return call_; }
 
-  bool IsReplyWriterTag() { return tag_type_ == TagType::STREAM_WRITER; }
+  bool IsReplyWriterTag() { return tag_type_ == TagType::REPLY_WRITER; }
 
   bool IsDoneTag() { return tag_type_ == TagType::STREAM_DONE; }
 

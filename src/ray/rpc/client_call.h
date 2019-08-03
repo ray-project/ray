@@ -2,6 +2,7 @@
 #define RAY_RPC_CLIENT_CALL_H
 
 #include <grpcpp/grpcpp.h>
+#include <atomic>
 #include <boost/asio.hpp>
 #include <queue>
 
@@ -12,8 +13,8 @@ namespace ray {
 namespace rpc {
 
 enum class ClientCallType {
-  DEFAULT_ASYNC_CALL = 1,
-  STREAM_ASYNC_CALL = 2,
+  DEFAULT_ASYNC_CALL,
+  STREAM_ASYNC_CALL,
 };
 
 enum class ClientCallState {
@@ -154,7 +155,8 @@ class ClientStreamCallImpl : public ClientCall {
       : ClientCall(ClientCallType::STREAM_ASYNC_CALL),
         callback_(callback),
         ready_to_write_(false),
-        max_buffer_size_(max_buffer_size) {}
+        max_buffer_size_(max_buffer_size),
+        is_running_(false) {}
 
   ~ClientStreamCallImpl() { RAY_LOG(INFO) << "Client stream call destruct."; }
   // Connect to remote server.
@@ -176,7 +178,7 @@ class ClientStreamCallImpl : public ClientCall {
   bool IsRunning() { return is_running_; }
 
   bool WriteStream(const ::google::protobuf::Message &from) override {
-    std::unique_lock<std::mutex> lock(buffer_mutex_);
+    std::unique_lock<std::mutex> lock(stream_call_mutex_);
     if (ready_to_write_) {
       ready_to_write_ = false;
       lock.unlock();
@@ -203,13 +205,13 @@ class ClientStreamCallImpl : public ClientCall {
     if (!is_running_) {
       return;
     }
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    std::lock_guard<std::mutex> lock(stream_call_mutex_);
     if (buffer_.empty()) {
       ready_to_write_ = true;
     } else {
       ready_to_write_ = false;
-      RAY_LOG(INFO) << "Client write.";
       client_stream_->Write(*buffer_.front(), reinterpret_cast<void *>(tag_));
+      RAY_LOG(INFO) << "Client write.";
       buffer_.pop();
     }
   }
@@ -220,8 +222,8 @@ class ClientStreamCallImpl : public ClientCall {
       DeleteReplyReaderTag();
       return;
     }
-    RAY_LOG(INFO) << "Put tag into the q, is running: " << is_running_;
     client_stream_->Read(&reply_, reinterpret_cast<void *>(reader_tag_));
+    RAY_LOG(INFO) << "Put tag into the q, is running: " << is_running_;
   }
 
   /// We need to make sure that the tag cann't be deleted more than once.
@@ -234,7 +236,7 @@ class ClientStreamCallImpl : public ClientCall {
 
   void WritesDone() override {
     {
-      std::lock_guard<std::mutex> lock(buffer_mutex_);
+      std::lock_guard<std::mutex> lock(stream_call_mutex_);
       ready_to_write_ = false;
       if (!buffer_.empty()) {
         RAY_LOG(WARNING) << "The stream is being closed. There still are "
@@ -246,11 +248,11 @@ class ClientStreamCallImpl : public ClientCall {
         buffer_.pop();
       }
     }
-
     is_running_ = false;
     // Server will receive a done tag after client cancels.
     state_ = ClientCallState::WRITES_DONE;
     client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
+    RAY_LOG(INFO) << "Client stream call put writes done into q.";
   }
 
   void OnReplyReceived() override {
@@ -298,7 +300,9 @@ class ClientStreamCallImpl : public ClientCall {
   // if we receive the writer tag from the completion queue.
   bool ready_to_write_;
 
-  std::mutex buffer_mutex_;
+  // Mutex to protect the common variable in stream call.
+  // Variables `buffer_` and `is_running_` are used in separate thread.
+  std::mutex stream_call_mutex_;
 
   std::queue<std::unique_ptr<Request>> buffer_;
 
@@ -307,7 +311,7 @@ class ClientStreamCallImpl : public ClientCall {
   // synchronous call.
   std::promise<void> connect_promise_;
 
-  bool is_running_ = false;
+  std::atomic<bool> is_running_;
 
   friend class ClientCallManager;
 };
@@ -327,7 +331,7 @@ class ClientCallTag {
  public:
   enum class TagType {
     DEFAULT,
-    STREAM_READER,
+    REPLY_READER,
   };
   /// Constructor.
   ///
@@ -340,7 +344,7 @@ class ClientCallTag {
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
-  bool IsReplyReaderTag() { return tag_type_ == TagType::STREAM_READER; }
+  bool IsReplyReaderTag() { return tag_type_ == TagType::REPLY_READER; }
 
  private:
   /// Pointer to the client call.

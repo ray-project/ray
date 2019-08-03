@@ -112,10 +112,14 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
           server_call->OnReplyFailed();
         }
+        delete_tag = true;
       } else {
-        delete server_call->GetReplyWriterTag();
+        if (tag->GetType() == ServerCallTag::TagType::REPLY_WRITER) {
+          server_call->DeleteReplyWriterTag();
+        } else {
+          delete_tag = true;
+        }
       }
-      delete_tag = true;
     }
     if (delete_tag) {
       RAY_LOG(INFO) << "delete tag type: " << static_cast<int>(tag->GetType())
