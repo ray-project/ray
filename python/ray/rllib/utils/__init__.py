@@ -66,7 +66,7 @@ def try_import_tf():
 
     try:
         import tensorflow.compat.v1 as tf
-        tf.disable_v2_behavior()
+        # tf.disable_v2_behavior()
         return tf
     except ImportError:
         try:
