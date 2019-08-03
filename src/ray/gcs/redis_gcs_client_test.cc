@@ -13,9 +13,7 @@ namespace ray {
 
 namespace gcs {
 
-TaskID RandomTaskId() {
-  return TaskID::ForDriverTask();
-}
+TaskID RandomTaskId() { return TaskID::ForDriverTask(); }
 
 /* Flush redis. */
 static inline void flushall_redis(void) {

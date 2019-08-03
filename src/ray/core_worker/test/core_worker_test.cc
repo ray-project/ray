@@ -493,8 +493,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
 
   ActorHandle actor_handle(ActorID::Of(JobID::FromInt(1), TaskID::ForDriverTask(), 1),
-                           ActorHandleID::Nil(), function.language,
-                           true, function.function_descriptor);
+                           ActorHandleID::Nil(), function.language, true,
+                           function.function_descriptor);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -508,9 +508,9 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(RandomTaskId(), function.language, function.function_descriptor,
-                              JobID::FromInt(1), RandomTaskId(), 0, num_returns,
-                              resources, resources);
+    builder.SetCommonTaskSpec(RandomTaskId(), function.language,
+                              function.function_descriptor, JobID::FromInt(1),
+                              RandomTaskId(), 0, num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {
@@ -520,8 +520,9 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       }
     }
 
-    const auto actor_creation_dummy_object_id = ObjectID::ForTaskReturn(
-        TaskID::ForActorCreationTask(actor_handle.ActorID()), /*index=*/1, /*transport_type=*/0);
+    const auto actor_creation_dummy_object_id =
+        ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_handle.ActorID()),
+                                /*index=*/1, /*transport_type=*/0);
     builder.SetActorTaskSpec(
         actor_handle.ActorID(), actor_handle.ActorHandleID(),
         actor_creation_dummy_object_id,

@@ -188,7 +188,7 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorCreationTaskId(
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorCreationTaskId(
     JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId,
     jint parent_task_counter) {
   const auto job_id = JavaByteArrayToId<JobID>(env, jobId);
@@ -201,7 +201,7 @@ JNIEXPORT jbyteArray JNICALL
     return nullptr;
   }
   env->SetByteArrayRegion(result, 0, actor_creation_task_id.Size(),
-  reinterpret_cast<const jbyte *>(actor_creation_task_id.Data()));
+                          reinterpret_cast<const jbyte *>(actor_creation_task_id.Data()));
   return result;
 }
 
@@ -211,20 +211,21 @@ JNIEXPORT jbyteArray JNICALL
  * Signature: ([B[BI[B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorTaskId(
-        JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId,
-        jint parent_task_counter, jbyteArray actorId) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorTaskId(
+    JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId,
+    jint parent_task_counter, jbyteArray actorId) {
   const auto job_id = JavaByteArrayToId<JobID>(env, jobId);
   const auto parent_task_id = JavaByteArrayToId<TaskID>(env, parentTaskId);
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
-  const TaskID actor_task_id = ray::TaskID::ForActorTask(job_id, parent_task_id, parent_task_counter, actor_id);
+  const TaskID actor_task_id =
+      ray::TaskID::ForActorTask(job_id, parent_task_id, parent_task_counter, actor_id);
 
   jbyteArray result = env->NewByteArray(actor_task_id.Size());
   if (nullptr == result) {
-  return nullptr;
+    return nullptr;
   }
   env->SetByteArrayRegion(result, 0, actor_task_id.Size(),
-  reinterpret_cast<const jbyte *>(actor_task_id.Data()));
+                          reinterpret_cast<const jbyte *>(actor_task_id.Data()));
   return result;
 }
 
@@ -234,11 +235,13 @@ JNIEXPORT jbyteArray JNICALL
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateNormalTaskId(
-        JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId, jint parent_task_counter) {
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateNormalTaskId(
+    JNIEnv *env, jclass, jbyteArray jobId, jbyteArray parentTaskId,
+    jint parent_task_counter) {
   const auto job_id = JavaByteArrayToId<JobID>(env, jobId);
   const auto parent_task_id = JavaByteArrayToId<TaskID>(env, parentTaskId);
-  const TaskID task_id = ray::TaskID::ForNormalTask(job_id, parent_task_id, parent_task_counter);
+  const TaskID task_id =
+      ray::TaskID::ForNormalTask(job_id, parent_task_id, parent_task_counter);
 
   jbyteArray result = env->NewByteArray(task_id.Size());
   if (nullptr == result) {

@@ -47,7 +47,6 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 // Change the compiler alignment to 1 byte (default is 8).
 #pragma pack(push, 1)
 
-
 /// The `ID`s of Ray.
 ///
 /// Please refer to the specification of Ray UniqueIDs.
@@ -133,7 +132,8 @@ class ActorID : public BaseID<ActorID> {
   /// \param parent_task_counter The counter of the parent task.
   ///
   /// \return The random `ActorID`.
-  static ActorID Of(const JobID &job_id, const TaskID &parent_task_id, const size_t parent_task_counter);
+  static ActorID Of(const JobID &job_id, const TaskID &parent_task_id,
+                    const size_t parent_task_counter);
 
   /// Creates an nil ActorID with the given job.
   ///
@@ -202,7 +202,8 @@ class TaskID : public BaseID<TaskID> {
   ///        parent task before this one.
   ///
   /// \return The ID of the normal task.
-  static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id, size_t parent_task_counter);
+  static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
+                              size_t parent_task_counter);
 
   /// Get the id of the actor to which this task belongs.
   ///
@@ -214,17 +215,18 @@ class TaskID : public BaseID<TaskID> {
 };
 
 class ObjectID : public BaseID<ObjectID> {
-private:
+ private:
   static constexpr size_t kIndexBytesLength = sizeof(ObjectIDIndexType);
 
   static constexpr size_t kFlagsBytesLength = sizeof(ObjectIDFlagsType);
 
  public:
   /// The maximum number of objects that can be returned or put by a task.
-  static constexpr int64_t kMaxObjectIndex = ((int64_t) 1 << kObjectIdIndexSize) - 1;
+  static constexpr int64_t kMaxObjectIndex = ((int64_t)1 << kObjectIdIndexSize) - 1;
 
   /// The length of ObjectID in bytes.
-  static constexpr size_t kLength = kIndexBytesLength + kFlagsBytesLength + TaskID::kLength;
+  static constexpr size_t kLength =
+      kIndexBytesLength + kFlagsBytesLength + TaskID::kLength;
 
   ObjectID() : BaseID() {}
 
@@ -286,7 +288,8 @@ private:
   ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index, uint8_t transport_type);
+  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index,
+                         uint8_t transport_type);
 
   /// Compute the object ID of an object returned by the task.
   ///
@@ -309,10 +312,12 @@ private:
 
  private:
   /// A helper method to generate an ObjectID.
-  static ObjectID GenerateObjectId(const std::string &task_id_binary, ObjectIDFlagsType flags, ObjectIDIndexType object_index = 0);
+  static ObjectID GenerateObjectId(const std::string &task_id_binary,
+                                   ObjectIDFlagsType flags,
+                                   ObjectIDIndexType object_index = 0);
 
- /// Get the flags out of this object id.
- ObjectIDFlagsType GetFlags() const;
+  /// Get the flags out of this object id.
+  ObjectIDFlagsType GetFlags() const;
 
  private:
   uint8_t id_[kLength];
@@ -391,8 +396,8 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size()) << "expected size is "
-                                        << T::Size() << ", but got " << binary.size();
+  RAY_CHECK(binary.size() == T::Size())
+      << "expected size is " << T::Size() << ", but got " << binary.size();
   T t = T::Nil();
   std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;

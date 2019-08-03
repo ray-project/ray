@@ -5,8 +5,8 @@
 
 namespace ray {
 
-
-void TestReturnObjectId(const TaskID &task_id, int64_t return_index, uint8_t transport_type) {
+void TestReturnObjectId(const TaskID &task_id, int64_t return_index,
+                        uint8_t transport_type) {
   // Round trip test for computing the object ID for a task's return value,
   // then computing the task ID that created the object.
   ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index, transport_type);
@@ -60,14 +60,17 @@ TEST(TaskIDTest, TestTaskID) {
   // Round trip test for task ID.
   {
     const ActorID actor_id = ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
-    const TaskID task_id_1 = TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, actor_id);
+    const TaskID task_id_1 =
+        TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, actor_id);
     ASSERT_EQ(actor_id, task_id_1.ActorId());
   }
 }
 
 TEST(ObjectIDTest, TestObjectID) {
-  const static ActorID default_actor_id = ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
-  const static TaskID default_task_id = TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, default_actor_id);
+  const static ActorID default_actor_id =
+      ActorID::Of(kDefaultJobId, kDefaultDriverTaskId, 1);
+  const static TaskID default_task_id =
+      TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, default_actor_id);
 
   {
     // test for put

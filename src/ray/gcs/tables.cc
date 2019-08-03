@@ -687,7 +687,6 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
                              ray::gcs::RedisGcsClient *client, const ActorID &id,
                              const ActorCheckpointIdData &data) {
-
     std::shared_ptr<ActorCheckpointIdData> copy =
         std::make_shared<ActorCheckpointIdData>(data);
     copy->add_timestamps(current_sys_time_ms());

@@ -80,8 +80,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
-  builder.SetCommonTaskSpec(RandomTaskId(),
-                            Language::PYTHON, {"", "", ""}, JobID::Nil(),
+  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON, {"", "", ""}, JobID::Nil(),
                             RandomTaskId(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
@@ -274,7 +273,8 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
 TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
-  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), /*index=*/1, /*transport_type=*/0);
+  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), /*index=*/1,
+                                     /*transport_type=*/0);
   auto task2 = ExampleTask({put_id}, 0);
 
   // No objects have been registered in the task dependency manager, so the put

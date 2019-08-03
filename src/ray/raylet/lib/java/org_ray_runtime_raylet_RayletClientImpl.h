@@ -82,9 +82,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, 
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorCreationTaskId(JNIEnv *, jclass,
-                                                                                   jbyteArray, jbyteArray,
-                                                                                   jint);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorCreationTaskId(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jint);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -92,9 +91,10 @@ JNIEXPORT jbyteArray JNICALL
  * Signature: ([B[BI[B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorTaskId(JNIEnv *, jclass,
-                                                                           jbyteArray, jbyteArray,
-                                                                           jint, jbyteArray);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorTaskId(JNIEnv *, jclass,
+                                                                       jbyteArray,
+                                                                       jbyteArray, jint,
+                                                                       jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -102,9 +102,9 @@ JNIEXPORT jbyteArray JNICALL
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-    Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateNormalTaskId(JNIEnv *, jclass,
-                                                                            jbyteArray, jbyteArray,
-                                                                            jint);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateNormalTaskId(JNIEnv *, jclass,
+                                                                        jbyteArray,
+                                                                        jbyteArray, jint);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
