@@ -210,6 +210,11 @@ class TaskID : public BaseID<TaskID> {
   /// \return The `ActorID` of the actor which creates this task.
   ActorID ActorId() const;
 
+  /// Get the id of the job to which this task belongs.
+  ///
+  /// \return The `JobID` of the job which creates this task.
+  JobID JobId() const;
+
  private:
   uint8_t id_[kLength];
 };
