@@ -3,6 +3,7 @@
 
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
+#include <queue>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -19,7 +20,7 @@ enum class ClientCallState {
   CONNECT,
   WRITING,
   PENDING,
-  STREAM_WRITES_DONE,
+  WRITES_DONE,
 };
 
 class ClientCallTag;
@@ -39,13 +40,29 @@ class ClientCall {
 
   /// Interfaces only for stream async call.
  public:
-  virtual bool WriteStream(const ::google::protobuf::Message &request) = 0;
+  /// Try to write a request into the rpc stream. If stream is not ready
+  /// to write, we will write it into a writer buffer first.
+  ///
+  /// \param request The request message.
+  /// \return False if the stream is not ready and the buffer is full.
+  virtual bool WriteStream(const ::google::protobuf::Message &request) {}
 
-  virtual void WritesDone() = 0;
+  /// Finish the stream call. Requests in writer buffer will be discarded.
+  virtual void WritesDone() {}
 
-  virtual void AsyncReadNextReply() = 0;
+  /// Fetch a request from writer buffer and put it into the stream. Mark the
+  /// stream as ready if the writer buffer is full.
+  virtual void AsyncWriteNextRequest() {}
+
+  virtual void AsyncReadNextReply() {}
 
   virtual ClientCallTag *GetReplyReaderTag() {}
+
+  virtual void DeleteReplyReaderTag() {}
+
+  virtual void ConnectFinish() {}
+
+  virtual bool IsRunning() {}
 
   /// Common implementations for gRPC client call.
  public:
@@ -102,11 +119,6 @@ class ClientCallImpl : public ClientCall {
     }
   }
 
-  // Stream call interfaces, not used in default call.
-  bool WriteStream(const ::google::protobuf::Message &request) {}
-  void WritesDone() {}
-  void AsyncReadNextReply() {}
-
  private:
   /// The reply message.
   Reply reply_;
@@ -137,46 +149,115 @@ class ClientStreamCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback)
-      : ClientCall(ClientCallType::STREAM_ASYNC_CALL), callback_(callback) {}
+  explicit ClientStreamCallImpl(const ClientCallback<Reply> &callback,
+                                int max_buffer_size = 100)
+      : ClientCall(ClientCallType::STREAM_ASYNC_CALL),
+        callback_(callback),
+        ready_to_write_(false),
+        max_buffer_size_(max_buffer_size) {}
 
+  ~ClientStreamCallImpl() { RAY_LOG(INFO) << "Client stream call destruct."; }
+  // Connect to remote server.
+  // This is a synchronous call, which won't return until we receive the tag from
+  // completion queue.
   void Connect(typename GrpcService::Stub &stub,
                const AsyncRpcFunction<GrpcService, Request, Reply> async_rpc_function,
                grpc::CompletionQueue &cq) {
     client_stream_ =
         (stub.*async_rpc_function)(&context_, &cq, reinterpret_cast<void *>(tag_));
+    std::future<void> f(connect_promise_.get_future());
+    is_running_ = true;
+    // Block here until the connection to server has setup.
+    f.get();
   }
 
-  void WritesDone() override {
-    // Server will receive a done tag after client cancels.
-    TryCancel();
-    // delete reader_tag_;
-    // delete tag_;
-    // state_ = ClientCallState::STREAM_WRITES_DONE;
-    // client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
-  }
+  void ConnectFinish() override { connect_promise_.set_value(); }
+
+  bool IsRunning() { return is_running_; }
 
   bool WriteStream(const ::google::protobuf::Message &from) override {
-    // The state of this call will be changed to PENDING in polling thread.
-    if (state_ == ClientCallState::WRITING) {
-      RAY_LOG(INFO) << "Stream is still in writing state.";
-      return false;
+    std::unique_lock<std::mutex> lock(buffer_mutex_);
+    if (ready_to_write_) {
+      ready_to_write_ = false;
+      lock.unlock();
+      // Construct the request with the specific type.
+      Request request;
+      request.CopyFrom(from);
+      /// Only one write may be outstanding at any given time. This means that
+      /// after calling `Write`, one must wait to receive a tag from the completion
+      /// queue before calling `Write` again.
+      client_stream_->Write(request, reinterpret_cast<void *>(tag_));
+    } else {
+      if (buffer_.size() >= max_buffer_size_) {
+        RAY_LOG(INFO) << "Buffer of writing stream is full.";
+        return false;
+      }
+      std::unique_ptr<Request> request(new Request);
+      request->CopyFrom(from);
+      buffer_.emplace(std::move(request));
     }
-    // Construct the request with the specific type.
-    Request request;
-    request.CopyFrom(from);
-    state_ = ClientCallState::WRITING;
-    /// Only one write may be outstanding at any given time. This means that
-    /// after calling `Write`, one must wait to receive a tag from the completion
-    /// queue before calling `Write` again.
-    client_stream_->Write(request, reinterpret_cast<void *>(tag_));
     return true;
   }
 
-  Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
+  void AsyncWriteNextRequest() override {
+    if (!is_running_) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    if (buffer_.empty()) {
+      ready_to_write_ = true;
+    } else {
+      ready_to_write_ = false;
+      RAY_LOG(INFO) << "Client write.";
+      client_stream_->Write(*buffer_.front(), reinterpret_cast<void *>(tag_));
+      buffer_.pop();
+    }
+  }
 
-  void AsyncReadNextReply() {
+  void AsyncReadNextReply() override {
+    if (!is_running_) {
+      RAY_LOG(INFO) << "Call is stopped, just delete reader tag.";
+      DeleteReplyReaderTag();
+      return;
+    }
+    RAY_LOG(INFO) << "Put tag into the q, is running: " << is_running_;
     client_stream_->Read(&reply_, reinterpret_cast<void *>(reader_tag_));
+  }
+
+  /// We need to make sure that the tag cann't be deleted more than once.
+  void DeleteReplyReaderTag() {
+    if (reader_tag_) {
+      delete reader_tag_;
+      reader_tag_ = nullptr;
+    }
+  }
+
+  void WritesDone() override {
+    {
+      std::lock_guard<std::mutex> lock(buffer_mutex_);
+      ready_to_write_ = false;
+      if (!buffer_.empty()) {
+        RAY_LOG(WARNING) << "The stream is being closed. There still are "
+                         << buffer_.size()
+                         << " requests in buffer, which will be discarded.";
+      }
+      // Cleanup all the cached requests.
+      while (!buffer_.empty()) {
+        buffer_.pop();
+      }
+    }
+
+    is_running_ = false;
+    // Server will receive a done tag after client cancels.
+    state_ = ClientCallState::WRITES_DONE;
+    client_stream_->WritesDone(reinterpret_cast<void *>(tag_));
+  }
+
+  void OnReplyReceived() override {
+    if (callback_) {
+      callback_(Status::OK(), reply_);
+    }
+    AsyncReadNextReply();
   }
 
   void SetClientCallTag(ClientCallTag *tag) { tag_ = tag; }
@@ -187,12 +268,7 @@ class ClientStreamCallImpl : public ClientCall {
 
   ClientCallTag *GetClientCallTag() { return tag_; }
 
-  void OnReplyReceived() override {
-    if (callback_) {
-      callback_(Status::OK(), reply_);
-    }
-    AsyncReadNextReply();
-  }
+  Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
 
  private:
   /// The reply message.
@@ -204,15 +280,34 @@ class ClientStreamCallImpl : public ClientCall {
   /// Async writer and reader.
   std::unique_ptr<grpc::ClientAsyncReaderWriter<Request, Reply>> client_stream_;
 
+  ClientCallTag *tag_;
+  /// Reading and writing in client stream call are asynchronous, we should use different
+  /// type of tags to distinguish the call tag got from completion queue in polling
+  /// thread. We should put the reader tag into the completion queue when try to read a
+  /// reply asynchronously in the stream.
+  ClientCallTag *reader_tag_;
+
   /// gRPC status of this request.
   grpc::Status status_;
 
-  ClientCallTag *tag_;
-  /// Reading and writing in client stream call are asynchronous, we should use different
-  /// type tag to distinguish the call tag caught in completion queue. We should put the
-  /// reader tag into the completion queue when try to read a reply asynchronously in a
-  /// stream,
-  ClientCallTag *reader_tag_;
+  /// Max size of writing buffer, we cann't write next request until the buffer is not
+  /// full.
+  int max_buffer_size_;
+
+  // Indicates whether it's ready to write next request into stream. It's available only
+  // if we receive the writer tag from the completion queue.
+  bool ready_to_write_;
+
+  std::mutex buffer_mutex_;
+
+  std::queue<std::unique_ptr<Request>> buffer_;
+
+  // Reading and writing are diabled unless the connection between client and server has
+  // setup successfully. Use `promise` and `future` to make the `Connect` function a
+  // synchronous call.
+  std::promise<void> connect_promise_;
+
+  bool is_running_ = false;
 
   friend class ClientCallManager;
 };
@@ -240,12 +335,12 @@ class ClientCallTag {
   /// \param is_reader_tag Indicates whether it's a tag for reading reply from server.
   explicit ClientCallTag(std::shared_ptr<ClientCall> call,
                          TagType tag_type = TagType::DEFAULT)
-      : call_(std::move(call)), tag_type_(tag_type) {}
+      : call_(call), tag_type_(tag_type) {}
 
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
-  bool IsReaderTag() { return tag_type_ == TagType::STREAM_READER; }
+  bool IsReplyReaderTag() { return tag_type_ == TagType::STREAM_READER; }
 
  private:
   /// Pointer to the client call.

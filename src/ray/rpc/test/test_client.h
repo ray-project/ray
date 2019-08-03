@@ -43,11 +43,13 @@ class DebugTestClient {
     return call->GetStatus();
   }
 
-  void StartEchoStream(const ClientCallback<DebugEchoReply> &callback) {
+  void StartEchoStream(const ClientCallback<DebugEchoReply> &callback,
+                       int max_buffer_size) {
     debug_stream_call_ =
         client_call_manager_
             .CreateStreamCall<DebugEchoService, DebugEchoRequest, DebugEchoReply>(
-                *stub_, &DebugEchoService::Stub::AsyncDebugStreamEcho, callback);
+                *stub_, &DebugEchoService::Stub::AsyncDebugStreamEcho, callback,
+                max_buffer_size);
   }
 
   /// Request for a stream message should be a synchronous call.

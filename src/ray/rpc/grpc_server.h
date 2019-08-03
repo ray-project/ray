@@ -52,11 +52,11 @@ class GrpcServer {
   // Shutdown this server
   void Shutdown() {
     if (!is_closed_) {
+      is_closed_ = true;
       RAY_LOG(INFO) << "Begin to shutdown.";
       server_->Shutdown();
       cq_->Shutdown();
       polling_thread_.join();
-      is_closed_ = true;
       RAY_LOG(INFO) << "gRPC server of " << name_ << " shutdown.";
     }
   }

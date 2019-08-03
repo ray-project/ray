@@ -56,6 +56,7 @@ class ServiceHandlers : public TestServiceHandler {
   void HandleDebugStreamEcho(
       const DebugEchoRequest &request,
       StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_reply_writer) override {
+    RAY_LOG(INFO) << "Start server callback.";
     const string &str = request.request_message();
     int idx = GetIndex(str);
     if (idx % 2 == 0) {
@@ -73,59 +74,71 @@ class GrpcTest : public ::testing::Test {
   GrpcTest()
       : work_(io_service_),
         client_call_manager_(io_service_),
-        service_(io_service_, service_handlers_) {}
-
-  ~GrpcTest() {}
-
-  void SetUp() {
-    server_thread_.reset(new std::thread([this]() { io_service_.run(); }));
+        service_(io_service_, service_handlers_) {
+    // Setup grpc server.
     server_.reset(new GrpcServer("DebugTestServer", 12345));
     server_->RegisterService(service_);
     server_->Run();
   }
 
-  void TearDown() {
+  ~GrpcTest() {
+    // Wait all requests are finished before stop the server.
+    usleep(200 * 1000);
+    RAY_LOG(INFO) << "Begin to SHUTDOWN the server.";
     server_->Shutdown();
+  }
+
+  void SetUp() {
+    handle_thread_.reset(new std::thread([this]() { io_service_.run(); }));
+  }
+
+  void TearDown() {
     io_service_.stop();
-    server_thread_->join();
-    server_thread_.reset();
+    handle_thread_->join();
+    handle_thread_.reset();
   }
 
  protected:
   boost::asio::io_service io_service_;
   boost::asio::io_service::work work_;
-  std::unique_ptr<std::thread> server_thread_;
+  std::unique_ptr<std::thread> handle_thread_;
   unique_ptr<GrpcServer> server_;
   ClientCallManager client_call_manager_;
   ServiceHandlers service_handlers_;
   TestService service_;
 };
 
-// TEST_F(GrpcTest, MultiClientsTest) {}
+/*
+TEST_F(GrpcTest, AsyncCallTest) {
+  DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
+}
+*/
 
 // TEST_F(GrpcTest, UnixDomainSocketTest) {}
 
 // TEST_F(GrpcTest, ThreadSafeClientTest) {}
 
 TEST_F(GrpcTest, StreamRequestTest) {
-  int num_messages = 20;
+  int num_messages = 30;
   DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
-  client.StartEchoStream([](const Status &status, const rpc::DebugEchoReply &reply) {
-    RAY_LOG(INFO) << "Stream client received reply from server, reply: "
-                  << reply.reply_message();
-    auto idx = GetIndex(reply.reply_message());
-    ASSERT_TRUE(idx % 2 == 0);
-  });
+  client.StartEchoStream(
+      [](const Status &status, const rpc::DebugEchoReply &reply) {
+        RAY_LOG(INFO) << "Stream client received reply from server, reply: "
+                      << reply.reply_message();
+        auto idx = GetIndex(reply.reply_message());
+        ASSERT_TRUE(idx % 2 == 0);
+      },
+      100);
 
   for (int i = 0; i < num_messages; i++) {
-    usleep(2000);
     DebugEchoRequest request;
     request.set_request_message(GenerateMessage("StreamRequest", i + 1));
     client.DebugStreamEcho(request);
-    usleep(1000);
   }
+  // Wait client to send some requests.
+  usleep(10 * 1000);
+  RAY_LOG(INFO) << "Try to close echo stream.";
   client.CloseEchoStream();
-  // usleep(5*1000);
 }
 
 }  // namespace rpc

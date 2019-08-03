@@ -83,10 +83,10 @@ class ServerCall {
   virtual const ServerCallFactory &GetFactory() const = 0;
 
   /// Invoked when sending reply successes.
-  virtual void OnReplySent() = 0;
+  virtual void OnReplySent() {}
 
   // Invoked when sending reply fails.
-  virtual void OnReplyFailed() = 0;
+  virtual void OnReplyFailed() {}
 
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
@@ -97,9 +97,15 @@ class ServerCall {
 
   virtual void AsyncWriteNextReply() {}
 
+  virtual void SetReplyWriterTag(ServerCallTag *writer_tag) {}
+
   virtual ServerCallTag *GetReplyWriterTag() {}
 
   virtual ServerCallTag *GetDoneTag() {}
+
+  virtual void StartCall() {}
+
+  virtual bool IsRunning() {}
 
   virtual void Finish() {}
 
@@ -265,10 +271,13 @@ class StreamReplyWriter {
   void SendNextReplyInBuffer() {
     std::lock_guard<std::mutex> lock(buffer_mutex_);
     if (!buffer_.empty()) {
-      server_stream_->Write(*buffer_.front(),
-                            reinterpret_cast<void *>(server_call_->GetReplyWriterTag()));
-      buffer_.pop();
       ready_to_write_ = false;
+      auto reply_writer_tag = server_call_->GetReplyWriterTag();
+      if (!reply_writer_tag) {
+        return;
+      }
+      server_stream_->Write(*buffer_.front(), reinterpret_cast<void *>(reply_writer_tag));
+      buffer_.pop();
     } else {
       ready_to_write_ = true;
     }
@@ -298,8 +307,8 @@ class StreamReplyWriter {
   std::shared_ptr<grpc::ServerAsyncReaderWriter<Reply, Request>> server_stream_;
   // Weak pointer pointing to server call without reference.
   ServerCall *server_call_;
-  // Ready to write next reply into stream only if we receive the writer tag from the
-  // completion queue.
+  // Indicates whether it's ready to write next reply into stream. It's available only if
+  // we receive the writer tag from the completion queue.
   bool ready_to_write_;
 };
 
@@ -333,7 +342,18 @@ class ServerStreamCallImpl : public ServerCall {
         server_stream_(
             std::make_shared<grpc::ServerAsyncReaderWriter<Reply, Request>>(&context_)),
         io_service_(io_service),
-        stream_reply_writer_(server_stream_, this) {}
+        stream_reply_writer_(server_stream_, this),
+        is_running_(false) {}
+
+  void StartCall() override { is_running_ = true; }
+
+  bool IsRunning() { return is_running_; }
+
+  void Finish() {
+    is_running_ = false;
+    // state_ = ServerCallState::FINISH;
+    // server_stream_->Finish(grpc::Status::CANCELLED, reinterpret_cast<void *>(tag_));
+  }
 
   void AsyncReadNextRequest() override {
     // Wait for next stream request.
@@ -343,14 +363,12 @@ class ServerStreamCallImpl : public ServerCall {
 
   void AsyncWriteNextReply() override { stream_reply_writer_.SendNextReplyInBuffer(); }
 
-  ServerCallState GetState() const override { return state_; }
-
   void SetReplyWriterTag(ServerCallTag *writer_tag) { writer_tag_ = writer_tag; }
 
   void SetStreamDoneTag(ServerCallTag *done_tag) {
     done_tag_ = done_tag;
-    // This is important as the server should know when the client is done.
-    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(done_tag_));
+    // Only calling `TryCancel` in client side can trigger this tag.
+    // context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(done_tag_));
   }
 
   ServerCallTag *GetReplyWriterTag() override { return writer_tag_; }
@@ -360,7 +378,7 @@ class ServerStreamCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    if (!io_service_.stopped()) {
+    if (!io_service_.stopped() && is_running_) {
       io_service_.post([this] {
         HandleRequestImpl();
         AsyncReadNextRequest();
@@ -379,14 +397,7 @@ class ServerStreamCallImpl : public ServerCall {
 
   const ServerCallFactory &GetFactory() const override { return factory_; }
 
-  void Finish() {
-    state_ = ServerCallState::FINISH;
-    server_stream_->Finish(grpc::Status::CANCELLED, reinterpret_cast<void *>(tag_));
-  }
-
-  /// Only for defaut call, not used yet.
-  void OnReplySent() {}
-  void OnReplyFailed() {}
+  ServerCallState GetState() const override { return state_; }
 
  private:
   /// State of this call.
@@ -421,6 +432,9 @@ class ServerStreamCallImpl : public ServerCall {
 
   StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
+  // Indicates whether the stream call is running.
+  bool is_running_;
+
   template <class T1, class T2, class T3, class T4>
   friend class ServerStreamCallFactoryImpl;
 };
@@ -434,19 +448,19 @@ class ServerCallTag {
   };
   explicit ServerCallTag(std::shared_ptr<ServerCall> call,
                          TagType tag_type = TagType::DEFAULT)
-      : call_(std::move(call)), tag_type_(tag_type) {}
+      : call_(call), tag_type_(tag_type) {}
 
   /// Get the wrapped `ServerCall`.
   const std::shared_ptr<ServerCall> &GetCall() const { return call_; }
 
-  bool IsWriterTag() { return tag_type_ == TagType::STREAM_WRITER; }
+  bool IsReplyWriterTag() { return tag_type_ == TagType::STREAM_WRITER; }
 
   bool IsDoneTag() { return tag_type_ == TagType::STREAM_DONE; }
 
   const TagType &GetType() { return tag_type_; }
 
  private:
-  /// Pointer to the server call.
+  /// Pointer to the server call and hold the reference of the call.
   std::shared_ptr<ServerCall> call_;
   /// Indicates whether the tag is used to write reply.
   const TagType tag_type_;

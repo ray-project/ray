@@ -65,20 +65,20 @@ void GrpcServer::PollEventsFromCompletionQueue() {
   while (cq_->Next(&got_tag, &ok)) {
     auto *tag = static_cast<ServerCallTag *>(got_tag);
     auto server_call = tag->GetCall();
-    bool delete_call = false;
+    bool delete_tag = false;
     if (ok) {
       if (tag->IsDoneTag()) {
-        RAY_LOG(INFO) << "Server receive a done tag.";
-        delete server_call->GetReplyWriterTag();
+        RAY_LOG(INFO) << "Server receive a DONE tag.";
         delete server_call->GetDoneTag();
-        RAY_LOG(INFO) << "After finish.";
-      } else if (tag->IsWriterTag()) {
+        server_call->Finish();
+        RAY_LOG(INFO) << "Finish";
+      } else if (tag->IsReplyWriterTag()) {
         server_call->AsyncWriteNextReply();
-        RAY_LOG(INFO) << "Server receive a writer tag.";
       } else {
         switch (server_call->GetState()) {
         case ServerCallState::CONNECT:
           server_call->AsyncReadNextRequest();
+          server_call->StartCall();
           break;
         case ServerCallState::PENDING:
           // We've received a new incoming request. Now this call object is used to
@@ -90,19 +90,12 @@ void GrpcServer::PollEventsFromCompletionQueue() {
           server_call->SetState(ServerCallState::PROCESSING);
           server_call->HandleRequest();
           break;
-        case ServerCallState::PROCESSING:
-          break;
         case ServerCallState::SENDING_REPLY:
           // GRPC has sent reply successfully, invoking the callback.
           server_call->OnReplySent();
           // The rpc call has finished and can be deleted now.
-          delete_call = true;
+          delete_tag = true;
           break;
-        case ServerCallState::FINISH:
-          RAY_LOG(INFO) << "Received FINISH state.";
-          delete server_call->GetReplyWriterTag();
-          delete server_call->GetDoneTag();
-          delete tag;
         default:
           RAY_LOG(FATAL) << "Shouldn't reach here.";
           break;
@@ -111,8 +104,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
     } else {
       RAY_LOG(INFO) << "ok == false, tag type: " << static_cast<int>(tag->GetType())
                     << ", call type: " << static_cast<int>(tag->GetCall()->GetCallType());
-      if (tag->GetCall()->GetCallType() == ServerCallType::STREAM_ASYNC_CALL) {
-      } else {
+      if (tag->GetCall()->GetCallType() == ServerCallType::DEFAULT_ASYNC_CALL) {
         // `ok == false` will occur in two situations:
         // First, the server has been shut down, the server call's status is PENDING
         // Second, server has sent reply to client and failed, the server call's status is
@@ -120,10 +112,14 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
           server_call->OnReplyFailed();
         }
+      } else {
+        delete server_call->GetReplyWriterTag();
       }
-      delete_call = true;
+      delete_tag = true;
     }
-    if (delete_call) {
+    if (delete_tag) {
+      RAY_LOG(INFO) << "delete tag type: " << static_cast<int>(tag->GetType())
+                    << ", call type: " << static_cast<int>(tag->GetCall()->GetCallType());
       delete tag;
     }
   }
