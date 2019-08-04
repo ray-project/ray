@@ -39,7 +39,7 @@ public class ActorId extends BaseId implements Serializable {
   }
 
   /**
-   * Generate a nil JobId.
+   * Generate a nil ActorId.
    */
   private static ActorId nil() {
     byte[] b = new byte[LENGTH];
