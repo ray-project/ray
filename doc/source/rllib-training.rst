@@ -37,7 +37,7 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -258,7 +258,7 @@ You can provide callback functions to be called at points during policy evaluati
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
     ray.init()
-    trials = tune.run(
+    analysis = tune.run(
         "PG",
         config={
             "env": "CartPole-v0",
@@ -371,8 +371,6 @@ TensorFlow Eager
 ~~~~~~~~~~~~~~~~
 
 While RLlib uses TF graph mode for all computations, you can still leverage TF eager to inspect the intermediate state of computations using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager mode in `a custom RLlib model and loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
-
-There is also experimental support for running the entire loss function in eager mode. This can be enabled with ``use_eager: True``, e.g., ``rllib train --env=CartPole-v0 --run=PPO --config='{"use_eager": true, "simple_optimizer": true}'``. However this currently only works for a couple algorithms.
 
 Episode Traces
 ~~~~~~~~~~~~~~

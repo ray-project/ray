@@ -42,7 +42,7 @@ def train_example(num_replicas=1, use_gpu=False):
         use_gpu=use_gpu,
         backend="nccl")
     stats = trainer1.train()
-    # adjust_num_workers(stats)
+    trainer1.train()
     trainer1.shutdown()
     print("success!")
 

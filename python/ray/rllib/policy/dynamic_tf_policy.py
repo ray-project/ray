@@ -131,6 +131,8 @@ class DynamicTFPolicy(TFPolicy):
         else:
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
+            self.logit_dim = logit_dim
+
         if existing_model:
             self.model = existing_model
         elif make_model:
