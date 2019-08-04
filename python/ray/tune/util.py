@@ -180,7 +180,7 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
     return original
 
 
-def flatten_dict(dt, delimiter=":"):
+def flatten_dict(dt, delimiter="/"):
     dt = copy.deepcopy(dt)
     while any(isinstance(v, dict) for v in dt.values()):
         remove = []

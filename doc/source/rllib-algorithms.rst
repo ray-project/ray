@@ -164,12 +164,12 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 **Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ========================  =============================  ==============================  ===============================
- Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN              
+ Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN
 =============  ========================  =============================  ==============================  ===============================
-BeamRider      2869                      1910                           4447                            ~2000                          
-Breakout       287                       312                            410                             ~150                           
-Qbert          3921                      7968                           15780                           ~4000                          
-SpaceInvaders  650                       1001                           1025                            ~500                           
+BeamRider      2869                      1910                           4447                            ~2000
+Breakout       287                       312                            410                             ~150
+Qbert          3921                      7968                           15780                           ~4000
+SpaceInvaders  650                       1001                           1025                            ~500
 =============  ========================  =============================  ==============================  ===============================
 
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
@@ -217,7 +217,7 @@ SpaceInvaders  671             944             ~800
 =============  =========================  =============================
 MuJoCo env     RLlib PPO 16-workers @ 1h  Fan et al PPO 16-workers @ 1h
 =============  =========================  =============================
-HalfCheetah    9664                       ~7700 
+HalfCheetah    9664                       ~7700
 =============  =========================  =============================
 
 .. figure:: ppo.png
@@ -228,6 +228,21 @@ HalfCheetah    9664                       ~7700
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../python/ray/rllib/agents/ppo/ppo.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+-Soft Actor Critic (SAC)
+------------------------
+`[paper] <https://arxiv.org/pdf/1801.01290>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/sac/sac.py>`__
+
+RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions. It is also currently *experimental*.
+
+Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__
+
+**SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../python/ray/rllib/agents/sac/sac.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
