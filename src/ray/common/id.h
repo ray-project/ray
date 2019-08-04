@@ -237,7 +237,7 @@ class ObjectID : public BaseID<ObjectID> {
 
   /// The maximum index of object.
   ///
-  /// It also means the number of objects(put or return) of one task.
+  /// It also means the max number of objects created (put or return) by one task.
   ///
   /// \return The maximum index of object.
   static uint64_t MaxObjectIndex() { return kMaxObjectIndex; }
