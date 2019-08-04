@@ -40,9 +40,13 @@ class DistributedPyTorchRunner(PyTorchRunner):
         os.environ["NCCL_LL_THRESHOLD"] = "0"
         os.environ["NCCL_DEBUG"] = "INFO"
         super(DistributedPyTorchRunner, self).__init__(
-            model_creator, data_creator, optimizer_creator,
+            model_creator,
+            data_creator,
+            optimizer_creator,
             train_function=train_function,
-            validation_function=validation_function, config=config, batch_size=batch_size )
+            validation_function=validation_function,
+            config=config,
+            batch_size=batch_size)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):

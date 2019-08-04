@@ -8,7 +8,6 @@ from ray.experimental.sgd.pytorch import PyTorchTrainer
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
 
-
 # def train(train_iterator, model, criterion, optimizer):
 #     model.train()
 #     for batch_idx, (data, target) in enumerate(train_iterator):
@@ -42,6 +41,7 @@ def train_example(num_replicas=1, use_gpu=False):
         use_gpu=use_gpu,
         backend="nccl")
     stats = trainer1.train()
+    print(stats)
     trainer1.train()
     trainer1.shutdown()
     print("success!")
