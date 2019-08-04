@@ -32,7 +32,7 @@ public class TaskId extends BaseId implements Serializable {
   }
 
   /**
-   * Creates a TaskId from a given bytes.
+   * Creates a TaskId from given bytes.
    */
   public static TaskId fromBytes(byte[] bytes) {
     return new TaskId(bytes);
