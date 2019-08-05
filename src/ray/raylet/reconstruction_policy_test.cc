@@ -18,7 +18,7 @@ using rpc::TaskLeaseData;
 // A helper function to get a normal task id.
 inline TaskID ForNormalTask() {
   const static JobID job_id = JobID::FromInt(1);
-  const static TaskID driver_task_id = TaskID::ForDriverTask();
+  const static TaskID driver_task_id = TaskID::ForDriverTask(job_id);
   static TaskID task_id =
       TaskID::ForNormalTask(job_id, driver_task_id, /*parent_task_counter=*/1);
   return task_id;

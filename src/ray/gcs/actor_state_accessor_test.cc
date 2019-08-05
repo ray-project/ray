@@ -5,6 +5,7 @@
 #include <vector>
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -51,7 +52,7 @@ class ActorStateAccessorTest : public ::testing::Test {
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
       ActorID actor_id =
-          ActorID::Of(job_id, TaskID::ForDriverTask(), /*parent_task_counter=*/i);
+          ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
       actor->set_actor_id(actor_id.Binary());
       actor_datas_[actor_id] = actor;
     }

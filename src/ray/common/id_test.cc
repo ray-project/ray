@@ -38,7 +38,7 @@ void TestRandomObjectId() {
 
 const static JobID kDefaultJobId = JobID::FromInt(199);
 
-const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask();
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 TEST(ActorIDTest, TestActorID) {
   {

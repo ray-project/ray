@@ -17,7 +17,7 @@ using ::testing::_;
 
 const static JobID kDefaultJobId = JobID::FromInt(1);
 
-const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask();
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockObjectManager : public ObjectManagerInterface {
  public:

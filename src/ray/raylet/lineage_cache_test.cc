@@ -16,7 +16,7 @@ namespace raylet {
 
 const static JobID kDefaultJobId = JobID::FromInt(1);
 
-const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask();
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
                 public gcs::PubsubInterface<TaskID> {
