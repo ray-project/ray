@@ -221,7 +221,7 @@ class AWSNodeProvider(NodeProvider):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
                 logger.debug("NodeProvider: calling create_instances "
-                            "with {} (count={}).".format(subnet_id, count))
+                             "with {} (count={}).".format(subnet_id, count))
                 self.subnet_idx += 1
                 conf.update({
                     "MinCount": 1,
@@ -232,10 +232,10 @@ class AWSNodeProvider(NodeProvider):
                 created = self.ec2.create_instances(**conf)
                 for instance in created:
                     logger.debug("NodeProvider: Created instance "
-                                "[id={}, name={}, info={}]".format(
-                                    instance.instance_id,
-                                    instance.state["Name"],
-                                    instance.state_reason["Message"]))
+                                 "[id={}, name={}, info={}]".format(
+                                     instance.instance_id,
+                                     instance.state["Name"],
+                                     instance.state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == max_retries:

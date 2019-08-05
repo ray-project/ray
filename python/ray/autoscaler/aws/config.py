@@ -64,8 +64,8 @@ def _configure_iam_role(config):
 
     if profile is None:
         logger.debug("_configure_iam_role: "
-                    "Creating new instance profile {}".format(
-                        DEFAULT_RAY_INSTANCE_PROFILE))
+                     "Creating new instance profile {}".format(
+                         DEFAULT_RAY_INSTANCE_PROFILE))
         client = _client("iam", config)
         client.create_instance_profile(
             InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE)
@@ -78,7 +78,7 @@ def _configure_iam_role(config):
         role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
         if role is None:
             logger.debug("_configure_iam_role: "
-                        "Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
+                         "Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
             iam = _resource("iam", config)
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
@@ -103,8 +103,8 @@ def _configure_iam_role(config):
         time.sleep(15)  # wait for propagation
 
     logger.debug("_configure_iam_role: "
-                "Role not specified for head node, using {}".format(
-                    profile.arn))
+                 "Role not specified for head node, using {}".format(
+                     profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
@@ -131,7 +131,7 @@ def _configure_key_pair(config):
         # We can safely create a new key.
         if not key and not os.path.exists(key_path):
             logger.debug("_configure_key_pair: "
-                        "Creating new key pair {}".format(key_name))
+                         "Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
             with open(key_path, "w") as f:
                 f.write(key.key_material)
@@ -148,7 +148,7 @@ def _configure_key_pair(config):
         "Private key file {} not found for {}".format(key_path, key_name)
 
     logger.debug("_configure_key_pair: "
-                "KeyName not specified for nodes, using {}".format(key_name))
+                 "KeyName not specified for nodes, using {}".format(key_name))
 
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
@@ -188,14 +188,14 @@ def _configure_subnet(config):
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
         logger.debug("_configure_subnet: "
-                    "SubnetIds not specified for head node, using {}".format(
-                        subnet_descr))
+                     "SubnetIds not specified for head node, using {}".format(
+                         subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
         logger.debug("_configure_subnet: "
-                    "SubnetId not specified for workers,"
-                    " using {}".format(subnet_descr))
+                     "SubnetId not specified for workers,"
+                     " using {}".format(subnet_descr))
 
     return config
 
@@ -211,7 +211,7 @@ def _configure_security_group(config):
 
     if security_group is None:
         logger.debug("_configure_security_group: "
-                    "Creating new security group {}".format(group_name))
+                     "Creating new security group {}".format(group_name))
         client = _client("ec2", config)
         client.create_security_group(
             Description="Auto-created security group for Ray workers",
