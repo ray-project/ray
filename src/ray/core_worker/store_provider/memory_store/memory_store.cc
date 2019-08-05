@@ -10,7 +10,7 @@ namespace ray {
 /// A class that represents a `Get` or `Wait` reuquest.
 class GetRequest {
  public:
-  GetRequest(const std::vector<ObjectID> &object_ids, bool should_remove);
+  GetRequest(const std::vector<ObjectID> &object_ids, bool remove_after_get);
 
   const std::vector<ObjectID> &ObjectIds() const;
 
@@ -44,8 +44,8 @@ class GetRequest {
   std::condition_variable cv_;
 };
 
-GetRequest::GetRequest(const std::vector<ObjectID> &object_ids, bool should_remove)
-    : object_ids_(object_ids), should_remove_(should_remove) {}
+GetRequest::GetRequest(const std::vector<ObjectID> &object_ids, bool remove_after_get)
+    : object_ids_(object_ids), should_remove_(remove_after_get) {}
 
 const std::vector<ObjectID> &GetRequest::ObjectIds() const { return object_ids_; }
 
@@ -128,8 +128,8 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                   int64_t timeout_ms,
-                                  std::vector<std::shared_ptr<RayObject>> *results,
-                                  bool should_remove) {
+                                  bool remove_after_get,
+                                  std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(object_ids.size(), nullptr);
   std::vector<ObjectID> remaining_ids;
 
@@ -143,7 +143,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
         (*results)[i] = iter->second;
-        if (should_remove) {
+        if (remove_after_get) {
           objects_.erase(object_id);
         }
       } else {
@@ -157,7 +157,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
 
     // Otherwise, create a GetRequest to track remaining objects.
-    get_request = std::make_shared<GetRequest>(remaining_ids, should_remove);
+    get_request = std::make_shared<GetRequest>(remaining_ids, remove_after_get);
     for (const auto &object_id : remaining_ids) {
       object_get_requests_[object_id].push_back(get_request);
     }

@@ -19,9 +19,27 @@ class CoreWorkerMemoryStore {
   CoreWorkerMemoryStore();
   ~CoreWorkerMemoryStore(){};
 
+  /// Put an object with specified ID into object store.
+  ///
+  /// \param[in] object The ray object.
+  /// \param[in] object_id Object ID specified by user.
+  /// \return Status.
   Status Put(const RayObject &object, const ObjectID &object_id);
+
+  /// Get a list of objects from the object store.
+  ///
+  /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[in] remove_after_get When to remove the objects from store after `Get` finishes.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.  
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results, bool should_remove);
+             bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
+
+  /// Delete a list of objects from the object store.
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
  private:

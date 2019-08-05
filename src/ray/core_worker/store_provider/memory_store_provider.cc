@@ -24,7 +24,7 @@ Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
 Status CoreWorkerMemoryStoreProvider::Get(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
-  return store_->Get(object_ids, timeout_ms, results, true);
+  return store_->Get(object_ids, timeout_ms, true, results);
 }
 
 Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
@@ -38,7 +38,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
   (*results).resize(object_ids.size(), false);
 
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  auto status = store_->Get(object_ids, timeout_ms, &result_objects, false);
+  auto status = store_->Get(object_ids, timeout_ms, false, &result_objects);
   if (status.ok()) {
     RAY_CHECK(result_objects.size() == object_ids.size());
     for (int i = 0; i < object_ids.size(); i++) {
