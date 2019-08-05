@@ -24,7 +24,8 @@ from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Resources, ExportFormat
+from ray.tune.trial import ExportFormat
+from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -87,6 +88,10 @@ COMMON_CONFIG = {
     # hit. This allows value estimation and RNN state to span across logical
     # episodes denoted by horizon. This only has an effect if horizon != inf.
     "soft_horizon": False,
+    # Don't set 'done' at the end of the episode. Note that you still need to
+    # set this if soft_horizon=True, unless your env is actually running
+    # forever without returning done=True.
+    "no_done_at_end": False,
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config

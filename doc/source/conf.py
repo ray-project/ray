@@ -28,6 +28,7 @@ MOCK_MODULES = [
     "scipy",
     "scipy.signal",
     "scipy.stats",
+    "tensorflow_probability",
     "tensorflow",
     "tensorflow.contrib",
     "tensorflow.contrib.all_reduce",

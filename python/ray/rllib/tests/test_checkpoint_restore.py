@@ -24,6 +24,7 @@ def get_mean_action(alg, obs):
 ray.init(num_cpus=10)
 
 CONFIGS = {
+    "SAC": {},
     "ES": {
         "episodes_per_batch": 10,
         "train_batch_size": 100,
@@ -62,7 +63,7 @@ CONFIGS = {
 
 def test_ckpt_restore(use_object_store, alg_name, failures):
     cls = get_agent_class(alg_name)
-    if "DDPG" in alg_name:
+    if "DDPG" in alg_name or "SAC" in alg_name:
         alg1 = cls(config=CONFIGS[name], env="Pendulum-v0")
         alg2 = cls(config=CONFIGS[name], env="Pendulum-v0")
         env = gym.make("Pendulum-v0")
@@ -82,7 +83,7 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
         alg2.restore(alg1.save())
 
     for _ in range(10):
-        if "DDPG" in alg_name:
+        if "DDPG" in alg_name or "SAC" in alg_name:
             obs = np.clip(
                 np.random.uniform(size=3),
                 env.observation_space.low,
@@ -110,7 +111,7 @@ def test_export(algo_name, failures):
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
 
     cls = get_agent_class(algo_name)
-    if "DDPG" in algo_name:
+    if "DDPG" in algo_name or "SAC" in algo_name:
         algo = cls(config=CONFIGS[name], env="Pendulum-v0")
     else:
         algo = cls(config=CONFIGS[name], env="CartPole-v0")
@@ -145,14 +146,16 @@ def test_export(algo_name, failures):
 if __name__ == "__main__":
     failures = []
     for use_object_store in [False, True]:
-        for name in ["ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG", "ARS"]:
+        for name in [
+                "SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG", "ARS"
+        ]:
             test_ckpt_restore(use_object_store, name, failures)
 
     assert not failures, failures
     print("All checkpoint restore tests passed!")
 
     failures = []
-    for name in ["DQN", "DDPG", "PPO", "A3C"]:
+    for name in ["SAC", "DQN", "DDPG", "PPO", "A3C"]:
         test_export(name, failures)
     assert not failures, failures
     print("All export tests passed!")
