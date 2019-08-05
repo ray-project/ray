@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
 import org.ray.api.exception.RayTaskException;
@@ -93,6 +94,10 @@ public class ObjectStoreProxy {
 
       results.add((T) object);
     }
+    // This check must be placed after the throw exception statement.
+    // Because if there was any exception, The get operation would return early
+    // and wouldn't wait until all objects exist.
+    Preconditions.checkState(dataAndMetaList.stream().allMatch(Objects::nonNull));
     return results;
   }
 
