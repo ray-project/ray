@@ -88,6 +88,10 @@ COMMON_CONFIG = {
     # hit. This allows value estimation and RNN state to span across logical
     # episodes denoted by horizon. This only has an effect if horizon != inf.
     "soft_horizon": False,
+    # Don't set 'done' at the end of the episode. Note that you still need to
+    # set this if soft_horizon=True, unless your env is actually running
+    # forever without returning done=True.
+    "no_done_at_end": False,
     # Arguments to pass to the env creator
     "env_config": {},
     # Environment name can also be passed via config

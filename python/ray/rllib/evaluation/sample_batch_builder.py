@@ -185,7 +185,8 @@ class MultiAgentSampleBatchBuilder(object):
                     "agent {} (policy {}). ".format(
                         agent_id, self.agent_to_policy[agent_id]) +
                     "Please ensure that you include the last observations "
-                    "of all live agents when setting '__all__' done to True.")
+                    "of all live agents when setting '__all__' done to True. "
+                    "Alternatively, set no_done_at_end=True to allow this.")
 
     @DeveloperAPI
     def build_and_reset(self, episode):
