@@ -180,6 +180,8 @@ class NodeUpdater(object):
                 if hasattr(e, "cmd"):
                     retry_str = "(Exit Status {}): {}".format(
                         e.returncode, " ".join(e.cmd))
+                logger.debug("NodeUpdater: "
+                             "{}: {}".fromat(self.node_id, retry_str))
                 logger.info("NodeUpdater: "
                             "{}: SSH not up, retrying.".format(self.node_id))
                 time.sleep(SSH_CHECK_INTERVAL)
