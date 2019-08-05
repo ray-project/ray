@@ -493,7 +493,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
   // add the same ids again to test `Get` with duplicate object ids.
   ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
-  
+
   std::vector<ObjectID> wait_ids(ids_with_duplicate);
   ObjectID non_existent_id = ObjectID::FromRandom();
   wait_ids.push_back(non_existent_id);

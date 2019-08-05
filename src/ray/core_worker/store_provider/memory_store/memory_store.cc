@@ -165,8 +165,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
 
     // Otherwise, create a GetRequest to track remaining objects.
-    get_request = std::make_shared<GetRequest>(
-        std::move(remaining_ids), remove_after_get);
+    get_request =
+        std::make_shared<GetRequest>(std::move(remaining_ids), remove_after_get);
     for (const auto &object_id : get_request->ObjectIds()) {
       object_get_requests_[object_id].push_back(get_request);
     }
