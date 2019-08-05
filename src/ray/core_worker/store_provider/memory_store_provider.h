@@ -33,7 +33,7 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
               std::vector<bool> *results) override;
 
   /// See `CoreWorkerStoreProvider::Delete` for semantics.
-  /// Note that `local_only` msut be true, and `delete_creating_tasks` must be false here.
+  /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
