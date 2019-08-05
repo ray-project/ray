@@ -929,7 +929,7 @@ Status IsNil(bool *out, const std::string &data) {
     return Status::RedisError("Size of data doesn't match size of UniqueID");
   }
   const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
-  for (int i = 0; i < kUniqueIDSize; ++i) {
+  for (size_t i = 0; i < kUniqueIDSize; ++i) {
     if (d[i] != 255) {
       *out = false;
     }
