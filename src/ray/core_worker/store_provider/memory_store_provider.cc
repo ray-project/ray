@@ -18,7 +18,7 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  return store_->Put(object, object_id);
+  return store_->Put(object_id, object);
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(

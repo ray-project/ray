@@ -489,28 +489,34 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   }
 
   // Test Wait().
+  std::vector<ObjectID> ids_with_duplicate;
+  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+  // add the same ids again to test `Get` with duplicate object ids.
+  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+  
+  std::vector<ObjectID> wait_ids(ids_with_duplicate);
   ObjectID non_existent_id = ObjectID::FromRandom();
-  std::vector<ObjectID> all_ids(ids);
-  all_ids.push_back(non_existent_id);
+  wait_ids.push_back(non_existent_id);
 
   std::vector<bool> wait_results;
-  RAY_CHECK_OK(provider.Wait(all_ids, 3, 100, TaskID::FromRandom(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
+  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, TaskID::FromRandom(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 5);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(provider.Get(ids, -1, TaskID::FromRandom(), &results));
+  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, TaskID::FromRandom(), &results));
 
-  ASSERT_EQ(results.size(), 2);
-  for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].GetData()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), buffers[i].GetData()->Data(),
-                     buffers[i].GetData()->Size()),
+  ASSERT_EQ(results.size(), ids_with_duplicate.size());
+  for (size_t i = 0; i < ids_with_duplicate.size(); i++) {
+    const auto &expected = buffers[i % ids.size()];
+    ASSERT_EQ(results[i]->GetData()->Size(), expected.GetData()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), expected.GetData()->Data(),
+                     expected.GetData()->Size()),
               0);
-    ASSERT_EQ(results[i]->GetMetadata()->Size(), buffers[i].GetMetadata()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), buffers[i].GetMetadata()->Data(),
-                     buffers[i].GetMetadata()->Size()),
+    ASSERT_EQ(results[i]->GetMetadata()->Size(), expected.GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), expected.GetMetadata()->Data(),
+                     expected.GetMetadata()->Size()),
               0);
   }
 
@@ -716,10 +722,6 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ASSERT_EQ(handle1.ActorCursor(), handle2.ActorCursor());
   ASSERT_EQ(handle1.TaskCounter(), handle2.TaskCounter());
   ASSERT_EQ(handle1.NumForks(), handle2.NumForks());
-}
-
-TEST_F(SingleNodeTest, TestLocalPlasmaStoreProvider) {
-  TestStoreProvider(StoreProviderType::LOCAL_PLASMA);
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
