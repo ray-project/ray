@@ -3,6 +3,6 @@ build --compilation_mode=opt
 build --action_env=PATH
 build --action_env=PYTHON_BIN_PATH
 # Warnings should be errors
-build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc,-.*/protobuf*,-external/com_google_protobuf/*@-Werror
+build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc,-protobuf/.*,-external/com_google_protobuf/*@-Werror
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
