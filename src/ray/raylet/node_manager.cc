@@ -759,20 +759,6 @@ bool NodeManager::PreprocessRequest(const WorkerID &worker_id,
   if (RAY_LOG_ENABLED(DEBUG)) {
     oss << "Received a " << request_name << " request. Worker id " << worker_id << ".";
   }
-  // NOTE(Joey Jiang): We check heartbeat proactively because the heartbeats' callback
-  // won't be invoked until all the posted requests in the io_service have been finished.
-  // The raylet might be marked as dead due to missing heartbeats when too many requests
-  // are sent to this raylet.
-  int64_t expiry_delay =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - heartbeat_timer_.expires_at())
-          .count();
-
-  // Timer's callback hasn't been called on the desired time.
-  if (expiry_delay > RayConfig::instance().heartbeat_timeout_milliseconds()) {
-    heartbeat_timer_.cancel();
-    Heartbeat();
-  }
 
   auto worker = worker_pool_.GetWorker(worker_id);
   // Worker process has been killed, we should discard this request.
