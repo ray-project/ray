@@ -322,7 +322,7 @@ class DynamicTFPolicy(TFPolicy):
             batch_tensors[k] = placeholder
 
         if log_once("loss_init"):
-            logger.info(
+            logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(batch_tensors)))
 

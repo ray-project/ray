@@ -138,10 +138,10 @@ def validate_config(config):
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "
             "simple_optimizer=True if this doesn't work for you.")
-    if not config["vf_share_layers"]:
+    if config["simple_optimizer"]:
         logger.warning(
-            "FYI: By default, the value function will not share layers "
-            "with the policy model ('vf_share_layers': False).")
+            "Using the simple non-minibatch optimizer. This will greatly "
+            "reduce performance, consider simple_optimizer=False.")
 
 
 PPOTrainer = build_trainer(
