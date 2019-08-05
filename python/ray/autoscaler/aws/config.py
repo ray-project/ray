@@ -63,7 +63,7 @@ def _configure_iam_role(config):
     profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
 
     if profile is None:
-        logger.info("_configure_iam_role: "
+        logger.debug("_configure_iam_role: "
                     "Creating new instance profile {}".format(
                         DEFAULT_RAY_INSTANCE_PROFILE))
         client = _client("iam", config)
@@ -77,7 +77,7 @@ def _configure_iam_role(config):
     if not profile.roles:
         role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
         if role is None:
-            logger.info("_configure_iam_role: "
+            logger.debug("_configure_iam_role: "
                         "Creating new role {}".format(DEFAULT_RAY_IAM_ROLE))
             iam = _resource("iam", config)
             iam.create_role(
@@ -102,7 +102,7 @@ def _configure_iam_role(config):
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
 
-    logger.info("_configure_iam_role: "
+    logger.debug("_configure_iam_role: "
                 "Role not specified for head node, using {}".format(
                     profile.arn))
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
@@ -130,7 +130,7 @@ def _configure_key_pair(config):
 
         # We can safely create a new key.
         if not key and not os.path.exists(key_path):
-            logger.info("_configure_key_pair: "
+            logger.debug("_configure_key_pair: "
                         "Creating new key pair {}".format(key_name))
             key = ec2.create_key_pair(KeyName=key_name)
             with open(key_path, "w") as f:
@@ -147,7 +147,7 @@ def _configure_key_pair(config):
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
 
-    logger.info("_configure_key_pair: "
+    logger.debug("_configure_key_pair: "
                 "KeyName not specified for nodes, using {}".format(key_name))
 
     config["auth"]["ssh_private_key"] = key_path
@@ -187,13 +187,13 @@ def _configure_subnet(config):
     subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
-        logger.info("_configure_subnet: "
+        logger.debug("_configure_subnet: "
                     "SubnetIds not specified for head node, using {}".format(
                         subnet_descr))
 
     if "SubnetIds" not in config["worker_nodes"]:
         config["worker_nodes"]["SubnetIds"] = subnet_ids
-        logger.info("_configure_subnet: "
+        logger.debug("_configure_subnet: "
                     "SubnetId not specified for workers,"
                     " using {}".format(subnet_descr))
 
@@ -210,7 +210,7 @@ def _configure_security_group(config):
     security_group = _get_security_group(config, vpc_id, group_name)
 
     if security_group is None:
-        logger.info("_configure_security_group: "
+        logger.debug("_configure_security_group: "
                     "Creating new security group {}".format(group_name))
         client = _client("ec2", config)
         client.create_security_group(
@@ -238,14 +238,14 @@ def _configure_security_group(config):
         }])
 
     if "SecurityGroupIds" not in config["head_node"]:
-        logger.info(
+        logger.debug(
             "_configure_security_group: "
             "SecurityGroupIds not specified for head node, using {}".format(
                 security_group.group_name))
         config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        logger.info(
+        logger.debug(
             "_configure_security_group: "
             "SecurityGroupIds not specified for workers, using {}".format(
                 security_group.group_name))

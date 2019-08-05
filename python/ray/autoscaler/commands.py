@@ -208,7 +208,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         # TODO(ekl) right now we always update the head node even if the hash
         # matches. We could prompt the user for what they want to do here.
         runtime_hash = hash_runtime_conf(config["file_mounts"], config)
-        logger.info("get_or_create_head_node: Updating files on head node...")
+        logger.debug("get_or_create_head_node: Updating files on head node...")
 
         # Rewrite the auth config so that the head node can update the workers
         remote_key_path = "~/ray_bootstrap_key.pem"
@@ -249,6 +249,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             file_mounts=config["file_mounts"],
             initialization_commands=config["initialization_commands"],
             setup_commands=init_commands,
+            exit_on_update_fail=True,
             runtime_hash=runtime_hash,
         )
         updater.start()
@@ -352,6 +353,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
+            exit_on_update_fail=True,
             initialization_commands=[],
             setup_commands=[],
             runtime_hash="",

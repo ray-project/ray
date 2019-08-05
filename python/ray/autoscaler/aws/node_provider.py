@@ -220,7 +220,7 @@ class AWSNodeProvider(NodeProvider):
         for attempt in range(1, max_retries + 1):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-                logger.info("NodeProvider: calling create_instances "
+                logger.debug("NodeProvider: calling create_instances "
                             "with {} (count={}).".format(subnet_id, count))
                 self.subnet_idx += 1
                 conf.update({
@@ -231,7 +231,7 @@ class AWSNodeProvider(NodeProvider):
                 })
                 created = self.ec2.create_instances(**conf)
                 for instance in created:
-                    logger.info("NodeProvider: Created instance "
+                    logger.debug("NodeProvider: Created instance "
                                 "[id={}, name={}, info={}]".format(
                                     instance.instance_id,
                                     instance.state["Name"],

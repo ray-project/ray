@@ -88,7 +88,7 @@ class NodeUpdater(object):
     def wait_for_ip(self, deadline):
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
-            logger.info("NodeUpdater: "
+            logger.debug("NodeUpdater: "
                         "Waiting for IP of {}...".format(self.node_id))
             ip = self.get_node_ip()
             if ip is not None:
@@ -131,7 +131,7 @@ class NodeUpdater(object):
                 logger.warning(e)
 
     def run(self):
-        logger.info("NodeUpdater: "
+        logger.debug("NodeUpdater: "
                     "{}: Updating to {}".format(self.node_id,
                                                 self.runtime_hash))
         try:
