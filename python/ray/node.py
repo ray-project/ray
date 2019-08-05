@@ -507,7 +507,7 @@ class Node(object):
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
-        logger.info(
+        logger.debug(
             "Process STDOUT and STDERR is being redirected to {}.".format(
                 self._logs_dir))
 

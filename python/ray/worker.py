@@ -1727,6 +1727,11 @@ def is_initialized():
     return ray.worker.global_worker.connected
 
 
+def is_local_mode():
+    """Returns True if the current global worker mode is LOCAL_MODE."""
+    return _mode() == LOCAL_MODE
+
+
 def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
