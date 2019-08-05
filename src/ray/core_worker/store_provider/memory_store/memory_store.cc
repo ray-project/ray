@@ -7,7 +7,7 @@
 
 namespace ray {
 
-/// A class that represents a `Get` or `Wait` reuquest.
+/// A class that represents a `Get` reuquest.
 class GetRequest {
  public:
   GetRequest(const std::vector<ObjectID> &object_ids, bool should_remove);
