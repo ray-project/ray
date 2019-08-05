@@ -232,7 +232,7 @@ HalfCheetah    9664                       ~7700
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
--Soft Actor Critic (SAC)
+Soft Actor Critic (SAC)
 ------------------------
 `[paper] <https://arxiv.org/pdf/1801.01290>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/sac/sac.py>`__
 
