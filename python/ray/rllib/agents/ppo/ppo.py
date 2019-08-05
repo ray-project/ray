@@ -138,6 +138,10 @@ def validate_config(config):
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "
             "simple_optimizer=True if this doesn't work for you.")
+    if config["simple_optimizer"]:
+        logger.warning(
+            "Using the simple non-minibatch optimizer. This will greatly "
+            "reduce performance, consider simple_optimizer=False.")
     if not config["vf_share_layers"]:
         logger.warning(
             "FYI: By default, the value function will not share layers "
