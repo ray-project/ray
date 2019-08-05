@@ -94,43 +94,6 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestro
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeFetchOrReconstruct
- * Signature: (J[[BZ[B)V
- */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(
-    JNIEnv *env, jclass, jlong client, jobjectArray objectIds, jboolean fetchOnly,
-    jbyteArray currentTaskId) {
-  std::vector<ObjectID> object_ids;
-  auto len = env->GetArrayLength(objectIds);
-  for (int i = 0; i < len; i++) {
-    jbyteArray object_id_bytes =
-        static_cast<jbyteArray>(env->GetObjectArrayElement(objectIds, i));
-    const auto object_id = JavaByteArrayToId<ObjectID>(env, object_id_bytes);
-    object_ids.push_back(object_id);
-    env->DeleteLocalRef(object_id_bytes);
-  }
-  const auto current_task_id = JavaByteArrayToId<TaskID>(env, currentTaskId);
-  auto &raylet_client = *reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
-  auto status = raylet_client->FetchOrReconstruct(object_ids, fetchOnly, current_task_id);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeNotifyUnblocked
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
-    JNIEnv *env, jclass, jlong client, jbyteArray currentTaskId) {
-  const auto current_task_id = JavaByteArrayToId<TaskID>(env, currentTaskId);
-  auto &raylet_client = *reinterpret_cast<std::unique_ptr<RayletClient> *>(client);
-  auto status = raylet_client->NotifyUnblocked(current_task_id);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeWaitObject
  * Signature: (J[[BIIZ[B)[Z
  */

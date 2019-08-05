@@ -13,8 +13,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -35,7 +33,6 @@ import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
-import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
@@ -163,19 +160,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    List<GetResult<T>> results = objectStoreProxy.get(objectIds, -1);
-    // Check exceptions before Preconditions.checkState(result.exists)
-    Optional<RayException> exception =
-        results.stream().filter(result -> result.exception != null)
-            .map(result -> result.exception).findFirst();
-    if (exception.isPresent()) {
-      throw exception.get();
-    }
-    return results.stream().map(result -> {
-          Preconditions.checkState(result.exists, "The result doesn't exist.");
-          return result.object;
-        }
-    ).collect(Collectors.toList());
+    return objectStoreProxy.get(objectIds);
   }
 
   @Override
