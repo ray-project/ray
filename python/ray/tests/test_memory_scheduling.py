@@ -7,7 +7,7 @@ from ray.rllib import _register_all
 MB = 1024 * 1024
 
 
-@ray.remote(memory=100 * MB)
+@ray.remote(memory=150 * MB)
 class Actor(object):
     def __init__(self):
         pass
@@ -16,7 +16,7 @@ class Actor(object):
         return "ok"
 
 
-@ray.remote(object_store_memory=100 * MB)
+@ray.remote(object_store_memory=150 * MB)
 class Actor2(object):
     def __init__(self):
         pass
@@ -75,7 +75,7 @@ class TestMemoryScheduling(unittest.TestCase):
                 stop={"timesteps_total": 10000},
                 config={
                     "env": "CartPole-v0",
-                    "memory": 100 * 1024 * 1024,  # too little
+                    "memory": 150 * 1024 * 1024,  # too little
                 },
                 raise_on_failed_trial=False)
             self.assertEqual(result.trials[0].status, "ERROR")
@@ -111,7 +111,7 @@ class TestMemoryScheduling(unittest.TestCase):
                 config={
                     "env": "CartPole-v0",
                     "num_workers": 1,
-                    "memory_per_worker": 100 * 1024 * 1024,  # too little
+                    "memory_per_worker": 150 * 1024 * 1024,  # too little
                 },
                 raise_on_failed_trial=False)
             self.assertEqual(result.trials[0].status, "ERROR")
@@ -141,7 +141,7 @@ class TestMemoryScheduling(unittest.TestCase):
         try:
             result = tune.run(
                 train_oom,
-                resources_per_trial={"object_store_memory": 100 * 1024 * 1024},
+                resources_per_trial={"object_store_memory": 150 * 1024 * 1024},
                 raise_on_failed_trial=False)
             self.assertTrue(result.trials[0].status, "ERROR")
             self.assertTrue("PlasmaStoreFull: object does not fit" in

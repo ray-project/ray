@@ -2768,7 +2768,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=100 * 1024 * 1024)
+    ray.init(num_cpus=1, object_store_memory=150 * 1024 * 1024)
 
     @ray.remote
     def f():
@@ -2986,7 +2986,7 @@ def test_shutdown_disconnect_global_state():
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [100 * 1024 * 1024], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
     x_id = ray.put(x)
