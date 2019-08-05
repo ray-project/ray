@@ -7,13 +7,10 @@ import threading
 from collections import defaultdict
 import logging
 
-import boto3
 import botocore
-from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.aws.config import _resource
 
