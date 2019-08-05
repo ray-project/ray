@@ -142,10 +142,6 @@ def validate_config(config):
         logger.warning(
             "Using the simple non-minibatch optimizer. This will greatly "
             "reduce performance, consider simple_optimizer=False.")
-    if not config["vf_share_layers"]:
-        logger.warning(
-            "FYI: By default, the value function will not share layers "
-            "with the policy model ('vf_share_layers': False).")
 
 
 PPOTrainer = build_trainer(
