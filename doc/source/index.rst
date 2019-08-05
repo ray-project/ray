@@ -76,7 +76,6 @@ Tune Quick Start
    from ray import tune
    from ray.tune.examples.mnist_pytorch import get_data_loaders, Net, train, test
 
-
    def train_mnist(config):
        train_loader, test_loader = get_data_loaders()
        model = Net(config)
@@ -85,7 +84,6 @@ Tune Quick Start
            train(model, optimizer, train_loader)
            acc = test(model, test_loader)
            tune.track.log(mean_accuracy=acc)
-
 
    analysis = tune.run(
        train_mnist,
