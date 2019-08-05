@@ -184,7 +184,7 @@ class ExperimentAnalysis(Analysis):
                 `analysis.trials`.
         """
         with open(experiment_checkpoint_path) as f:
-            _experiment_state = json.load(f)
+            self._experiment_state = json.load(f)
 
         if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
