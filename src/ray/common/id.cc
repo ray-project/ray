@@ -9,6 +9,7 @@
 
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
+#include "ray/util/util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -18,12 +19,6 @@ extern "C" {
 #define DIGEST_SIZE SHA256_BLOCK_SIZE
 
 namespace ray {
-
-std::mt19937 RandomlySeededMersenneTwister() {
-  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  std::mt19937 seeded_engine(seed);
-  return seeded_engine;
-}
 
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
@@ -100,18 +95,6 @@ inline uint8_t GetTransportType(ObjectIDFlagsType flags) {
 }
 
 }  // namespace
-
-/// A helper function to fill random bytes into the `data`.
-template <typename T>
-void FillRandom(T *data) {
-  RAY_CHECK(data != nullptr);
-  static std::mutex random_engine_mutex;
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < data->size(); i++) {
-    (*data)[i] = static_cast<uint8_t>(dist(generator));
-  }
-}
 
 template <typename T>
 void FillNil(T *data) {
@@ -241,12 +224,18 @@ JobID ActorID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
-TaskID TaskID::ForDriverTask() {
+TaskID TaskID::ForDriverTask(const JobID &job_id) {
   std::string data(kUniqueBytesLength, 0);
-  FillRandom(&data);
-  const auto nil_actor_id = ActorID::Nil();
-  std::copy_n(nil_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
+  FillNil(&data);
+  const auto dummy_actor_id = ActorID::NilFromJob(job_id);
+  std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
+  return TaskID::FromBinary(data);
+}
+
+TaskID TaskID::ForFakeDriverTask() {
+  std::string data(kLength, 0);
+  FillRandom(&data);
   return TaskID::FromBinary(data);
 }
 

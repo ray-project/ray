@@ -8,12 +8,11 @@ extern "C" {
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
 namespace gcs {
-
-TaskID RandomTaskId() { return TaskID::ForDriverTask(); }
 
 /* Flush redis. */
 static inline void flushall_redis(void) {

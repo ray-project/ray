@@ -14,6 +14,7 @@
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/visibility.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -41,7 +42,6 @@ using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
 
 // Declaration.
-std::mt19937 RandomlySeededMersenneTwister();
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 // Change the compiler alignment to 1 byte (default is 8).
@@ -170,7 +170,10 @@ class TaskID : public BaseID<TaskID> {
   static TaskID FromRandom() = delete;
 
   /// \return The ID generated for driver task.
-  static TaskID ForDriverTask();
+  static TaskID ForDriverTask(const JobID &job_id);
+
+  /// \return The ID generated for fake driver task.
+  static TaskID ForFakeDriverTask();
 
   /// Creates a TaskID for an actor creation task.
   ///
@@ -384,16 +387,7 @@ BaseID<T>::BaseID() {
 template <typename T>
 T BaseID<T>::FromRandom() {
   std::string data(T::Size(), 0);
-  // NOTE(pcm): The right way to do this is to have one std::mt19937 per
-  // thread (using the thread_local keyword), but that's not supported on
-  // older versions of macOS (see https://stackoverflow.com/a/29929949)
-  static std::mutex random_engine_mutex;
-  std::lock_guard<std::mutex> lock(random_engine_mutex);
-  static std::mt19937 generator = RandomlySeededMersenneTwister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < T::Size(); i++) {
-    data[i] = static_cast<uint8_t>(dist(generator));
-  }
+  FillRandom(&data);
   return T::FromBinary(data);
 }
 

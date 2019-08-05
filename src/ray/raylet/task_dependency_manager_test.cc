@@ -7,6 +7,7 @@
 
 #include "ray/common/task/task_util.h"
 #include "ray/raylet/task_dependency_manager.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -17,12 +18,6 @@ using ::testing::_;
 const static JobID kDefaultJobId = JobID::FromInt(1);
 
 const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask();
-
-// A helper function to get a normal task id.
-inline TaskID RandomTaskId() {
-  // ForDriverTask() returns a random ID.
-  return TaskID::ForDriverTask();
-}
 
 class MockObjectManager : public ObjectManagerInterface {
  public:
