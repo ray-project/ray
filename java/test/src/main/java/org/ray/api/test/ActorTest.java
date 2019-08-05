@@ -14,7 +14,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -111,11 +111,11 @@ public class ActorTest extends BaseTest {
     // Delete the object from the object store.
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
-    List<ObjectId> ids = Collections.singletonList(value.getId());
     while (true) {
-      GetResult<Integer> result = ((AbstractRayRuntime)
-          Ray.internal()).getWorker().getObjectStoreProxy().<Integer>get(ids, 0).get(0);
-      if (!result.exists) {
+      NativeRayObject result = ((AbstractRayRuntime)
+          Ray.internal()).getWorker().getObjectStoreProxy().getObjectInterface()
+          .get(ImmutableList.of(value.getId()), 0).get(0);
+      if (result == null) {
         break;
       }
       TimeUnit.MILLISECONDS.sleep(100);

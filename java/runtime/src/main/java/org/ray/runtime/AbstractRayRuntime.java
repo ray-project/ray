@@ -3,6 +3,7 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -24,7 +25,6 @@ import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
-import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.util.StringUtil;
@@ -72,19 +72,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    List<GetResult<T>> results = worker.getObjectStoreProxy().get(objectIds, -1);
-    // Check exceptions before Preconditions.checkState(result.exists)
-    Optional<RayException> exception =
-        results.stream().filter(result -> result.exception != null)
-            .map(result -> result.exception).findFirst();
-    if (exception.isPresent()) {
-      throw exception.get();
-    }
-    return results.stream().map(result -> {
-          Preconditions.checkState(result.exists, "Waited forever but result doesn't exist.");
-          return result.object;
-        }
-    ).collect(Collectors.toList());
+    return getWorker().getObjectStoreProxy().get(objectIds);
   }
 
   @Override
@@ -105,7 +93,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
     Preconditions.checkNotNull(waitList);
     if (waitList.isEmpty()) {
-      return new WaitResult<>(new ArrayList<>(), new ArrayList<>());
+      return new WaitResult<>(Collections.emptyList(), Collections.emptyList());
     }
 
     List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());

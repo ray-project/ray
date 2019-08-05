@@ -1,9 +1,10 @@
 package org.ray.runtime.objectstore;
 
-import com.google.common.collect.ImmutableList;
+import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
 import org.ray.api.exception.RayTaskException;
@@ -48,38 +49,35 @@ public class ObjectStoreProxy {
    * Get a list of objects from the object store.
    *
    * @param ids List of the object ids.
-   * @param timeoutMs Timeout in milliseconds.
    * @param <T> Type of these objects.
    * @return A list of GetResult objects.
    */
-  public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
-    List<NativeRayObject> dataAndMetaList = objectInterface.get(ids, timeoutMs);
+  @SuppressWarnings("unchecked")
+  public <T> List<T> get(List<ObjectId> ids) {
+    // Pass -1 as timeout to wait until all objects are available in object store.
+    List<NativeRayObject> dataAndMetaList = objectInterface.get(ids, -1);
 
-    List<GetResult<T>> results = new ArrayList<>();
+    List<T> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
       NativeRayObject dataAndMeta = dataAndMetaList.get(i);
-      GetResult<T> result;
+      Object object = null;
       if (dataAndMeta != null) {
-        Object object = deserialize(dataAndMeta, ids.get(i));
-        if (object instanceof RayException) {
-          // If the object is a `RayException`, it means that an error occurred during task
-          // execution.
-          result = new GetResult<>(true, null, (RayException) object);
-        } else {
-          // Otherwise, the object is valid.
-          result = new GetResult<>(true, (T) object, null);
-        }
-      } else {
-        // If both meta and data are null, the object doesn't exist in object store.
-        result = new GetResult<>(false, null, null);
+        object = deserialize(dataAndMeta, ids.get(i));
       }
-
-      results.add(result);
+      if (object instanceof RayException) {
+        // If the object is a `RayException`, it means that an error occurred during task
+        // execution.
+        throw (RayException) object;
+      }
+      results.add((T) object);
     }
+    // This check must be placed after the throw exception statement.
+    // Because if there was any exception, The get operation would return early
+    // and wouldn't wait until all objects exist.
+    Preconditions.checkState(dataAndMetaList.stream().allMatch(Objects::nonNull));
     return results;
   }
 
-  @SuppressWarnings("unchecked")
   public Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId) {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
@@ -115,7 +113,7 @@ public class ObjectStoreProxy {
    */
   public NativeRayObject serialize(Object object) {
     if (object instanceof NativeRayObject) {
-      return  (NativeRayObject) object;
+      return (NativeRayObject) object;
     } else if (object instanceof byte[]) {
       // If the object is a byte array, skip serializing it and use a special metadata to
       // indicate it's raw binary. So that this object can also be read by Python.
@@ -171,34 +169,5 @@ public class ObjectStoreProxy {
    */
   public ObjectInterface getObjectInterface() {
     return objectInterface;
-  }
-
-  /**
-   * A class that represents the result of a get operation.
-   */
-  public static class GetResult<T> {
-
-    /**
-     * Whether this object exists in object store.
-     */
-    public final boolean exists;
-
-    /**
-     * The Java object that was fetched and deserialized from the object store. Note, this field
-     * only makes sense when @code{exists == true && exception !=null}.
-     */
-    public final T object;
-
-    /**
-     * If this field is not null, it represents the exception that occurred during object's creating
-     * task.
-     */
-    public final RayException exception;
-
-    GetResult(boolean exists, T object, RayException exception) {
-      this.exists = exists;
-      this.object = object;
-      this.exception = exception;
-    }
   }
 }
