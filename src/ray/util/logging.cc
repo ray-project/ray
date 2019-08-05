@@ -120,6 +120,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   app_name_ = app_name;
   log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
+  google::InitGoogleLogging(app_name_.c_str());
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
   google::SetStderrLogging(mapped_severity_threshold);
   // Enable log file if log_dir_ is not empty.
@@ -138,7 +139,6 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_name.substr(pos + 1);
       }
     }
-    google::InitGoogleLogging(app_name_.c_str());
     google::SetLogFilenameExtension(app_name_without_path.c_str());
     for (int i = static_cast<int>(severity_threshold_);
          i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
