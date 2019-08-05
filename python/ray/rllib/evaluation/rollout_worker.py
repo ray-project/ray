@@ -314,7 +314,7 @@ class RolloutWorker(EvaluatorInterface):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
                     and not ray.get_gpu_ids()):
-                logger.info("Creating policy evaluation worker {}".format(
+                logger.debug("Creating policy evaluation worker {}".format(
                     worker_index) +
                             " on CPU (please ignore any CUDA init errors)")
             if not tf:
