@@ -34,7 +34,6 @@ from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
-
 REQUIRED, OPTIONAL = True, False
 
 # For (a, b), if a is a dictionary object, then
