@@ -92,7 +92,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
         GcsEntry gcs_entry;
         gcs_entry.ParseFromString(reply.ReadAsString());
         RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
-        for (size_t i = 0; i < gcs_entry.entries_size(); i++) {
+        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
           Data data;
           data.ParseFromString(gcs_entry.entries(i));
           results.emplace_back(std::move(data));
@@ -142,7 +142,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
         gcs_entry.ParseFromString(data);
         ID id = ID::FromBinary(gcs_entry.id());
         std::vector<Data> results;
-        for (size_t i = 0; i < gcs_entry.entries_size(); i++) {
+        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
           Data result;
           result.ParseFromString(gcs_entry.entries(i));
           results.emplace_back(std::move(result));
