@@ -2,6 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
+
+import torch
 import argparse
 from ray.experimental.sgd.pytorch import PyTorchTrainer
 
@@ -9,37 +12,35 @@ from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator, resnet_creator,
     xe_optimizer_creator, cifar_creator)
 
-# def train(train_iterator, model, criterion, optimizer):
-#     model.train()
-#     for batch_idx, (data, target) in enumerate(train_iterator):
-#         if target.size(0) < 128:
-#             continue
-#         # gather input and target for large batch training
-#         inner_loop += 1
-#         # get small model update
-#         if cuda:
-#             data, target = data.cuda(), target.cuda()
-#         output = model(data)
-#         loss = criterion(output, target) / float(large_ratio)
-#         loss.backward()
-#         train_loss += loss.item() * target.size(0) * float(large_ratio)
-#         total_num += target.size(0)
-#         _, predicted = output.max(1)
-#         correct += predicted.eq(target).sum().item()
-#         optimizer.step()
-#         optimizer.zero_grad()
-#     stats = {}
-#     return stats
+def train(train_iterator, model, criterion, optimizer):
+    model.train()
+    train_loss, total_num, correct = 0, 0, 0
+    for batch_idx, (data, target) in enumerate(train_iterator):
+        # get small model update
+        if torch.cuda.is_available():
+            data, target = data.cuda(), target.cuda()
+        output = model(data)
+        loss = criterion(output, target) # / float(large_ratio)
+        loss.backward()
+        train_loss += loss.item() * target.size(0) # * float(large_ratio)
+        total_num += target.size(0)
+        _, predicted = output.max(1)
+        correct += predicted.eq(target).sum().item()
+        optimizer.step()
+        optimizer.zero_grad()
+    stats = {"train_loss": train_loss / total_num}
+    return stats
 
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer1 = PyTorchTrainer(
         resnet_creator,
-        xe_optimizer_creator,
         cifar_creator,
-        # train_function=train,
+        xe_optimizer_creator,
+        train_function=train,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
+        batch_size=2048,
         backend="nccl")
     stats = trainer1.train()
     print(stats)

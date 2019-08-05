@@ -4,8 +4,8 @@ cluster_name: sgd-pytorch
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 1
-initial_workers: 1
-max_workers: 1
+initial_workers: 7
+max_workers: 7
 
 target_utilization_fraction: 0.9
 
@@ -47,12 +47,14 @@ worker_nodes:
     #         MarketType: spot
 
 setup_commands:
+    # Due to: https://github.com/pytorch/pytorch/issues/23534, torch 1.1 will not work due to NCCL errors.
+    - conda list -f torch | grep 1.2 || conda install -y pytorch-nightly=1.2.0.dev20190804 cudatoolkit=10.0 -c pytorch
+    # Since we are installing nightly torch 1.2, we need to build torchvision from source.
+    # --no-deps is to avoid reverting the above pytorch installation.
+    # torchvision must be installed after torch to maintain the correct linking of binaries
+    - pip list | grep torchvision || pip install git+https://github.com/pytorch/vision.git@6a834e983dbb8f6f233f40a301a64c4e1d49738c --no-deps
     - ray || pip install -U ray
-    - conda install pytorch-nightly cudatoolkit=10.0 -c pytorch  # Need 1.2.0
-    - pip install git+https://github.com/pytorch/vision.git --no-deps
-    # - pip install torch==1.0.1 -f https://download.pytorch.org/whl/cu90/stable
-    - pip install filelock ipdb ray[rllib] #tensorflow-gpu==1.12.0 ipdb ray[rllib]
-    # - pip install torch torchvision ipdb ray[rllib]
+    - pip install filelock ipdb ray[rllib]
     - cd python_ray && python setup-dev.py --yes
 
 

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -70,7 +71,7 @@ def cifar_creator(config):
                              (0.2023, 0.1994, 0.2010)),
     ])
     from filelock import FileLock
-    with FileLock("~/data.lock"):
+    with FileLock(os.path.expanduser("~/data.lock")):
         trainset = torchvision.datasets.CIFAR10(
             root='~/data',
             train=True,
