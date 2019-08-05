@@ -74,7 +74,7 @@ class Cluster(object):
         default_kwargs = {
             "num_cpus": 1,
             "num_gpus": 0,
-            "object_store_memory": 100 * (2**20),  # 100 MB
+            "object_store_memory": 100 * 1024 * 1024,  # 100 MiB
         }
         ray_params = ray.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
