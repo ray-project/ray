@@ -11,9 +11,9 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 #include "ray/rpc/raylet/raylet_client.h"
-#include "src/ray/util/test_util.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
+#include "src/ray/util/test_util.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
