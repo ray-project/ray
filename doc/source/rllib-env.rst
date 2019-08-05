@@ -222,7 +222,7 @@ To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across 
 Rock Paper Scissors Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `rock_paper_scissors_multiagent.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rock_paper_scissors_multiagent.py>`__ example demonstrates several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
+The `rock_paper_scissors_multiagent.py <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__ example demonstrates several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
 
 .. figure:: rock-paper-scissors.png
 
