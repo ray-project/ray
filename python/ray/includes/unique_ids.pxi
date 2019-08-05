@@ -199,8 +199,12 @@ cdef class TaskID(BaseID):
         return CTaskID.Size()
 
     @classmethod
-    def for_driver_task(cls):
-        return cls(CTaskID.ForDriverTask().Binary())
+    def for_fake_driver_task(cls):
+        return cls(CTaskID.ForFakeDriverTask().Binary())
+
+    @classmethod
+    def for_driver_task(cls, job_id):
+        return cls(CTaskID.ForDriverTask(CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def for_actor_creation_task(cls, actor_id):
