@@ -150,6 +150,9 @@ cdef class ObjectID(BaseID):
     def is_nil(self):
         return self.data.IsNil()
 
+    def task_id(self):
+        return TaskID(self.data.TaskId().Binary())
+
     cdef size_t hash(self):
         return self.data.Hash()
 

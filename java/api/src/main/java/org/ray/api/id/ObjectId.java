@@ -6,7 +6,6 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Random;
 import org.ray.api.ObjectType;
-import org.ray.api.TransportType;
 
 /**
  * Represents the id of a Ray object.
@@ -17,7 +16,7 @@ public class ObjectId extends BaseId implements Serializable {
 
   public static final ObjectId NIL = genNil();
 
-  private static int IS_TASK_FLAG_BITS_OFFSET = 15;
+  private static int CREATED_BY_TASK_FLAG_BITS_OFFSET = 15;
 
   private static int OBJECT_TYPE_FLAG_BITS_OFFSET = 14;
 
@@ -60,17 +59,11 @@ public class ObjectId extends BaseId implements Serializable {
    * Compute the object ID of an object put by the task.
    */
   public static ObjectId forPut(TaskId taskId, int putIndex) {
-    return forPut(taskId, putIndex, TransportType.STANDARD);
-  }
-
-  /**
-   * Compute the object ID of an object put by the task.
-   */
-  public static ObjectId forPut(TaskId taskId, int putIndex, TransportType transportType) {
     short flags = 0;
-    flags = setIsTaskFlag(flags, true);
+    flags = setCreatedByTaskFlag(flags, true);
+    // Set a default transport type with value 0.
+    flags = (short) (flags | (0x0 << TRANSPORT_TYPE_FLAG_BITS_OFFSET));
     flags = setObjectTypeFlag(flags, ObjectType.PUT_OBJECT);
-    flags = setTransportTypeFlags(flags, transportType);
 
     byte[] bytes = new byte[ObjectId.LENGTH];
     System.arraycopy(taskId.getBytes(), 0, bytes, 0, TaskId.LENGTH);
@@ -87,17 +80,11 @@ public class ObjectId extends BaseId implements Serializable {
    * Compute the object ID of an object return by the task.
    */
   public static ObjectId forReturn(TaskId taskId, int returnIndex) {
-    return forReturn(taskId, returnIndex, TransportType.STANDARD);
-  }
-
-  /**
-   * Compute the object ID of an object return by the task.
-   */
-  public static ObjectId forReturn(TaskId taskId, int returnIndex, TransportType transportType) {
     short flags = 0;
-    flags = setIsTaskFlag(flags, true);
+    flags = setCreatedByTaskFlag(flags, true);
+    // Set a default transport type with value 0.
+    flags = (short) (flags | (0x0 << TRANSPORT_TYPE_FLAG_BITS_OFFSET));
     flags = setObjectTypeFlag(flags, ObjectType.RETURN_OBJECT);
-    flags = setTransportTypeFlags(flags, transportType);
 
     byte[] bytes = new byte[ObjectId.LENGTH];
     System.arraycopy(taskId.getBytes(), 0, bytes, 0, TaskId.LENGTH);
@@ -124,25 +111,17 @@ public class ObjectId extends BaseId implements Serializable {
     return TaskId.fromBytes(taskIdBytes);
   }
 
-  private static short setIsTaskFlag(short flags, boolean isTask) {
-    if (isTask) {
-      return (short) (flags | (0x1 << IS_TASK_FLAG_BITS_OFFSET));
+  private static short setCreatedByTaskFlag(short flags, boolean createdByTask) {
+    if (createdByTask) {
+      return (short) (flags | (0x1 << CREATED_BY_TASK_FLAG_BITS_OFFSET));
     } else {
-      return (short) (flags | (0x0 << IS_TASK_FLAG_BITS_OFFSET));
+      return (short) (flags | (0x0 << CREATED_BY_TASK_FLAG_BITS_OFFSET));
     }
   }
 
   private static short setObjectTypeFlag(short flags, ObjectType objectType) {
     if (objectType == ObjectType.RETURN_OBJECT) {
       return (short)(flags | (0x1 << OBJECT_TYPE_FLAG_BITS_OFFSET));
-    } else {
-      return (short)(flags | (0x0 << OBJECT_TYPE_FLAG_BITS_OFFSET));
-    }
-  }
-
-  private static short setTransportTypeFlags(short flags, TransportType transportType) {
-    if (transportType == TransportType.DIRECT_ACTOR_CALL) {
-      return (short)(0x1 << TRANSPORT_TYPE_FLAG_BITS_OFFSET);
     } else {
       return (short)(flags | (0x0 << OBJECT_TYPE_FLAG_BITS_OFFSET));
     }

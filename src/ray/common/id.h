@@ -123,9 +123,7 @@ class ActorID : public BaseID<ActorID> {
   /// \return Size of `ActorID` in bytes.
   static size_t Size() { return kLength; }
 
-  /// Create an `ActorID` from the given information.
-  ///
-  /// The same arguments will return the same `ActorID`.
+  /// Create an `ActorID` by hashing the given information.
   ///
   /// \param job_id The job id to which this actor belongs.
   /// \param parent_task_id The id of the task which created this actor.

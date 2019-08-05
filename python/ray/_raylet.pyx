@@ -91,7 +91,7 @@ def compute_put_id(TaskID task_id, int64_t put_index):
                          % CObjectID.MaxObjectIndex())
     return ObjectID(CObjectID.ForPut(task_id.native(), put_index, 0).Binary())
 
-# TODO(qwang): fix this and compute return id.
+
 def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
