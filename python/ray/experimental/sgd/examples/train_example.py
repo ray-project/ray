@@ -6,7 +6,8 @@ import argparse
 from ray.experimental.sgd.pytorch import PyTorchTrainer
 
 from ray.experimental.sgd.tests.pytorch_utils import (
-    model_creator, optimizer_creator, data_creator, resnet_creator, xe_optimizer_creator, cifar_creator)
+    model_creator, optimizer_creator, data_creator, resnet_creator,
+    xe_optimizer_creator, cifar_creator)
 
 # def train(train_iterator, model, criterion, optimizer):
 #     model.train()

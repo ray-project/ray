@@ -27,7 +27,7 @@ auth:
 
 head_node:
     InstanceType: p3.8xlarge
-    ImageId: ami-0757fc5a639fe7666
+    ImageId: ami-0d96d570269578cd7
     #    InstanceMarketOptions:
     #        MarketType: spot
     #        SpotOptions:
@@ -36,7 +36,7 @@ head_node:
 
 worker_nodes:
     InstanceType: p3.8xlarge
-    ImageId: ami-0757fc5a639fe7666
+    ImageId: ami-0d96d570269578cd7
     # InstanceMarketOptions:
     #     MarketType: spot
         # SpotOptions:
@@ -47,12 +47,17 @@ worker_nodes:
     #         MarketType: spot
 
 setup_commands:
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
-    - conda install -y pytorch torchvision cudatoolkit=9.0 -c pytorch
-    - pip install -U ipdb ray[rllib]
+    - ray || pip install -U ray
+    - conda install pytorch-nightly cudatoolkit=10.0 -c pytorch  # Need 1.2.0
+    - pip install git+https://github.com/pytorch/vision.git --no-deps
+    # - pip install torch==1.0.1 -f https://download.pytorch.org/whl/cu90/stable
+    - pip install filelock ipdb ray[rllib] #tensorflow-gpu==1.12.0 ipdb ray[rllib]
+    # - pip install torch torchvision ipdb ray[rllib]
+    - cd python_ray && python setup-dev.py --yes
 
 
 file_mounts: {
+    ~/python_ray/: /Users/rliaw/Research/riselab/ray/python/ray/
 }
 
 # Custom commands that will be run on the head node after common setup.

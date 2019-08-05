@@ -7,7 +7,6 @@ import os
 import torch.distributed as dist
 import torch.utils.data
 
-
 import ray
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 

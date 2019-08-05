@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data
+import torchvision
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
@@ -76,8 +77,5 @@ def cifar_creator(config):
             download=True,
             transform=transform_train)
     valset = torchvision.datasets.CIFAR10(
-        root='~/data',
-        train=False,
-        download=False,
-        transform=transform_test)
+        root='~/data', train=False, download=False, transform=transform_test)
     return trainset, valset
