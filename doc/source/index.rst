@@ -99,7 +99,7 @@ Tune Quick Start
 RLlib Quick Start
 -----------------
 
-`RLlib`_ is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
+`RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
 
 .. code-block:: bash
 
