@@ -316,7 +316,7 @@ class RolloutWorker(EvaluatorInterface):
                     and not ray.get_gpu_ids()):
                 logger.debug("Creating policy evaluation worker {}".format(
                     worker_index) +
-                            " on CPU (please ignore any CUDA init errors)")
+                             " on CPU (please ignore any CUDA init errors)")
             if not tf:
                 raise ImportError("Could not import tensorflow")
             with tf.Graph().as_default():
