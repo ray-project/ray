@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import torch
 import argparse
 from ray.experimental.sgd.pytorch import PyTorchTrainer
@@ -15,7 +16,6 @@ def initialization_hook(runner):
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
     os.environ["NCCL_DEBUG"] = "INFO"
-
 
 
 def train(train_iterator, model, criterion, optimizer):
