@@ -53,7 +53,7 @@ bool GetRequest::ShouldRemoveObjects() const { return should_remove_; }
 
 bool GetRequest::Wait(int64_t timeout_ms) {
   if (timeout_ms < 0) {
-    // Wait forever until the object is ready.
+    // Wait forever until all objects are ready.
     Wait();
     return true;
   }
