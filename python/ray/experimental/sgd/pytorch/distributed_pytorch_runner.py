@@ -46,15 +46,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
             config=config,
             batch_size=batch_size)
         self.backend = backend
-        self.local_rank = None
-        if torch.cuda.is_available():
-            self.local_rank = 0
-            print("CUDA VISIBLE DEVICES", os.environ["CUDA_VISIBLE_DEVICES"])
-            # This is a hack because set_devices fails otherwise.
-            # os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            #     [str(i) for i in range(ray.services._autodetect_num_gpus())])
-
-            torch.cuda.set_device(self.local_rank)
 
     def setup(self, url, world_rank, world_size):
         """Connects to the distributed PyTorch backend and initializes the model.
@@ -83,11 +74,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
     def _setup_training(self):
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
-        if torch.cuda.is_available() and self.local_rank is not None:
+        if torch.cuda.is_available():
             self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model.cuda(),
-                device_ids=[self.local_rank],
-                output_device=self.local_rank)
+                self.model.cuda())
         else:
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)

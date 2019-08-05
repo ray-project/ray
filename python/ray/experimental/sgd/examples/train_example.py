@@ -5,6 +5,8 @@ from __future__ import print_function
 import os
 import torch
 import argparse
+
+import ray
 from ray.experimental.sgd.pytorch import PyTorchTrainer
 from ray.experimental.sgd.tests.pytorch_utils import (
     resnet_creator, xe_optimizer_creator, cifar_creator)
@@ -74,8 +76,6 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     args, _ = parser.parse_known_args()
-
-    import ray
 
     ray.init(redis_address=args.redis_address)
     train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
