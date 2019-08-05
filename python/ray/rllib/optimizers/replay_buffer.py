@@ -67,13 +67,14 @@ class ReplayBuffer(object):
             self._hit_count[i] += 1
         return (np.array(obses_t), np.array(actions), np.array(rewards),
                 np.array(obses_tp1), np.array(dones))
+
     @DeveloperAPI
     def sample_idxes(self, batch_size):
         return [
             random.randint(0,
                            len(self._storage) - 1) for _ in range(batch_size)
         ]
-    
+
     @DeveloperAPI
     def sample_with_idxes(self, idxes):
         self._num_sampled += len(idxes)

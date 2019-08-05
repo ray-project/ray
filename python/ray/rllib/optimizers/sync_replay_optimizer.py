@@ -144,8 +144,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 samples = self.before_learn_on_batch(
                     samples,
                     self.workers.local_worker().policy_map,
-                    self.train_batch_size
-                )
+                    self.train_batch_size)
             info_dict = self.workers.local_worker().learn_on_batch(samples)
             for policy_id, info in info_dict.items():
                 self.learner_stats[policy_id] = get_learner_stats(info)
@@ -167,7 +166,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
             for policy_id, replay_buffer in self.replay_buffers.items():
                 if self.synchronize_sampling:
                     if policy_id == "policy_0":
-                        idxes = replay_buffer.sample_idxes(self.train_batch_size)
+                        idxes = replay_buffer.sample_idxes(
+                            self.train_batch_size)
                 else:
                     idxes = replay_buffer.sample_idxes(self.train_batch_size)
 

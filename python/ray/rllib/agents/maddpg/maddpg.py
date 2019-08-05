@@ -51,7 +51,8 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": int(1e6),
-    # Observation compression. Note that compression makes simulation slow in MPE.
+    # Observation compression. Note that compression makes simulation slow in
+    # MPE.
     "compress_observations": False,
 
     # === Optimization ===
@@ -104,7 +105,10 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
         i = pid.split("_")[1]
         keys = multi_agent_batch.policy_batches[pid].data.keys()
         keys = ["_".join([k, i]) for k in keys]
-        samples.update(dict(zip(keys, multi_agent_batch.policy_batches[pid].data.values())))
+        samples.update(
+            dict(
+                zip(keys,
+                    multi_agent_batch.policy_batches[pid].data.values())))
 
     # Make ops and feed_dict to get "new_obs" from target action sampler.
     new_obs_ph_n = [p.new_obs_ph for p in policies.values()]
@@ -117,9 +121,9 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     feed_dict = dict(zip(new_obs_ph_n, new_obs_n))
 
     new_act_n = p.sess.run(target_act_sampler_n, feed_dict)
-    samples.update({
-        "new_actions_%d" % i: new_act for i, new_act in enumerate(new_act_n)
-    })
+    samples.update(
+        {"new_actions_%d" % i: new_act
+         for i, new_act in enumerate(new_act_n)})
 
     # Share samples among agents.
     policy_batches = {pid: SampleBatch(samples) for pid in policies.keys()}
@@ -134,8 +138,7 @@ def make_optimizer(workers, config):
         train_batch_size=config["train_batch_size"],
         before_learn_on_batch=before_learn_on_batch,
         synchronize_sampling=True,
-        prioritized_replay=False
-    )
+        prioritized_replay=False)
 
 
 def add_trainer_metrics(trainer, result):
@@ -161,5 +164,4 @@ MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
     make_policy_optimizer=make_optimizer,
     after_train_result=add_trainer_metrics,
     collect_metrics_fn=collect_metrics,
-    before_evaluate_fn=None
-)
+    before_evaluate_fn=None)
