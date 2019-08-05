@@ -33,6 +33,7 @@ def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
         ("ControlMaster", "auto"),
         ("ControlPath", "{}/%C".format(ssh_control_path)),
         ("ControlPersist", "10s"),
+        ("LogLevel", "QUIET"),
     ]
 
     return ["-i", private_key] + [
@@ -172,7 +173,6 @@ class NodeUpdater(object):
                 # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
                 # for Unix domain socket.
                 self.ssh_cmd("uptime", connect_timeout=5, redirect=False)
-
                 return True
 
             except Exception as e:
@@ -180,9 +180,8 @@ class NodeUpdater(object):
                 if hasattr(e, "cmd"):
                     retry_str = "(Exit Status {}): {}".format(
                         e.returncode, " ".join(e.cmd))
-                logger.debug("NodeUpdater: "
-                             "{}: SSH not up, retrying: {}".format(
-                                 self.node_id, retry_str))
+                logger.info("NodeUpdater: "
+                            "{}: SSH not up, retrying.".format(self.node_id))
                 time.sleep(SSH_CHECK_INTERVAL)
 
         return False
@@ -274,10 +273,10 @@ class NodeUpdater(object):
 
         self.set_ssh_ip_if_required()
 
-        logger.info("NodeUpdater: Running {} on {}...".format(
+        logger.info("NodeUpdater: Running `{}` on {}...".format(
             cmd, self.ssh_ip))
         ssh = ["ssh"]
-        if allocate_tty:
+        if allocate_tty or emulate_interactive:
             ssh.append("-tt")
         if emulate_interactive:
             force_interactive = (

@@ -107,8 +107,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         A = remaining_nodes()
         with LogTimer("teardown_cluster: Termination done."):
             while A:
-                logger.info("teardown_cluster: "
-                            "Terminating {} nodes...".format(len(A)))
+                print("Terminating {} nodes...".format(len(A)))
                 provider.terminate_nodes(A)
                 time.sleep(1)
                 A = remaining_nodes()
@@ -191,11 +190,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             if head_node is not None:
                 confirm("Head node config out-of-date. It will be terminated",
                         yes)
-                logger.info(
-                    "get_or_create_head_node: "
-                    "Terminating outdated head node {}".format(head_node))
+                print("Terminating outdated head node {}".format(head_node))
                 provider.terminate_node(head_node)
-            logger.info("get_or_create_head_node: Launching new head node...")
+            print("Launching new head node...")
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
             head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                 config["cluster_name"])
