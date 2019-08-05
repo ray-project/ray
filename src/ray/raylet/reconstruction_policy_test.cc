@@ -5,9 +5,9 @@
 
 #include <boost/asio.hpp>
 
-#include "ray/raylet/reconstruction_policy.h"
-
+#include "ray/gcs/callback.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/raylet/reconstruction_policy.h"
 
 namespace ray {
 
@@ -92,7 +92,8 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   }
 
   Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
-                              const ClientID &client_id) {
+                              const ClientID &client_id,
+                              const gcs::StatusCallback &done) {
     subscribed_tasks_.insert(task_id);
     auto entry = task_lease_table_.find(task_id);
     if (entry == task_lease_table_.end()) {
@@ -104,7 +105,7 @@ class MockGcs : public gcs::PubsubInterface<TaskID>,
   }
 
   Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
-                             const ClientID &client_id) {
+                             const ClientID &client_id, const gcs::StatusCallback &done) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }

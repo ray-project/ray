@@ -666,7 +666,7 @@ cc_library(
     ],
 )
 
-# TODO(micafan) Replace cc_binary with cc_test for those test.
+# TODO(micafan) Replace cc_binary with cc_test for GCS test.
 cc_binary(
     name = "redis_gcs_client_test",
     testonly = 1,

@@ -7,6 +7,7 @@
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
+#include "ray/gcs/callback.h"
 #include "ray/raylet/lineage_cache.h"
 
 namespace ray {
@@ -61,7 +62,8 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
-                              const ClientID &client_id) {
+                              const ClientID &client_id,
+                              const gcs::StatusCallback &done) {
     subscribed_tasks_.insert(task_id);
     if (task_table_.count(task_id) == 1) {
       callbacks_.push_back({notification_callback_, task_id});
@@ -71,7 +73,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
-                             const ClientID &client_id) {
+                             const ClientID &client_id, const gcs::StatusCallback &done) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
