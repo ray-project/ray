@@ -1471,8 +1471,8 @@ def start_plasma_store(stdout_file=None,
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
     logger.debug("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(
-                    round(object_store_memory_str, 2), plasma_directory))
+                 "using {}.".format(
+                     round(object_store_memory_str, 2), plasma_directory))
     # Start the Plasma store.
     process_info = _start_plasma_store(
         object_store_memory,
