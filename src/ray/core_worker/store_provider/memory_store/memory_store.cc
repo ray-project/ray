@@ -7,7 +7,7 @@
 
 namespace ray {
 
-/// A class that represents a `Get` or `Wait` reuquest.
+/// A class that represents a `Get` reuquest.
 class GetRequest {
  public:
   GetRequest(const std::vector<ObjectID> &object_ids, bool remove_after_get);
@@ -53,12 +53,12 @@ bool GetRequest::ShouldRemoveObjects() const { return should_remove_; }
 
 bool GetRequest::Wait(int64_t timeout_ms) {
   if (timeout_ms < 0) {
-    // Wait forever until the object is ready.
+    // Wait forever until all objects are ready.
     Wait();
     return true;
   }
 
-  // Wait until the object is ready, or the timeout expires.
+  // Wait until all objects are ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
   while (!is_ready_) {
     auto status = cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms));
