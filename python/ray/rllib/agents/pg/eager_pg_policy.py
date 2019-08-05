@@ -11,19 +11,6 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-def make_model(policy, observation_space, action_space, config):
-    del policy
-    _, logit_dim = catalog.ModelCatalog.get_action_dist(
-        action_space, config["model"])
-
-    return catalog.ModelCatalog.get_model_v2(
-        observation_space,
-        action_space,
-        logit_dim,
-        config["model"],
-        framework="tf",
-    )
-
 
 def make_optimizer(policy, observation_space, action_space, config):
     del policy, observation_space, action_space

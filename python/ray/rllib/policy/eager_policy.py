@@ -5,6 +5,8 @@ from __future__ import print_function
 import tensorflow as tf
 
 from ray.rllib.policy import policy
+from ray.rllib.models import catalog
+
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -146,7 +148,16 @@ def build_tf_policy(name, postprocess_fn, loss_fn, make_model,
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
-            model = make_model(self, observation_space, action_space, config)
+            self.dist_class, logit_dim = catalog.ModelCatalog.get_action_dist(
+                action_space, config["model"])
+
+            model = catalog.ModelCatalog.get_model_v2(
+                observation_space,
+                action_space,
+                logit_dim,
+                config["model"],
+                framework="tf",
+            )
             optimizer = make_optimizer(self, observation_space, action_space,
                                        config)
             TFEagerPolicy.__init__(self, optimizer, model, observation_space,
@@ -164,12 +175,10 @@ def build_tf_policy(name, postprocess_fn, loss_fn, make_model,
                             episodes=None,
                             **kwargs):
             seq_len = tf.ones(len(obs_batch))
-            actions = self.model(obs_batch, state_batches, seq_len)
-            try:
-                actions = actions.sample()
-            except AttributeError:
-                pass
-            return actions
+            model_out, states = self.model(obs_batch, state_batches, seq_len)
+
+            actions_dist = self.dist_class(model_out)
+            return actions_dist.sample(), states, {}
 
         def loss(self, outputs, samples):
             return loss_fn(outputs, samples)
