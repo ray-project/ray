@@ -13,7 +13,7 @@ import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.objectstore.NativeRayObject;
+import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -88,7 +88,8 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(11),
         Ray.call(ActorTest::testActorAsSecondParameter, 10, actor).get());
     Assert.assertEquals(Integer.valueOf(111),
-        Ray.call(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100).get());
+        Ray.call(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100)
+            .get());
   }
 
   @Test
