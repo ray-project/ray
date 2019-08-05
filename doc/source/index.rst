@@ -68,7 +68,7 @@ See more details in the `Cluster Launch page <autoscaling.html>`_.
 Tune Quick Start
 ----------------
 
-`Tune`_ is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
+`Tune`_ is a scalable framework for hyperparameter search built on top of Ray with a focus on deep learning and deep reinforcement learning.
 
 .. code-block:: python
 
@@ -97,7 +97,7 @@ Tune Quick Start
 RLlib Quick Start
 -----------------
 
-`RLlib`_ is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
+`RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
 
 .. code-block:: bash
 

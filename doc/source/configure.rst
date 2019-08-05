@@ -1,9 +1,9 @@
 Configuring Ray
 ===============
 
-This page discusses the various way to configure ray, both from the Python API and from command line.
-Take a look at the ``ray.init`` `documentation <package-ref.html#ray.init>`__ for a complete overview
-of the configurations.
+This page discusses the various way to configure Ray, both from the Python API
+and from the command line. Take a look at the ``ray.init`` `documentation
+<package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
 Cluster Resources
 -----------------
@@ -121,7 +121,7 @@ To add authentication via the Python API, start Ray using:
 
   ray.init(redis_password="password")
 
-To add authentication via the CLI, or connect to an existing Ray instance with
+To add authentication via the CLI or to connect to an existing Ray instance with
 password-protected Redis ports:
 
 .. code-block:: bash
