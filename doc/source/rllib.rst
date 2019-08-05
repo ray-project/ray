@@ -73,6 +73,8 @@ Algorithms
 
    -  `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
+   -  `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
+
 *  Derivative-free
 
    -  `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
@@ -97,6 +99,8 @@ Offline Datasets
 Concepts and Custom Algorithms
 ------------------------------
 *  `Policies <rllib-concepts.html>`__
+
+   -  `Policies in Multi-Agent <rllib-concepts.html#policies-in-multi-agent>`__
 
    -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__
 

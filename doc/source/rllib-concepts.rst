@@ -103,6 +103,11 @@ The above basic policy, when run, will produce batches of observations with the 
         assert "other_value" in samples.keys()
 
 
+Policies in Multi-Agent
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Beyond being agnostic of framework implementation, one of the main reasons to have a Policy abstraction is for use in multi-agent environments. For example, the `rock-paper-scissors example <rllib-env.html#rock-paper-scissors-example>`__ shows how you can leverage the Policy abstraction to evaluate heuristic policies against learned policies.
+
 Building Policies in TensorFlow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -143,7 +148,7 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
     MyTrainer = build_trainer(
         name="MyCustomTrainer",
         default_policy=MyTFPolicy)
-    
+
     ray.init()
     tune.run(MyTrainer, config={"env": "CartPole-v0", "num_workers": 2})
 
@@ -245,7 +250,7 @@ Suppose we want to customize PPO to use an asynchronous-gradient optimization st
 
 
 The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
- 
+
 Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are be multiple policies each with different KL coeffs):
 
 .. code-block:: python
@@ -599,7 +604,7 @@ This is how the example in the previous section looks when written using a polic
         policy=CustomPolicy,
         env_creator=lambda c: gym.make("CartPole-v0"),
         num_workers=10)
-    
+
     # this optimizer implements the IMPALA architecture
     optimizer = AsyncSamplesOptimizer(workers, train_batch_size=500)
 
@@ -610,7 +615,7 @@ This is how the example in the previous section looks when written using a polic
 Trainers
 --------
 
-Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <https://ray.readthedocs.io/en/latest/tune-usage.html#training-api>`__ for easy experiment management.
+Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <tune-usage.html#training-api>`__ for easy experiment management.
 
 Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
 
@@ -625,6 +630,6 @@ Example of three equivalent ways of interacting with the PPO trainer, all of whi
     rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
 
 .. code-block:: python
-    
+
     from ray import tune
     tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
