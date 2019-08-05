@@ -10,7 +10,6 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
-import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayActorImpl;

@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
