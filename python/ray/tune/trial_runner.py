@@ -173,13 +173,18 @@ class TrialRunner(object):
                 logger.exception(
                     "Runner restore failed. Restarting experiment.")
         else:
-            logger.info("Starting a new experiment.")
+            logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
         self._last_checkpoint_time = -float("inf")
         self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
+        self.checkpoint_file = None
+        if self._local_checkpoint_dir:
+            self.checkpoint_file = os.path.join(
+                self._local_checkpoint_dir,
+                TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
@@ -260,10 +265,7 @@ class TrialRunner(object):
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
-        os.rename(
-            tmp_file_name,
-            os.path.join(self._local_checkpoint_dir,
-                         TrialRunner.CKPT_FILE_TMPL.format(self._session_str)))
+        os.rename(tmp_file_name, self.checkpoint_file)
         self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
@@ -277,6 +279,7 @@ class TrialRunner(object):
         newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
+            self.checkpoint_file = newest_ckpt_path
 
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(

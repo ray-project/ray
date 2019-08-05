@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import os
 import signal
 import sys
@@ -311,8 +312,12 @@ def check_components_alive(cluster, component_type, check_component_alive):
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 8,
-        "num_nodes": 4
-    }], indirect=True)
+        "num_nodes": 4,
+        "_internal_config": json.dumps({
+            "num_heartbeats_timeout": 100
+        }),
+    }],
+    indirect=True)
 def test_raylet_failed(ray_start_cluster):
     cluster = ray_start_cluster
     # Kill all raylets on worker nodes.
@@ -329,8 +334,12 @@ def test_raylet_failed(ray_start_cluster):
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 8,
-        "num_nodes": 2
-    }], indirect=True)
+        "num_nodes": 2,
+        "_internal_config": json.dumps({
+            "num_heartbeats_timeout": 100
+        }),
+    }],
+    indirect=True)
 def test_plasma_store_failed(ray_start_cluster):
     cluster = ray_start_cluster
     # Kill all plasma stores on worker nodes.

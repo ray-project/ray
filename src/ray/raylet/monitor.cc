@@ -49,10 +49,11 @@ void Monitor::Tick() {
         RAY_LOG(WARNING) << "Client timed out: " << client_id;
         auto lookup_callback = [this, client_id](
                                    gcs::RedisGcsClient *client, const ClientID &id,
-                                   const std::vector<ClientTableData> &all_data) {
+                                   const std::vector<GcsNodeInfo> &all_node) {
           bool marked = false;
-          for (const auto &data : all_data) {
-            if (client_id.Binary() == data.client_id() && !data.is_insertion()) {
+          for (const auto &node : all_node) {
+            if (client_id.Binary() == node.node_id() &&
+                node.state() == GcsNodeInfo::DEAD) {
               // The node has been marked dead by itself.
               marked = true;
             }

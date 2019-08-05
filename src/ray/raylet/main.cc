@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.7.2"},
+      {ray::stats::VersionKey, "0.8.0.dev3"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
   RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                  << "rpc_service_threads_number = "
                  << object_manager_config.rpc_service_threads_number
-                 << "object_chunk_size = " << object_manager_config.object_chunk_size;
+                 << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
@@ -171,6 +171,7 @@ int main(int argc, char *argv[]) {
       server.reset();
       gcs_client->Disconnect();
       main_service.stop();
+      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
     // Give a timeout for this Disconnect operation.

@@ -11,7 +11,8 @@ from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import ExplorationStateMixin, \
     TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models import ModelCatalog, Categorical
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -300,12 +301,9 @@ def _build_parameter_noise(policy, pnet_params):
 def build_q_losses(policy, batch_tensors):
     config = policy.config
     # q network evaluation
-    prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
     q_t, q_logits_t, q_dist_t = _compute_q_values(
         policy, policy.q_model, batch_tensors[SampleBatch.CUR_OBS],
         policy.observation_space, policy.action_space)
-    policy.q_batchnorm_update_ops = list(
-        set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
@@ -495,7 +493,6 @@ DQNTFPolicy = build_tf_policy(
     extra_action_feed_fn=exploration_setting_inputs,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
-    update_ops_fn=lambda policy: policy.q_batchnorm_update_ops,
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,

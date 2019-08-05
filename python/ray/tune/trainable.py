@@ -459,7 +459,9 @@ class Trainable(object):
 
         Args:
             checkpoint_dir (str): The directory where the checkpoint
-                file must be stored.
+                file must be stored. In a Tune run, this defaults to
+                `<self.logdir>/checkpoint_<ITER>` (which is the same as
+                `local_dir/exp_name/trial_name/checkpoint_<ITER>`).
 
         Returns:
             checkpoint (str | dict): If string, the return value is

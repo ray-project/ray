@@ -444,7 +444,7 @@ def test_actor_deletion(ray_start_regular):
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1)
+    ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(10**8))
 
     # When an actor that uses a GPU exits, make sure that the GPU resources
     # are released.
@@ -1740,7 +1740,7 @@ def test_nondeterministic_reconstruction_concurrent_forks(
 
 @pytest.fixture
 def setup_queue_actor():
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     class Queue(object):
@@ -2680,7 +2680,7 @@ def test_decorated_method(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(20)
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -2744,9 +2744,13 @@ def test_ray_wait_dead_actor(ray_start_cluster):
             _, self.unready = ray.wait(self.unready, timeout=0)
             return len(self.unready) == 0
 
+        def ping(self):
+            return
+
     # Repeatedly call ray.wait through the local actor until the exception for
     # the dead actor is received.
     parent_actor = ParentActor.remote(ping_ids)
+    ray.get(parent_actor.ping.remote())
     failure_detected = False
     while not failure_detected:
         failure_detected = ray.get(parent_actor.wait.remote())

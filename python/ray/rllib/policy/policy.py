@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import numpy as np
 import gym
 
@@ -10,6 +11,9 @@ from ray.rllib.utils.annotations import DeveloperAPI
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# Used to return tuple actions as a list of batches per tuple element
+TupleActions = namedtuple("TupleActions", ["batches"])
 
 
 @DeveloperAPI

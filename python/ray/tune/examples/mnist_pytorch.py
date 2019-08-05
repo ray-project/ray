@@ -4,8 +4,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 import argparse
+from filelock import FileLock
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,9 +24,9 @@ EPOCH_SIZE = 512
 TEST_SIZE = 256
 
 
-class Net(nn.Module):
-    def __init__(self, config):
-        super(Net, self).__init__()
+class ConvNet(nn.Module):
+    def __init__(self):
+        super(ConvNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
         self.fc = nn.Linear(192, 10)
 
@@ -35,7 +37,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device):
+def train(model, optimizer, train_loader, device=torch.device("cpu")):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > EPOCH_SIZE:
@@ -48,7 +50,7 @@ def train(model, optimizer, train_loader, device):
         optimizer.step()
 
 
-def test(model, data_loader, device):
+def test(model, data_loader, device=torch.device("cpu")):
     model.eval()
     correct = 0
     total = 0
@@ -70,11 +72,18 @@ def get_data_loaders():
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
 
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            "~/data", train=True, download=True, transform=mnist_transforms),
-        batch_size=64,
-        shuffle=True)
+    # We add FileLock here because multiple workers will want to
+    # download data, and this may cause overwrites since
+    # DataLoader is not threadsafe.
+    with FileLock(os.path.expanduser("~/data.lock")):
+        train_loader = torch.utils.data.DataLoader(
+            datasets.MNIST(
+                "~/data",
+                train=True,
+                download=True,
+                transform=mnist_transforms),
+            batch_size=64,
+            shuffle=True)
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST("~/data", train=False, transform=mnist_transforms),
         batch_size=64,
@@ -86,7 +95,7 @@ def train_mnist(config):
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
-    model = Net(config).to(device)
+    model = ConvNet().to(device)
 
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
@@ -112,24 +121,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.ray_redis_address:
         ray.init(redis_address=args.ray_redis_address)
-    datasets.MNIST("~/data", train=True, download=True)
     sched = AsyncHyperBandScheduler(
         time_attr="training_iteration", metric="mean_accuracy")
-    tune.run(
+    analysis = tune.run(
         train_mnist,
         name="exp",
         scheduler=sched,
         stop={
             "mean_accuracy": 0.98,
-            "training_iteration": 5 if args.smoke_test else 20
+            "training_iteration": 5 if args.smoke_test else 100
         },
         resources_per_trial={
             "cpu": 2,
             "gpu": int(args.cuda)
         },
-        num_samples=1 if args.smoke_test else 10,
+        num_samples=1 if args.smoke_test else 50,
         config={
             "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
             "momentum": tune.uniform(0.1, 0.9),
             "use_gpu": int(args.cuda)
         })
+
+    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))

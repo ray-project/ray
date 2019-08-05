@@ -15,9 +15,9 @@ parser.add_argument("--iters", type=int, default=200)
 
 
 def policy_gradient_loss(policy, batch_tensors):
-    logits, _, values, _ = policy.model({
+    logits, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-    }, [])
+    })
     action_dist = policy.dist_class(logits)
     log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
     return -batch_tensors[SampleBatch.REWARDS].dot(log_probs)
