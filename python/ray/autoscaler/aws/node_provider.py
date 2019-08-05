@@ -240,7 +240,7 @@ class AWSNodeProvider(NodeProvider):
                             max_retries))
                     raise exc
                 else:
-                    logger.error("%s. Retrying...", str(exc))
+                    logger.debug("%s. Retrying...", str(exc))
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)

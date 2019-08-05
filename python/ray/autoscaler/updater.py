@@ -160,14 +160,13 @@ class NodeUpdater(object):
         self.exitcode = 0
 
     def wait_for_ssh(self, deadline):
-        logger.info("NodeUpdater: "
-                    "{}: Waiting for SSH...".format(self.node_id))
 
+        waiting_msg = "NodeUpdater: {}: Waiting for SSH...".format(
+            self.node_id)
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
-                logger.debug("NodeUpdater: "
-                             "{}: Waiting for SSH...".format(self.node_id))
+                logger.debug(waiting_msg)
 
                 # Setting redirect=False allows the user to see errors like
                 # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too long
@@ -181,9 +180,8 @@ class NodeUpdater(object):
                     retry_str = "(Exit Status {}): {}".format(
                         e.returncode, " ".join(e.cmd))
                 logger.debug("NodeUpdater: "
-                             "{}: {}".fromat(self.node_id, retry_str))
-                logger.info("NodeUpdater: "
-                            "{}: SSH not up, retrying.".format(self.node_id))
+                            "{}: SSH not up, retrying {}.".format(
+                                self.node_id, retry_str))
                 time.sleep(SSH_CHECK_INTERVAL)
 
         return False
