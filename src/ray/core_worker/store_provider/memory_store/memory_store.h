@@ -31,7 +31,9 @@ class CoreWorkerMemoryStore {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] remove_after_get When to remove the objects from store after `Get`
-  /// finishes. \param[out] results Result list of objects data. \return Status.
+  /// finishes.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, bool remove_after_get,
              std::vector<std::shared_ptr<RayObject>> *results);
 
