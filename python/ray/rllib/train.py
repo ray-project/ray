@@ -11,7 +11,7 @@ import ray
 from ray.tests.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import resources_to_json
+from ray.tune.resources import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
 EXAMPLE_USAGE = """

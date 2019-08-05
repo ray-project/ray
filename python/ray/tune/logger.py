@@ -52,7 +52,7 @@ class Logger(object):
         raise NotImplementedError
 
     def update_config(self, config):
-        """Updates the config for all loggers."""
+        """Updates the config for logger."""
 
         pass
 
