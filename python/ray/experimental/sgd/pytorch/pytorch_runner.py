@@ -21,6 +21,7 @@ class PyTorchRunner(object):
                  optimizer_creator,
                  train_function=None,
                  validation_function=None,
+                 initialization_hook=None,
                  config=None,
                  batch_size=16):
         """Initializes the runner.
@@ -33,7 +34,8 @@ class PyTorchRunner(object):
             config (dict): see pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
-
+        if initialization_hook:
+            initialization_hook(self)
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator

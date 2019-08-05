@@ -7,7 +7,6 @@ import os
 import torch.distributed as dist
 import torch.utils.data
 
-import ray
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 logger = logging.getLogger(__name__)
@@ -22,6 +21,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
                  optimizer_creator,
                  train_function=None,
                  validation_function=None,
+                 initialization_hook=None,
                  config=None,
                  batch_size=16,
                  backend="gloo"):
@@ -36,17 +36,13 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
-        print("NCCL DEBUG SET")
-        # Need this for avoiding a connection restart issue
-        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
-        os.environ["NCCL_LL_THRESHOLD"] = "0"
-        os.environ["NCCL_DEBUG"] = "INFO"
         super(DistributedPyTorchRunner, self).__init__(
             model_creator,
             data_creator,
             optimizer_creator,
             train_function=train_function,
             validation_function=validation_function,
+            initialization_hook=initialization_hook,
             config=config,
             batch_size=batch_size)
         self.backend = backend
