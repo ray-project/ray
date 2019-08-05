@@ -156,7 +156,7 @@ std::string TaskSpecification::DebugString() const {
   const auto list = VectorFromProtobuf(message_->function_descriptor());
   // The 4th is the code hash which is binary bits. No need to output it.
   const size_t size = std::min(static_cast<size_t>(3), list.size());
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     if (i != 0) {
       stream << ",";
     }
