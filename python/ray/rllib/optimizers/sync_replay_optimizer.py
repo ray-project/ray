@@ -184,10 +184,11 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
     def _replay(self):
         samples = {}
+        idxes = None
         with self.replay_timer:
             for policy_id, replay_buffer in self.replay_buffers.items():
                 if self.synchronize_sampling:
-                    if policy_id == "policy_0":
+                    if idxes is None:
                         idxes = replay_buffer.sample_idxes(
                             self.train_batch_size)
                 else:

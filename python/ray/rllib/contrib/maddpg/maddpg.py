@@ -1,12 +1,22 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+"""Contributed port of MADDPG from OpenAI baselines.
+
+The implementation has a couple assumptions:
+- The number of agents is fixed and known upfront.
+- Each agent is bound to a policy of the same name.
+- Discrete actions are sent as logits (pre-softmax).
+
+For a minimal example, see twostep_game.py, and the README for how to run
+with the multi-agent particle envs.
+"""
 
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.agents.maddpg.maddpg_policy import MADDPGTFPolicy
+from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
@@ -16,6 +26,12 @@ logger.setLevel(logging.INFO)
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Settings for each individual policy ===
+    # ID of the agent controlled by this policy
+    "agent_id": None,
+    # Use a local critic for this policy.
+    "use_local_critic": False,
+
     # === Evaluation ===
     # Evaluation interval
     "evaluation_interval": None,
@@ -102,9 +118,9 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
 
     # Modify keys.
     for pid, p in policies.items():
-        i = pid.split("_")[1]
+        i = p.config["agent_id"]
         keys = multi_agent_batch.policy_batches[pid].data.keys()
-        keys = ["_".join([k, i]) for k in keys]
+        keys = ["_".join([k, str(i)]) for k in keys]
         samples.update(
             dict(
                 zip(keys,

@@ -51,15 +51,20 @@ class MADDPGPostprocessing(object):
 class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
-        self.config = config = dict(ray.rllib.agents.maddpg.DEFAULT_CONFIG,
+        self.config = config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG,
                                     **config)
         self.global_step = tf.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
         # supported now.
-        self.get_done_from_info = np.vectorize(lambda info: info["done"])
+        self.get_done_from_info = np.vectorize(
+            lambda info: info.get("done", False))
 
         agent_id = config["agent_id"]
+        if agent_id is None:
+            raise ValueError("Must set `agent_id` in the policy config.")
+        if type(agent_id) is not int:
+            raise ValueError("Agent ids must be integers for MADDPG.")
 
         # _____ Environment Setting
         def _make_continuous_space(space):
@@ -74,11 +79,13 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         obs_space_n = [
             _make_continuous_space(space)
-            for space in config["obs_space_dict"].values()
+            for _, (_, space, _,
+                    _) in sorted(config["multiagent"]["policies"].items())
         ]
         act_space_n = [
             _make_continuous_space(space)
-            for space in config["act_space_dict"].values()
+            for _, (_, _, space,
+                    _) in sorted(config["multiagent"]["policies"].items())
         ]
 
         # _____ Placeholders
@@ -96,9 +103,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         new_obs_ph_n = _make_ph_n(obs_space_n, "new_obs")
         new_act_ph_n = _make_ph_n(act_space_n, "new_actions")
         rew_ph = tf.placeholder(
-            tf.float32, shape=None, name="rewards_%d" % agent_id)
+            tf.float32, shape=None, name="rewards_{}".format(agent_id))
         done_ph = tf.placeholder(
-            tf.float32, shape=None, name="dones_%d" % agent_id)
+            tf.float32, shape=None, name="dones_{}".format(agent_id))
 
         if config["use_local_critic"]:
             obs_space_n, act_space_n = [obs_space_n[agent_id]], [
