@@ -11,7 +11,7 @@ To run the application, first install some dependencies.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents/es
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/rllib/agents/es
 
 The script can be run as follows. Note that the configuration is tuned to work
 on the ``Humanoid-v1`` gym environment.

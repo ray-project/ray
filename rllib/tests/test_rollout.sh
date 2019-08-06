@@ -1,10 +1,10 @@
 #!/bin/bash -e
 
-TRAIN=/ray/python/ray/rllib/train.py
+TRAIN=/ray/rllib/train.py
 if [ ! -e "$TRAIN" ]; then
     TRAIN=../train.py
 fi
-ROLLOUT=/ray/python/ray/rllib/rollout.py
+ROLLOUT=/ray/rllib/rollout.py
 if [ ! -e "$ROLLOUT" ]; then
     ROLLOUT=../rollout.py
 fi
