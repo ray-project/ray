@@ -6,3 +6,5 @@ environment:
     - first command
     - second command
     - third command
+
+cluster: "cluster.yaml"

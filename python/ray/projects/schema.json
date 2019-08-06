@@ -60,5 +60,5 @@
       }
     }
   },
-  "required": ["name"]
+  "required": ["name", "cluster"]
 }
