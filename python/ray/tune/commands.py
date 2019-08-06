@@ -140,7 +140,6 @@ def list_trials(experiment_path,
     col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
     if not col_keys:
         raise click.ClickException("No columns to output.")
-    checkpoints_df = checkpoints_df[col_keys]
 
     if "last_update_time" in checkpoints_df:
         with pd.option_context("mode.use_inf_as_null", True):

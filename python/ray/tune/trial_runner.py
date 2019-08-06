@@ -173,7 +173,7 @@ class TrialRunner(object):
                 logger.exception(
                     "Runner restore failed. Restarting experiment.")
         else:
-            logger.info("Starting a new experiment.")
+            logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
         self._last_checkpoint_time = -float("inf")
