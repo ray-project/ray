@@ -43,49 +43,49 @@ def _parse_client_table(redis_client):
     node_info = {}
     gcs_entry = gcs_utils.GcsEntry.FromString(message)
 
-    ordered_client_ids = []
+    ordered_node_ids = []
 
     # Since GCS entries are append-only, we override so that
     # only the latest entries are kept.
     for entry in gcs_entry.entries:
-        client = gcs_utils.ClientTableData.FromString(entry)
+        item = gcs_utils.GcsNodeInfo.FromString(entry)
 
-        client_id = ray.utils.binary_to_hex(client.client_id)
+        node_id = ray.utils.binary_to_hex(item.node_id)
 
-        if client.is_insertion:
-            ordered_client_ids.append(client_id)
-            node_info[client_id] = {
-                "ClientID": client_id,
-                "IsInsertion": client.is_insertion,
-                "NodeManagerAddress": client.node_manager_address,
-                "NodeManagerPort": client.node_manager_port,
-                "ObjectManagerPort": client.object_manager_port,
-                "ObjectStoreSocketName": client.object_store_socket_name,
-                "RayletSocketName": client.raylet_socket_name
+        if item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"):
+            ordered_node_ids.append(node_id)
+            node_info[node_id] = {
+                "NodeID": node_id,
+                "Alive": True,
+                "NodeManagerAddress": item.node_manager_address,
+                "NodeManagerPort": item.node_manager_port,
+                "ObjectManagerPort": item.object_manager_port,
+                "ObjectStoreSocketName": item.object_store_socket_name,
+                "RayletSocketName": item.raylet_socket_name
             }
 
-        # If this client is being removed, then it must
+        # If this node is being removed, then it must
         # have previously been inserted, and
         # it cannot have previously been removed.
         else:
-            assert client_id in node_info, "Client not found!"
-            assert node_info[client_id]["IsInsertion"], (
-                "Unexpected duplicate removal of client.")
-            node_info[client_id]["IsInsertion"] = client.is_insertion
+            assert node_id in node_info, "node not found!"
+            assert node_info[node_id]["Alive"], (
+                "Unexpected duplicate removal of node.")
+            node_info[node_id]["Alive"] = False
     # Fill resource info.
-    for client_id in ordered_client_ids:
-        if node_info[client_id]["IsInsertion"]:
-            resources = _parse_resource_table(redis_client, client_id)
+    for node_id in ordered_node_ids:
+        if node_info[node_id]["Alive"]:
+            resources = _parse_resource_table(redis_client, node_id)
         else:
             resources = {}
-        node_info[client_id]["Resources"] = resources
+        node_info[node_id]["Resources"] = resources
     # NOTE: We return the list comprehension below instead of simply doing
     # 'list(node_info.values())' in order to have the nodes appear in the order
     # that they joined the cluster. Python dictionaries do not preserve
     # insertion order. We could use an OrderedDict, but then we'd have to be
     # sure to only insert a given node a single time (clients that die appear
     # twice in the GCS log).
-    return [node_info[client_id] for client_id in ordered_client_ids]
+    return [node_info[node_id] for node_id in ordered_node_ids]
 
 
 def _parse_resource_table(redis_client, client_id):
@@ -402,7 +402,7 @@ class GlobalState(object):
 
         for client in client_table:
             # These are equivalent and is better for application developers.
-            client["alive"] = client["IsInsertion"]
+            client["alive"] = client["Alive"]
         return client_table
 
     def _job_table(self, job_id):
@@ -690,11 +690,11 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        client_id_to_address = {}
-        for client_info in self.client_table():
-            client_id_to_address[client_info["ClientID"]] = "{}:{}".format(
-                client_info["NodeManagerAddress"],
-                client_info["ObjectManagerPort"])
+        node_id_to_address = {}
+        for node_info in self.client_table():
+            node_id_to_address[node_info["NodeID"]] = "{}:{}".format(
+                node_info["NodeManagerAddress"],
+                node_info["ObjectManagerPort"])
 
         all_events = []
 
@@ -705,13 +705,13 @@ class GlobalState(object):
 
             for event in items:
                 if event["event_type"] == "transfer_send":
-                    object_id, remote_client_id, _, _ = event["extra_data"]
+                    object_id, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_id, remote_client_id, _, _ = event["extra_data"]
+                    object_id, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
-                    object_id, remote_client_id = event["extra_data"]
+                    object_id, remote_node_id = event["extra_data"]
 
                 else:
                     assert False, "This should be unreachable."
@@ -729,9 +729,9 @@ class GlobalState(object):
                     "name": event["event_type"],
                     # The identifier for the group of rows that the event
                     # appears in.
-                    "pid": client_id_to_address[key],
+                    "pid": node_id_to_address[key],
                     # The identifier for the row that the event appears in.
-                    "tid": client_id_to_address[remote_client_id],
+                    "tid": node_id_to_address[remote_node_id],
                     # The start time in microseconds.
                     "ts": self._seconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
@@ -825,7 +825,7 @@ class GlobalState(object):
         clients = self.client_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
-            if client["IsInsertion"]:
+            if client["Alive"]:
                 for key, value in client["Resources"].items():
                     resources[key] += value
         return dict(resources)
@@ -833,8 +833,8 @@ class GlobalState(object):
     def _live_client_ids(self):
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
-            client["ClientID"]
-            for client in self.client_table() if (client["IsInsertion"])
+            client["NodeID"]
+            for client in self.client_table() if (client["Alive"])
         }
 
     def available_resources(self):

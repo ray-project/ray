@@ -39,4 +39,4 @@ Many of the TensorBoard metrics are also printed to the console, but you might
 find it easier to visualize and compare between runs using the TensorBoard UI.
 
 .. _`TensorFlow with GPU support`: https://www.tensorflow.org/install/
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents/ppo
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/rllib/agents/ppo

@@ -279,13 +279,12 @@ class Monitor(object):
         all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
-            client_id = (raylet_info.get("DBClientID")
-                         or raylet_info["ClientID"])
+            node_id = (raylet_info.get("DBClientID") or raylet_info["NodeID"])
             ip_address = (raylet_info.get("AuxAddress")
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             if _append_port:
                 ip_address += ":" + str(raylet_info["NodeManagerPort"])
-            self.raylet_id_to_ip_map[client_id] = ip_address
+            self.raylet_id_to_ip_map[node_id] = ip_address
 
     def _maybe_flush_gcs(self):
         """Experimental: issue a flush request to the GCS.

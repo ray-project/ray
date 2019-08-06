@@ -1,9 +1,11 @@
 package org.ray.runtime.objectstore;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
 import org.ray.api.exception.RayTaskException;
@@ -48,12 +50,11 @@ public class ObjectStoreProxy {
    * Get an object from the object store.
    *
    * @param id Id of the object.
-   * @param timeoutMs Timeout in milliseconds.
    * @param <T> Type of the object.
    * @return The GetResult object.
    */
-  public <T> GetResult<T> get(ObjectId id, int timeoutMs) {
-    List<GetResult<T>> list = get(ImmutableList.of(id), timeoutMs);
+  public <T> T get(ObjectId id) {
+    List<T> list = get(ImmutableList.of(id));
     return list.get(0);
   }
 
@@ -61,59 +62,57 @@ public class ObjectStoreProxy {
    * Get a list of objects from the object store.
    *
    * @param ids List of the object ids.
-   * @param timeoutMs Timeout in milliseconds.
    * @param <T> Type of these objects.
    * @return A list of GetResult objects.
    */
-  public <T> List<GetResult<T>> get(List<ObjectId> ids, int timeoutMs) {
-    List<NativeRayObject> dataAndMetaList = objectInterface.get(ids, timeoutMs);
+  @SuppressWarnings("unchecked")
+  public <T> List<T> get(List<ObjectId> ids) {
+    // Pass -1 as timeout to wait until all objects are available in object store.
+    List<NativeRayObject> dataAndMetaList = objectInterface.get(ids, -1);
 
-    List<GetResult<T>> results = new ArrayList<>();
+    List<T> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
       NativeRayObject dataAndMeta = dataAndMetaList.get(i);
-      GetResult<T> result;
+      Object object = null;
       if (dataAndMeta != null) {
         byte[] meta = dataAndMeta.metadata;
         byte[] data = dataAndMeta.data;
         if (meta != null && meta.length > 0) {
           // If meta is not null, deserialize the object from meta.
-          result = deserializeFromMeta(meta, data,
+          object = deserializeFromMeta(meta, data,
               workerContext.getCurrentClassLoader(), ids.get(i));
         } else {
           // If data is not null, deserialize the Java object.
-          Object object = Serializer.decode(data, workerContext.getCurrentClassLoader());
-          if (object instanceof RayException) {
-            // If the object is a `RayException`, it means that an error occurred during task
-            // execution.
-            result = new GetResult<>(true, null, (RayException) object);
-          } else {
-            // Otherwise, the object is valid.
-            result = new GetResult<>(true, (T) object, null);
-          }
+          object = Serializer.decode(data, workerContext.getCurrentClassLoader());
         }
-      } else {
-        // If both meta and data are null, the object doesn't exist in object store.
-        result = new GetResult<>(false, null, null);
+        if (object instanceof RayException) {
+          // If the object is a `RayException`, it means that an error occurred during task
+          // execution.
+          throw (RayException) object;
+        }
       }
 
-      results.add(result);
+      results.add((T) object);
     }
+    // This check must be placed after the throw exception statement.
+    // Because if there was any exception, The get operation would return early
+    // and wouldn't wait until all objects exist.
+    Preconditions.checkState(dataAndMetaList.stream().allMatch(Objects::nonNull));
     return results;
   }
 
-  @SuppressWarnings("unchecked")
-  private <T> GetResult<T> deserializeFromMeta(byte[] meta, byte[] data,
+  private Object deserializeFromMeta(byte[] meta, byte[] data,
       ClassLoader classLoader, ObjectId objectId) {
     if (Arrays.equals(meta, RAW_TYPE_META)) {
-      return (GetResult<T>) new GetResult<>(true, data, null);
+      return data;
     } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
-      return new GetResult<>(true, null, RayWorkerException.INSTANCE);
+      return RayWorkerException.INSTANCE;
     } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-      return new GetResult<>(true, null, RayActorException.INSTANCE);
+      return RayActorException.INSTANCE;
     } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
-      return new GetResult<>(true, null, new UnreconstructableException(objectId));
+      return new UnreconstructableException(objectId);
     } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-      return new GetResult<>(true, null, Serializer.decode(data, classLoader));
+      return Serializer.decode(data, classLoader);
     }
     throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
   }
@@ -130,7 +129,8 @@ public class ObjectStoreProxy {
       // indicate it's raw binary. So that this object can also be read by Python.
       objectInterface.put(new NativeRayObject((byte[]) object, RAW_TYPE_META), id);
     } else if (object instanceof RayTaskException) {
-      objectInterface.put(new NativeRayObject(Serializer.encode(object), TASK_EXECUTION_EXCEPTION_META), id);
+      objectInterface
+          .put(new NativeRayObject(Serializer.encode(object), TASK_EXECUTION_EXCEPTION_META), id);
     } else {
       objectInterface.put(new NativeRayObject(Serializer.encode(object), null), id);
     }
@@ -146,32 +146,7 @@ public class ObjectStoreProxy {
     objectInterface.put(new NativeRayObject(serializedObject, null), id);
   }
 
-  /**
-   * A class that represents the result of a get operation.
-   */
-  public static class GetResult<T> {
-
-    /**
-     * Whether this object exists in object store.
-     */
-    public final boolean exists;
-
-    /**
-     * The Java object that was fetched and deserialized from the object store. Note, this field
-     * only makes sense when @code{exists == true && exception !=null}.
-     */
-    public final T object;
-
-    /**
-     * If this field is not null, it represents the exception that occurred during object's creating
-     * task.
-     */
-    public final RayException exception;
-
-    GetResult(boolean exists, T object, RayException exception) {
-      this.exists = exists;
-      this.object = object;
-      this.exception = exception;
-    }
+  public ObjectInterface getObjectInterface() {
+    return objectInterface;
   }
 }

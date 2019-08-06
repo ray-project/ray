@@ -404,7 +404,7 @@ def wait_for_redis_to_start(redis_ip_address,
     while counter < num_retries:
         try:
             # Run some random command and see if it worked.
-            logger.info(
+            logger.debug(
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
@@ -805,7 +805,7 @@ def _start_redis_instance(executable,
         redis_client.config_set("maxmemory", str(redis_max_memory))
         redis_client.config_set("maxmemory-policy", "allkeys-lru")
         redis_client.config_set("maxmemory-samples", "10")
-        logger.info("Starting Redis shard with {} GB max memory.".format(
+        logger.debug("Starting Redis shard with {} GB max memory.".format(
             round(redis_max_memory / 1e9, 2)))
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
@@ -1470,9 +1470,9 @@ def start_plasma_store(stdout_file=None,
 
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
-    logger.info("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(
-                    round(object_store_memory_str, 2), plasma_directory))
+    logger.debug("Starting the Plasma object store with {} GB memory "
+                 "using {}.".format(
+                     round(object_store_memory_str, 2), plasma_directory))
     # Start the Plasma store.
     process_info = _start_plasma_store(
         object_store_memory,

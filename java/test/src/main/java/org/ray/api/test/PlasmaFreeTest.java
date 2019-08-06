@@ -23,8 +23,9 @@ public class PlasmaFreeTest extends BaseTest {
     Assert.assertEquals("hello", helloString);
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
-    final boolean result = TestUtils.waitForCondition(() -> !((AbstractRayRuntime) Ray.internal())
-        .getObjectStoreProxy().get(helloId.getId(), 0).exists, 50);
+    final boolean result = TestUtils.waitForCondition(() ->
+        ((AbstractRayRuntime) Ray.internal()).getObjectStoreProxy().getObjectInterface()
+            .get(ImmutableList.of(helloId.getId()), 0).get(0) == null, 50);
     Assert.assertTrue(result);
   }
 
