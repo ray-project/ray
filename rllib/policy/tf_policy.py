@@ -118,7 +118,7 @@ class TFPolicy(Policy):
         self._is_training = self._get_is_training_placeholder()
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
-                             if self._action_logp else None)
+                             if self._action_logp is not None else None)
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
