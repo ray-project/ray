@@ -155,17 +155,6 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
-                                 TaskId currentTaskId) {
-
-  }
-
-  @Override
-  public void notifyUnblocked(TaskId currentTaskId) {
-
-  }
-
-  @Override
   public TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
     return TaskId.randomId();
   }
