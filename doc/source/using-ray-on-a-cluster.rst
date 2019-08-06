@@ -41,9 +41,7 @@ should look something like ``123.45.67.89:6379``).
   ray start --redis-address=<redis-address>
 
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
-with the flags ``--num-cpus=10`` and ``--num-gpus=1``. If these flags are not
-used, then Ray will detect the number of CPUs automatically and will assume
-there are 0 GPUs.
+with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the `Configuration <configure.html>`__ page for more information.
 
 Now we've started all of the Ray processes on each node Ray. This includes
 
