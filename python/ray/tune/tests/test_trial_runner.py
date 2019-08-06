@@ -25,7 +25,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
                              TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
 from ray.tune.logger import Logger
-from ray.tune.util import pin_in_object_store, get_pinned_object
+from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
 from ray.tune.trial_runner import TrialRunner
@@ -44,7 +44,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=int(1e8))
 
     def tearDown(self):
         ray.shutdown()
@@ -514,6 +514,49 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
+    def testNestedResults(self):
+        def create_result(i):
+            return {"test": {"1": {"2": {"3": i, "4": False}}}}
+
+        flattened_keys = list(flatten_dict(create_result(0)))
+
+        class _MockScheduler(FIFOScheduler):
+            results = []
+
+            def on_trial_result(self, trial_runner, trial, result):
+                self.results += [result]
+                return TrialScheduler.CONTINUE
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(**create_result(i))
+
+        algo = _MockSuggestionAlgorithm()
+        scheduler = _MockScheduler()
+        [trial] = tune.run(
+            train,
+            scheduler=scheduler,
+            search_alg=algo,
+            stop={
+                "test/1/2/3": 20
+            }).trials
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["3"], 20)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["4"], False)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 21)
+        self.assertEqual(len(scheduler.results), 20)
+        self.assertTrue(
+            all(
+                set(result) >= set(flattened_keys)
+                for result in scheduler.results))
+        self.assertEqual(len(algo.results), 20)
+        self.assertTrue(
+            all(set(result) >= set(flattened_keys) for result in algo.results))
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"1/2/3": 20})
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"test": 1}).trials
+
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
         # returns any.
@@ -704,9 +747,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 
 class RunExperimentTest(unittest.TestCase):
-    def setUp(self):
-        ray.init()
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
