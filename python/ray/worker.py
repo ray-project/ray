@@ -578,33 +578,6 @@ class Worker(object):
             The return object IDs for this task.
         """
         with profiling.profile("submit_task"):
-            if actor_id is None:
-                assert actor_handle_id is None
-                actor_id = ActorID.nil()
-                actor_handle_id = ActorHandleID.nil()
-            else:
-                assert actor_handle_id is not None
-
-            if actor_creation_id is None:
-                actor_creation_id = ActorID.nil()
-
-            if actor_creation_dummy_object_id is None:
-                actor_creation_dummy_object_id = ObjectID.nil()
-
-            # Put large or complex arguments that are passed by value in the
-            # object store first.
-            args_for_raylet = []
-            for arg in args:
-                if isinstance(arg, ObjectID):
-                    args_for_raylet.append(arg)
-                elif ray._raylet.check_simple_value(arg):
-                    args_for_raylet.append(arg)
-                else:
-                    args_for_raylet.append(put(arg))
-
-            if new_actor_handles is None:
-                new_actor_handles = []
-
             if job_id is None:
                 job_id = self.current_job_id
 
@@ -629,6 +602,33 @@ class Worker(object):
 
             if placement_resources is None:
                 placement_resources = {}
+
+            # Put large or complex arguments that are passed by value in the
+            # object store first.
+            args_for_raylet = []
+            for arg in args:
+                if isinstance(arg, ObjectID):
+                    args_for_raylet.append(arg)
+                elif ray._raylet.check_simple_value(arg):
+                    args_for_raylet.append(arg)
+                else:
+                    args_for_raylet.append(put(arg))
+
+            if actor_id is None:
+                assert actor_handle_id is None
+                actor_id = ActorID.nil()
+                actor_handle_id = ActorHandleID.nil()
+            else:
+                assert actor_handle_id is not None
+
+            if actor_creation_id is None:
+                actor_creation_id = ActorID.nil()
+
+            if actor_creation_dummy_object_id is None:
+                actor_creation_dummy_object_id = ObjectID.nil()
+
+            if new_actor_handles is None:
+                new_actor_handles = []
 
             # Increment the worker's task index to track how many tasks
             # have been submitted by the current task so far.
@@ -657,6 +657,9 @@ class Worker(object):
                 task_id = TaskID.for_normal_task(self.current_job_id,
                                                  self.current_task_id,
                                                  self.task_context.task_index)
+                return self.core_worker.submit_task(function_descriptor_list,
+                                                    args_for_raylet,
+                                                    num_return_vals, resources)
 
             task = ray._raylet.TaskSpec(
                 task_id,

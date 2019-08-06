@@ -7,7 +7,7 @@ import numpy
 import time
 import logging
 
-from libc.stdint cimport uint8_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport (
     dynamic_pointer_cast,
@@ -27,6 +27,9 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
+    CTaskArg,
+    CTaskOptions,
+    CRayFunction,
     LocalMemoryBuffer,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -94,6 +97,13 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     else:
         raise RayletError(message)
+
+
+cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
+    result = []
+    for i in range(object_ids.size()):
+        result.append(ObjectID(object_ids[i].Binary()))
+    return result
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
@@ -241,6 +251,18 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
         raise TypeError("resource_map must be a dictionary")
     for key, value in resource_map.items():
         out[key.encode("ascii")] = float(value)
+    return out
+
+
+cdef c_vector[c_string] string_vector_from_list(string_list):
+    cdef:
+        c_vector[c_string] out
+    if not isinstance(string_list, list):
+        raise TypeError("string_list must be a list")
+    for s in string_list:
+        if not isinstance(s, bytes):
+            raise TypeError("string_list elements must be bytes")
+        out.push_back(s)
     return out
 
 
@@ -400,6 +422,10 @@ cdef class CoreWorker:
                                      "outside _raylet. See __init__.py for "
                                      "details.")
 
+    def disconnect(self):
+        with nogil:
+            self.core_worker.get().Disconnect()
+
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
@@ -538,6 +564,45 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
 
+    def submit_task(self,
+                    function_descriptor,
+                    args,
+                    int num_return_vals,
+                    resources):
+        cdef:
+            shared_ptr[CTaskOptions] task_options = make_shared[CTaskOptions](
+                num_return_vals, resource_map_from_dict(resources))
+            shared_ptr[CRayFunction] ray_function = make_shared[CRayFunction](
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            c_vector[CTaskArg] args_vector
+            c_vector[CObjectID] return_ids
+            c_string pickled_str
+            shared_ptr[CBuffer] arg_data
+            shared_ptr[CBuffer] arg_metadata
+
+        for arg in args:
+            if isinstance(arg, ObjectID):
+                args_vector.push_back(
+                    CTaskArg.PassByReference((<ObjectID>arg).native()))
+            else:
+                pickled_str = pickle.dumps(
+                    arg, protocol=pickle.HIGHEST_PROTOCOL)
+                arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                        make_shared[LocalMemoryBuffer](
+                            <uint8_t*>(pickled_str.data()),
+                            pickled_str.size(),
+                            True))
+                args_vector.push_back(
+                    CTaskArg.PassByValue(
+                        make_shared[CRayObject](arg_data, arg_metadata)))
+
+        with nogil:
+            check_status(self.core_worker.get().Tasks().SubmitTask(
+                ray_function.get()[0], args_vector,
+                task_options.get()[0], &return_ids))
+
+        return VectorToObjectIDs(return_ids)
+
     def set_object_store_client_options(self, c_string client_name,
                                         int64_t limit_bytes):
         with nogil:
@@ -552,7 +617,3 @@ cdef class CoreWorker:
             message = self.core_worker.get().Objects().MemoryUsageString()
 
         return message.decode("utf-8")
-
-    def disconnect(self):
-        with nogil:
-            self.core_worker.get().Disconnect()

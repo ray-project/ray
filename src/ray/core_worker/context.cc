@@ -83,7 +83,7 @@ void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  current_job_id_ = task_spec.JobId();
+  SetCurrentJobId(task_spec.JobId());
   GetThreadContext().SetCurrentTask(task_spec);
   if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_actor_id_.IsNil());

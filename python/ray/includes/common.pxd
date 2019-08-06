@@ -140,25 +140,42 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
         size_t Size() const
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
-        LocalMemoryBuffer(uint8_t *data, size_t size)
+        LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
 
-cdef extern from "ray/core_worker/common.h" namespace "ray" nogil:
-    cdef struct CRayFunction "ray::RayFunction":
-        const CLanguage language
-        const c_vector[c_string] function_descriptor
+cdef extern from "ray/common/ray_object.h" nogil:
+    cdef cppclass CRayObject "ray::RayObject":
+        c_bool HasData() const
+        c_bool HasMetadata() const
+        const size_t DataSize() const
+        const shared_ptr[CBuffer] &GetData()
+        const shared_ptr[CBuffer] &GetMetadata() const
 
-    cdef cppclass CTaskArg "ray:TaskArg":
+cdef extern from "ray/core_worker/common.h" nogil:
+    cdef cppclass CRayFunction "ray::RayFunction":
+        CRayFunction(CLanguage language,
+                     const c_vector[c_string] function_descriptor)
+
+    cdef cppclass CTaskArg "ray::TaskArg":
+        @staticmethod
         CTaskArg PassByReference(const CObjectID &object_id)
-        CTaskArg PassByValue(const shared_ptr[CBuffer] &data)
 
-    cdef struct CTaskOptions "ray::TaskOptions":
-        CTaskOptions(int num_returns, const unordered_map[c_string, double] &resources)
+        @staticmethod
+        CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
-    cdef struct CActorCreationOptions "ray::ActorCreationOptions":
-        CActorCreationOptions(uint64_t max_reconstructions, const unordered_map[c_string, double] &resources)
+    cdef cppclass CTaskOptions "ray::TaskOptions":
+        CTaskOptions(int num_returns,
+                     const unordered_map[c_string, double] &resources)
+
+    cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
+        CActorCreationOptions(uint64_t max_reconstructions,
+                              const unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(const CActorID &actor_id, const CActorHandleID &actor_handle_id, const CLanguage actor_language, const c_vector[c_string] &actor_creation_task_function_descriptor)
+        CActorHandle(
+            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
+            const CLanguage actor_language,
+            const c_vector[c_string] &actor_creation_task_function_descriptor)
+
         CActorHandle(const CActorHandle &other)
         CActorID ActorID() const
         CActorHandleID ActorHandleID() const
@@ -169,14 +186,6 @@ cdef extern from "ray/core_worker/common.h" namespace "ray" nogil:
         CActorHandle Fork()
         void Serialize(c_string *output)
         CActorHandle Deserialize(const c_string &data)
-
-cdef extern from "ray/core_worker/store_provider/store_provider.h" nogil:
-    cdef cppclass CRayObject "ray::RayObject":
-        const shared_ptr[CBuffer] &GetData()
-        const size_t DataSize() const
-        const shared_ptr[CBuffer] &GetMetadata() const
-        c_bool HasData() const
-        c_bool HasMetadata() const
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

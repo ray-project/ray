@@ -57,7 +57,7 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func{ray::Language::PYTHON, {"actor creation task"}};
+  RayFunction func(ray::Language::PYTHON, {"actor creation task"});
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
@@ -236,7 +236,7 @@ void CoreWorkerTest::TestNormalTask(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
       TaskOptions options;
 
       std::vector<ObjectID> return_ids;
@@ -281,7 +281,7 @@ void CoreWorkerTest::TestActorTask(
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
 
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
@@ -323,7 +323,7 @@ void CoreWorkerTest::TestActorTask(
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {}};
+    RayFunction func(ray::Language::PYTHON, {});
     auto status =
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
     if (is_direct_call) {
@@ -389,7 +389,7 @@ void CoreWorkerTest::TestActorReconstruction(
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
 
       auto status =
           driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
@@ -435,7 +435,7 @@ void CoreWorkerTest::TestActorFailure(
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
 
       auto status =
           driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
@@ -641,7 +641,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction function{ray::Language::PYTHON, {}};
+  RayFunction function(ray::Language::PYTHON, {});
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
@@ -649,8 +649,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                           ActorHandleID::Nil(), function.language, true,
-                           function.function_descriptor);
+                           ActorHandleID::Nil(), function.language_, true,
+                           function.function_descriptor_);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -664,8 +664,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(RandomTaskId(), function.language,
-                              function.function_descriptor, job_id, RandomTaskId(), 0,
+    builder.SetCommonTaskSpec(RandomTaskId(), function.language_,
+                              function.function_descriptor_, job_id, RandomTaskId(), 0,
                               num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
@@ -703,7 +703,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   // Test creating actor.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction func{ray::Language::PYTHON, {}};
+  RayFunction func(ray::Language::PYTHON, {});
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
@@ -725,7 +725,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {}};
+    RayFunction func(ray::Language::PYTHON, {});
 
     RAY_CHECK_OK(
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));
