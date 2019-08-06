@@ -503,7 +503,7 @@ class Node(object):
 
     def start_head_processes(self):
         """Start head processes on the node."""
-        logger.info(
+        logger.debug(
             "Process STDOUT and STDERR is being redirected to {}.".format(
                 self._logs_dir))
         assert self._redis_address is None
@@ -517,7 +517,7 @@ class Node(object):
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
-        logger.info(
+        logger.debug(
             "Process STDOUT and STDERR is being redirected to {}.".format(
                 self._logs_dir))
 

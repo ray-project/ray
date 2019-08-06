@@ -2,10 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import click
 import logging
-import glob
 import os
-import sys
 import subprocess
 import operator
 from datetime import datetime
@@ -13,7 +12,7 @@ from datetime import datetime
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS,
-                             TIME_TOTAL_S, TRIAL_ID)
+                             TIME_TOTAL_S, TRIAL_ID, CONFIG_PREFIX)
 from ray.tune.analysis import Analysis
 from ray.tune import TuneError
 try:
@@ -34,9 +33,6 @@ DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag",
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
     "total_trials",
-    "running_trials",
-    "terminated_trials",
-    "error_trials",
     "last_updated",
 )
 
@@ -61,20 +57,6 @@ def _check_tabulate():
     if tabulate is None:
         raise ImportError(
             "Tabulate not installed. Please run `pip install tabulate`.")
-
-
-def get_most_recent_state(experiment_path):
-    experiment_path = os.path.expanduser(experiment_path)
-    if not os.path.isdir(experiment_path):
-        raise TuneError("{} is not a valid directory.".format(experiment_path))
-    experiment_state_paths = glob.glob(
-        os.path.join(experiment_path, "experiment_state*.json"))
-    if not experiment_state_paths:
-        raise TuneError(
-            "No experiment state found in {}!".format(experiment_path))
-    experiment_filename = max(
-        list(experiment_state_paths))  # if more than one, pick latest
-    return experiment_filename
 
 
 def print_format_output(dataframe):
@@ -108,10 +90,11 @@ def print_format_output(dataframe):
 
     print(table)
     if dropped_cols:
-        print("Dropped columns:", dropped_cols)
-        print("Please increase your terminal size to view remaining columns.")
+        click.secho("Dropped columns: {}".format(dropped_cols), fg="yellow")
+        click.secho("Please increase your terminal size "
+                    "to view remaining columns.")
     if empty_cols:
-        print("Empty columns:", empty_cols)
+        click.secho("Empty columns: {}".format(empty_cols), fg="yellow")
 
     return table, dropped_cols, empty_cols
 
@@ -141,17 +124,25 @@ def list_trials(experiment_path,
     try:
         checkpoints_df = Analysis(experiment_path).dataframe()
     except TuneError:
-        print("No experiment state found!")
-        sys.exit(1)
+        raise click.ClickException("No trial data found!")
 
-    if not info_keys:
-        info_keys = DEFAULT_EXPERIMENT_INFO_KEYS
-    col_keys = [
-        k for k in checkpoints_df.columns
-        if k in info_keys or k.startswith("config/")
-    ]
+    def key_filter(k):
+        return k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith(CONFIG_PREFIX)
+
+    col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
+
+    if info_keys:
+        for k in info_keys:
+            if k not in checkpoints_df.columns:
+                raise click.ClickException("Provided key invalid: {}. "
+                                           "Available keys: {}.".format(
+                                               k, checkpoints_df.columns))
+        col_keys = [k for k in checkpoints_df.columns if k in info_keys]
+
+    if not col_keys:
+        raise click.ClickException("No columns to output.")
+
     checkpoints_df = checkpoints_df[col_keys]
-
     if "last_update_time" in checkpoints_df:
         with pd.option_context("mode.use_inf_as_null", True):
             datetime_series = checkpoints_df["last_update_time"].dropna()
@@ -174,7 +165,7 @@ def list_trials(experiment_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for {}: {}".format(
+            raise click.ClickException("Unsupported dtype for {}: {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(checkpoints_df[col], val)
@@ -183,8 +174,8 @@ def list_trials(experiment_path,
     if sort:
         for key in sort:
             if key not in checkpoints_df:
-                raise KeyError("{} not in: {}".format(key,
-                                                      list(checkpoints_df)))
+                raise click.ClickException("{} not in: {}".format(
+                    key, list(checkpoints_df)))
         ascending = not desc
         checkpoints_df = checkpoints_df.sort_values(
             by=sort, ascending=ascending)
@@ -201,8 +192,9 @@ def list_trials(experiment_path,
         elif file_extension == ".csv":
             checkpoints_df.to_csv(output, index=False)
         else:
-            raise ValueError("Unsupported filetype: {}".format(output))
-        print("Output saved at:", output)
+            raise click.ClickException(
+                "Unsupported filetype: {}".format(output))
+        click.secho("Output saved at {}".format(output), fg="green")
 
 
 def list_experiments(project_path,
@@ -239,16 +231,15 @@ def list_experiments(project_path,
         experiment_data_collection.append(experiment_data)
 
     if not experiment_data_collection:
-        print("No experiments found!")
-        sys.exit(0)
+        raise click.ClickException("No experiments found!")
 
     info_df = pd.DataFrame(experiment_data_collection)
     if not info_keys:
         info_keys = DEFAULT_PROJECT_INFO_KEYS
     col_keys = [k for k in list(info_keys) if k in info_df]
     if not col_keys:
-        print("None of keys {} in experiment data!".format(info_keys))
-        sys.exit(0)
+        raise click.ClickException(
+            "None of keys {} in experiment data!".format(info_keys))
     info_df = info_df[col_keys]
 
     if filter_op:
@@ -260,7 +251,7 @@ def list_experiments(project_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise ValueError("Unsupported dtype for {}: {}".format(
+            raise click.ClickException("Unsupported dtype for {}: {}".format(
                 val, col_type))
         op = OPERATORS[op]
         filtered_index = op(info_df[col], val)
@@ -269,7 +260,8 @@ def list_experiments(project_path,
     if sort:
         for key in sort:
             if key not in info_df:
-                raise KeyError("{} not in: {}".format(key, list(info_df)))
+                raise click.ClickException("{} not in: {}".format(
+                    key, list(info_df)))
         ascending = not desc
         info_df = info_df.sort_values(by=sort, ascending=ascending)
 
@@ -285,8 +277,9 @@ def list_experiments(project_path,
         elif file_extension == ".csv":
             info_df.to_csv(output, index=False)
         else:
-            raise ValueError("Unsupported filetype: {}".format(output))
-        print("Output saved at:", output)
+            raise click.ClickException(
+                "Unsupported filetype: {}".format(output))
+        click.secho("Output saved at {}".format(output), fg="green")
 
 
 def add_note(path, filename="note.txt"):
@@ -305,8 +298,7 @@ def add_note(path, filename="note.txt"):
     try:
         subprocess.call([EDITOR, filepath])
     except Exception as exc:
-        logger.error("Editing note failed!")
-        raise exc
+        click.secho("Editing note failed: {}".format(str(exc)), fg="red")
     if exists:
         print("Note updated at:", filepath)
     else:

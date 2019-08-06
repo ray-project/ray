@@ -24,11 +24,12 @@ class Worker {
  public:
   /// A constructor that initializes a worker object.
   Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-         rpc::ClientCallManager &client_call_manager);
+         rpc::ClientCallManager &client_call_manager, bool is_worker = true);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkAsBeingKilled();
   bool IsBeingKilled() const;
+  bool IsWorker() const;
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
@@ -105,6 +106,8 @@ class Worker {
   /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
+  /// Indicates whether this is a worker or a driver.
+  bool is_worker_;
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
   /// Reply of the `GetTask` request.

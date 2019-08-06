@@ -41,33 +41,6 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *, jclass, jlo
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeFetchOrReconstruct
- * Signature: (J[[BZ[B)V
- */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(JNIEnv *, jclass,
-                                                                      jlong, jobjectArray,
-                                                                      jboolean,
-                                                                      jbyteArray);
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeNotifyUnblocked
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
-    JNIEnv *, jclass, jlong, jbyteArray);
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativePutObject
- * Signature: (J[B[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativePutObject(
-    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeWaitObject
  * Signature: (J[[BIIZ[B)[Z
  */

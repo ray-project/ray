@@ -71,7 +71,8 @@ public class MockObjectInterface implements ObjectInterface {
     boolean firstCheck = true;
     while (ready < numObjects && (timeoutMs < 0 || remainingTime > 0)) {
       if (!firstCheck) {
-        long sleepTime = Math.min(remainingTime, GET_CHECK_INTERVAL_MS);
+        long sleepTime =
+            timeoutMs < 0 ? GET_CHECK_INTERVAL_MS : Math.min(remainingTime, GET_CHECK_INTERVAL_MS);
         try {
           Thread.sleep(sleepTime);
         } catch (InterruptedException e) {
