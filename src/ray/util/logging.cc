@@ -11,10 +11,27 @@
 #include <iostream>
 
 #ifdef RAY_USE_GLOG
+#include <sys/stat.h>
 #include "glog/logging.h"
 #endif
 
 namespace ray {
+
+#ifdef RAY_USE_GLOG
+struct StdoutLogger : public google::base::Logger {
+  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
+                     int length) {
+    // note: always flush otherwise it never shows up in raylet.out
+    std::cout << std::string(message, length) << std::flush;
+  }
+
+  virtual void Flush() { std::cout.flush(); }
+
+  virtual google::uint32 LogSize() { return 0; }
+};
+
+static StdoutLogger stdout_logger_singleton;
+#endif
 
 // This is the default implementation of ray log,
 // which is independent of any libs.
@@ -122,7 +139,12 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #ifdef RAY_USE_GLOG
   google::InitGoogleLogging(app_name_.c_str());
   int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
-  google::SetStderrLogging(mapped_severity_threshold);
+  google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
+  for (int i = static_cast<int>(severity_threshold_);
+       i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
+    int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
+    google::base::SetLogger(level, &stdout_logger_singleton);
+  }
   // Enable log file if log_dir_ is not empty.
   if (!log_dir_.empty()) {
     auto dir_ends_with_slash = log_dir_;
