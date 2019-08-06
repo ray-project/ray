@@ -4,9 +4,7 @@ from __future__ import print_function
 
 import click
 import logging
-import glob
 import os
-import sys
 import subprocess
 import operator
 from datetime import datetime
@@ -128,16 +126,19 @@ def list_trials(experiment_path,
     except TuneError:
         raise click.ClickException("No trial data found!")
 
-    key_filter = lambda k: (
-        k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith(CONFIG_PREFIX))
+    def key_filter(k):
+        return k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith(CONFIG_PREFIX)
+
+    col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
+
     if info_keys:
         for k in info_keys:
             if k not in checkpoints_df.columns:
-                raise click.ClickException(
-                    "Provided key invalid: {}. "
-                    "Available keys: {}.".format(k, checkpoints_df.columns))
-        key_filter = lambda k: k in info_keys
-    col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
+                raise click.ClickException("Provided key invalid: {}. "
+                                           "Available keys: {}.".format(
+                                               k, checkpoints_df.columns))
+        col_keys = [k for k in checkpoints_df.columns if k in info_keys]
+
     if not col_keys:
         raise click.ClickException("No columns to output.")
 
@@ -172,8 +173,8 @@ def list_trials(experiment_path,
     if sort:
         for key in sort:
             if key not in checkpoints_df:
-                raise click.ClickException("{} not in: {}".format(key,
-                                                      list(checkpoints_df)))
+                raise click.ClickException("{} not in: {}".format(
+                    key, list(checkpoints_df)))
         ascending = not desc
         checkpoints_df = checkpoints_df.sort_values(
             by=sort, ascending=ascending)
@@ -258,7 +259,8 @@ def list_experiments(project_path,
     if sort:
         for key in sort:
             if key not in info_df:
-                raise click.ClickException("{} not in: {}".format(key, list(info_df)))
+                raise click.ClickException("{} not in: {}".format(
+                    key, list(info_df)))
         ascending = not desc
         info_df = info_df.sort_values(by=sort, ascending=ascending)
 
@@ -274,7 +276,8 @@ def list_experiments(project_path,
         elif file_extension == ".csv":
             info_df.to_csv(output, index=False)
         else:
-            raise click.ClickException("Unsupported filetype: {}".format(output))
+            raise click.ClickException(
+                "Unsupported filetype: {}".format(output))
         click.secho("Output saved at {}".format(output), fg="green")
 
 
@@ -294,7 +297,7 @@ def add_note(path, filename="note.txt"):
     try:
         subprocess.call([EDITOR, filepath])
     except Exception as exc:
-        click.secho("Editing note failed!", fg="red")
+        click.secho("Editing note failed: {}".format(str(exc)), fg="red")
     if exists:
         print("Note updated at:", filepath)
     else:

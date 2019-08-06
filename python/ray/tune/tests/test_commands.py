@@ -99,18 +99,15 @@ def test_ls(start_ray, tmpdir):
         commands.list_trials(
             experiment_path,
             sort=["trial_id"],
-            info_keys=("training_iteration",))
+            info_keys=("training_iteration", ))
 
     with pytest.raises(click.ClickException):
-        commands.list_trials(
-            experiment_path,
-            info_keys=("asdf",))
+        commands.list_trials(experiment_path, info_keys=("asdf", ))
 
 
 def test_ls_with_cfg(start_ray, tmpdir):
     experiment_name = "test_ls_with_cfg"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
-    num_samples = 3
     tune.run(
         "__fake",
         name=experiment_name,
@@ -127,6 +124,7 @@ def test_ls_with_cfg(start_ray, tmpdir):
     assert all(col in lines[1] for col in columns)
     assert lines[1].count("|") == len(columns) + 1
     assert len(lines) == 3 + limit + 1
+
 
 def test_lsx(start_ray, tmpdir):
     """This test captures output of list_experiments."""
