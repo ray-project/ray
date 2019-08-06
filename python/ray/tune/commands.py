@@ -14,7 +14,7 @@ from datetime import datetime
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS,
-                             TIME_TOTAL_S, TRIAL_ID)
+                             TIME_TOTAL_S, TRIAL_ID, CONFIG_PREFIX)
 from ray.tune.analysis import Analysis
 from ray.tune import TuneError
 try:
@@ -35,9 +35,6 @@ DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag",
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
     "total_trials",
-    "running_trials",
-    "terminated_trials",
-    "error_trials",
     "last_updated",
 )
 
@@ -132,11 +129,13 @@ def list_trials(experiment_path,
         raise click.ClickException("No trial data found!")
 
     key_filter = lambda k: (
-        k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith("config/"))
+        k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith(CONFIG_PREFIX))
     if info_keys:
         for k in info_keys:
             if k not in checkpoints_df.columns:
-                raise click.ClickException("Provided key invalid: {}".format(k))
+                raise click.ClickException(
+                    "Provided key invalid: {}. "
+                    "Available keys: {}.".format(k, checkpoints_df.columns))
         key_filter = lambda k: k in info_keys
     col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
     if not col_keys:
