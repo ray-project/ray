@@ -552,8 +552,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             all(
                 set(result) >= set(flattened_keys)
                 for result in scheduler.results))
-        self.assertTrue(
-            set(scheduler.complete_result) >= set(flattened_keys))
+        self.assertTrue(set(scheduler.complete_result) >= set(flattened_keys))
         self.assertEqual(len(algo.results), 20)
         self.assertTrue(
             all(set(result) >= set(flattened_keys) for result in algo.results))
