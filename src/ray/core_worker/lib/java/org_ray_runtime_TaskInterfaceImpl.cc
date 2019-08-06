@@ -88,7 +88,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
   uint64_t max_reconstructions = env->GetLongField(
       actorCreationOptions, java_native_actor_creation_options_max_reconstructions);
-  bool is_direct_call = env->GetLongField(
+  bool is_direct_call = env->GetBooleanField(
       actorCreationOptions, java_native_actor_creation_options_is_direct_call);
   jobject java_resources = env->GetObjectField(
       actorCreationOptions, java_native_actor_creation_options_resources);

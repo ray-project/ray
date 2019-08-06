@@ -26,7 +26,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
         rayConfig.numberExecThreadsForDevRuntime);
     objectInterface.addObjectPutCallback(taskInterface::onObjectPut);
     worker = new MockWorker(this);
-    taskInterface.setCurrentWorker((MockWorker) worker);
   }
 
   @Override
@@ -36,7 +35,12 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public AbstractWorker getWorker() {
-    return ((MockTaskInterface) worker.getTaskInterface()).getCurrentWorker();
+    AbstractWorker result = ((MockTaskInterface) worker.getTaskInterface()).getCurrentWorker();
+    if (result == null) {
+      // This is a workaround to support multi-threading in driver when running in single process mode.
+      result = worker;
+    }
+    return result;
   }
 
   private JobId nextJobId() {

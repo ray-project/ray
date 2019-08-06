@@ -73,12 +73,12 @@ public class MockTaskInterface implements TaskInterface {
     }
   }
 
+  /**
+   * Get the worker of current thread. <br>
+   * NOTE: Cannot be used for multi-threading in worker.
+   */
   public MockWorker getCurrentWorker() {
     return currentWorker.get();
-  }
-
-  public void setCurrentWorker(MockWorker worker) {
-    currentWorker.set(worker);
   }
 
   /**

@@ -149,9 +149,25 @@ class RedisContext {
   /// \return Status.
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
-  redisContext *sync_context() { return context_; }
-  redisAsyncContext *async_context() { return async_context_; }
-  redisAsyncContext *subscribe_context() { return subscribe_context_; };
+
+  /// Called when an instance of redisAsyncContext is disconnected.
+  ///
+  /// \param context the redisAsyncContext instances
+  /// \param status The status code of disconnection
+  void AsyncDisconnectCallback(const redisAsyncContext *context, int status);
+
+  redisContext *sync_context() {
+    RAY_CHECK(context_);
+    return context_;
+  }
+  redisAsyncContext *async_context() {
+    RAY_CHECK(async_context_);
+    return async_context_;
+  }
+  redisAsyncContext *subscribe_context() {
+    RAY_CHECK(subscribe_context_);
+    return subscribe_context_;
+  };
 
  private:
   redisContext *context_;
@@ -164,6 +180,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               size_t length, const TablePrefix prefix,
                               const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
+  RAY_CHECK(async_context_);
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
   if (length > 0) {
     if (log_length >= 0) {
