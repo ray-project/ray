@@ -9,7 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule, ACTION_PROB
+    EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
@@ -31,7 +31,7 @@ class PPOLoss(object):
                  advantages,
                  actions,
                  prev_logits,
-                 prev_actions_prob,
+                 prev_actions_logp,
                  vf_preds,
                  curr_action_dist,
                  value_fn,
@@ -56,7 +56,7 @@ class PPOLoss(object):
                 from previous model evaluation.
             prev_logits (Placeholder): Placeholder for logits output from
                 previous model evaluation.
-            prev_actions_prob (Placeholder): Placeholder for prob output from
+            prev_actions_logp (Placeholder): Placeholder for prob output from
                 previous model evaluation.
             vf_preds (Placeholder): Placeholder for value function output
                 from previous model evaluation.
@@ -80,8 +80,7 @@ class PPOLoss(object):
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
-        logp_ratio = tf.exp(
-            curr_action_dist.logp(actions) - tf.log(prev_actions_prob))
+        logp_ratio = tf.exp(curr_action_dist.logp(actions) - prev_actions_logp)
         action_kl = prev_dist.kl(curr_action_dist)
         self.mean_kl = reduce_mean_valid(action_kl)
 
@@ -129,7 +128,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[Postprocessing.ADVANTAGES],
         batch_tensors[SampleBatch.ACTIONS],
         batch_tensors[BEHAVIOUR_LOGITS],
-        batch_tensors[ACTION_PROB],
+        batch_tensors[ACTION_LOGP],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
         policy.value_function,

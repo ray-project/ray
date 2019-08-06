@@ -90,8 +90,8 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         return (
             Categorical(a1_logits).logp(a1) + Categorical(a2_logits).logp(a2))
 
-    def sampled_action_prob(self):
-        return tf.exp(self._action_prob)
+    def sampled_action_logp(self):
+        return tf.exp(self._action_logp)
 
     def entropy(self):
         a1_dist = self._a1_distribution()

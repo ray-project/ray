@@ -33,7 +33,7 @@ class VTraceLoss(object):
                  actions_logp,
                  actions_entropy,
                  dones,
-                 behaviour_action_prob,
+                 behaviour_action_logp,
                  behaviour_logits,
                  target_logits,
                  discount,
@@ -59,7 +59,7 @@ class VTraceLoss(object):
             actions_logp: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_action_prob: Tensor of shape [T, B].
+            behaviour_action_logp: Tensor of shape [T, B].
             behaviour_logits: A list with length of ACTION_SPACE of float32
                 tensors of shapes
                 [T, B, ACTION_SPACE[0]],
@@ -82,7 +82,7 @@ class VTraceLoss(object):
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
-                behaviour_action_prob=behaviour_action_prob,
+                behaviour_action_logp=behaviour_action_logp,
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
@@ -169,7 +169,7 @@ def build_vtrace_loss(policy, batch_tensors):
     actions = batch_tensors[SampleBatch.ACTIONS]
     dones = batch_tensors[SampleBatch.DONES]
     rewards = batch_tensors[SampleBatch.REWARDS]
-    behaviour_action_prob = batch_tensors[ACTION_PROB]
+    behaviour_action_logp = batch_tensors[ACTION_PROB]
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
@@ -196,8 +196,8 @@ def build_vtrace_loss(policy, batch_tensors):
         actions_entropy=make_time_major(
             action_dist.multi_entropy(), drop_last=True),
         dones=make_time_major(dones, drop_last=True),
-        behaviour_action_prob=make_time_major(
-            behaviour_action_prob, drop_last=True),
+        behaviour_action_logp=make_time_major(
+            behaviour_action_logp, drop_last=True),
         behaviour_logits=make_time_major(
             unpacked_behaviour_logits, drop_last=True),
         target_logits=make_time_major(unpacked_outputs, drop_last=True),

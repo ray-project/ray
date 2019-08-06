@@ -141,7 +141,7 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
             self.sess,
             obs_input=self.obs_t,
             action_sampler=self.output_actions,
-            action_prob=action_dist.sampled_action_prob(),
+            action_logp=action_dist.sampled_action_logp(),
             loss=objective,
             model=self.model,
             loss_inputs=self.loss_inputs,

@@ -26,7 +26,7 @@ class TFActionDistribution(ActionDistribution):
         """Implement this instead of sample(), to enable op reuse.
 
         This is needed since the sample op is non-deterministic and is shared
-        between sample() and sampled_action_prob().
+        between sample() and sampled_action_logp().
         """
         raise NotImplementedError
 
@@ -36,9 +36,9 @@ class TFActionDistribution(ActionDistribution):
         return self.sample_op
 
     @override(ActionDistribution)
-    def sampled_action_prob(self):
+    def sampled_action_logp(self):
         """Returns the log probability of the sampled action."""
-        return tf.exp(self.logp(self.sample_op))
+        return self.logp(self.sample_op)
 
 
 class Categorical(TFActionDistribution):
@@ -185,8 +185,8 @@ class Deterministic(TFActionDistribution):
     """
 
     @override(TFActionDistribution)
-    def sampled_action_prob(self):
-        return 1.0
+    def sampled_action_logp(self):
+        return np.log(1.0)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -255,10 +255,10 @@ class MultiActionDistribution(TFActionDistribution):
         return TupleActions([s.sample() for s in self.child_distributions])
 
     @override(TFActionDistribution)
-    def sampled_action_prob(self):
-        p = self.child_distributions[0].sampled_action_prob()
+    def sampled_action_logp(self):
+        p = self.child_distributions[0].sampled_action_logp()
         for c in self.child_distributions[1:]:
-            p *= c.sampled_action_prob()
+            p += c.sampled_action_logp()
         return p
 
 
