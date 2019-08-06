@@ -18,8 +18,8 @@ namespace {
 /// An early return will take place if the worker is being killed due to the exiting of
 /// driver, or the worker is not registered yet.
 #define PREPROCESS_WORKER_REQUEST(REQUEST_TYPE, REQUEST, SEND_REPLY)                \
-  WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                   \
   do {                                                                              \
+    WorkerID worker_id = WorkerID::FromBinary(REQUEST.worker_id());                 \
     if (!PreprocessRequest(worker_id, #REQUEST_TYPE)) {                             \
       SEND_REPLY(                                                                   \
           Status::Invalid("Discard this request due to failure of preprocessing."), \
@@ -868,6 +868,7 @@ void NodeManager::HandleGetTaskRequest(const rpc::GetTaskRequest &request,
                                        rpc::GetTaskReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   PREPROCESS_WORKER_REQUEST(GetTaskRequest, request, send_reply_callback);
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(worker_id);
 
   RAY_CHECK(!worker->UsePush());
@@ -880,6 +881,7 @@ void NodeManager::HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
                                         rpc::TaskDoneReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   PREPROCESS_WORKER_REQUEST(TaskDoneRequest, request, send_reply_callback);
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   auto worker = worker_pool_.GetRegisteredWorker(worker_id);
   RAY_CHECK(worker && worker->UsePush());
   HandleWorkerAvailable(worker_id);
@@ -1016,6 +1018,7 @@ void NodeManager::HandleFetchOrReconstructRequest(
     const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   PREPROCESS_WORKER_REQUEST(FetchOrReconstructRequest, request, send_reply_callback);
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   const auto &object_ids = request.object_ids();
   std::vector<ObjectID> required_object_ids;
   for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -1047,6 +1050,7 @@ void NodeManager::HandleWaitRequest(const rpc::WaitRequest &request,
                                     rpc::WaitReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
   PREPROCESS_WORKER_REQUEST(WaitRequest, request, send_reply_callback);
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   // Read the data.
   std::vector<ObjectID> object_ids = IdVectorFromProtobuf<ObjectID>(request.object_ids());
   int64_t wait_ms = request.timeout();
@@ -1107,6 +1111,7 @@ void NodeManager::HandlePrepareActorCheckpointRequest(
     const rpc::PrepareActorCheckpointRequest &request,
     rpc::PrepareActorCheckpointReply *reply, rpc::SendReplyCallback send_reply_callback) {
   PREPROCESS_WORKER_REQUEST(PrepareActorCheckpointRequest, request, send_reply_callback);
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Preparing checkpoint for actor " << actor_id;
   const auto &actor_entry = actor_registry_.find(actor_id);
@@ -1221,6 +1226,7 @@ void NodeManager::HandleNotifyUnblockedRequest(
     const rpc::NotifyUnblockedRequest &request, rpc::NotifyUnblockedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   PREPROCESS_WORKER_REQUEST(NotifyUnblockedRequest, request, send_reply_callback);
+  WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   const TaskID current_task_id = TaskID::FromBinary(request.task_id());
 
   HandleTaskUnblocked(worker_id, current_task_id);
