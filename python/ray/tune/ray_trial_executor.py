@@ -13,7 +13,8 @@ import traceback
 import ray
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
-from ray.tune.trial import Trial, Resources, Checkpoint
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.resources import Resources
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
 

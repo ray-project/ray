@@ -27,9 +27,9 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
-from ray.tune.trial import (Trial, ExportFormat, Resources, resources_to_json,
-                            json_to_resources)
+from ray.tune.trial import Trial, ExportFormat
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)

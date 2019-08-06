@@ -1,8 +1,13 @@
+<<<<<<< HEAD
 #include "ray/core_worker/store_provider/memory_store_provider.h"
+=======
+#include <condition_variable>
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/object_interface.h"
+<<<<<<< HEAD
 #include <condition_variable>
 
 namespace ray {
@@ -54,12 +59,30 @@ class GetOrWaitRequest {
   const std::vector<ObjectID> &ObjectIds() const;
 
   /// Wait until all requested objects are available, or timeout happens.
+=======
+#include "ray/core_worker/store_provider/memory_store_provider.h"
+
+namespace ray {
+
+/// A class that represents a `Get` request.
+class GetRequest {
+ public:
+  GetRequest(std::unordered_set<ObjectID> object_ids, bool remove_after_get);
+
+  const std::unordered_set<ObjectID> &ObjectIds() const;
+
+  /// Wait until all requested objects are available, or timeout happens.
+  ///
+  /// \param timeout_ms The maximum time in milliseconds to wait for.
+  /// \return Whether all requested objects are available.
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
   bool Wait(int64_t timeout_ms);
   /// Set the object content for the specific object id.
   void Set(const ObjectID &object_id, std::shared_ptr<RayObject> buffer);
   /// Get the object content for the specific object id.
   std::shared_ptr<RayObject> Get(const ObjectID &object_id) const;
   /// Whether this is a `get` request.
+<<<<<<< HEAD
   bool IsGetRequest() const;
 
  private: 
@@ -73,12 +96,29 @@ class GetOrWaitRequest {
 
   // Whether this request is a `get` request.
   const bool is_get_;
+=======
+  bool ShouldRemoveObjects() const;
+
+ private:
+  /// Wait until all requested objects are available.
+  void Wait();
+
+  /// The object IDs involved in this request.
+  std::unordered_set<ObjectID> object_ids_;
+  /// The object information for the objects in this request.
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
+
+  // Whether the requested objects should be removed from store
+  // after `get` returns.
+  const bool remove_after_get_;
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
   // Whether all the requested objects are available.
   bool is_ready_;
   mutable std::mutex mutex_;
   std::condition_variable cv_;
 };
 
+<<<<<<< HEAD
 GetOrWaitRequest::GetOrWaitRequest(
     const std::vector<ObjectID> &object_ids, bool is_get)
   : object_ids_(object_ids), is_get_(is_get) {}
@@ -94,15 +134,35 @@ bool GetOrWaitRequest::IsGetRequest() const {
 bool GetOrWaitRequest::Wait(int64_t timeout_ms) {
   if (timeout_ms < 0) {
     // Wait forever until the object is ready.
+=======
+GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, bool remove_after_get)
+    : object_ids_(std::move(object_ids)), remove_after_get_(remove_after_get) {}
+
+const std::unordered_set<ObjectID> &GetRequest::ObjectIds() const { return object_ids_; }
+
+bool GetRequest::ShouldRemoveObjects() const { return remove_after_get_; }
+
+bool GetRequest::Wait(int64_t timeout_ms) {
+  RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
+  if (timeout_ms == -1) {
+    // Wait forever until all objects are ready.
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
     Wait();
     return true;
   }
 
+<<<<<<< HEAD
   // Wait until the object is ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
   while (!is_ready_) {
     auto status = cv_.wait_for(lock,
         std::chrono::milliseconds(timeout_ms));
+=======
+  // Wait until all objects are ready, or the timeout expires.
+  std::unique_lock<std::mutex> lock(mutex_);
+  while (!is_ready_) {
+    auto status = cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms));
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
     if (status == std::cv_status::timeout) {
       return false;
     }
@@ -110,14 +170,22 @@ bool GetOrWaitRequest::Wait(int64_t timeout_ms) {
   return true;
 }
 
+<<<<<<< HEAD
 void GetOrWaitRequest::Wait() {
+=======
+void GetRequest::Wait() {
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
   std::unique_lock<std::mutex> lock(mutex_);
   while (!is_ready_) {
     cv_.wait(lock);
   }
 }
 
+<<<<<<< HEAD
 void GetOrWaitRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
+=======
+void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
   std::unique_lock<std::mutex> lock(mutex_);
   objects_.emplace(object_id, object);
   if (objects_.size() == object_ids_.size()) {
@@ -126,8 +194,12 @@ void GetOrWaitRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject>
   }
 }
 
+<<<<<<< HEAD
 std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) const
 {
+=======
+std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
   std::unique_lock<std::mutex> lock(mutex_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
@@ -137,6 +209,7 @@ std::shared_ptr<RayObject> GetOrWaitRequest::Get(const ObjectID &object_id) cons
   return nullptr;
 }
 
+<<<<<<< HEAD
 void EvictionCache::Add(const ObjectID& key, uint64_t size) {
   auto it = item_map_.find(key);
   RAY_CHECK(it == item_map_.end());
@@ -172,12 +245,18 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(uint64_t max_size)
     : max_size_(max_size), total_size_(0) {}
 
 Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+=======
+CoreWorkerMemoryStore::CoreWorkerMemoryStore() {}
+
+Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
   std::unique_lock<std::mutex> lock(lock_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
     return Status::KeyError("object already exists");
   }
 
+<<<<<<< HEAD
   // Check if adding this object is allowed.
   if (object.GetSize() + total_size_ > max_size_) {
     std::vector<ObjectID> objects_to_evict;
@@ -223,12 +302,48 @@ Status CoreWorkerMemoryStore::GetOrWait(
   std::shared_ptr<GetOrWaitRequest> get_request;
 
   {
+=======
+  auto object_entry =
+      std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
+
+  bool should_add_entry = true;
+  auto object_request_iter = object_get_requests_.find(object_id);
+  if (object_request_iter != object_get_requests_.end()) {
+    auto &get_requests = object_request_iter->second;
+    for (auto &get_request : get_requests) {
+      get_request->Set(object_id, object_entry);
+      if (get_request->ShouldRemoveObjects()) {
+        should_add_entry = false;
+      }
+    }
+  }
+
+  if (should_add_entry) {
+    // If there is no existing get request, then add the `RayObject` to map.
+    objects_.emplace(object_id, object_entry);
+  }
+  return Status::OK();
+}
+
+Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
+                                  int64_t timeout_ms, bool remove_after_get,
+                                  std::vector<std::shared_ptr<RayObject>> *results) {
+  (*results).resize(object_ids.size(), nullptr);
+
+  std::shared_ptr<GetRequest> get_request;
+
+  {
+    std::unordered_set<ObjectID> remaining_ids;
+    std::unordered_set<ObjectID> ids_to_remove;
+
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
     std::unique_lock<std::mutex> lock(lock_);
     // Check for existing objects and see if this get request can be fullfilled.
     for (int i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
+<<<<<<< HEAD
         auto object_buffer = is_get ?
             iter->second->CreateReferencedObject(shared_from_this()) :
             iter->second->GetObject();
@@ -238,14 +353,38 @@ Status CoreWorkerMemoryStore::GetOrWait(
       }
     }
 
+=======
+        (*results)[i] = iter->second;
+        if (remove_after_get) {
+          // Note that we cannot remove the object_id from `objects_` now,
+          // because `object_ids` might have duplicate ids.
+          ids_to_remove.insert(object_id);
+        }
+      } else {
+        remaining_ids.insert(object_id);
+      }
+    }
+
+    for (const auto &object_id : ids_to_remove) {
+      objects_.erase(object_id);
+    }
+
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
     // Return if all the objects are obtained.
     if (remaining_ids.empty()) {
       return Status::OK();
     }
 
+<<<<<<< HEAD
     // Otherwise, create a GetOrWaitRequest to track remaining objects.
     get_request = std::make_shared<GetOrWaitRequest>(remaining_ids, is_get);
     for (const auto &object_id : remaining_ids) {
+=======
+    // Otherwise, create a GetRequest to track remaining objects.
+    get_request =
+        std::make_shared<GetRequest>(std::move(remaining_ids), remove_after_get);
+    for (const auto &object_id : get_request->ObjectIds()) {
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
       object_get_requests_[object_id].push_back(get_request);
     }
   }
@@ -263,12 +402,21 @@ Status CoreWorkerMemoryStore::GetOrWait(
       }
     }
 
+<<<<<<< HEAD
     // Remove get rquest.
     for (const auto &object_id : get_request->ObjectIds()) {
       auto object_request_iter = object_get_requests_.find(object_id);
       if (object_request_iter != object_get_requests_.end()) {
         auto& get_requests = object_request_iter->second;
         // Erase get_req from the vector.
+=======
+    // Remove get request.
+    for (const auto &object_id : get_request->ObjectIds()) {
+      auto object_request_iter = object_get_requests_.find(object_id);
+      if (object_request_iter != object_get_requests_.end()) {
+        auto &get_requests = object_request_iter->second;
+        // Erase get_request from the vector.
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
         auto it = std::find(get_requests.begin(), get_requests.end(), get_request);
         if (it != get_requests.end()) {
           get_requests.erase(it);
@@ -284,6 +432,7 @@ Status CoreWorkerMemoryStore::GetOrWait(
   return Status::OK();
 }
 
+<<<<<<< HEAD
 Status CoreWorkerMemoryStore::Get(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms, 
     std::vector<std::shared_ptr<RayObject>> *results) {
@@ -347,6 +496,13 @@ Status CoreWorkerMemoryStore::DeleteObjectImpl(const ObjectID &object_id) {
     return Status::Invalid("reference count is not zero");
   }
   return Status::Invalid("object not exists");
+=======
+void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
+  std::unique_lock<std::mutex> lock(lock_);
+  for (const auto &object_id : object_ids) {
+    objects_.erase(object_id);
+  }
+>>>>>>> 384cbfb21140aad820b3c72c4624edc3cf08beb2
 }
 
 }  // namespace ray

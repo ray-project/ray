@@ -94,25 +94,9 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
-      TaskId currentTaskId) {
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Blocked on objects for task {}, object IDs are {}",
-          objectIds.get(0).getTaskId(), objectIds);
-    }
-    nativeFetchOrReconstruct(client, IdUtil.getIdBytes(objectIds),
-        fetchOnly, currentTaskId.getBytes());
-  }
-
-  @Override
   public TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
     byte[] bytes = nativeGenerateTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
     return new TaskId(bytes);
-  }
-
-  @Override
-  public void notifyUnblocked(TaskId currentTaskId) {
-    nativeNotifyUnblocked(client, currentTaskId.getBytes());
   }
 
   @Override
@@ -319,14 +303,6 @@ public class RayletClientImpl implements RayletClient {
   private static native byte[] nativeGetTask(long client) throws RayException;
 
   private static native void nativeDestroy(long client) throws RayException;
-
-  private static native void nativeFetchOrReconstruct(long client, byte[][] objectIds,
-      boolean fetchOnly, byte[] currentTaskId) throws RayException;
-
-  private static native void nativeNotifyUnblocked(long client, byte[] currentTaskId)
-      throws RayException;
-
-  private static native void nativePutObject(long client, byte[] taskId, byte[] objectId);
 
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
       int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;

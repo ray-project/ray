@@ -74,7 +74,7 @@ struct TaskInfo {
   const TaskType task_type;
 };
 
-enum class StoreProviderType { LOCAL_PLASMA, PLASMA };
+enum class StoreProviderType { LOCAL_PLASMA, PLASMA, MEMORY };
 
 enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 
