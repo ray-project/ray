@@ -10,13 +10,9 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -37,7 +33,6 @@ import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
-import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
@@ -53,23 +48,6 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
-
-  /**
-   * Default timeout of a get.
-   */
-  private static final int GET_TIMEOUT_MS = 1000;
-  /**
-   * Split objects in this batch size when fetching or reconstructing them.
-   */
-  private static final int FETCH_BATCH_SIZE = 1000;
-  /**
-   * Print a warning every this number of attempts.
-   */
-  private static final int WARN_PER_NUM_ATTEMPTS = 50;
-  /**
-   * Max number of ids to print in the warning message.
-   */
-  private static final int MAX_IDS_TO_PRINT_IN_WARNING = 20;
 
   protected RayConfig rayConfig;
   protected WorkerContext workerContext;
@@ -182,84 +160,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    List<T> ret = new ArrayList<>(Collections.nCopies(objectIds.size(), null));
-    boolean wasBlocked = false;
-
-    try {
-      // A map that stores the unready object ids and their original indexes.
-      Map<ObjectId, Integer> unready = new HashMap<>();
-      for (int i = 0; i < objectIds.size(); i++) {
-        unready.put(objectIds.get(i), i);
-      }
-      int numAttempts = 0;
-
-      // Repeat until we get all objects.
-      while (!unready.isEmpty()) {
-        List<ObjectId> unreadyIds = new ArrayList<>(unready.keySet());
-
-        // For the initial fetch, we only fetch the objects, do not reconstruct them.
-        boolean fetchOnly = numAttempts == 0;
-        if (!fetchOnly) {
-          // If fetchOnly is false, this worker will be blocked.
-          wasBlocked = true;
-        }
-        // Call `fetchOrReconstruct` in batches.
-        for (List<ObjectId> batch : splitIntoBatches(unreadyIds)) {
-          rayletClient.fetchOrReconstruct(batch, fetchOnly, workerContext.getCurrentTaskId());
-        }
-
-        // Get the objects from the object store, and parse the result.
-        List<GetResult<T>> getResults = objectStoreProxy.get(unreadyIds, GET_TIMEOUT_MS);
-        for (int i = 0; i < getResults.size(); i++) {
-          GetResult<T> getResult = getResults.get(i);
-          if (getResult.exists) {
-            if (getResult.exception != null) {
-              // If the result is an exception, throw it.
-              throw getResult.exception;
-            } else {
-              // Set the result to the return list, and remove it from the unready map.
-              ObjectId id = unreadyIds.get(i);
-              ret.set(unready.get(id), getResult.object);
-              unready.remove(id);
-            }
-          }
-        }
-
-        numAttempts += 1;
-        if (LOGGER.isWarnEnabled() && numAttempts % WARN_PER_NUM_ATTEMPTS == 0) {
-          // Print a warning if we've attempted too many times, but some objects are still
-          // unavailable.
-          List<ObjectId> idsToPrint = new ArrayList<>(unready.keySet());
-          if (idsToPrint.size() > MAX_IDS_TO_PRINT_IN_WARNING) {
-            idsToPrint = idsToPrint.subList(0, MAX_IDS_TO_PRINT_IN_WARNING);
-          }
-          String ids = idsToPrint.stream().map(ObjectId::toString)
-              .collect(Collectors.joining(", "));
-          if (idsToPrint.size() < unready.size()) {
-            ids += ", etc";
-          }
-          String msg = String.format("Attempted %d times to reconstruct objects,"
-                  + " but some objects are still unavailable. If this message continues to print,"
-                  + " it may indicate that object's creating task is hanging, or something wrong"
-                  + " happened in raylet backend. %d object(s) pending: %s.", numAttempts,
-              unreadyIds.size(), ids);
-          LOGGER.warn(msg);
-        }
-      }
-
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug("Got objects {} for task {}.", Arrays.toString(objectIds.toArray()),
-            workerContext.getCurrentTaskId());
-      }
-
-      return ret;
-    } finally {
-      // If there were objects that we weren't able to get locally, let the raylet backend
-      // know that we're now unblocked.
-      if (wasBlocked) {
-        rayletClient.notifyUnblocked(workerContext.getCurrentTaskId());
-      }
-    }
+    return objectStoreProxy.get(objectIds);
   }
 
   @Override
@@ -274,22 +175,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       nodeId = UniqueId.NIL;
     }
     rayletClient.setResource(resourceName, capacity, nodeId);
-  }
-
-  private List<List<ObjectId>> splitIntoBatches(List<ObjectId> objectIds) {
-    List<List<ObjectId>> batches = new ArrayList<>();
-    int objectsSize = objectIds.size();
-
-    for (int i = 0; i < objectsSize; i += FETCH_BATCH_SIZE) {
-      int endIndex = i + FETCH_BATCH_SIZE;
-      List<ObjectId> batchIds = (endIndex < objectsSize)
-          ? objectIds.subList(i, endIndex)
-          : objectIds.subList(i, objectsSize);
-
-      batches.add(batchIds);
-    }
-
-    return batches;
   }
 
   @Override
