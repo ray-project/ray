@@ -433,14 +433,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 reporter(test={"test1": {"test2": i}})
 
-        [trial] = tune.run(
-            train, stop={
-                "test": {
-                    "test1": {
-                        "test2": 6
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(
+                train, stop={
+                    "test": {
+                        "test1": {
+                            "test2": 6
+                        }
                     }
-                }
-            }).trials
+                }).trials
+        [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
     def testEarlyReturn(self):

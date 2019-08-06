@@ -82,6 +82,7 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=columns, limit=limit)
     lines = output.captured
+
     assert all(col in lines[1] for col in columns)
     assert lines[1].count("|") == len(columns) + 1
     assert len(lines) == 3 + limit + 1

@@ -142,6 +142,7 @@ def list_trials(experiment_path,
     if not col_keys:
         raise click.ClickException("No columns to output.")
 
+    checkpoints_df = checkpoints_df[col_keys]
     if "last_update_time" in checkpoints_df:
         with pd.option_context("mode.use_inf_as_null", True):
             datetime_series = checkpoints_df["last_update_time"].dropna()
