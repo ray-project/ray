@@ -12,7 +12,6 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
-from tensorflow.contrib.distributions import RelaxedOneHotCategorical
 
 import logging
 from gym.spaces import Box, Discrete
@@ -350,6 +349,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              hiddens,
                              activation=None,
                              scope=None):
+        from tensorflow.contrib.distributions import RelaxedOneHotCategorical
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
             if self.config["use_state_preprocessor"]:
                 model = ModelCatalog.get_model({
