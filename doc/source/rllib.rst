@@ -5,7 +5,7 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 .. image:: rllib-stack.svg
 
-To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
+To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
 Installation
 ------------
@@ -22,7 +22,7 @@ You might also want to clone the `Ray repo <https://github.com/ray-project/ray>`
 .. code-block:: bash
 
   git clone https://github.com/ray-project/ray
-  cd ray/python/ray/rllib
+  cd ray/rllib
 
 Training APIs
 -------------
@@ -73,6 +73,8 @@ Algorithms
 
    -  `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
+   -  `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
+
 *  Derivative-free
 
    -  `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
@@ -97,6 +99,8 @@ Offline Datasets
 Concepts and Custom Algorithms
 ------------------------------
 *  `Policies <rllib-concepts.html>`__
+
+   -  `Policies in Multi-Agent <rllib-concepts.html#policies-in-multi-agent>`__
 
    -  `Building Policies in TensorFlow <rllib-concepts.html#building-policies-in-tensorflow>`__
 

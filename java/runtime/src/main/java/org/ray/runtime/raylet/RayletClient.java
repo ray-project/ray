@@ -18,10 +18,6 @@ public interface RayletClient {
 
   TaskSpec getTask();
 
-  void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly, TaskId currentTaskId);
-
-  void notifyUnblocked(TaskId currentTaskId);
-
   TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex);
 
   <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int

@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 from contextlib import closing
 import numpy as np
 import socket
@@ -212,18 +211,6 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
-
-class Resources(
-        namedtuple("Resources", ["num_cpus", "num_gpus", "resources"])):
-    __slots__ = ()
-
-    def __new__(cls, num_cpus=1, num_gpus=0, resources=None):
-        if resources is None:
-            resources = {}
-
-        return super(Resources, cls).__new__(cls, num_cpus, num_gpus,
-                                             resources)
 
 
 def sgd_mse_optimizer(model, config):

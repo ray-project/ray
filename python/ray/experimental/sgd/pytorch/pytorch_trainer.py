@@ -30,7 +30,7 @@ class PyTorchTrainer(object):
                  optimizer_creator=utils.sgd_mse_optimizer,
                  config=None,
                  num_replicas=1,
-                 resources_per_replica=None,
+                 use_gpu=False,
                  batch_size=16,
                  backend="auto"):
         """Sets up the PyTorch trainer.
@@ -46,8 +46,8 @@ class PyTorchTrainer(object):
                 'data_creator', and 'optimizer_creator'.
             num_replicas (int): the number of workers used in distributed
                 training.
-            resources_per_replica (Resources): resources used by each worker.
-                Defaults to Resources(num_cpus=1).
+            use_gpu (bool): Sets resource allocation for workers to 1 GPU
+                if true.
             batch_size (int): batch size for an update.
             backend (string): backend used by distributed PyTorch.
         """
@@ -64,19 +64,15 @@ class PyTorchTrainer(object):
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
-        if resources_per_replica is None:
-            resources_per_replica = utils.Resources(
-                num_cpus=1, num_gpus=0, resources={})
-
         if backend == "auto":
-            backend = "nccl" if resources_per_replica.num_gpus > 0 else "gloo"
+            backend = "nccl" if use_gpu else "gloo"
+
+        logger.info("Using {} as backend.".format(backend))
 
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=resources_per_replica.num_cpus,
-                num_gpus=resources_per_replica.num_gpus,
-                resources=resources_per_replica.resources)(PyTorchRunner)
+                num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, optimizer_creator,
@@ -87,10 +83,7 @@ class PyTorchTrainer(object):
         else:
             # Geneate actor class
             Runner = ray.remote(
-                num_cpus=resources_per_replica.num_cpus,
-                num_gpus=resources_per_replica.num_gpus,
-                resources=resources_per_replica.resources)(
-                    DistributedPyTorchRunner)
+                num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
             # Compute batch size per replica
             batch_size_per_replica = batch_size // num_replicas
             if batch_size % num_replicas > 0:

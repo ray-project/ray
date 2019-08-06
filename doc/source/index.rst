@@ -183,6 +183,21 @@ The following are good places to discuss Ray.
 
 .. toctree::
    :maxdepth: 1
+   :caption: Tune
+
+   tune.rst
+   tune-tutorial.rst
+   tune-usage.rst
+   tune-distributed.rst
+   tune-schedulers.rst
+   tune-searchalg.rst
+   tune-package-ref.rst
+   tune-design.rst
+   tune-examples.rst
+   tune-contrib.rst
+
+.. toctree::
+   :maxdepth: 1
    :caption: RLlib
 
    rllib.rst
@@ -195,19 +210,6 @@ The following are good places to discuss Ray.
    rllib-examples.rst
    rllib-dev.rst
    rllib-package-ref.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Tune
-
-   tune.rst
-   tune-usage.rst
-   tune-schedulers.rst
-   tune-searchalg.rst
-   tune-package-ref.rst
-   tune-design.rst
-   tune-examples.rst
-   tune-contrib.rst
 
 .. toctree::
    :maxdepth: 1

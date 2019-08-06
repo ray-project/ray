@@ -31,7 +31,7 @@ def log_sync_template():
     ssh_key = get_ssh_key()
     if ssh_key is None:
         if not _log_sync_warned:
-            logger.error("Log sync requires cluster to be setup with "
+            logger.debug("Log sync requires cluster to be setup with "
                          "`ray up`.")
             _log_sync_warned = True
         return
