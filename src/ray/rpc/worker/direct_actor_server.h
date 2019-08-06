@@ -41,13 +41,16 @@ class DirectActorGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+          *server_call_factories_and_concurrencies,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories)
+      override {
     // Initialize the Factory for `PushTask` requests.
     std::unique_ptr<ServerCallFactory> push_task_call_Factory(
         new ServerCallFactoryImpl<DirectActorService, DirectActorHandler, PushTaskRequest,
                                   PushTaskReply>(
-            service_, &DirectActorService::AsyncService::RequestPushTask,
-            service_handler_, &DirectActorHandler::HandlePushTask, cq, main_service_));
+            main_service_, cq, service_,
+            &DirectActorService::AsyncService::RequestPushTask, service_handler_,
+            &DirectActorHandler::HandlePushTask));
 
     // Set `PushTask`'s accept concurrency to 100.
     server_call_factories_and_concurrencies->emplace_back(

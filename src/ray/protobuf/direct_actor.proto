@@ -9,7 +9,7 @@ message ReturnObject {
   bytes object_id = 1;
   // Data of the object.
   bytes data = 2;
-  // Metaata of the object.
+  // Metadata of the object.
   bytes metadata = 3;
 }
 
