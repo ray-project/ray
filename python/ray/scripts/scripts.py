@@ -784,8 +784,10 @@ def timeline(redis_address):
     logger.info(
         "You can open this with chrome://tracing in the Chrome browser.")
 
+
 cli.add_command(rsync_up, name="rsync_up")
 cli.add_command(rsync_down, name="rsync_down")
+
 
 def main():
     return cli()

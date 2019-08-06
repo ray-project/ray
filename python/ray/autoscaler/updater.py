@@ -17,8 +17,8 @@ from threading import Thread
 from getpass import getuser
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
-from ray.autoscaler.log_timer import (
-    LogTimer, print_and_log_info, print_and_log_error)
+from ray.autoscaler.log_timer import (LogTimer, print_and_log_info,
+                                      print_and_log_error)
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +163,7 @@ class NodeUpdater(object):
 
     def wait_for_ssh(self, deadline):
 
-        waiting_msg = "NodeUpdater: {}: Waiting for SSH.".format(
-            self.node_id)
+        waiting_msg = "NodeUpdater: {}: Waiting for SSH.".format(self.node_id)
         logger.info(waiting_msg)
         retries = 0
         while time.time() < deadline and \
@@ -249,8 +248,8 @@ class NodeUpdater(object):
 
     def rsync_up(self, source, target, redirect=None):
         logger.debug("NodeUpdater: "
-                    "{}: Syncing {} to {}...".format(self.node_id, source,
-                                                     target))
+                     "{}: Syncing {} to {}...".format(self.node_id, source,
+                                                      target))
         self.set_ssh_ip_if_required()
         self.process_runner.check_call(
             [
@@ -263,8 +262,8 @@ class NodeUpdater(object):
 
     def rsync_down(self, source, target, redirect=None):
         logger.debug("NodeUpdater: "
-                    "{}: Syncing {} from {}...".format(self.node_id, source,
-                                                       target))
+                     "{}: Syncing {} from {}...".format(
+                         self.node_id, source, target))
         self.set_ssh_ip_if_required()
         self.process_runner.check_call(
             [
@@ -322,7 +321,8 @@ class NodeUpdater(object):
             cmd_str = " ".join(final_cmd)
             logger.debug("Call %s failed with %s.", cmd_str, exc)
             if exit_on_fail:
-                print("NodeUpdater: Command failed - \n\n  {}\n".format(cmd_str))
+                print(
+                    "NodeUpdater: Command failed - \n\n  {}\n".format(cmd_str))
                 sys.exit(1)
             else:
                 raise

@@ -26,8 +26,8 @@ from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.log_timer import (
-    LogTimer, print_and_log_info, print_and_log_error)
+from ray.autoscaler.log_timer import (LogTimer, print_and_log_info,
+                                      print_and_log_error)
 from ray.autoscaler.docker import with_docker_exec
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,8 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 def _bootstrap_config(config):
     click.secho(
-        "[ray {}] Ray Cluster {}".format(
-            ray.__version__, config["cluster_name"]),
+        "[ray {}] Ray Cluster {}".format(ray.__version__,
+                                         config["cluster_name"]),
         fg="green")
     config = fillout_defaults(config)
 
