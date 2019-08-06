@@ -90,10 +90,12 @@ class LogMonitor(object):
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
-        # we only monior worker log files
+        # output of user code is written here
         log_file_paths = glob.glob("{}/worker*[.out|.err]".format(
             self.logs_dir))
-        for file_path in log_file_paths:
+        # segfaults and other serious errors are logged here
+        raylet_err_paths = glob.glob("{}/raylet*.err".format(self.logs_dir))
+        for file_path in log_file_paths + raylet_err_paths:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 self.log_filenames.add(file_path)
@@ -195,6 +197,8 @@ class LogMonitor(object):
                     file_info.worker_pid = int(
                         lines_to_publish[0].split(" ")[-1])
                     lines_to_publish = lines_to_publish[1:]
+                elif "/raylet" in file_info.filename:
+                    file_info.worker_pid = "raylet"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()

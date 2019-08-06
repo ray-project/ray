@@ -6,11 +6,14 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/rpc/raylet/raylet_client.h"
-#include "src/ray/util/test_util.h"
 
+#include "ray/core_worker/store_provider/local_plasma_provider.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
+
+#include "ray/rpc/raylet/raylet_client.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
+#include "src/ray/util/test_util.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -157,6 +160,9 @@ class CoreWorkerTest : public ::testing::Test {
   void SetUp() {}
 
   void TearDown() {}
+
+  // Test tore provider.
+  void TestStoreProvider(StoreProviderType type);
 
   // Test normal tasks.
   void TestNormalTask(const std::unordered_map<std::string, double> &resources);
@@ -446,6 +452,87 @@ void CoreWorkerTest::TestActorFailure(
   }
 }
 
+void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
+  std::unique_ptr<CoreWorkerStoreProvider> provider_ptr;
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store;
+
+  switch (type) {
+  case StoreProviderType::LOCAL_PLASMA:
+    provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
+        new CoreWorkerLocalPlasmaStoreProvider(raylet_store_socket_names_[0]));
+    break;
+  case StoreProviderType::MEMORY:
+    memory_store = std::make_shared<CoreWorkerMemoryStore>();
+    provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
+        new CoreWorkerMemoryStoreProvider(memory_store));
+    break;
+  default:
+    RAY_LOG(FATAL) << "unspported store provider type " << static_cast<int>(type);
+    break;
+  }
+
+  auto &provider = *provider_ptr;
+
+  uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
+
+  std::vector<RayObject> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
+
+  std::vector<ObjectID> ids(buffers.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    ids[i] = ObjectID::FromRandom();
+    RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
+  }
+
+  // Test Wait().
+  std::vector<ObjectID> ids_with_duplicate;
+  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+  // add the same ids again to test `Get` with duplicate object ids.
+  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+
+  std::vector<ObjectID> wait_ids(ids_with_duplicate);
+  ObjectID non_existent_id = ObjectID::FromRandom();
+  wait_ids.push_back(non_existent_id);
+
+  std::vector<bool> wait_results;
+  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, TaskID::FromRandom(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 5);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+
+  // Test Get().
+  std::vector<std::shared_ptr<RayObject>> results;
+  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, TaskID::FromRandom(), &results));
+
+  ASSERT_EQ(results.size(), ids_with_duplicate.size());
+  for (size_t i = 0; i < ids_with_duplicate.size(); i++) {
+    const auto &expected = buffers[i % ids.size()];
+    ASSERT_EQ(results[i]->GetData()->Size(), expected.GetData()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), expected.GetData()->Data(),
+                     expected.GetData()->Size()),
+              0);
+    ASSERT_EQ(results[i]->GetMetadata()->Size(), expected.GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), expected.GetMetadata()->Data(),
+                     expected.GetMetadata()->Size()),
+              0);
+  }
+
+  // Test Delete().
+  // clear the reference held.
+  results.clear();
+
+  RAY_CHECK_OK(provider.Delete(ids, true, false));
+
+  usleep(200 * 1000);
+  RAY_CHECK_OK(provider.Get(ids, 0, TaskID::FromRandom(), &results));
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_TRUE(!results[0]);
+  ASSERT_TRUE(!results[1]);
+}
+
 class ZeroNodeTest : public CoreWorkerTest {
  public:
   ZeroNodeTest() : CoreWorkerTest(0) {}
@@ -637,6 +724,10 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ASSERT_EQ(handle1.NumForks(), handle2.NumForks());
 }
 
+TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
+  TestStoreProvider(StoreProviderType::MEMORY);
+}
+
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
@@ -705,14 +796,13 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
 
-  std::vector<LocalMemoryBuffer> buffers;
-  buffers.emplace_back(array1, sizeof(array1));
-  buffers.emplace_back(array2, sizeof(array2));
+  std::vector<std::shared_ptr<LocalMemoryBuffer>> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)));
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Objects().Put(
-        RayObject(std::make_shared<LocalMemoryBuffer>(buffers[i]), nullptr), &ids[i]));
+    RAY_CHECK_OK(worker1.Objects().Put(RayObject(buffers[i], nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.
@@ -721,8 +811,8 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i].Size());
-    ASSERT_EQ(*(results[i]->GetData()), buffers[i]);
+    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i]->Size());
+    ASSERT_EQ(*(results[i]->GetData()), *buffers[i]);
   }
 
   // Test Wait() from remote node.

@@ -36,7 +36,6 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
-
   protected RayConfig rayConfig;
   protected AbstractWorker worker;
   protected FunctionManager functionManager;

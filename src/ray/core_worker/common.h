@@ -64,7 +64,7 @@ class TaskArg {
   const std::shared_ptr<Buffer> data_;
 };
 
-enum class StoreProviderType { LOCAL_PLASMA, PLASMA };
+enum class StoreProviderType { LOCAL_PLASMA, PLASMA, MEMORY };
 
 enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 
