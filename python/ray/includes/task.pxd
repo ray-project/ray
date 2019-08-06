@@ -37,7 +37,7 @@ cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
 
 cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
     cdef cppclass CTaskSpec "ray::TaskSpecification":
-        CTaskSpec(const RpcTaskSpec message)
+        CTaskSpec(const RpcTaskSpec &message)
         CTaskSpec(const c_string &serialized_binary)
         const RpcTaskSpec &GetMessage()
         c_string Serialize() const

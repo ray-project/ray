@@ -27,7 +27,16 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
+    ComputeResources();
+  }
+
+  /// Construct from a protobuf message object.
+  /// The input message will be **moved** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit TaskSpecification(rpc::TaskSpec &&message)
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 

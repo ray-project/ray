@@ -47,7 +47,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmit
   task_spec_message.ParseFromArray(data, size);
   env->ReleaseByteArrayElements(taskSpec, data, JNI_ABORT);
 
-  ray::TaskSpecification task_spec(task_spec_message);
+  ray::TaskSpecification task_spec(std::move(task_spec_message));
   auto status = raylet_client->SubmitTask(task_spec);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }

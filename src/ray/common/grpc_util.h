@@ -19,7 +19,14 @@ class MessageWrapper {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit MessageWrapper(const Message message)
+  explicit MessageWrapper(const Message &message)
+      : message_(std::make_shared<Message>(message)) {}
+
+  /// Construct from a protobuf message object.
+  /// The input message will be **moved** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit MessageWrapper(Message &&message)
       : message_(std::make_shared<Message>(std::move(message))) {}
 
   /// Construct from a protobuf message shared_ptr.

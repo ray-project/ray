@@ -50,7 +50,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_WorkerContext_nativeSetCurrentTask(
   task_spec_message.ParseFromArray(data, size);
   env->ReleaseByteArrayElements(taskSpec, data, JNI_ABORT);
 
-  ray::TaskSpecification spec(task_spec_message);
+  ray::TaskSpecification spec(std::move(task_spec_message));
   GetWorkerContextFromPointer(nativeWorkerContextFromPointer)->SetCurrentTask(spec);
 }
 
