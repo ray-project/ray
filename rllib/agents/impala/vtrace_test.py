@@ -98,7 +98,7 @@ class LogProbsFromLogitsAndActionsTest(tf.test.TestCase,
             0, num_actions - 1, size=(seq_len, batch_size), dtype=np.int32)
 
         action_log_probs_tensor = vtrace.log_probs_from_logits_and_actions(
-            policy_logits, actions)
+            policy_logits, actions, {"model": None})  # dummy config dict
 
         # Ground Truth
         # Using broadcasting to create a mask that indexes action logits
@@ -159,6 +159,8 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
         clip_rho_threshold = None  # No clipping.
         clip_pg_rho_threshold = None  # No clipping.
 
+        dummy_config = {"model": None}
+
         # Intentionally leaving shapes unspecified to test if V-trace can
         # deal with that.
         placeholders = {
@@ -178,12 +180,15 @@ class VtraceTest(tf.test.TestCase, parameterized.TestCase):
         from_logits_output = vtrace.from_logits(
             clip_rho_threshold=clip_rho_threshold,
             clip_pg_rho_threshold=clip_pg_rho_threshold,
+            config=dummy_config,
             **placeholders)
 
         target_log_probs = vtrace.log_probs_from_logits_and_actions(
-            placeholders["target_policy_logits"], placeholders["actions"])
+            placeholders["target_policy_logits"], placeholders["actions"],
+            dummy_config)
         behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
-            placeholders["behaviour_policy_logits"], placeholders["actions"])
+            placeholders["behaviour_policy_logits"], placeholders["actions"],
+            dummy_config)
         log_rhos = target_log_probs - behaviour_log_probs
         ground_truth = (log_rhos, behaviour_log_probs, target_log_probs)
 

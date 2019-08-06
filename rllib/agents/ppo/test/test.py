@@ -20,7 +20,7 @@ class DistributionsTest(unittest.TestCase):
         logits = tf.placeholder(tf.float32, shape=(None, 10))
         z = 8 * (np.random.rand(10) - 0.5)
         data = np.tile(z, (num_samples, 1))
-        c = Categorical(logits)
+        c = Categorical(logits, {})  # dummy config dict
         sample_op = c.sample()
         sess = tf.Session()
         sess.run(tf.global_variables_initializer())

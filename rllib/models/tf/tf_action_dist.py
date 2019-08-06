@@ -17,8 +17,9 @@ class TFActionDistribution(ActionDistribution):
     """TF-specific extensions for building action distributions."""
 
     @DeveloperAPI
-    def __init__(self, inputs):
-        super(TFActionDistribution, self).__init__(inputs)
+    def __init__(self, inputs, model_config):
+        super(TFActionDistribution, self).__init__(
+            inputs, model_config=model_config)
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -76,16 +77,22 @@ class Categorical(TFActionDistribution):
     def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return action_space.n
+
 
 class MultiCategorical(TFActionDistribution):
-    """Categorical distribution for discrete action spaces."""
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    def __init__(self, inputs, input_lens):
+    def __init__(self, inputs, input_lens, model_config):
         self.cats = [
-            Categorical(input_)
+            Categorical(input_, model_config=model_config)
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
+        self.model_config = model_config
 
     @override(ActionDistribution)
     def logp(self, actions):
@@ -116,6 +123,11 @@ class MultiCategorical(TFActionDistribution):
     def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.sum(action_space.nvec)
+
 
 class DiagGaussian(TFActionDistribution):
     """Action distribution where each vector element is a gaussian.
@@ -124,12 +136,12 @@ class DiagGaussian(TFActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, model_config):
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        TFActionDistribution.__init__(self, inputs)
+        super(DiagGaussian, self).__init__(inputs, model_config)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -157,6 +169,11 @@ class DiagGaussian(TFActionDistribution):
     def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
 
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
@@ -172,6 +189,11 @@ class Deterministic(TFActionDistribution):
     def _build_sample_op(self):
         return self.inputs
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)
+
 
 class MultiActionDistribution(TFActionDistribution):
     """Action distribution that operates for list of actions.
@@ -180,12 +202,14 @@ class MultiActionDistribution(TFActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, action_space, child_distributions, input_lens):
+    def __init__(self, inputs, action_space, child_distributions, input_lens,
+                 model_config):
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i]))
+            child_list.append(
+                distribution(split_inputs[i], model_config=model_config))
         self.child_distributions = child_list
 
     @override(ActionDistribution)
@@ -241,7 +265,7 @@ class Dirichlet(TFActionDistribution):
 
     e.g. actions that represent resource allocation."""
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, model_config):
         """Input is a tensor of logits. The exponential of logits is used to
         parametrize the Dirichlet distribution as all parameters need to be
         positive. An arbitrary small epsilon is added to the concentration
@@ -256,7 +280,8 @@ class Dirichlet(TFActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        TFActionDistribution.__init__(self, concentration)
+        super(Dirichlet, self).__init__(
+            concentration, model_config=model_config)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -278,3 +303,8 @@ class Dirichlet(TFActionDistribution):
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.dist.sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)
