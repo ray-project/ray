@@ -260,7 +260,8 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
                        config["model"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
-    return policy.output_actions, tf.log(policy.action_prob)
+    return (policy.output_actions, tf.log(policy.action_prob)
+            if policy.action_prob else None)
 
 
 def _build_parameter_noise(policy, pnet_params):
