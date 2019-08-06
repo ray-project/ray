@@ -798,6 +798,8 @@ filegroup(
         "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
+        "python/ray/projects/*.py",
+        "python/ray/projects/schema.json",
         "python/ray/workers/default_worker.py",
     ]),
 )

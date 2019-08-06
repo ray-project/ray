@@ -1,0 +1,10 @@
+name: "project1"
+
+cluster: .rayproject/cluster.yaml
+
+environment:
+  requirements: requirements.txt
+
+commands:
+  - name: default
+    command: ls
