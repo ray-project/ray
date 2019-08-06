@@ -21,7 +21,7 @@ class ActorStateAccessorTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread.reset(new std::thread([this] {
-      std::auto_ptr<boost::asio::io_service::work> work(
+      std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
@@ -101,7 +101,6 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
 
   // get
   for (const auto &elem : actor_datas_) {
-    const auto &actor = elem.second;
     ++pending_count_;
     actor_accessor.AsyncGet(elem.first,
                             [this](Status status, std::vector<ActorTableData> datas) {

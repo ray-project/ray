@@ -700,7 +700,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeAll) {
 
 void TestTableSubscribeId(const JobID &job_id,
                           std::shared_ptr<gcs::RedisGcsClient> client) {
-  int num_modifications = 3;
+  size_t num_modifications = 3;
 
   // Add a table entry.
   TaskID task_id1 = TaskID::FromRandom();
