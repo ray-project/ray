@@ -107,9 +107,10 @@ class QLoss(object):
 
 class QValuePolicy(object):
     def __init__(self, q_values, observations, num_actions, stochastic, eps,
-                 softmax, softmax_temp):
+                 softmax, softmax_temp, model_config):
         if softmax:
-            action_dist = Categorical(q_values / softmax_temp)
+            action_dist = Categorical(
+                q_values / softmax_temp, model_config=model_config)
             self.action = action_dist.sample()
             self.action_prob = action_dist.sampled_action_prob()
             return
@@ -255,7 +256,8 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
                        action_space.n, policy.stochastic, policy.eps,
-                       config["soft_q"], config["softmax_temp"])
+                       config["soft_q"], config["softmax_temp"],
+                       config["model"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
     return policy.output_actions, policy.action_prob

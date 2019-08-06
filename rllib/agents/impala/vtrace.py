@@ -49,13 +49,14 @@ VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 
 def log_probs_from_logits_and_actions(policy_logits,
                                       actions,
+                                      config,
                                       dist_class=Categorical):
     return multi_log_probs_from_logits_and_actions([policy_logits], [actions],
-                                                   dist_class)[0]
+                                                   dist_class, config)[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions,
-                                            dist_class):
+def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
+                                            config):
     """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
@@ -76,6 +77,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
       ...,
       [T, B, ...]
       with actions.
+    dist_class: Python class of the action distribution
+    config: Trainer config dict
 
   Returns:
     A list with length of ACTION_SPACE of float32
@@ -97,7 +100,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
                                   tf.concat([[-1], a_shape[2:]], axis=0))
         log_probs.append(
             tf.reshape(
-                dist_class(policy_logits_flat).logp(actions_flat),
+                dist_class(policy_logits_flat,
+                           model_config=config["model"]).logp(actions_flat),
                 a_shape[:2]))
 
     return log_probs
@@ -110,6 +114,7 @@ def from_logits(behaviour_policy_logits,
                 rewards,
                 values,
                 bootstrap_value,
+                config,
                 dist_class=Categorical,
                 clip_rho_threshold=1.0,
                 clip_pg_rho_threshold=1.0,
@@ -122,6 +127,7 @@ def from_logits(behaviour_policy_logits,
         rewards,
         values,
         bootstrap_value,
+        config,
         dist_class,
         clip_rho_threshold=clip_rho_threshold,
         clip_pg_rho_threshold=clip_pg_rho_threshold,
@@ -145,6 +151,7 @@ def multi_from_logits(behaviour_policy_logits,
                       rewards,
                       values,
                       bootstrap_value,
+                      config,
                       dist_class,
                       clip_rho_threshold=1.0,
                       clip_pg_rho_threshold=1.0,
@@ -235,9 +242,9 @@ def multi_from_logits(behaviour_policy_logits,
                 discounts, rewards, values, bootstrap_value
             ]):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
-            target_policy_logits, actions, dist_class)
+            target_policy_logits, actions, dist_class, config)
         behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions, dist_class)
+            behaviour_policy_logits, actions, dist_class, config)
 
         log_rhos = get_log_rhos(target_action_log_probs,
                                 behaviour_action_log_probs)
