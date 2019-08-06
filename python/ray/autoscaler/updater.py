@@ -7,7 +7,6 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 import logging
-import click
 import os
 import subprocess
 import sys
