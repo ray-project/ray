@@ -11,7 +11,6 @@ os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
 
 if __name__ == "__main__":
     from ray.rllib.agents.a3c import A2CTrainer
-    assert "pandas" not in sys.modules, "Pandas initially present"
     assert "tensorflow" not in sys.modules, "TF initially present"
 
     # note: no ray.init(), to test it works without Ray
