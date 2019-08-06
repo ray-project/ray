@@ -6,7 +6,11 @@ import copy
 import json
 import logging
 import os
-import pandas as pd
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE
@@ -45,7 +49,13 @@ class Analysis(object):
         self._experiment_dir = experiment_dir
         self._configs = {}
         self._trial_dataframes = {}
-        self.fetch_trial_dataframes()
+
+        if not pd:
+            logger.warning(
+                "pandas not installed. Run `pip install pandas` for "
+                "Analysis utilities.")
+        else:
+            self.fetch_trial_dataframes()
 
     def dataframe(self, metric=None, mode=None):
         """Returns a pandas.DataFrame object constructed from the trials.
@@ -185,6 +195,7 @@ class ExperimentAnalysis(Analysis):
         """
         with open(experiment_checkpoint_path) as f:
             _experiment_state = json.load(f)
+            self._experiment_state = _experiment_state
 
         if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")

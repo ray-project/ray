@@ -155,17 +155,6 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public void fetchOrReconstruct(List<ObjectId> objectIds, boolean fetchOnly,
-                                 TaskId currentTaskId) {
-
-  }
-
-  @Override
-  public void notifyUnblocked(TaskId currentTaskId) {
-
-  }
-
-  @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, TaskId currentTaskId) {
     if (waitFor == null || waitFor.isEmpty()) {

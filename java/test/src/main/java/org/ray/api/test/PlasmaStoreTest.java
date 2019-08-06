@@ -17,9 +17,9 @@ public class PlasmaStoreTest extends BaseTest {
     AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     ObjectStoreProxy objectInterface = runtime.getObjectStoreProxy();
     objectInterface.put(objectId, 1);
-    Assert.assertEquals(objectInterface.<Integer>get(objectId, -1).object, (Integer) 1);
+    Assert.assertEquals(objectInterface.<Integer>get(objectId), (Integer) 1);
     objectInterface.put(objectId, 2);
     // Putting 2 objects with duplicate ID should fail but ignored.
-    Assert.assertEquals(objectInterface.<Integer>get(objectId, -1).object, (Integer) 1);
+    Assert.assertEquals(objectInterface.<Integer>get(objectId), (Integer) 1);
   }
 }
