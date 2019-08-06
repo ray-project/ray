@@ -189,7 +189,7 @@ Status AuthenticateRedis(redisAsyncContext *context, const std::string &password
 }
 
 void RedisAsyncContextDisconnectCallback(const redisAsyncContext *context, int status) {
-  RAY_LOG(INFO) << "Redis async context disconnected. Status: " << status;
+  RAY_LOG(WARNING) << "Redis async context disconnected. Status: " << status;
   reinterpret_cast<RedisContext *>(context->data)
       ->AsyncDisconnectCallback(context, status);
 }
