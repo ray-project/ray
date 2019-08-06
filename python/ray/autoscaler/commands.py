@@ -26,11 +26,17 @@ from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.log_timer import (LogTimer, print_and_log_info,
-                                      print_and_log_error)
+from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
 
 logger = logging.getLogger(__name__)
+
+
+def print_and_log_info(msg):
+    """Prints and logs."""
+
+    click.secho(msg + "\n", fg="yellow")
+    logger.info(msg)
 
 
 def create_or_update_cluster(config_file, override_min_workers,

@@ -20,13 +20,3 @@ class LogTimer():
         td = datetime.datetime.utcnow() - self._start_time
         logger.debug(self._message +
                      " [LogTimer={:.0f}ms]".format(td.total_seconds() * 1000))
-
-
-def print_and_log_info(msg):
-    click.secho(msg + "\n", fg="yellow")
-    logger.info(msg)
-
-
-def print_and_log_error(msg):
-    click.secho(msg + "\n", fg="red")
-    logger.error(msg)

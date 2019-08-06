@@ -17,8 +17,7 @@ from threading import Thread
 from getpass import getuser
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
-from ray.autoscaler.log_timer import (LogTimer, print_and_log_info,
-                                      print_and_log_error)
+from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
 
