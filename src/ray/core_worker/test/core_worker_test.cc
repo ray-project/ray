@@ -520,11 +520,11 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
               0);
   }
 
-  // Test Delete().
+  // Test Free().
   // clear the reference held.
   results.clear();
 
-  RAY_CHECK_OK(provider.Delete(ids, true, false));
+  RAY_CHECK_OK(provider.Free(ids, true, false));
 
   usleep(200 * 1000);
   RAY_CHECK_OK(provider.Get(ids, 0, TaskID::FromRandom(), &results));

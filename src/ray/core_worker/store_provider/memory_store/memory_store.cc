@@ -127,6 +127,18 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
   return Status::OK();
 }
 
+Status CoreWorkerMemoryStore::Create(const std::shared_ptr<Buffer> &metadata,
+                                     const size_t data_size, const ObjectID &object_id,
+                                     std::shared_ptr<Buffer> *data) {
+  return Status::NotImplemented(
+      "Create/Seal interface not implemented for in-memory store.");
+}
+
+Status CoreWorkerMemoryStore::Seal(const ObjectID &object_id) {
+  return Status::NotImplemented(
+      "Create/Seal interface not implemented for in-memory store.");
+}
+
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                   int64_t timeout_ms, bool remove_after_get,
                                   std::vector<std::shared_ptr<RayObject>> *results) {
@@ -206,7 +218,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   return Status::OK();
 }
 
-void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
+void CoreWorkerMemoryStore::Free(const std::vector<ObjectID> &object_ids) {
   std::unique_lock<std::mutex> lock(lock_);
   for (const auto &object_id : object_ids) {
     objects_.erase(object_id);

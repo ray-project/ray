@@ -49,10 +49,9 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
   return status;
 }
 
-Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
-  store_->Delete(object_ids);
+Status CoreWorkerMemoryStoreProvider::Free(const std::vector<ObjectID> &object_ids,
+                                           bool local_only, bool delete_creating_tasks) {
+  store_->Free(object_ids);
   return Status::OK();
 }
 

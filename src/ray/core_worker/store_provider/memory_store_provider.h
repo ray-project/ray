@@ -22,6 +22,13 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
   /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
+  /// See `CoreWorkerStoreProvider::Create` for semantics.
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data) override;
+
+  /// See `CoreWorkerStoreProvider::Seal` for semantics.
+  Status Seal(const ObjectID &object_id) override;
+
   /// See `CoreWorkerStoreProvider::Get` for semantics.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
              std::vector<std::shared_ptr<RayObject>> *results) override;
@@ -32,10 +39,10 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
-  /// See `CoreWorkerStoreProvider::Delete` for semantics.
+  /// See `CoreWorkerStoreProvider::Free` for semantics.
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                bool delete_creating_tasks = false) override;
+  Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
+              bool delete_creating_tasks = false) override;
 
  private:
   /// Implementation.
