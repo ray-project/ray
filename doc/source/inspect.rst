@@ -40,7 +40,7 @@ To get information about the current nodes in your cluster, you can use ``ray.no
     :noindex:
 
 
-.. code-block:: ipython3
+.. code-block:: python
 
     >>> import ray
     >>> ray.init()
