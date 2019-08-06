@@ -416,6 +416,17 @@ void WorkerPool::TickHeartbeatTimer(int max_missed_heartbeats,
   }
 }
 
+std::shared_ptr<Worker> WorkerPool::GetWorker(const WorkerID &worker_id) {
+  auto worker = GetRegisteredWorker(worker_id);
+  if (!worker) {
+    worker = GetRegisteredDriver(worker_id);
+    if (!worker) {
+      return nullptr;
+    }
+  }
+  return worker;
+}
+
 }  // namespace raylet
 
 }  // namespace ray

@@ -105,7 +105,7 @@ def check_signature_supported(func, warn=False):
         message = ("The function {} has a **kwargs argument, which is "
                    "currently not supported.".format(function_name))
         if warn:
-            logger.warning(message)
+            logger.debug(message)
         else:
             raise Exception(message)
 
@@ -114,7 +114,7 @@ def check_signature_supported(func, warn=False):
                    "(defined after * or *args), which is currently "
                    "not supported.".format(function_name))
         if warn:
-            logger.warning(message)
+            logger.debug(message)
         else:
             raise Exception(message)
 
