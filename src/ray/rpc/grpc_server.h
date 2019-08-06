@@ -72,6 +72,10 @@ class GrpcServer {
   void RegisterService(GrpcService &service);
 
  protected:
+  void ProcessDefaultCall(std::shared_ptr<ServerCall> server_call, ServerCallTag *tag,
+                          bool ok);
+  void ProcessStreamCall(std::shared_ptr<ServerCall> server_call, ServerCallTag *tag,
+                         bool ok);
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
   /// via the `ServerCall` objects.

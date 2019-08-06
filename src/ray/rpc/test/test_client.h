@@ -43,7 +43,7 @@ class DebugTestClient {
     return call->GetStatus();
   }
 
-  void StartEchoStream(const ClientCallback<DebugEchoReply> &callback,
+  void StartStreamEcho(const ClientCallback<DebugEchoReply> &callback,
                        int max_buffer_size) {
     debug_stream_call_ =
         client_call_manager_
@@ -57,7 +57,7 @@ class DebugTestClient {
     debug_stream_call_->WriteStream(request);
   }
 
-  void CloseEchoStream() { debug_stream_call_->WritesDone(); }
+  void CloseStreamEcho() { debug_stream_call_->WritesDone(); }
 
  private:
   /// The gRPC-generated stub.

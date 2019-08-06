@@ -101,6 +101,53 @@ class ClientCallManager {
   }
 
  private:
+  void ProcessDefaultCall(std::shared_ptr<ClientCall> call, ClientCallTag *tag, bool ok) {
+    if (ok && !main_service_.stopped()) {
+      // Post the callback to the main event loop.
+      main_service_.post([tag]() {
+        tag->GetCall()->OnReplyReceived();
+        // The call is finished, and we can delete this tag now.
+        delete tag;
+      });
+    } else {
+      delete tag;
+    }
+  }
+
+  void ProcessStreamCall(std::shared_ptr<ClientCall> call, ClientCallTag *tag, bool ok) {
+    if (ok) {
+      auto state = call->GetState();
+      if (tag->IsReplyReaderTag()) {
+        if (call->IsRunning()) {
+          main_service_.post([call]() { call->OnReplyReceived(); });
+        } else {
+          call->DeleteReplyReaderTag();
+        }
+      } else {
+        switch (state) {
+        case ClientCallState::CONNECT:
+          call->OnConnectingFinished();
+          call->AsyncReadNextReply();
+          call->SetState(ClientCallState::WRITING);
+          call->AsyncWriteNextRequest();
+          break;
+        case ClientCallState::WRITING:
+          call->AsyncWriteNextRequest();
+          break;
+        case ClientCallState::WRITES_DONE:
+          RAY_LOG(INFO) << "Client WRITES DONE from q.";
+          delete tag;
+          break;
+        default:
+          RAY_LOG(INFO) << "Shouldn't reach here.";
+          break;
+        }
+      }
+    } else {
+      RAY_LOG(INFO) << "Try to remove tag.";
+      delete tag;
+    }
+  }
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
@@ -112,52 +159,16 @@ class ClientCallManager {
       auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
       auto call = tag->GetCall();
       auto type = call->GetType();
-      if (ok) {
-        auto state = call->GetState();
-        if (type == ClientCallType::DEFAULT_ASYNC_CALL) {
-          // Post the callback to the main event loop.
-          main_service_.post([tag]() {
-            tag->GetCall()->OnReplyReceived();
-            // The call is finished, and we can delete this tag now.
-            delete tag;
-          });
-        } else if (type == ClientCallType::STREAM_ASYNC_CALL) {
-          if (tag->IsReplyReaderTag()) {
-            RAY_LOG(INFO) << "Client has read a reader tag, is running:"
-                          << call->IsRunning();
-            if (call->IsRunning()) {
-              main_service_.post([call]() { call->OnReplyReceived(); });
-            } else {
-              call->DeleteReplyReaderTag();
-            }
-          } else {
-            switch (state) {
-            case ClientCallState::CONNECT:
-              call->ConnectFinish();
-              call->AsyncReadNextReply();
-              call->SetState(ClientCallState::WRITING);
-              call->AsyncWriteNextRequest();
-              break;
-            case ClientCallState::WRITING:
-              RAY_LOG(INFO) << "Client RECEIVE tag from COMPLETION queue.";
-              call->AsyncWriteNextRequest();
-              break;
-            case ClientCallState::WRITES_DONE:
-              RAY_LOG(INFO) << "Client WRITES DONE from q.";
-              delete tag;
-              break;
-            default:
-              RAY_LOG(INFO) << "Shouldn't reach here.";
-              break;
-            }
-          }
-        }
-      } else {
-        RAY_LOG(INFO) << "Try to remove tag.";
-        if (type == ClientCallType::STREAM_ASYNC_CALL) {
-          // delete call->GetReplyReaderTag();
-        }
-        delete tag;
+      switch (type) {
+      case ClientCallType::DEFAULT_ASYNC_CALL:
+        ProcessDefaultCall(call, tag, ok);
+        break;
+      case ClientCallType::STREAM_ASYNC_CALL:
+        ProcessStreamCall(call, tag, ok);
+        break;
+      default:
+        RAY_LOG(WARNING) << "Shouldn't reach here.";
+        break;
       }
     }
   }

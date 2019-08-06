@@ -58,73 +58,100 @@ void GrpcServer::RegisterService(GrpcService &service) {
                                   &server_stream_call_factories_);
 }
 
+void GrpcServer::ProcessDefaultCall(std::shared_ptr<ServerCall> server_call,
+                                    ServerCallTag *tag, bool ok) {
+  bool delete_tag = false;
+  if (ok) {
+    switch (server_call->GetState()) {
+    case ServerCallState::PENDING:
+      // We've received a new incoming request. Now this call object is used to
+      // track this request. So we need to create another call to handle next
+      // incoming request.
+      server_call->GetFactory().CreateCall();
+      server_call->SetState(ServerCallState::PROCESSING);
+      server_call->HandleRequest();
+      break;
+    case ServerCallState::SENDING_REPLY:
+      // GRPC has sent reply successfully, invoking the callback.
+      server_call->OnReplySent();
+      // The rpc call has finished and can be deleted now.
+      delete_tag = true;
+      break;
+    default:
+      RAY_LOG(FATAL) << "Shouldn't reach here.";
+      break;
+    }
+  } else {
+    if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
+      server_call->OnReplyFailed();
+    }
+    delete_tag = true;
+  }
+  if (delete_tag) {
+    delete tag;
+  }
+}
+
+void GrpcServer::ProcessStreamCall(std::shared_ptr<ServerCall> server_call,
+                                   ServerCallTag *tag, bool ok) {
+  if (ok) {
+    if (tag->IsDoneTag()) {
+      RAY_LOG(INFO) << "Server receive a DONE tag1.";
+      delete server_call->GetDoneTag();
+      server_call->Finish();
+      RAY_LOG(INFO) << "Server receive a DONE tag2.";
+    } else if (tag->IsReplyWriterTag()) {
+      server_call->AsyncWriteNextReply();
+    } else {
+      switch (server_call->GetState()) {
+      case ServerCallState::CONNECT:
+        server_call->OnConnectingFinished();
+        server_call->AsyncReadNextRequest();
+        break;
+      case ServerCallState::PENDING:
+        server_call->HandleRequest();
+        break;
+      case ServerCallState::FINISH:
+        RAY_LOG(INFO) << "Server call received a FINISH tag.";
+        break;
+      default:
+        RAY_LOG(FATAL) << "Shouldn't reach here.";
+        break;
+      }
+    }
+  } else {
+    RAY_LOG(INFO) << "ok == false, tag type: " << static_cast<int>(tag->GetType())
+                  << ", call type: " << static_cast<int>(tag->GetCall()->GetType());
+
+    if (tag->IsReplyWriterTag()) {
+      server_call->DeleteReplyWriterTag();
+    } else {
+      RAY_LOG(INFO) << "delete tag type: " << static_cast<int>(tag->GetType())
+                    << ", call type: " << static_cast<int>(tag->GetCall()->GetType());
+      server_call->DeleteServerCallTag();
+    }
+  }
+}
+
 void GrpcServer::PollEventsFromCompletionQueue() {
   void *got_tag;
   bool ok;
   // Keep reading events from the `CompletionQueue` until it's shutdown.
   while (cq_->Next(&got_tag, &ok)) {
-    auto *tag = static_cast<ServerCallTag *>(got_tag);
-    auto server_call = tag->GetCall();
-    bool delete_tag = false;
-    if (ok) {
-      if (tag->IsDoneTag()) {
-        RAY_LOG(INFO) << "Server receive a DONE tag.";
-        delete server_call->GetDoneTag();
-        server_call->Finish();
-        RAY_LOG(INFO) << "Finish";
-      } else if (tag->IsReplyWriterTag()) {
-        server_call->AsyncWriteNextReply();
-      } else {
-        switch (server_call->GetState()) {
-        case ServerCallState::CONNECT:
-          server_call->AsyncReadNextRequest();
-          server_call->StartCall();
-          break;
-        case ServerCallState::PENDING:
-          // We've received a new incoming request. Now this call object is used to
-          // track this request. So we need to create another call to handle next
-          // incoming request.
-          if (server_call->GetCallType() == ServerCallType::DEFAULT_ASYNC_CALL) {
-            server_call->GetFactory().CreateCall();
-          }
-          server_call->SetState(ServerCallState::PROCESSING);
-          server_call->HandleRequest();
-          break;
-        case ServerCallState::SENDING_REPLY:
-          // GRPC has sent reply successfully, invoking the callback.
-          server_call->OnReplySent();
-          // The rpc call has finished and can be deleted now.
-          delete_tag = true;
-          break;
-        default:
-          RAY_LOG(FATAL) << "Shouldn't reach here.";
-          break;
-        }
-      }
-    } else {
-      RAY_LOG(INFO) << "ok == false, tag type: " << static_cast<int>(tag->GetType())
-                    << ", call type: " << static_cast<int>(tag->GetCall()->GetCallType());
-      if (tag->GetCall()->GetCallType() == ServerCallType::DEFAULT_ASYNC_CALL) {
-        // `ok == false` will occur in two situations:
-        // First, the server has been shut down, the server call's status is PENDING
-        // Second, server has sent reply to client and failed, the server call's status is
-        // SENDING_REPLY
-        if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
-          server_call->OnReplyFailed();
-        }
-        delete_tag = true;
-      } else {
-        if (tag->GetType() == ServerCallTag::TagType::REPLY_WRITER) {
-          server_call->DeleteReplyWriterTag();
-        } else {
-          delete_tag = true;
-        }
-      }
-    }
-    if (delete_tag) {
-      RAY_LOG(INFO) << "delete tag type: " << static_cast<int>(tag->GetType())
-                    << ", call type: " << static_cast<int>(tag->GetCall()->GetCallType());
-      delete tag;
+    auto tag = reinterpret_cast<ServerCallTag *>(got_tag);
+    auto call = tag->GetCall();
+    auto call_type = call->GetType();
+    switch (call_type) {
+    case ServerCallType::DEFAULT_ASYNC_CALL:
+      ProcessDefaultCall(call, tag, ok);
+      break;
+    case ServerCallType::STREAM_ASYNC_CALL:
+      ProcessStreamCall(call, tag, ok);
+      break;
+    default:
+      RAY_LOG(WARNING) << "Shouldn't reach here, unrecognized type: "
+                       << static_cast<int>(call_type);
+      break;
     }
   }
 }

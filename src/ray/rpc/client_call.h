@@ -61,7 +61,7 @@ class ClientCall {
 
   virtual void DeleteReplyReaderTag() {}
 
-  virtual void ConnectFinish() {}
+  virtual void OnConnectingFinished() {}
 
   virtual bool IsRunning() {}
 
@@ -173,29 +173,27 @@ class ClientStreamCallImpl : public ClientCall {
     f.get();
   }
 
-  void ConnectFinish() override { connect_promise_.set_value(); }
+  void OnConnectingFinished() override { connect_promise_.set_value(); }
 
   bool IsRunning() { return is_running_; }
 
   bool WriteStream(const ::google::protobuf::Message &from) override {
+    std::unique_ptr<Request> request(new Request);
+    request->CopyFrom(from);
     std::unique_lock<std::mutex> lock(stream_call_mutex_);
     if (ready_to_write_) {
       ready_to_write_ = false;
       lock.unlock();
       // Construct the request with the specific type.
-      Request request;
-      request.CopyFrom(from);
       /// Only one write may be outstanding at any given time. This means that
       /// after calling `Write`, one must wait to receive a tag from the completion
       /// queue before calling `Write` again.
-      client_stream_->Write(request, reinterpret_cast<void *>(tag_));
+      client_stream_->Write(*request, reinterpret_cast<void *>(tag_));
     } else {
       if (buffer_.size() >= max_buffer_size_) {
         RAY_LOG(INFO) << "Buffer of writing stream is full.";
         return false;
       }
-      std::unique_ptr<Request> request(new Request);
-      request->CopyFrom(from);
       buffer_.emplace(std::move(request));
     }
     return true;
@@ -205,25 +203,26 @@ class ClientStreamCallImpl : public ClientCall {
     if (!is_running_) {
       return;
     }
-    std::lock_guard<std::mutex> lock(stream_call_mutex_);
+    std::unique_lock<std::mutex> lock(stream_call_mutex_);
     if (buffer_.empty()) {
       ready_to_write_ = true;
     } else {
       ready_to_write_ = false;
-      client_stream_->Write(*buffer_.front(), reinterpret_cast<void *>(tag_));
-      RAY_LOG(INFO) << "Client write.";
+      auto front = std::move(buffer_.front());
       buffer_.pop();
+      lock.unlock();
+      client_stream_->Write(*front, reinterpret_cast<void *>(tag_));
     }
   }
 
   void AsyncReadNextReply() override {
     if (!is_running_) {
-      RAY_LOG(INFO) << "Call is stopped, just delete reader tag.";
+      RAY_LOG(DEBUG) << "The call is closed, deleting reader tag.";
       DeleteReplyReaderTag();
       return;
     }
     client_stream_->Read(&reply_, reinterpret_cast<void *>(reader_tag_));
-    RAY_LOG(INFO) << "Put tag into the q, is running: " << is_running_;
+    // RAY_LOG(INFO) << "Put tag into the q, is running: " << is_running_;
   }
 
   /// We need to make sure that the tag cann't be deleted more than once.

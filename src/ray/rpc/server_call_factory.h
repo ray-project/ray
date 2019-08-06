@@ -79,13 +79,13 @@ class ServerCallFactoryImpl : public ServerCallFactory {
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call = std::make_shared<ServerCallImpl<ServiceHandler, Request, Reply>>(
         *this, service_handler_, handle_request_function_, io_service_);
-    auto tag = new ServerCallTag(call);
-    call->SetServerCallTag(tag);
+    auto request_reader_tag = new ServerCallTag(call);
+    call->SetServerCallTag(request_reader_tag);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
-                                       reinterpret_cast<void *>(tag));
+                                       reinterpret_cast<void *>(request_reader_tag));
   }
 
  private:
@@ -149,16 +149,12 @@ class ServerStreamCallFactoryImpl : public ServerCallFactory {
     auto call = std::make_shared<ServerStreamCallImpl<ServiceHandler, Request, Reply>>(
         *this, service_handler_, handle_stream_request_function_, io_service_);
     auto request_reader_tag = new ServerCallTag(call);
-    auto reply_writer_tag = new ServerCallTag(call, ServerCallTag::TagType::REPLY_WRITER);
-    auto done_tag = new ServerCallTag(call, ServerCallTag::TagType::STREAM_DONE);
 
-    (service_.*request_stream_call_function_)(&call->context_, call->server_stream_.get(),
-                                              cq_.get(), cq_.get(),
-                                              reinterpret_cast<void *>(tag));
     call->SetServerCallTag(request_reader_tag);
-    call->SetReplyWriterTag(reply_writer_tag);
-    call->ListenWritesDone(done_tag);
     call->SetState(ServerCallState::CONNECT);
+    (service_.*request_stream_call_function_)(
+        &call->context_, call->server_stream_.get(), cq_.get(), cq_.get(),
+        reinterpret_cast<void *>(request_reader_tag));
   }
 
  private:
