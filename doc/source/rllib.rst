@@ -84,6 +84,7 @@ Algorithms
 *  Multi-agent specific
 
    -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
+   -  `Multi-Agent Actor Critic (contrib/MADDPG) <rllib-algorithms.html#multi-agent-actor-critic-contrib-maddpg>`__
 
 *  Offline
 
