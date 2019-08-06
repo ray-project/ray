@@ -61,7 +61,7 @@ class RayTrialExecutor(TrialExecutor):
             logger.info("Initializing Ray automatically."
                         "For cluster usage or custom Ray initialization, "
                         "call `ray.init(...)` before `tune.run`.")
-            ray.init()
+            ray.init(object_store_memory=int(1e8))
 
         if ray.is_initialized():
             self._update_avail_resources()
