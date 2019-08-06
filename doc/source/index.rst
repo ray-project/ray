@@ -171,7 +171,6 @@ The following are good places to discuss Ray.
    advanced.rst
    troubleshooting.rst
    package-ref.rst
-   examples.rst
 
 .. toctree::
    :maxdepth: 1
