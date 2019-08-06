@@ -16,7 +16,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule, ACTION_PROB
+    EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -82,7 +82,7 @@ class VTraceLoss(object):
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
-                behaviour_action_logp=behaviour_action_logp,
+                behaviour_action_log_probs=behaviour_action_logp,
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
@@ -169,7 +169,7 @@ def build_vtrace_loss(policy, batch_tensors):
     actions = batch_tensors[SampleBatch.ACTIONS]
     dones = batch_tensors[SampleBatch.DONES]
     rewards = batch_tensors[SampleBatch.REWARDS]
-    behaviour_action_logp = batch_tensors[ACTION_PROB]
+    behaviour_action_logp = batch_tensors[ACTION_LOGP]
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
