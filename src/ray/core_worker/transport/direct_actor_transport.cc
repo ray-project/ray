@@ -149,7 +149,7 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
                     reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
                 return_object.metadata().size());
           }
-          store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id);
+          RAY_CHECK_OK(store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   return status;
@@ -162,7 +162,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    store_provider_->Put(RayObject(nullptr, meta_buffer), object_id);
+    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
