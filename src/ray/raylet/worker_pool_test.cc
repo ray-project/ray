@@ -225,10 +225,9 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                      {Language::JAVA, java_worker_command}});
 
   const auto job_id = JobID::FromInt(1);
-  TaskSpecification task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::JAVA,
-                      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                      {"test_op_0", "test_op_1"});
+  TaskSpecification task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::JAVA,
+      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
   worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());

@@ -13,8 +13,8 @@
 #include "plasma/common.h"
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
-#include "ray/util/visibility.h"
 #include "ray/util/util.h"
+#include "ray/util/visibility.h"
 
 namespace ray {
 
@@ -123,7 +123,7 @@ class ActorID : public BaseID<ActorID> {
   /// \return Size of `ActorID` in bytes.
   static size_t Size() { return kLength; }
 
-  /// Create an `ActorID` by hashing the given information.
+  /// Creates an `ActorID` by hashing the given information.
   ///
   /// \param job_id The job id to which this actor belongs.
   /// \param parent_task_id The id of the task which created this actor.
@@ -133,7 +133,7 @@ class ActorID : public BaseID<ActorID> {
   static ActorID Of(const JobID &job_id, const TaskID &parent_task_id,
                     const size_t parent_task_counter);
 
-  /// Creates an nil ActorID with the given job.
+  /// Creates a nil ActorID with the given job.
   ///
   /// \param job_id The job id to which this actor belongs.
   ///
@@ -169,11 +169,11 @@ class TaskID : public BaseID<TaskID> {
 
   static TaskID FromRandom() = delete;
 
-  /// \return The ID generated for driver task.
+  /// The ID generated for driver task.
   static TaskID ForDriverTask(const JobID &job_id);
 
-  /// \return The ID generated for fake driver task.
-  static TaskID ForFakeDriverTask();
+  /// Generate driver task id for the given job.
+  static TaskID ForFakeTask();
 
   /// Creates a TaskID for an actor creation task.
   ///

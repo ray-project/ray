@@ -51,8 +51,7 @@ class ActorStateAccessorTest : public ::testing::Test {
       JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
-      ActorID actor_id =
-          ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
+      ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
       actor->set_actor_id(actor_id.Binary());
       actor_datas_[actor_id] = actor;
     }

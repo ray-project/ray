@@ -4,12 +4,11 @@
 #include <boost/system/error_code.hpp>
 #include <chrono>
 #include <iterator>
-#include <sstream>
-#include <unordered_map>
-#include <chrono>
 #include <mutex>
 #include <random>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 
 #include "ray/common/status.h"
 
@@ -112,7 +111,7 @@ using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
-  auto randomly_seeded_mersenne_twister = [] () {
+  auto randomly_seeded_mersenne_twister = []() {
     auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     std::mt19937 seeded_engine(seed);
     return seeded_engine;

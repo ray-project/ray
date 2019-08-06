@@ -117,7 +117,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CTaskID ForDriverTask(const CJobID &job_id)
 
         @staticmethod
-        CTaskID ForFakeDriverTask()
+        CTaskID ForFakeTask()
 
         @staticmethod
         CTaskID ForActorCreationTask(CActorID actor_id)

@@ -233,7 +233,7 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForFakeDriverTask() {
+TaskID TaskID::ForFakeTask() {
   std::string data(kLength, 0);
   FillRandom(&data);
   return TaskID::FromBinary(data);
