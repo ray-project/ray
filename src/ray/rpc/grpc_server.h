@@ -53,7 +53,6 @@ class GrpcServer {
   void Shutdown() {
     if (!is_closed_) {
       is_closed_ = true;
-      RAY_LOG(INFO) << "Begin to shutdown.";
       server_->Shutdown();
       cq_->Shutdown();
       polling_thread_.join();

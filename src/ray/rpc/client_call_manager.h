@@ -135,7 +135,7 @@ class ClientCallManager {
           call->AsyncWriteNextRequest();
           break;
         case ClientCallState::WRITES_DONE:
-          RAY_LOG(INFO) << "Client WRITES DONE from q.";
+          RAY_LOG(INFO) << "Stream client received `WRITES_DONE` from completion queue.";
           delete tag;
           break;
         default:
@@ -144,7 +144,6 @@ class ClientCallManager {
         }
       }
     } else {
-      RAY_LOG(INFO) << "Try to remove tag.";
       delete tag;
     }
   }

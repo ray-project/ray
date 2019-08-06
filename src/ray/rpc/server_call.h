@@ -2,7 +2,6 @@
 #define RAY_RPC_SERVER_CALL_H
 
 #include <grpcpp/grpcpp.h>
-#include <atomic>
 #include <boost/asio.hpp>
 #include <queue>
 
@@ -25,8 +24,10 @@ using SendReplyCallback = std::function<void(Status status, std::function<void()
 /// At present, this gRPC server supports two types of request.
 /// The first is default asynchronous request call that each call contains exactly a
 /// request and a reply. Second, asynchronous stream call that the client can send a
-/// sequence of request messages and receive a sequence of reply messages, and the number
-/// of reply messages is determined by user.
+/// sequence of request messages and receive a sequence of reply messages.
+/// The main difference between them is that the requests sent by a stream call are kept
+/// in order and not all the requests should be with a corresponding reply, it's totally
+/// determined by user.
 enum class ServerCallType {
   DEFAULT_ASYNC_CALL,
   STREAM_ASYNC_CALL,
@@ -49,31 +50,11 @@ class ServerCallFactory;
 class ServerCallTag;
 /// Represents an incoming request of a gRPC server.
 ///
-/// The lifecycle and state transition of a `ServerCall` is as follows:
-///
-/// --(1)--> PENDING --(2)--> PROCESSING --(3)--> SENDING_REPLY --(4)--> [FINISHED]
-///
-/// (1) The `GrpcServer` creates a `ServerCall` and use it as the tag to accept requests
-///     gRPC `CompletionQueue`. Now the state is `PENDING`.
-/// (2) When a request is received, an event will be gotten from the `CompletionQueue`.
-///     `GrpcServer` then should change `ServerCall`'s state to PROCESSING and call
-///     `ServerCall::HandleRequest`.
-/// (3) When the `ServiceHandler` finishes handling the request, `ServerCallImpl::Finish`
-///     will be called, and the state becomes `SENDING_REPLY`.
-/// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
-///     `GrpcServer` will then delete this call.
-///
 /// NOTE(hchen): Compared to `ServerCallImpl`, this abstract interface doesn't use
 /// template. This allows the users (e.g., `GrpcServer`) not having to use
 /// template as well.
 class ServerCall {
  public:
-  /// Get the state of this `ServerCall`.
-  virtual ServerCallState GetState() const = 0;
-
-  /// Set state of this `ServerCall`.
-  virtual void SetState(const ServerCallState &new_state) = 0;
-
   /// Handle the requst. This is the callback function to be called by
   /// `GrpcServer` when the request is received.
   virtual void HandleRequest() = 0;
@@ -91,9 +72,13 @@ class ServerCall {
   virtual ~ServerCall() = default;
 
  public:
-  /// Methods only for the stream call.
+  /// Interfaces only for the stream call.
+
+  /// Read the next reply asynchronously.
   virtual void AsyncReadNextRequest() {}
 
+  /// Send the reply to client from the buffer. Just mark the completion queue as
+  /// ready if the buffer is empty.
   virtual void AsyncWriteNextReply() {}
 
   virtual void SetReplyWriterTag(ServerCallTag *writer_tag) {}
@@ -102,17 +87,21 @@ class ServerCall {
 
   virtual void DeleteReplyWriterTag() {}
 
-  virtual ServerCallTag *GetDoneTag() {}
-
   virtual void OnConnectingFinished() {}
 
+  /// Finish this stream when received writes done from the client.
   virtual void Finish() {}
 
  public:
   /// Common methods for both default server call and stream server call.
-  ServerCall(ServerCallType type) : type_(type) {}
+  ServerCall(ServerCallType type) : type_(type), state_(ServerCallState::PENDING) {}
 
   const ServerCallType GetType() { return type_; }
+
+  /// Set state of this `ServerCall`.
+  void SetState(const ServerCallState &new_state) { state_ = new_state; }
+
+  ServerCallState GetState() const { return state_; }
 
   /// The tag used to listen request from the client. The tag will be returned in
   /// completion queue once a request reaches the server.
@@ -133,6 +122,8 @@ class ServerCall {
   grpc::ServerContext context_;
   /// The type of this server call.
   const ServerCallType type_;
+  /// State of this call.
+  ServerCallState state_;
   /// Tag will be put in completion queue to connect main thread and polling thread.
   ServerCallTag *tag_;
 };
@@ -149,6 +140,20 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
+///
+/// The lifecycle and state transition of a `ServerCall` is as follows:
+///
+/// --(1)--> PENDING --(2)--> PROCESSING --(3)--> SENDING_REPLY --(4)--> [FINISHED]
+///
+/// (1) The `GrpcServer` creates a `ServerCall` and use it as the tag to accept requests
+///     gRPC `CompletionQueue`. Now the state is `PENDING`.
+/// (2) When a request is received, an event will be gotten from the `CompletionQueue`.
+///     `GrpcServer` then should change `ServerCall`'s state to PROCESSING and call
+///     `ServerCall::HandleRequest`.
+/// (3) When the `ServiceHandler` finishes handling the request, `ServerCallImpl::Finish`
+///     will be called, and the state becomes `SENDING_REPLY`.
+/// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
+///     `GrpcServer` will then delete this call.
 ///
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
@@ -167,16 +172,11 @@ class ServerCallImpl : public ServerCall {
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       boost::asio::io_service &io_service)
       : ServerCall(ServerCallType::DEFAULT_ASYNC_CALL),
-        state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service) {}
-
-  ServerCallState GetState() const override { return state_; }
-
-  void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
     if (!io_service_.stopped()) {
@@ -229,9 +229,6 @@ class ServerCallImpl : public ServerCall {
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status),
                             reinterpret_cast<void *>(tag_));
   }
-
-  /// State of this call.
-  ServerCallState state_;
 
   /// The factory which created this call.
   const ServerCallFactory &factory_;
@@ -294,10 +291,10 @@ class ServerCallTag {
   const TagType tag_type_;
 };
 
-/// Wrapper of server async reply writer, we should hide details of grpc, user
+/// Wrapper of server async reply writer, we should hide details related to grpc, user
 /// should just call `Write` to send reply to the client.
 /// Functions in this object are thread-safe, it will be used in polling thread
-/// and server handler thread.
+/// and server handler thread at the same time.
 template <class Request, class Reply>
 class StreamReplyWriter {
  public:
@@ -354,6 +351,7 @@ class StreamReplyWriter {
   // Indicates whether it's ready to write next reply into stream. It's available only if
   // we receive the writer tag from the completion queue.
   bool ready_to_write_;
+  // Indicates whether the reply writer tag has been put into the completion queue.
   bool is_writing_;
 };
 
@@ -380,7 +378,6 @@ class ServerStreamCallImpl final : public ServerCall {
                            handle_stream_request_function,
                        boost::asio::io_service &io_service)
       : ServerCall(ServerCallType::STREAM_ASYNC_CALL),
-        state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_stream_request_function_(handle_stream_request_function),
@@ -390,19 +387,19 @@ class ServerStreamCallImpl final : public ServerCall {
         stream_reply_writer_(server_stream_, this),
         is_running_(false) {}
 
-  ~ServerStreamCallImpl() { RAY_LOG(INFO) << "Server stream call destruct."; }
+  ~ServerStreamCallImpl() { RAY_LOG(DEBUG) << "Server stream call destructs."; }
 
   void Finish() {
+    if (!is_running_) {
+      return;
+    }
+    is_running_ = false;
     // No reply is being sent to the client, we should just delete
     // the reply writer tag.
     if (!stream_reply_writer_.IsWriting()) {
       DeleteReplyWriterTag();
     }
-    is_running_ = false;
     state_ = ServerCallState::FINISH;
-    // We shouldn't delete the server call tag twice if we have deleled it when `ok ==
-    // false` in polling thread.
-    RAY_LOG(INFO) << "Begin to finish server stream.";
     server_stream_->Finish(grpc::Status::CANCELLED, reinterpret_cast<void *>(tag_));
   }
 
@@ -418,11 +415,9 @@ class ServerStreamCallImpl final : public ServerCall {
   }
 
   void AsyncWriteNextReply() override {
-    RAY_LOG(DEBUG) << "Server recieve a WRITER NEXT REPLY tag, is running: "
-                   << is_running_;
     if (!is_running_) {
       DeleteReplyWriterTag();
-      RAY_LOG(INFO) << "Server is shutdown, remove reply writer tag.";
+      RAY_LOG(INFO) << "Server is shutdown, deleting reply writer tag.";
       return;
     }
     stream_reply_writer_.SendNextReplyInBuffer();
@@ -434,16 +429,11 @@ class ServerStreamCallImpl final : public ServerCall {
 
   /// We need to make sure that the tag cann't be deleted more than once.
   void DeleteReplyWriterTag() {
-    RAY_LOG(INFO) << "Delete reply writer tag.";
+    RAY_LOG(DEBUG) << "Delete reply writer tag.";
     if (writer_tag_) {
       delete writer_tag_;
       writer_tag_ = nullptr;
     }
-  }
-
-  void ListenWritesDone(ServerCallTag *done_tag) {
-    done_tag_ = done_tag;
-    context_.AsyncNotifyWhenDone(reinterpret_cast<void *>(done_tag_));
   }
 
   void OnConnectingFinished() {
@@ -451,16 +441,9 @@ class ServerStreamCallImpl final : public ServerCall {
     // we would never get the tags from the completion queue.
     auto reply_writer_tag = new ServerCallTag(GetServerCallTag()->GetCall(),
                                               ServerCallTag::TagType::REPLY_WRITER);
-    auto done_tag = new ServerCallTag(GetServerCallTag()->GetCall(),
-                                      ServerCallTag::TagType::STREAM_DONE);
-    ListenWritesDone(done_tag);
     SetReplyWriterTag(reply_writer_tag);
     is_running_ = true;
   }
-
-  ServerCallTag *GetDoneTag() { return done_tag_; }
-
-  void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
     if (!io_service_.stopped() && is_running_) {
@@ -480,12 +463,7 @@ class ServerStreamCallImpl final : public ServerCall {
     (service_handler_.*handle_stream_request_function_)(request_, stream_reply_writer_);
   }
 
-  ServerCallState GetState() const override { return state_; }
-
  private:
-  /// State of this call.
-  ServerCallState state_;
-
   /// The factory which created this call.
   const ServerCallFactory &factory_;
 
@@ -511,12 +489,10 @@ class ServerStreamCallImpl final : public ServerCall {
   /// Server call tag used to write reply.
   ServerCallTag *writer_tag_;
 
-  ServerCallTag *done_tag_;
-
   StreamReplyWriter<Request, Reply> stream_reply_writer_;
 
   // Indicates whether the stream call is running.
-  std::atomic<bool> is_running_;
+  bool is_running_;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerStreamCallFactoryImpl;

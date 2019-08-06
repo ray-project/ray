@@ -95,12 +95,7 @@ void GrpcServer::ProcessDefaultCall(std::shared_ptr<ServerCall> server_call,
 void GrpcServer::ProcessStreamCall(std::shared_ptr<ServerCall> server_call,
                                    ServerCallTag *tag, bool ok) {
   if (ok) {
-    if (tag->IsDoneTag()) {
-      RAY_LOG(INFO) << "Server receive a DONE tag1.";
-      delete server_call->GetDoneTag();
-      server_call->Finish();
-      RAY_LOG(INFO) << "Server receive a DONE tag2.";
-    } else if (tag->IsReplyWriterTag()) {
+    if (tag->IsReplyWriterTag()) {
       server_call->AsyncWriteNextReply();
     } else {
       switch (server_call->GetState()) {
@@ -112,7 +107,9 @@ void GrpcServer::ProcessStreamCall(std::shared_ptr<ServerCall> server_call,
         server_call->HandleRequest();
         break;
       case ServerCallState::FINISH:
-        RAY_LOG(INFO) << "Server call received a FINISH tag.";
+        server_call->DeleteServerCallTag();
+        RAY_LOG(INFO)
+            << "Stream server received received `FINISH` from completion queue.";
         break;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
@@ -120,15 +117,14 @@ void GrpcServer::ProcessStreamCall(std::shared_ptr<ServerCall> server_call,
       }
     }
   } else {
-    RAY_LOG(INFO) << "ok == false, tag type: " << static_cast<int>(tag->GetType())
-                  << ", call type: " << static_cast<int>(tag->GetCall()->GetType());
+    RAY_LOG(DEBUG) << "Receive `ok == false`, tag type: "
+                   << static_cast<int>(tag->GetType())
+                   << ", call type: " << static_cast<int>(tag->GetCall()->GetType());
 
     if (tag->IsReplyWriterTag()) {
       server_call->DeleteReplyWriterTag();
     } else {
-      RAY_LOG(INFO) << "delete tag type: " << static_cast<int>(tag->GetType())
-                    << ", call type: " << static_cast<int>(tag->GetCall()->GetType());
-      server_call->DeleteServerCallTag();
+      server_call->Finish();
     }
   }
 }

@@ -21,13 +21,6 @@ string GenerateMessage(const string &hdr, int idx) {
   return hdr + "-idx-" + std::to_string(idx);
 }
 
-bool VerifyMessage(const string &msg, const string &hdr, int idx) {
-  if (msg == GenerateMessage(hdr, idx)) {
-    return true;
-  }
-  return false;
-}
-
 int GetIndex(const string &str) {
   int idx = -1;
   int pos = str.find("-idx-");
@@ -82,12 +75,7 @@ class GrpcTest : public ::testing::Test {
     server_->Run();
   }
 
-  ~GrpcTest() {
-    // Wait all requests are finished before stop the server.
-    usleep(10 * 1000);
-    RAY_LOG(INFO) << "Begin to SHUTDOWN the server.";
-    server_->Shutdown();
-  }
+  ~GrpcTest() { server_->Shutdown(); }
 
   void SetUp() {
     client_thread_.reset(new std::thread([this]() { client_service_.run(); }));
@@ -151,7 +139,7 @@ TEST_F(GrpcTest, AsyncCallTest) {
   f.get();
   std::chrono::duration<double> cost =
       std::chrono::system_clock::now().time_since_epoch() - start_time;
-  RAY_LOG(INFO) << "Spend " << cost.count() << " seconds to finish " << num_requests
+  RAY_LOG(INFO) << "It costs " << cost.count() << " seconds to finish " << num_requests
                 << " requests.";
 }
 
@@ -185,11 +173,11 @@ TEST_F(GrpcTest, StreamRequestTest) {
   f.get();
   std::chrono::duration<double> cost =
       std::chrono::system_clock::now().time_since_epoch() - start_time;
-  RAY_LOG(INFO) << "Spend " << cost.count() << " seconds to finish " << num_messages
+  RAY_LOG(INFO) << "It costs " << cost.count() << " seconds to finish " << num_messages
                 << " requests.";
   client.CloseStreamEcho();
   // Wait for the server to receive writes done message.
-  usleep(10 * 1000);
+  usleep(20 * 1000);
 }
 
 }  // namespace rpc
