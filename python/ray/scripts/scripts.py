@@ -46,19 +46,26 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
 
 @click.group()
 @click.option(
-    "--logging-level",
-    required=False,
-    default=ray_constants.LOGGER_LEVEL,
-    type=str,
-    help=ray_constants.LOGGER_LEVEL_HELP)
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Show debug messages.")
 @click.option(
     "--logging-format",
     required=False,
-    default=ray_constants.LOGGER_FORMAT,
     type=str,
-    help=ray_constants.LOGGER_FORMAT_HELP)
-def cli(logging_level, logging_format):
+    help="Format only set for DEBUG: {}".format(
+        ray_constants.LOGGER_FORMAT_HELP))
+def cli(verbose, logging_format):
+    ray_constants.NICE_LOGGER_FORMAT = "\x1b[80D\x1b[1A\x1b[K%(message)s"
+    logging_level = "debug" if verbose else ray_constants.LOGGER_LEVEL
     level = logging.getLevelName(logging_level.upper())
+    if not logging_format:
+        if level > logging.DEBUG:
+            logging_format = ray_constants.NICE_LOGGER_FORMAT
+        else:
+            logging_format = ray_constants.LOGGER_FORMAT
     ray.utils.setup_logger(level, logging_format)
 
 
@@ -416,7 +423,7 @@ def stop():
         logger.exception("Error shutting down jupyter")
 
 
-@cli.command()
+@cli.command(name="up")
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--no-restart",
@@ -462,7 +469,7 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
                              no_restart, restart_only, yes, cluster_name)
 
 
-@cli.command()
+@cli.command(name="down")
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--workers-only",
@@ -642,7 +649,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
                  cluster_name, port_forward)
 
 
-@cli.command()
+@cli.command(name="exec")
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
@@ -681,7 +688,7 @@ def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
                  cluster_name, port_forward)
 
 
-@cli.command()
+@cli.command(name="get_head_ip")
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--cluster-name",
@@ -777,23 +784,8 @@ def timeline(redis_address):
     logger.info(
         "You can open this with chrome://tracing in the Chrome browser.")
 
-
-cli.add_command(start)
-cli.add_command(stop)
-cli.add_command(create_or_update, name="up")
-cli.add_command(attach)
-cli.add_command(exec_cmd, name="exec")
-cli.add_command(rsync_down, name="rsync_down")
 cli.add_command(rsync_up, name="rsync_up")
-cli.add_command(submit)
-cli.add_command(teardown)
-cli.add_command(teardown, name="down")
-cli.add_command(kill_random_node)
-cli.add_command(get_head_ip, name="get_head_ip")
-cli.add_command(get_worker_ips)
-cli.add_command(stack)
-cli.add_command(timeline)
-
+cli.add_command(rsync_down, name="rsync_down")
 
 def main():
     return cli()

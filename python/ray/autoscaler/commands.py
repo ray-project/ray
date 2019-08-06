@@ -19,13 +19,15 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
+import ray
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.log_timer import (
+    LogTimer, print_and_log_info, print_and_log_error)
 from ray.autoscaler.docker import with_docker_exec
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,10 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 
 def _bootstrap_config(config):
+    click.secho(
+        "[ray {}] Ray Cluster {}".format(
+            ray.__version__, config["cluster_name"]),
+        fg="green")
     config = fillout_defaults(config)
 
     hasher = hashlib.sha1()
@@ -107,7 +113,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         A = remaining_nodes()
         with LogTimer("teardown_cluster: Termination done."):
             while A:
-                print("Terminating {} nodes...".format(len(A)))
+                print_and_log_info("Terminating {} nodes...".format(len(A)))
                 provider.terminate_nodes(A)
                 time.sleep(1)
                 A = remaining_nodes()
@@ -192,11 +198,14 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                         yes)
                 print("Terminating outdated head node {}".format(head_node))
                 provider.terminate_node(head_node)
-            print("Launching new head node...")
+            click.secho("Launching new head node...", fg="green")
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
             head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                 config["cluster_name"])
+            print_and_log_info("Starting head node creation process.")
             provider.create_node(config["head_node"], head_node_tags, 1)
+        else:
+            print_and_log_info("Head node is up to date.")
 
         nodes = provider.non_terminated_nodes(head_node_tags)
         assert len(nodes) == 1, "Failed to create head node."
@@ -261,8 +270,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             head_node_ip = provider.external_ip(head_node)
 
         if updater.exitcode != 0:
-            logger.error("get_or_create_head_node: "
-                         "Updating {} failed".format(head_node_ip))
+            err_msg = "get_or_create_head_node: Updating {} failed".format(
+                head_node_ip)
+            logger.debug(err_msg)
+            click.secho(err_msg, bold=True, fg="red")
             sys.exit(1)
         logger.info(
             "get_or_create_head_node: "
@@ -533,4 +544,5 @@ def _get_head_node(config,
 
 
 def confirm(msg, yes):
-    return None if yes else click.confirm(msg, abort=True)
+    return None if yes else click.confirm(
+        click.style(msg, fg="yellow"), abort=True)
