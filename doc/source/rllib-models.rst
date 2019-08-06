@@ -1,5 +1,5 @@
-RLlib Models and Preprocessors
-==============================
+RLlib Models, Preprocessors, and Action Distributions
+=====================================================
 
 The following diagram provides a conceptual overview of data flow between different components in RLlib. We start with an ``Environment``, which given an action produces an observation. The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for running mean normalization) before being sent to a neural network ``Model``. The model output is in turn interpreted by an ``ActionDistribution`` to determine the next action.
 
@@ -145,6 +145,7 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
 
     import ray
     import ray.rllib.agents.ppo as ppo
+    from ray.rllib.models import ModelCatalog
     from ray.rllib.models.preprocessors import Preprocessor
 
     class MyPreprocessorClass(Preprocessor):
@@ -161,6 +162,40 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
         "model": {
             "custom_preprocessor": "my_prep",
             "custom_options": {},  # extra options to pass to your preprocessor
+        },
+    })
+
+Custom Action Distributions
+---------------------------
+
+Similar to custom models and preprocessors, you can also specify a custom action distribution class as follows. The action dist class is passed a reference to the ``model``, which you can use to access ``model.model_config`` or other attributes of the model. This is commonly used to implement `autoregressive action outputs <#autoregressive-action-distributions>`__.
+
+.. code-block:: python
+
+    import ray
+    import ray.rllib.agents.ppo as ppo
+    from ray.rllib.models import ModelCatalog
+    from ray.rllib.models.preprocessors import Preprocessor
+
+    class MyActionDist(ActionDistribution):
+        @staticmethod
+        def required_model_output_shape(action_space, model_config):
+            return 7  # controls model output feature vector size
+
+        def __init__(self, inputs, model):
+            super(MyActionDist, self).__init__(inputs, model)
+            assert model.num_outputs == 7
+
+        def sample(self): ...
+        def logp(self, actions): ...
+        def entropy(self): ...
+
+    ModelCatalog.register_custom_action_dist("my_dist", MyActionDist)
+
+    ray.init()
+    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+        "model": {
+            "custom_action_dist": "my_dist",
         },
     })
 

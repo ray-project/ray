@@ -42,12 +42,13 @@ Environments
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
-Models and Preprocessors
-------------------------
-* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
+Models, Preprocessors, and Action Distributions
+-----------------------------------------------
+* `RLlib Models, Preprocessors, and Action Distributions Overview <rllib-models.html>`__
 * `TensorFlow Models <rllib-models.html#tensorflow-models>`__
 * `PyTorch Models <rllib-models.html#pytorch-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+* `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
