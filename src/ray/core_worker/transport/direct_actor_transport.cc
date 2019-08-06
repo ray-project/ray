@@ -7,7 +7,7 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 bool HasByReferenceArgs(const TaskSpecification &spec) {
-  for (int i = 0; i < spec.NumArgs(); ++i) {
+  for (size_t i = 0; i < spec.NumArgs(); ++i) {
     if (spec.ArgIdCount(i) > 0) {
       return true;
     }
@@ -202,7 +202,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   auto status = task_handler_(task_spec, &results);
   RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
-  for (int i = 0; i < results.size(); i++) {
+  for (size_t i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
     ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
     return_object->set_object_id(id.Binary());

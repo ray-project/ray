@@ -132,7 +132,7 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
   // Compute return IDs.
   const auto task_id = TaskID::FromBinary(builder.GetMessage().task_id());
   (*return_ids).resize(num_returns);
-  for (int i = 0; i < num_returns; i++) {
+  for (size_t i = 0; i < num_returns; i++) {
     (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
   }
 }

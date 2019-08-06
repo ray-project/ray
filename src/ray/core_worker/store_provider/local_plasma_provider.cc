@@ -67,7 +67,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
                                                 int num_objects, int64_t timeout_ms,
                                                 const TaskID &task_id,
                                                 std::vector<bool> *results) {
-  if (num_objects != object_ids.size()) {
+  if (num_objects != static_cast<int>(object_ids.size())) {
     return Status::Invalid("num_objects should equal to number of items in object_ids");
   }
 
