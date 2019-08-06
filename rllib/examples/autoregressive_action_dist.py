@@ -66,6 +66,10 @@ class CorrelatedActionsEnv(gym.Env):
 class BinaryAutoregressiveOutput(ActionDistribution):
     """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
+    @staticmethod
+    def required_model_output_shape(self, model_config):
+        return 16  # controls model output feature vector size
+
     def sample(self):
         # first, sample a1
         a1_dist = self._a1_distribution()
@@ -186,16 +190,14 @@ class AutoregressiveActionsModel(TFModelV2):
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
 
-    def override_action_distribution(self):
-        # TODO(ekl) remove this once we have custom action dists
-        return BinaryAutoregressiveOutput
-
 
 if __name__ == "__main__":
     ray.init()
     args = parser.parse_args()
     ModelCatalog.register_custom_model("autoregressive_model",
                                        AutoregressiveActionsModel)
+    ModelCatalog.register_custom_action_dist("binary_autoreg_output",
+                                             BinaryAutoregressiveOutput)
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
@@ -205,5 +207,6 @@ if __name__ == "__main__":
             "num_gpus": 0,
             "model": {
                 "custom_model": "autoregressive_model",
+                "custom_action_dist": "binary_autoreg_output",
             },
         })

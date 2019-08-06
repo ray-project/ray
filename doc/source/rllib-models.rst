@@ -245,6 +245,10 @@ To do this, you need both a custom model that implements the autoregressive patt
     class BinaryAutoregressiveOutput(ActionDistribution):
         """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
 
+        @staticmethod
+        def required_model_output_shape(self, model_config):
+            return 16  # controls model output feature vector size
+
         def sample(self):
             # first, sample a1
             a1_dist = self._a1_distribution()
