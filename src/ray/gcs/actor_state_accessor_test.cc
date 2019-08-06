@@ -103,13 +103,13 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   for (const auto &elem : actor_datas_) {
     ++pending_count_;
     RAY_CHECK_OK(actor_accessor.AsyncGet(elem.first,
-                            [this](Status status, std::vector<ActorTableData> datas) {
-                              ASSERT_EQ(datas.size(), 1U);
-                              ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
-                              auto it = actor_datas_.find(actor_id);
-                              ASSERT_TRUE(it != actor_datas_.end());
-                              --pending_count_;
-			     }));
+        [this](Status status, std::vector<ActorTableData> datas) {
+          ASSERT_EQ(datas.size(), 1U);
+          ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
+          auto it = actor_datas_.find(actor_id);
+          ASSERT_TRUE(it != actor_datas_.end());
+          --pending_count_;
+	}));
   }
 
   WaitPendingDone(timeout);
@@ -143,10 +143,11 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
     const auto &actor = elem.second;
     ++sub_pending_count;
     ++register_pending_count;
-    RAY_CHECK_OK(actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
-      RAY_CHECK_OK(status);
-      --register_pending_count;
-    }));
+    RAY_CHECK_OK(
+	actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
+          RAY_CHECK_OK(status);
+	  --register_pending_count;
+        }));
   }
   // Wait until register finishes.
   WaitPendingDone(register_pending_count, timeout);
