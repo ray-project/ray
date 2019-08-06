@@ -26,6 +26,12 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return Status.
   virtual Status SubmitTask(const TaskSpecification &task_spec) override;
 
+  /// Check if a task has finished.
+  ///
+  /// \param[in] task_id The ID of the task.
+  /// \return If the task has finished.
+  bool IsTaskDone(const TaskID &task_id) override;
+
  private:
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;

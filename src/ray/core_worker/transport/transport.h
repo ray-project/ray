@@ -32,6 +32,12 @@ class CoreWorkerTaskSubmitter {
   /// \return Status.
   virtual Status SubmitTask(const TaskSpecification &task_spec) = 0;
 
+  /// Check if a task has finished.
+  ///
+  /// \param[in] task_id The ID of the task.
+  /// \return If the task has finished.
+  virtual bool IsTaskDone(const TaskID &task_id) = 0;
+
   virtual ~CoreWorkerTaskSubmitter() {}
 };
 

@@ -39,6 +39,11 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
+  /// Check if a task has finished.
+  ///
+  /// \param[in] task_id The ID of the task.
+  /// \return If the task has finished.
+  bool IsTaskDone(const TaskID &task_id) override;
  private:
   /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();
@@ -109,11 +114,10 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_;
 
-  /// Map from actor id to the pending return object ids for the actor.
-  /// These are the return objects correponding to tasks that have been
-  /// submitted but haven't received replies.
-  std::unordered_map<ActorID, ordered_set<ObjectID>> pending_send_return_objects_;
-  std::unordered_map<ActorID, ordered_set<ObjectID>> pending_return_objects_;
+  /// Map from actor id to the tasks that are pending to send out.
+  std::unordered_map<ActorID, std::unordered_map<TaskID, int>> pending_tasks_;
+  /// Map from actor id to the tasks that are waiting for reply.
+  std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;

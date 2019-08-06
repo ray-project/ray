@@ -28,6 +28,12 @@ class CoreWorkerTaskSubmitterLayer {
   /// \return Status.
   Status SubmitTask(TaskTransportType type, const TaskSpecification &task_spec);
  
+  /// Check if a task has finished.
+  ///
+  /// \param[in] task_id The ID of the task.
+  /// \return If the task has finished.
+  bool IsTaskDone(TaskTransportType type, const TaskID &task_id);
+
  private:
   /// All the task submitters supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>

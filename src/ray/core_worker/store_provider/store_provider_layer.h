@@ -57,6 +57,21 @@ class CoreWorkerStoreProviderLayer {
       StoreProviderType type) const;
 
  private:
+  /// Whether the buffer represents an exception object.
+  ///
+  /// \param[in] object Object data.
+  /// \return Whether it represents an exception object.
+  static bool IsException(const RayObject &object);
+
+  /// Print a warning if we've attempted too many times, but some objects are still
+  /// unavailable.
+  ///
+  /// \param[in] num_attemps The number of attempted times.
+  /// \param[in] unready The unready objects.
+  static void WarnIfAttemptedTooManyTimes(
+      int num_attempts, const std::unordered_map<ObjectID, int> &unready);
+
+  bool ObjectsDone(const std::vector<ObjectID> &object_ids);
 
   /// Helper function to add a store provider for the specified type.
   void AddStoreProvider(StoreProviderType type);
