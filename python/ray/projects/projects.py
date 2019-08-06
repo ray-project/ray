@@ -69,7 +69,7 @@ def check_project_definition(project_root, project_definition):
                 raise ValueError("'requirements' file in 'environment' does "
                                  "not exist in {}".format(project_root))
 
-        if "dockerfile" in end:
+        if "dockerfile" in env:
             docker_file = os.path.join(project_root, env["dockerfile"])
             if not os.path.exists(docker_file):
                 raise ValueError("'dockerfile' file in 'environment' does "
