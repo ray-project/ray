@@ -488,7 +488,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources, {}};
 
   ActorHandle actor_handle(ActorID::FromRandom(), ActorHandleID::Nil(), function.language,
                            true, function.function_descriptor);
@@ -549,7 +549,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources, {}};
 
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
