@@ -68,3 +68,22 @@ class ActionDistribution(object):
         MultiDiscrete. TODO(ekl) consider removing this.
         """
         return self.entropy()
+
+    @DeveloperAPI
+    @staticmethod
+    def required_model_output_shape(action_space, model_config):
+        """Returns the required shape of an input parameter tensor for a
+        particular action space and an optional dict of distribution-specific
+        options.
+
+        Args:
+            action_space (gym.Space): The action space this distribution will
+                be used for, whose shape attributes will be used to determine
+                the required shape of the input parameter tensor.
+            model_config (dict): Model's config dict (as defined in catalog.py)
+
+        Returns:
+            model_output_shape (int or np.ndarray of ints): size of the
+                required input vector (minus leading batch dimension).
+        """
+        raise NotImplementedError

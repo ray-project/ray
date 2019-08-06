@@ -43,6 +43,7 @@ class VTraceLoss(object):
                  dist_class,
                  model,
                  valid_mask,
+                 config,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01,
                  clip_rho_threshold=1.0,
@@ -75,6 +76,7 @@ class VTraceLoss(object):
             bootstrap_value: A float32 tensor of shape [B].
             dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
+            config: Trainer config dict.
         """
 
         # Compute vtrace on the CPU for better perf.
@@ -92,7 +94,8 @@ class VTraceLoss(object):
                 model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
+                                              tf.float32),
+                config=config)
             self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss
@@ -205,6 +208,7 @@ def build_vtrace_loss(policy, batch_tensors):
         dist_class=Categorical if is_multidiscrete else policy.dist_class,
         model=policy.model,
         valid_mask=make_time_major(mask, drop_last=True),
+        config=policy.config,
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],

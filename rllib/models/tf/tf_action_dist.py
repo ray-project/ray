@@ -80,9 +80,14 @@ class Categorical(TFActionDistribution):
     def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return action_space.n
+
 
 class MultiCategorical(TFActionDistribution):
-    """Categorical distribution for discrete action spaces."""
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
 
     def __init__(self, inputs, input_lens, model):
         TFActionDistribution.__init__(self, inputs, model)
@@ -120,6 +125,11 @@ class MultiCategorical(TFActionDistribution):
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.sum(action_space.nvec)
 
 
 class DiagGaussian(TFActionDistribution):
@@ -162,6 +172,11 @@ class DiagGaussian(TFActionDistribution):
     def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
 
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
@@ -176,6 +191,11 @@ class Deterministic(TFActionDistribution):
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.inputs
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)
 
 
 class MultiActionDistribution(TFActionDistribution):
@@ -192,7 +212,7 @@ class MultiActionDistribution(TFActionDistribution):
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i]))
+            child_list.append(distribution(split_inputs[i], model))
         self.child_distributions = child_list
 
     @override(ActionDistribution)
@@ -285,3 +305,8 @@ class Dirichlet(TFActionDistribution):
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.dist.sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)

@@ -1,20 +1,16 @@
-Profiling for Ray Users
-=======================
+How-to: Profile Ray Programs
+============================
 
-This document is intended for users of Ray who want to know how to evaluate
-the performance of their code while running on Ray. Profiling the
-performance of your code can be very helpful to determine performance
-bottlenecks or to find out where your code may not be parallelized properly.
-If you are interested in pinpointing why your Ray application may not be
-achieving the expected speedup, read on!
-
+Profiling the performance of your code can be very helpful to determine
+performance bottlenecks or to find out where your code may not be parallelized
+properly.
 
 Visualizing Tasks in the Ray Timeline
 -------------------------------------
 
 The most important tool is the timeline visualization tool. To visualize tasks
-in the Ray timeline, you can dump the timeline as a JSON file using the
-following command.
+in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
+timeline`` from the command line or by using the following command.
 
 .. code-block:: python
 

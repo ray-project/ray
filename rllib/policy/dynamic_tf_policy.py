@@ -270,7 +270,7 @@ class DynamicTFPolicy(TFPolicy):
     def _initialize_loss(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
-            shape[0] = 1
+            shape = [s if s is not None else 1 for s in shape]
             return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
 
         dummy_batch = {

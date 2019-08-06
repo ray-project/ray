@@ -112,6 +112,7 @@ class VTraceSurrogateLoss(object):
                  rewards,
                  values,
                  bootstrap_value,
+                 config,
                  dist_class,
                  model,
                  valid_mask,
@@ -144,6 +145,7 @@ class VTraceSurrogateLoss(object):
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
+            config: Trainer config dict.
             dist_class: action distribution class for logits.
             model: backing ModelV2 instance
             valid_mask: A bool tensor of valid RNN input elements (#2992).
@@ -167,6 +169,7 @@ class VTraceSurrogateLoss(object):
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
+                config=config,
                 dist_class=dist_class,
                 model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
@@ -254,12 +257,9 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         old_policy_behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
-<<<<<<< HEAD:python/ray/rllib/agents/ppo/appo_policy.py
+    old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits,
+                                               policy.model)
     prev_action_dist = policy.dist_class(behaviour_logits, policy.model)
-=======
-    old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits)
-    prev_action_dist = policy.dist_class(behaviour_logits)
->>>>>>> 5d7afe8092f5521a8faa8cdfc916dcd9a5848023:rllib/agents/ppo/appo_policy.py
     values = policy.value_function
 
     policy.model_vars = policy.model.variables()
@@ -305,6 +305,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
+            config=policy.config,
             dist_class=Categorical if is_multidiscrete else policy.dist_class,
             model=policy.model,
             valid_mask=make_time_major(mask, drop_last=True),

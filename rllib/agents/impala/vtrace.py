@@ -77,6 +77,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
       ...,
       [T, B, ...]
       with actions.
+    dist_class: Python class of the action distribution
+    config: Trainer config dict
 
   Returns:
     A list with length of ACTION_SPACE of float32
@@ -111,6 +113,7 @@ def from_logits(behaviour_policy_logits,
                 rewards,
                 values,
                 bootstrap_value,
+                config,
                 dist_class=Categorical,
                 model=None,
                 clip_rho_threshold=1.0,
@@ -124,6 +127,7 @@ def from_logits(behaviour_policy_logits,
         rewards,
         values,
         bootstrap_value,
+        config,
         dist_class,
         model,
         clip_rho_threshold=clip_rho_threshold,
@@ -148,6 +152,7 @@ def multi_from_logits(behaviour_policy_logits,
                       rewards,
                       values,
                       bootstrap_value,
+                      config,
                       dist_class,
                       model,
                       behaviour_action_prob=None,
