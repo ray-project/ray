@@ -527,6 +527,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 self.results += [result]
                 return TrialScheduler.CONTINUE
 
+            def on_trial_complete(self, trial_runner, trial, result):
+                self.complete_result = result
+
         def train(config, reporter):
             for i in range(100):
                 reporter(**create_result(i))
@@ -549,6 +552,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             all(
                 set(result) >= set(flattened_keys)
                 for result in scheduler.results))
+        self.assertTrue(
+            set(scheduler.complete_result) >= set(flattened_keys))
         self.assertEqual(len(algo.results), 20)
         self.assertTrue(
             all(set(result) >= set(flattened_keys) for result in algo.results))
