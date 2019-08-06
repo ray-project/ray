@@ -302,13 +302,13 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 
 Multi-Agent Actor Critic (contrib/MADDPG)
 -----------------------------------------
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `wsjeon/maddpg-rllib <https://github.com/wsjeon/maddpg-rllib>`__ for examples and more information.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `wsjeon/maddpg-rllib <https://github.com/wsjeon/maddpg-rllib>`__ for examples and more information.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/twostep_game.py>`__
+Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__
 
-.. literalinclude:: ../../python/ray/rllib/contrib/maddpg/maddpg.py
+.. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
