@@ -21,6 +21,19 @@ Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
   return store_->Put(object_id, object);
 }
 
+Status CoreWorkerMemoryStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
+                                             const size_t data_size,
+                                             const ObjectID &object_id,
+                                             std::shared_ptr<Buffer> *data) {
+  return Status::NotImplemented(
+      "Create/Seal interface not implemented for in-memory store.");
+}
+
+Status CoreWorkerMemoryStoreProvider::Seal(const ObjectID &object_id) {
+  return Status::NotImplemented(
+      "Create/Seal interface not implemented for in-memory store.");
+}
+
 Status CoreWorkerMemoryStoreProvider::Get(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
