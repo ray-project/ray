@@ -12,7 +12,7 @@ into account the opponent actions as well as the policy's. Note that this is
 also using two independent policies instead of weight-sharing with one.
 
 See also: centralized_critic_2.py for a simpler approach that instead
-modifies the environment (however, it cannot model opponent actions).
+modifies the environment.
 """
 
 import argparse

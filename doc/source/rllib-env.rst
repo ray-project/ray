@@ -306,9 +306,7 @@ To update the critic, you'll also have to modify the loss of the policy. For an 
 
 **Strategy 2: Sharing observations through the environment**:
 
-Alternatively, the env itself can be modified to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just an environment wrapper and custom model. However, it is more limited in that you can't include the opponent actions as critic inputs. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
-
-Note that this strategy is similar to using agent groups as described next.
+Alternatively, the env itself can be modified to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use an env wrapper and custom model. However, it is a bit less principled in that you have to change the agent observation spaces and the environment. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
