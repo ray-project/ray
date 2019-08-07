@@ -285,7 +285,7 @@ Implementing a Centralized Critic
 
 Here are two ways to implement a centralized critic compatible with the multi-agent API:
 
-**Method 1: Sharing experiences in the trajectory preprocessor**:
+**Strategy 1: Sharing experiences in the trajectory preprocessor**:
 
 The most general way of implementing a centralized critic involves modifying the ``postprocess_trajectory`` method of a custom policy, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
 
@@ -304,9 +304,11 @@ The most general way of implementing a centralized critic involves modifying the
 
 To update the critic, you'll also have to modify the loss of the policy. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
 
-**Method 2: Sharing observations through the environment**:
+**Strategy 2: Sharing observations through the environment**:
 
-Alternatively, env itself can be modified to share observations between agents. In this method, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just an environment wrapper and custom model. However, it is more limited in that you can't include the opponent actions as critic inputs. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
+Alternatively, the env itself can be modified to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just an environment wrapper and custom model. However, it is more limited in that you can't include the opponent actions as critic inputs. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
+
+Note that this strategy is similar to using agent groups as described next.
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
