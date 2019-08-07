@@ -64,46 +64,46 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
   while (!unready.empty() && !should_break) {
-    std::vector<ObjectID> unready_ids;
+    std::vector<ObjectID> batch_ids;
     for (const auto &entry : unready) {
-      if (unready_ids.size() == batch_size) {
+      if (batch_ids.size() == batch_size) {
         break;
       }
-      unready_ids.push_back(entry.first);
+      batch_ids.push_back(entry.first);
     }
 
     RAY_CHECK_OK(
-        raylet_client_->FetchOrReconstruct(unready_ids, /*fetch_only=*/false, task_id));
+        raylet_client_->FetchOrReconstruct(batch_ids, /*fetch_only=*/false, task_id));
 
     int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
-                                     int64_t(0.01 * unready.size()));
+                                     int64_t(0.01 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout = std::max(int64_t(0), remaining_timeout - batch_timeout);
       should_break = remaining_timeout <= 0;
     }
 
-    std::vector<std::shared_ptr<RayObject>> result_objects;
+    std::vector<std::shared_ptr<RayObject>> batch_results;
     RAY_RETURN_NOT_OK(
-        local_store_provider_.Get(unready_ids, batch_timeout, task_id, &result_objects));
+        local_store_provider_.Get(batch_ids, batch_timeout, task_id, &batch_results));
 
     // Add successfully retrieved objects to the result list and remove them from unready.
     uint64_t successes = 0;
-    for (size_t i = 0; i < result_objects.size(); i++) {
-      if (result_objects[i] != nullptr) {
+    for (size_t i = 0; i < batch_results.size(); i++) {
+      if (batch_results[i] != nullptr) {
         successes++;
-        const auto &object_id = unready_ids[i];
+        const auto &object_id = batch_ids[i];
         for (int idx : unready[object_id]) {
-          (*results)[idx] = result_objects[i];
+          (*results)[idx] = batch_results[i];
         }
         unready.erase(object_id);
-        if (IsException(*result_objects[i])) {
+        if (IsException(*batch_results[i])) {
           should_break = true;
         }
       }
     }
 
-    if (successes < unready_ids.size()) {
+    if (successes < batch_ids.size()) {
       num_attempts++;
       WarnIfAttemptedTooManyTimes(num_attempts, unready);
     }
