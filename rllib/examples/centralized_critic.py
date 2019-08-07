@@ -197,6 +197,7 @@ if __name__ == "__main__":
         CCTrainer,
         stop={
             "timesteps_total": args.stop,
+            "episode_reward_mean": 8,
         },
         config={
             "env": TwoStepGame,
