@@ -360,7 +360,7 @@ void CoreWorkerTest::TestActorReconstruction(
     for (int i = 0; i < num_tasks; i++) {
       if (i == task_index_to_kill_worker) {
         RAY_LOG(INFO) << "killing worker";
-        system("pkill mock_worker");
+        ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
         ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), false,
@@ -413,7 +413,7 @@ void CoreWorkerTest::TestActorFailure(
     for (int i = 0; i < num_tasks; i++) {
       if (i == task_index_to_kill_worker) {
         RAY_LOG(INFO) << "killing worker";
-        system("pkill mock_worker");
+        ASSERT_EQ(system("pkill mock_worker"), 0);
       }
 
       // wait for actor being reconstructed.

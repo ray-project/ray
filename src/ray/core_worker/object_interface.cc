@@ -58,16 +58,13 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
   case StoreProviderType::LOCAL_PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerLocalPlasmaStoreProvider(store_socket_));
-    break;
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
-    break;
   default:
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);
-    break;
+    return nullptr;
   }
-  return nullptr;
 }
 
 }  // namespace ray

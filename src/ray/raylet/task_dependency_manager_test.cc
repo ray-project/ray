@@ -94,7 +94,7 @@ std::vector<Task> MakeTaskChain(int chain_size,
     auto task = ExampleTask(arguments, num_returns);
     task_chain.push_back(task);
     arguments.clear();
-    for (int j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
+    for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
       arguments.push_back(task.GetTaskSpecification().ReturnId(j));
     }
   }

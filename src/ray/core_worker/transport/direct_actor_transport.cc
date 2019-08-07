@@ -7,7 +7,7 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 bool HasByReferenceArgs(const TaskSpecification &spec) {
-  for (int i = 0; i < spec.NumArgs(); ++i) {
+  for (size_t i = 0; i < spec.NumArgs(); ++i) {
     if (spec.ArgIdCount(i) > 0) {
       return true;
     }
@@ -149,7 +149,8 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
                     reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
                 return_object.metadata().size());
           }
-          store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id);
+          RAY_CHECK_OK(
+              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   return status;
@@ -163,7 +164,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    store_provider_->Put(RayObject(nullptr, meta_buffer), object_id);
+    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
@@ -203,7 +204,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   auto status = task_handler_(task_spec, &results);
   RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
-  for (int i = 0; i < results.size(); i++) {
+  for (size_t i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
     ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1,
                                           /*transport_type=*/0);
