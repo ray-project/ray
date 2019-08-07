@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.NotImplementedException;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.api.id.JobId;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -43,7 +43,7 @@ public class MockRayletClient implements RayletClient {
   private final RayDevRuntime runtime;
   private final ExecutorService exec;
   private final Deque<Worker> idleWorkers;
-  private final Map<UniqueId, Worker> actorWorkers;
+  private final Map<ActorId, Worker> actorWorkers;
   private final ThreadLocal<Worker> currentWorker;
 
   public MockRayletClient(RayDevRuntime runtime, int numberThreads) {
@@ -155,11 +155,6 @@ public class MockRayletClient implements RayletClient {
   }
 
   @Override
-  public TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
-    return TaskId.randomId();
-  }
-
-  @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
       timeoutMs, TaskId currentTaskId) {
     if (waitFor == null || waitFor.isEmpty()) {
@@ -188,12 +183,12 @@ public class MockRayletClient implements RayletClient {
 
 
   @Override
-  public UniqueId prepareCheckpoint(UniqueId actorId) {
+  public UniqueId prepareCheckpoint(ActorId actorId) {
     throw new NotImplementedException("Not implemented.");
   }
 
   @Override
-  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+  public void notifyActorResumedFromCheckpoint(ActorId actorId, UniqueId checkpointId) {
     throw new NotImplementedException("Not implemented.");
   }
 

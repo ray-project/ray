@@ -51,13 +51,33 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, 
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeGenerateTaskId
+ * Method:    nativeGenerateActorCreationTaskId
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(JNIEnv *, jclass,
-                                                                  jbyteArray, jbyteArray,
-                                                                  jint);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorCreationTaskId(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jint);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeGenerateActorTaskId
+ * Signature: ([B[BI[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorTaskId(JNIEnv *, jclass,
+                                                                       jbyteArray,
+                                                                       jbyteArray, jint,
+                                                                       jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeGenerateNormalTaskId
+ * Signature: ([B[BI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateNormalTaskId(JNIEnv *, jclass,
+                                                                        jbyteArray,
+                                                                        jbyteArray, jint);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
