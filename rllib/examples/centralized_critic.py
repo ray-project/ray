@@ -94,31 +94,6 @@ class CentralizedValueMixin(object):
         return self.get_session().run(self.central_value_function, feed_dict)
 
 
-# Copied from PPO but optimizing the central value function
-def loss_with_central_critic(policy, batch_tensors):
-    CentralizedValueMixin.__init__(policy)
-
-    policy.loss_obj = PPOLoss(
-        policy.action_space,
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[BEHAVIOUR_LOGITS],
-        batch_tensors[SampleBatch.VF_PREDS],
-        policy.action_dist,
-        policy.central_value_function,
-        policy.kl_coeff,
-        tf.ones_like(batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool),
-        entropy_coeff=policy.entropy_coeff,
-        clip_param=policy.config["clip_param"],
-        vf_clip_param=policy.config["vf_clip_param"],
-        vf_loss_coeff=policy.config["vf_loss_coeff"],
-        use_gae=policy.config["use_gae"],
-        model_config=policy.config["model"])
-
-    return policy.loss_obj.loss
-
-
 # Grabs the opponent obs/act and includes it in the experience batch,
 # and computes GAE using the central vf predictions.
 def centralized_critic_postprocessing(policy,
@@ -155,6 +130,31 @@ def centralized_critic_postprocessing(policy,
         policy.config["lambda"],
         use_gae=policy.config["use_gae"])
     return batch
+
+
+# Copied from PPO but optimizing the central value function
+def loss_with_central_critic(policy, batch_tensors):
+    CentralizedValueMixin.__init__(policy)
+
+    policy.loss_obj = PPOLoss(
+        policy.action_space,
+        batch_tensors[Postprocessing.VALUE_TARGETS],
+        batch_tensors[Postprocessing.ADVANTAGES],
+        batch_tensors[SampleBatch.ACTIONS],
+        batch_tensors[BEHAVIOUR_LOGITS],
+        batch_tensors[SampleBatch.VF_PREDS],
+        policy.action_dist,
+        policy.central_value_function,
+        policy.kl_coeff,
+        tf.ones_like(batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool),
+        entropy_coeff=policy.entropy_coeff,
+        clip_param=policy.config["clip_param"],
+        vf_clip_param=policy.config["vf_clip_param"],
+        vf_loss_coeff=policy.config["vf_loss_coeff"],
+        use_gae=policy.config["use_gae"],
+        model_config=policy.config["model"])
+
+    return policy.loss_obj.loss
 
 
 def setup_mixins(policy, obs_space, action_space, config):
