@@ -118,7 +118,8 @@ cdef extern from "ray/common/task/scheduling_resources.h" \
         c_bool IsEqual(const ResourceSet &other) const
         c_bool IsSubset(const ResourceSet &other) const
         c_bool IsSuperset(const ResourceSet &other) const
-        c_bool AddOrUpdateResource(const c_string &resource_name, double capacity)
+        c_bool AddOrUpdateResource(const c_string &resource_name,
+                                   double capacity)
         c_bool RemoveResource(const c_string &resource_name)
         void AddResources(const ResourceSet &other)
         c_bool SubtractResourcesStrict(const ResourceSet &other)
@@ -145,4 +146,6 @@ cdef extern from "ray/core_worker/store_provider/store_provider.h" namespace "ra
 
 cdef extern from "ray/gcs/gcs_client_interface.h" namespace "ray::gcs" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &ip, int port, const c_string &password, c_bool is_test_client = false)
+        CGcsClientOptions(const c_string &ip, int port,
+                          const c_string &password,
+                          c_bool is_test_client = false)

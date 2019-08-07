@@ -252,7 +252,7 @@ cdef class TaskExecutionSpec:
 
     def __init__(self):
         cdef:
-            RpcTaskExecutionSpec message;
+            RpcTaskExecutionSpec message
 
         self.c_spec.reset(new CTaskExecutionSpec(message))
 

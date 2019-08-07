@@ -70,7 +70,9 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
                                           CActorCheckpointID &checkpoint_id)
         CRayStatus NotifyActorResumedFromCheckpoint(
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
-        CRayStatus SetResource(const c_string &resource_name, const double capacity, const CClientID &client_Id)
+        CRayStatus SetResource(const c_string &resource_name,
+                               const double capacity,
+                               const CClientID &client_Id)
         CLanguage GetLanguage() const
         CWorkerID GetWorkerId() const
         CJobID GetJobID() const

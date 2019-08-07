@@ -96,7 +96,7 @@ cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
             const CObjectID &actor_creation_dummy_object_id,
             const CObjectID &previous_actor_task_dummy_object_id,
             uint64_t actor_counter,
-            const c_vector[CActorHandleID] &new_handle_ids);
+            const c_vector[CActorHandleID] &new_handle_ids)
 
         RpcTaskSpec GetMessage()
 

@@ -20,10 +20,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         c_bool IsNil() const
         c_bool operator==(const CBaseID &rhs) const
         c_bool operator!=(const CBaseID &rhs) const
-        const uint8_t *data() const;
+        const uint8_t *data() const
 
-        c_string Binary() const;
-        c_string Hex() const;
+        c_string Binary() const
+        c_string Hex() const
 
     cdef cppclass CUniqueID "ray::UniqueID"(CBaseID):
         CUniqueID()
@@ -112,10 +112,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         const CObjectID Nil()
 
         @staticmethod
-        CObjectID ForPut(const CTaskID &task_id, int64_t index);
+        CObjectID ForPut(const CTaskID &task_id, int64_t index)
 
         @staticmethod
-        CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index);
+        CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index)
 
         @staticmethod
         size_t Size()

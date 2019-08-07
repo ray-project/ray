@@ -241,7 +241,7 @@ cdef class RayletClient:
         # here. The client is a raw pointer because it is only a temporary
         # workaround and will be removed once the core worker transition is
         # complete, so we don't want to change the unique_ptr in core worker
-        # to a shared_ptr. This means the core worker *must* be 
+        # to a shared_ptr. This means the core worker *must* be
         # initialized before the raylet client.
         self.client = core_worker.core_worker.get().GetRayletClient()
 
@@ -362,8 +362,10 @@ cdef class RayletClient:
         check_status(self.client.NotifyActorResumedFromCheckpoint(
             actor_id.native(), checkpoint_id.native()))
 
-    def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
-        self.client.SetResource(resource_name.encode("ascii"), capacity, CClientID.FromBinary(client_id.binary()))
+    def set_resource(self, basestring resource_name,
+                     double capacity, ClientID client_id):
+        self.client.SetResource(resource_name.encode("ascii"), capacity,
+                                CClientID.FromBinary(client_id.binary()))
 
     @property
     def client_id(self):
@@ -386,10 +388,12 @@ cdef class CoreWorker:
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
-            raylet_socket.encode("ascii"), job_id.native(), gcs_options.native()[0], NULL))
+            raylet_socket.encode("ascii"), job_id.native(),
+            gcs_options.native()[0], NULL))
 
-        assert pyarrow is not None, ("Expected pyarrow to be imported from outside _raylet. "
-                                     "See __init__.py for details.")
+        assert pyarrow is not None, ("Expected pyarrow to be imported from "
+                                     "outside _raylet. See __init__.py for "
+                                     "details.")
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
@@ -399,25 +403,28 @@ cdef class CoreWorker:
 
         with nogil:
             self.core_worker.get().SetCurrentTaskId(c_task_id)
-            check_status(self.core_worker.get().Objects().Get(c_object_ids, -1, &results))
+            check_status(self.core_worker.get().Objects().Get(
+                c_object_ids, -1, &results))
 
         data_metadata_pairs = []
         for result in results:
-            # The core_worker will return a nullptr for objects that couldn't be
-            # retrieved from the store or if an earlier object was an exception.
+            # core_worker will return a nullptr for objects that couldn't be
+            # retrieved from the store or if an object was an exception.
             if not result.get():
                 data_metadata_pairs.append((None, None))
             else:
                 data = Buffer.make(result.get().GetData())
                 if result.get().HasMetadata():
-                    metadata = Buffer.make(result.get().GetMetadata()).to_pybytes()
+                    metadata = Buffer.make(
+                        result.get().GetMetadata()).to_pybytes()
                 else:
                     metadata = None
                 data_metadata_pairs.append((data, metadata))
 
         return data_metadata_pairs
 
-    def serialize_and_put(self, object value, ObjectID object_id, serialization_context=None, int memcopy_threads=6):
+    def serialize_and_put(self, object value, ObjectID object_id,
+                          serialization_context=None, int memcopy_threads=6):
         cdef:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
@@ -428,25 +435,32 @@ cdef class CoreWorker:
         data_size = serialized.total_bytes
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(metadata, data_size, c_object_id, &data))
+            check_status(self.core_worker.get().Objects().Create(
+                metadata, data_size, c_object_id, &data))
 
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data)))
+        stream = pyarrow.FixedSizeBufferWriter(
+            pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)
         serialized.write_to(stream)
 
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
-    def put_raw_buffer(self, c_string value, ObjectID object_id, c_string metadata_str=b"", int memcopy_threads=6):
+    def put_raw_buffer(self, c_string value, ObjectID object_id,
+                       c_string metadata_str=b"", int memcopy_threads=6):
         cdef:
-            shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata = shared_ptr[CBuffer](<CBuffer*>new LocalMemoryBuffer(<uint8_t*>(metadata_str.data()), metadata_str.size()))
             CObjectID c_object_id = object_id.native()
+            shared_ptr[CBuffer] data
+            shared_ptr[CBuffer] metadata = shared_ptr[CBuffer](
+                <CBuffer*>new LocalMemoryBuffer(
+                    <uint8_t*>(metadata_str.data()), metadata_str.size()))
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(metadata, value.size(), c_object_id, &data))
+            check_status(self.core_worker.get().Objects().Create(
+                metadata, value.size(), c_object_id, &data))
 
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(Buffer.make(data)))
+        stream = pyarrow.FixedSizeBufferWriter(
+            pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)
         stream.write(pyarrow.py_buffer(value))
 
@@ -464,8 +478,8 @@ cdef class CoreWorker:
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
             self.core_worker.get().SetCurrentTaskId(c_task_id)
-            check_status(self.core_worker.get().Objects().Wait(wait_ids, num_returns,
-                                                timeout_milliseconds, &results))
+            check_status(self.core_worker.get().Objects().Wait(
+                wait_ids, num_returns, timeout_milliseconds, &results))
 
         assert len(results) == len(object_ids)
 
@@ -478,9 +492,11 @@ cdef class CoreWorker:
 
         return (ready, not_ready)
 
-    def free_objects(self, object_ids, c_bool local_only, c_bool delete_creating_tasks):
+    def free_objects(self, object_ids, c_bool local_only,
+                     c_bool delete_creating_tasks):
         cdef:
             c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Free(free_ids, local_only, delete_creating_tasks))
+            check_status(self.core_worker.get().Objects().Free(
+                free_ids, local_only, delete_creating_tasks))

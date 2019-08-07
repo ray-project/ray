@@ -22,16 +22,18 @@ from ray.includes.libraylet cimport CRayletClient
 
 cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
     cdef cppclass CObjectInterface "CoreWorkerObjectInterface":
-      CRayStatus Put(const CRayObject &object, CObjectID *object_id);
-      CRayStatus Put(const CRayObject &object, const CObjectID &object_id);
-      CRayStatus Create(const shared_ptr[CBuffer] &metadata, const size_t data_size, const CObjectID &object_id, shared_ptr[CBuffer] *data);
-      CRayStatus Seal(const CObjectID &object_id);
-      CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                 c_vector[shared_ptr[CRayObject]] *results);
-      CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                  int64_t timeout_ms, c_vector[c_bool] *results);
-      CRayStatus Free(const c_vector[CObjectID] &object_ids, c_bool local_only,
-                    c_bool delete_creating_tasks);
+        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
+        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, const CObjectID &object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Seal(const CObjectID &object_id)
+        CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
+                       c_vector[shared_ptr[CRayObject]] *results)
+        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
+                        int64_t timeout_ms, c_vector[c_bool] *results)
+        CRayStatus Free(const c_vector[CObjectID] &object_ids,
+                        c_bool local_only, c_bool delete_creating_tasks)
 
 cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
     cdef cppclass CCoreWorker "ray::CoreWorker":
@@ -48,4 +50,4 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
         # TODO(edoakes): remove this once the raylet client is no longer used directly
         CRayletClient* GetRayletClient()
         # TODO(edoakes): remove this once the Python core worker uses task interfaces
-        void SetCurrentTaskId(const CTaskID &task_id);
+        void SetCurrentTaskId(const CTaskID &task_id)
