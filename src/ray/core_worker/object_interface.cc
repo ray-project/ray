@@ -64,7 +64,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
   default:
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);
     return nullptr;
-  }  
+  }
 }
 
 }  // namespace ray
