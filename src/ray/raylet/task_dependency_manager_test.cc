@@ -7,12 +7,17 @@
 
 #include "ray/common/task/task_util.h"
 #include "ray/raylet/task_dependency_manager.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
 namespace raylet {
 
 using ::testing::_;
+
+const static JobID kDefaultJobId = JobID::FromInt(1);
+
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockObjectManager : public ObjectManagerInterface {
  public:
@@ -70,8 +75,8 @@ class TaskDependencyManagerTest : public ::testing::Test {
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
-  builder.SetCommonTaskSpec(Language::PYTHON, {"", "", ""}, JobID::Nil(),
-                            TaskID::FromRandom(), 0, num_returns, {}, {});
+  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                            RandomTaskId(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }
@@ -103,7 +108,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(ObjectID::FromRandom());
   }
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
   for (const auto &argument_id : arguments) {
@@ -135,7 +140,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
 
 TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribeGetDependencies) {
   // Create a task with 3 arguments.
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   int num_arguments = 3;
   std::vector<ObjectID> arguments;
   for (int i = 0; i < num_arguments; i++) {
@@ -180,7 +185,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   EXPECT_CALL(object_manager_mock_, Pull(argument_id));
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   for (int i = 0; i < num_dependent_tasks; i++) {
-    TaskID task_id = TaskID::FromRandom();
+    TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     // Subscribe to each of the task's dependencies.
     bool ready =
@@ -263,7 +268,8 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
 TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
-  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), 1);
+  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), /*index=*/1,
+                                     /*transport_type=*/0);
   auto task2 = ExampleTask({put_id}, 0);
 
   // No objects have been registered in the task dependency manager, so the put
@@ -325,7 +331,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(ObjectID::FromRandom());
   }
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
   for (const auto &argument_id : arguments) {

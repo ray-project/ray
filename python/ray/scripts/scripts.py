@@ -707,6 +707,17 @@ def get_worker_ips(cluster_config_file, cluster_name):
 
 
 @cli.command()
+@click.argument("command", required=True, type=str)
+@click.option(
+    "--dry",
+    is_flag=True,
+    default=False,
+    help="Print actions instead of running them.")
+def session(command, dry):
+    ray.projects.load_project(os.getcwd())
+
+
+@cli.command()
 def stack():
     COMMAND = """
 pyspy=`which py-spy`
@@ -791,6 +802,7 @@ cli.add_command(teardown, name="down")
 cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
+cli.add_command(session)
 cli.add_command(stack)
 cli.add_command(timeline)
 

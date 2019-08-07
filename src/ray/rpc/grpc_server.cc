@@ -64,9 +64,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
-        // track this request. So we need to create another call to handle next
-        // incoming request.
-        server_call->GetFactory().CreateCall();
+        // track this request.
         server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;

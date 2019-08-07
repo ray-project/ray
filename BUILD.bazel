@@ -488,6 +488,16 @@ cc_test(
 )
 
 cc_test(
+    name = "id_test",
+    srcs = ["src/ray/common/id_test.cc"],
+    copts = COPTS,
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "logging_test",
     srcs = ["src/ray/util/logging_test.cc"],
     args = ["--gtest_filter=PrintLogTest*"],
@@ -798,6 +808,8 @@ filegroup(
         "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
+        "python/ray/projects/*.py",
+        "python/ray/projects/schema.json",
         "python/ray/workers/default_worker.py",
     ]),
 )
