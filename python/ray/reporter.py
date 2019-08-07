@@ -78,7 +78,7 @@ def determine_ip_address():
                 )
         stdout = p.stdout.strip()
         lines = stdout.split('\n')
-        for i, line in enumerate(line):
+        for i, line in enumerate(lines):
             if 'ipogif0' in line:
                 return lines[i+1].split()[1].split(':')[1]
 
