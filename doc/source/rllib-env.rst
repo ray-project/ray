@@ -300,7 +300,7 @@ Implementing a centralized critic that takes as input the observations and actio
             self.critic_network, feed_dict={"obs": global_obs_batch})
         return sample_batch
 
-2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicy example <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__.
+2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy, the same as with any other value function. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
