@@ -105,16 +105,14 @@ void FillNil(T *data) {
 }
 
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
-  std::vector<uint8_t> data(WorkerID::Size(), 0);
+  std::vector<uint8_t> data(WorkerID::Size(), 0xFF);
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
-  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xFF);
-  return WorkerID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+  return WorkerID::FromBinary(data.data(), data.size());
 }
 
 ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
   RAY_CHECK(from.size() == kPlasmaIdSize);
-  return ObjectID::FromBinary(from.substr(0, ObjectID::kLength));
+  return ObjectID::FromBinary(from.data(), ObjectID::kLength);
 }
 
 plasma::UniqueID ObjectID::ToPlasmaId() const {
@@ -211,8 +209,7 @@ ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
 }
 
 ActorID ActorID::NilFromJob(const JobID &job_id) {
-  std::string data(kUniqueBytesLength, 0);
-  FillNil(&data);
+  std::string data(kUniqueBytesLength, 0xFF);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
@@ -220,13 +217,11 @@ ActorID ActorID::NilFromJob(const JobID &job_id) {
 
 JobID ActorID::JobId() const {
   RAY_CHECK(!IsNil());
-  return JobID::FromBinary(std::string(
-      reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
+  return JobID::FromBinary(this->Data() + kUniqueBytesLength, JobID::kLength);
 }
 
 TaskID TaskID::ForDriverTask(const JobID &job_id) {
-  std::string data(kUniqueBytesLength, 0);
-  FillNil(&data);
+  std::string data(kUniqueBytesLength, 0xFF);
   const auto dummy_actor_id = ActorID::NilFromJob(job_id);
   std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
@@ -240,8 +235,7 @@ TaskID TaskID::ForFakeTask() {
 }
 
 TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
-  std::string data(kUniqueBytesLength, 0);
-  FillNil(&data);
+  std::string data(kUniqueBytesLength, 0xFF);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
@@ -267,8 +261,7 @@ TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
 }
 
 ActorID TaskID::ActorId() const {
-  return ActorID::FromBinary(std::string(
-      reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
+  return ActorID::FromBinary(id_ + kUniqueBytesLength, ActorID::Size());
 }
 
 JobID TaskID::JobId() const { return ActorId().JobId(); }
@@ -284,8 +277,7 @@ TaskID ObjectID::TaskId() const {
     // TODO(qwang): Should be RAY_CHECK here.
     RAY_LOG(WARNING) << "Shouldn't call this on a non-task object id: " << this->Hex();
   }
-  return TaskID::FromBinary(
-      std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
+  return TaskID::FromBinary(id_, TaskID::Size());
 }
 
 ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index,
@@ -359,15 +351,10 @@ const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_i
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
   RAY_CHECK(DIGEST_SIZE >= ActorHandleID::Size());
-  return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
+  return ActorHandleID::FromBinary(buff, ActorHandleID::Size());
 }
 
-JobID JobID::FromInt(uint32_t value) {
-  std::vector<uint8_t> data(JobID::Size(), 0);
-  std::memcpy(data.data(), &value, JobID::Size());
-  return JobID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
-}
+JobID JobID::FromInt(uint32_t value) { return JobID::FromBinary(&value, JobID::Size()); }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \

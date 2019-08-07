@@ -100,7 +100,7 @@ inline std::vector<ID> IdVectorFromProtobuf(
   auto str_vec = VectorFromProtobuf(pb_repeated);
   std::vector<ID> ret;
   std::transform(str_vec.begin(), str_vec.end(), std::back_inserter(ret),
-                 &ID::FromBinary);
+                 static_cast<ID (*)(const std::string &)>(&ID::FromBinary));
   return ret;
 }
 

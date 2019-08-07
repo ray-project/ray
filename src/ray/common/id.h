@@ -58,6 +58,7 @@ class BaseID {
   BaseID();
   static T FromRandom();
   static T FromBinary(const std::string &binary);
+  static T FromBinary(const void *data, size_t size);
   static const T &Nil();
   static size_t Size() { return T::Size(); }
 
@@ -344,22 +345,26 @@ std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
-#define DEFINE_UNIQUE_ID(type)                                                 \
-  class RAY_EXPORT type : public UniqueID {                                    \
-   public:                                                                     \
-    explicit type(const UniqueID &from) {                                      \
-      std::memcpy(&id_, from.Data(), kUniqueIDSize);                           \
-    }                                                                          \
-    type() : UniqueID() {}                                                     \
-    static type FromRandom() { return type(UniqueID::FromRandom()); }          \
-    static type FromBinary(const std::string &binary) { return type(binary); } \
-    static type Nil() { return type(UniqueID::Nil()); }                        \
-    static size_t Size() { return kUniqueIDSize; }                             \
-                                                                               \
-   private:                                                                    \
-    explicit type(const std::string &binary) {                                 \
-      std::memcpy(&id_, binary.data(), kUniqueIDSize);                         \
-    }                                                                          \
+#define DEFINE_UNIQUE_ID(type)                                                         \
+  class RAY_EXPORT type : public UniqueID {                                            \
+   public:                                                                             \
+    explicit type(const UniqueID &from) {                                              \
+      std::memcpy(&id_, from.Data(), kUniqueIDSize);                                   \
+    }                                                                                  \
+    type() : UniqueID() {}                                                             \
+    static type FromRandom() { return type(UniqueID::FromRandom()); }                  \
+    static type FromBinary(const std::string &binary) { return type(binary); }         \
+    static type FromBinary(const void *data, size_t size) { return type(data, size); } \
+    static type Nil() { return type(UniqueID::Nil()); }                                \
+    static size_t Size() { return kUniqueIDSize; }                                     \
+                                                                                       \
+   private:                                                                            \
+    explicit type(const std::string &binary) {                                         \
+      std::memcpy(&id_, binary.data(), kUniqueIDSize);                                 \
+    }                                                                                  \
+    explicit type(const void *data, size_t size) {                                     \
+      std::memcpy(&id_, data, kUniqueIDSize);                                          \
+    }                                                                                  \
   };
 
 #include "id_def.h"
@@ -393,10 +398,15 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size())
-      << "expected size is " << T::Size() << ", but got " << binary.size();
+  return FromBinary(binary.data(), binary.size());
+}
+
+template <typename T>
+T BaseID<T>::FromBinary(const void *data, size_t size) {
+  RAY_CHECK(data != nullptr && size == T::Size())
+      << "expected size is " << T::Size() << ", but got " << size;
   T t = T::Nil();
-  std::memcpy(t.MutableData(), binary.data(), T::Size());
+  std::memcpy(t.MutableData(), data, T::Size());
   return t;
 }
 
@@ -451,11 +461,12 @@ template <typename T>
 std::string BaseID<T>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = Data();
-  std::string result;
+  std::string result(2 * T::Size(), '\0');
+  char *dst = &result.front();
   for (int i = 0; i < T::Size(); i++) {
     unsigned int val = id[i];
-    result.push_back(hex[val >> 4]);
-    result.push_back(hex[val & 0xf]);
+    *dst++ = hex[val >> 4];
+    *dst++ = hex[val & 0xf];
   }
   return result;
 }
