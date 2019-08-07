@@ -23,6 +23,10 @@ def log_sync_template(exclude_patterns=()):
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.
 
+    Args:
+        exclude_patterns: an iterable of exclude patterns to exclude from rsync
+        syncing. Each element adds an `--exclude [pattern]` flag for rsync
+        command.
     """
 
     if not distutils.spawn.find_executable("rsync"):
