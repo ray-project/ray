@@ -21,6 +21,7 @@
 
 #include "ray/thirdparty/hiredis/async.h"
 #include "ray/thirdparty/hiredis/hiredis.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -102,6 +103,11 @@ class CoreWorkerTest : public ::testing::Test {
     for (const auto &store_socket : raylet_store_socket_names_) {
       StopStore(store_socket);
     }
+  }
+
+  JobID NextJobId() const {
+    static uint32_t job_counter = 1;
+    return JobID::FromInt(job_counter++);
   }
 
   std::string StartStore() {
@@ -213,7 +219,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
 void CoreWorkerTest::TestNormalTask(
     const std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -254,7 +260,7 @@ void CoreWorkerTest::TestNormalTask(
 void CoreWorkerTest::TestActorTask(
     const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
 
   auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
@@ -336,7 +342,7 @@ void CoreWorkerTest::TestActorTask(
 void CoreWorkerTest::TestActorReconstruction(
     const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
 
   // creating actor.
   auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
@@ -393,7 +399,7 @@ void CoreWorkerTest::TestActorReconstruction(
 void CoreWorkerTest::TestActorFailure(
     const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
 
   // creating actor.
   auto actor_handle =
@@ -499,13 +505,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   wait_ids.push_back(non_existent_id);
 
   std::vector<bool> wait_results;
-  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, TaskID::FromRandom(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, TaskID::FromRandom(), &results));
+  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, RandomTaskId(), &results));
 
   ASSERT_EQ(results.size(), ids_with_duplicate.size());
   for (size_t i = 0; i < ids_with_duplicate.size(); i++) {
@@ -527,7 +533,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids, 0, TaskID::FromRandom(), &results));
+  RAY_CHECK_OK(provider.Get(ids, 0, RandomTaskId(), &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
@@ -576,9 +582,10 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
-
-  ActorHandle actor_handle(ActorID::FromRandom(), ActorHandleID::Nil(), function.language,
-                           true, function.function_descriptor);
+  const auto job_id = NextJobId();
+  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                           ActorHandleID::Nil(), function.language, true,
+                           function.function_descriptor);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -592,9 +599,9 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(function.language, function.function_descriptor,
-                              JobID::FromInt(1), TaskID::FromRandom(), 0, num_returns,
-                              resources, resources);
+    builder.SetCommonTaskSpec(RandomTaskId(), function.language,
+                              function.function_descriptor, job_id, RandomTaskId(), 0,
+                              num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {
@@ -605,7 +612,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     }
 
     const auto actor_creation_dummy_object_id =
-        ObjectID::FromBinary(actor_handle.ActorID().Binary());
+        ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_handle.ActorID()),
+                                /*index=*/1, /*transport_type=*/0);
     builder.SetActorTaskSpec(
         actor_handle.ActorID(), actor_handle.ActorHandleID(),
         actor_creation_dummy_object_id,
@@ -624,27 +632,22 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
-
   std::unique_ptr<ActorHandle> actor_handle;
 
   // Test creating actor.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-
   RayFunction func{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
-
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
-
   // wait for actor creation finish.
   ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
                                           30 * 1000 /* 30s */));
-
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
   const int num_tasks = 10000;
@@ -667,7 +670,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {
-  auto job_id = JobID::JobID::FromInt(1);
+  auto job_id = NextJobId();
 
   WorkerContext context(WorkerType::WORKER, job_id);
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
@@ -692,8 +695,9 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
-  ActorHandle handle1(ActorID::FromRandom(), ActorHandleID::FromRandom(), Language::JAVA,
-                      false,
+  const auto job_id = NextJobId();
+  ActorHandle handle1(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                      ActorHandleID::FromRandom(), Language::JAVA, false,
                       {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
   auto forkedHandle1 = handle1.Fork();
@@ -788,10 +792,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+                     raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
 
   CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
-                     raylet_socket_names_[1], JobID::FromInt(1), gcs_options_, nullptr);
+                     raylet_socket_names_[1], NextJobId(), gcs_options_, nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};

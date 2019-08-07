@@ -57,7 +57,8 @@ public class ObjectInterfaceImpl implements ObjectInterface {
 
   @Override
   public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    nativeDelete(nativeObjectInterfacePointer, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
+    nativeDelete(nativeObjectInterfacePointer,
+        toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
   public void destroy() {

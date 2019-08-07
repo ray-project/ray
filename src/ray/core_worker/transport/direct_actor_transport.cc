@@ -158,7 +158,8 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
 void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type) {
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(task_id, i + 1);
+    const auto object_id =
+        ObjectID::ForTaskReturn(task_id, /*index=*/i + 1, /*transport_type=*/0);
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
@@ -204,7 +205,8 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 
   for (int i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
-    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
+    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1,
+                                          /*transport_type=*/0);
     return_object->set_object_id(id.Binary());
     const auto &result = results[i];
     if (result->GetData() != nullptr) {
