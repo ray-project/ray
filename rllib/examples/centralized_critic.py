@@ -10,6 +10,9 @@ Compared to simply running `twostep_game.py --run=PPO`, this centralized
 critic version reaches vf_explained_variance=1.0 more stably since it takes
 into account the opponent actions as well as the policy's. Note that this is
 also using two independent policies instead of weight-sharing with one.
+
+See also: centralized_critic_2.py for a simpler approach that instead
+modifies the environment (however, it cannot model opponent actions).
 """
 
 import argparse
