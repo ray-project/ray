@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import inspect
 import json
 import time
@@ -21,6 +22,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.trainable import Trainable
 
 
 def _start_new_cluster():
@@ -202,8 +204,8 @@ def test_trial_migration(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_logger_restore(start_connected_emptyhead_cluster):
-    """Loggers should correctly resume appending results after restoring."""
+def test_restore_syncs(start_connected_emptyhead_cluster):
+    """Restore should not sync excluded files."""
     cluster = start_connected_emptyhead_cluster
     node1 = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -211,14 +213,39 @@ def test_logger_restore(start_connected_emptyhead_cluster):
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {
-            "training_iteration": 4
+            "training_iteration": 4,
         },
         "checkpoint_freq": 1,
-        "max_failures": 2
+        "max_failures": 1
     }
 
+    class TestRestoreSyncTrainable(Trainable):
+        def _setup(self, config):
+            self.config = config
+            self._custom_iteration = 0
+
+        def _train(self):
+            self._custom_iteration += 1
+            return {"_custom_iteration": self._custom_iteration}
+
+        def _save(self, checkpoint_directory):
+            return {"_custom_iteration": self._custom_iteration}
+
+        def _restore(self, checkpoint_dict):
+            self._custom_iteration = checkpoint_dict["_custom_iteration"]
+
+        def current_ip(self):
+            current_ip = super(TestRestoreSyncTrainable, self).current_ip()
+
+            current_ip = "{current_ip}:{port}".format(
+                current_ip=current_ip, port=1000 + int(self._restored))
+
+            return current_ip
+
+    ray.tune.register_trainable("test_restore_sync_trainable", TestRestoreSyncTrainable)
+
     # Test recovery of trial that has been checkpointed
-    trial = Trial("__fake", **kwargs)
+    trial = Trial("test_restore_sync_trainable", **kwargs)
     runner.add_trial(trial)
 
     for _ in range(3):
@@ -226,8 +253,12 @@ def test_logger_restore(start_connected_emptyhead_cluster):
 
     assert trial.has_checkpoint()
 
-    progress = pd.read_csv(os.path.join(trial.logdir, "progress.csv"))
-    assert progress.shape[0] == 2, progress.shape
+    logdir_contents_1 = set(
+        os.path.basename(path)
+        for path in glob.iglob(os.path.join(trial.logdir, "*")))
+    logdir_1 = trial.logdir
+
+    trial.logdir = logdir_1 + "-2"
 
     node2 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node1)
@@ -238,6 +269,21 @@ def test_logger_restore(start_connected_emptyhead_cluster):
 
     assert trial.status == Trial.RUNNING
 
+    runner.step()
+
+    logdir_contents_2 = set(
+        os.path.basename(path)
+        for path in glob.iglob(os.path.join(trial.logdir, "*")))
+    logdir_2 = trial.logdir
+
+    expected_to_be_synced = set(
+        path for path in logdir_contents_1
+        if path in ('params.json', 'params.pkl', 'checkpoint_1', 'checkpoint_2')
+    )
+
+    assert logdir_contents_2 == expected_to_be_synced
+    assert logdir_1 != logdir_2, (logdir_1, logdir_2)
+
     for _ in range(3):
         runner.step()
 
@@ -245,9 +291,6 @@ def test_logger_restore(start_connected_emptyhead_cluster):
     assert trial.last_result['iterations_since_restore'] == 2
 
     assert trial.status == Trial.TERMINATED
-
-    progress = pd.read_csv(os.path.join(trial.logdir, "progress.csv"))
-    assert progress.shape[0] == 4, progress.shape
 
     with pytest.raises(TuneError):
         runner.step()
