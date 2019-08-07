@@ -3,9 +3,10 @@ from __future__ import division
 from __future__ import print_function
 """An example of implementing a centralized critic by modifying the env.
 
-The advantage of this approach is that it's very simple and you don't have
-to change the algorithm at all. However, it is limited in that you can't
-include the opponent actions as critic inputs.
+The advantage of this approach is that it's very simple and you don't have to
+change the algorithm at all -- just an environment wrapper and custom model.
+However, it is more limited in that you can't include the opponent actions as
+critic inputs.
 
 See also: centralized_critic.py for an alternative approach that instead
 modifies the policy to add a centralized value function that takes into
@@ -48,19 +49,24 @@ class CentralizedCriticModel(TFModelV2):
             obs_space, action_space, num_outputs, model_config, name)
 
         self.action_model = FullyConnectedNetwork(
-            Box(low=0, high=1, shape=(6,)),  # one-hot encoded Discrete(6)
-            action_space, num_outputs, model_config, name + "_action")
+            Box(low=0, high=1, shape=(6, )),  # one-hot encoded Discrete(6)
+            action_space,
+            num_outputs,
+            model_config,
+            name + "_action")
         self.register_variables(self.action_model.variables())
 
-        self.value_model = FullyConnectedNetwork(
-            obs_space, action_space, 1, model_config, name + "_vf")
+        self.value_model = FullyConnectedNetwork(obs_space, action_space, 1,
+                                                 model_config, name + "_vf")
         self.register_variables(self.value_model.variables())
 
     def forward(self, input_dict, state, seq_lens):
-        self._value_out, _ = self.value_model(
-            {"obs": input_dict["obs_flat"]}, state, seq_lens)
-        return self.action_model(
-            {"obs": input_dict["obs"]["own_obs"]}, state, seq_lens)
+        self._value_out, _ = self.value_model({
+            "obs": input_dict["obs_flat"]
+        }, state, seq_lens)
+        return self.action_model({
+            "obs": input_dict["obs"]["own_obs"]
+        }, state, seq_lens)
 
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
@@ -68,8 +74,10 @@ class CentralizedCriticModel(TFModelV2):
 
 class GlobalObsTwoStepGame(MultiAgentEnv):
     action_space = Discrete(2)
-    observation_space = Dict(
-        {"own_obs": Discrete(6), "opponent_obs": Discrete(6)})
+    observation_space = Dict({
+        "own_obs": Discrete(6),
+        "opponent_obs": Discrete(6)
+    })
 
     def __init__(self, env_config):
         self.env = TwoStepGame(env_config)
