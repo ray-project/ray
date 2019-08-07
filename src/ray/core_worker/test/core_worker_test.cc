@@ -446,10 +446,10 @@ void CoreWorkerTest::TestActorFailure(
       ASSERT_EQ(results.size(), 1);
 
       if (results[0]->HasMetadata()) {
-        // Verify if this is the desired error.
-        std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::ACTOR_DIED));
-        ASSERT_TRUE(memcmp(results[0]->GetMetadata()->Data(), meta.data(), meta.size()) ==
-                    0);
+        // Verify if this is one of the desired errors.
+        int error = std::stoi(BufferToString(*results[0]->GetMetadata()));
+        ASSERT_TRUE(error == rpc::ErrorType::ACTOR_DIED ||
+                    error == rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
       } else {
         // Verify if it's expected data.
         ASSERT_EQ(*results[0]->GetData(), *entry.second);

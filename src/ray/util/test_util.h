@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "ray/common/buffer.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -35,6 +36,14 @@ inline TaskID RandomTaskId() {
   std::string data(TaskID::Size(), 0);
   FillRandom(&data);
   return TaskID::FromBinary(data);
+}
+
+/// Utility function to convert a buffer to a string. This makes a copy
+/// and should only be used for testing.
+/// \param[in] buffer The buffer to convert.
+/// \return A string with a copy of the buffer content.
+std::string BufferToString(const Buffer& buffer) {
+  return std::string(reinterpret_cast<char*>(buffer.Data()), buffer.Size());
 }
 
 }  // namespace ray
