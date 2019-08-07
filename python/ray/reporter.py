@@ -57,7 +57,7 @@ def running_worker(s):
 
     return True
 
-class DetermineIPAdressError(RuntimeError): pass
+class DetermineIPAddressError(RuntimeError): pass
 
 def determine_ip_address():
     """Return the first IP address for an ethernet interface on the system."""
