@@ -60,5 +60,8 @@
       }
     }
   },
-  "required": ["name", "cluster"]
+  "required": [
+    "name",
+    "cluster"
+  ]
 }

@@ -16,7 +16,7 @@ TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 def load_project_description(project_file):
     path = os.path.join(TEST_DIR, "project_files", project_file)
     with open(path) as f:
-        return yaml.load(f)
+        return yaml.safe_load(f)
 
 
 def test_validation_success():

@@ -110,7 +110,7 @@ def load_project(current_dir):
         raise ValueError("Project file {} not found".format(project_file))
 
     with open(project_file) as f:
-        project_definition = yaml.load(f)
+        project_definition = yaml.safe_load(f)
 
     check_project_definition(project_root, project_definition)
 
