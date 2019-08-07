@@ -134,7 +134,7 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
 
   // Compute return IDs.
   (*return_ids).resize(num_returns);
-  for (int i = 0; i < num_returns; i++) {
+  for (size_t i = 0; i < num_returns; i++) {
     (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1, /*transport_type=*/0);
   }
 }

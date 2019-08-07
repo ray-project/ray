@@ -160,7 +160,7 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
     lineage_cache.AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
     inserted_tasks.push_back(task);
     arguments.clear();
-    for (int j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
+    for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
       arguments.push_back(task.GetTaskSpecification().ReturnId(j));
     }
   }

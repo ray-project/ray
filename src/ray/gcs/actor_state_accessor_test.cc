@@ -22,7 +22,7 @@ class ActorStateAccessorTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread.reset(new std::thread([this] {
-      std::auto_ptr<boost::asio::io_service::work> work(
+      std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
@@ -91,10 +91,10 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
     ++pending_count_;
-    actor_accessor.AsyncRegister(actor, [this](Status status) {
+    RAY_CHECK_OK(actor_accessor.AsyncRegister(actor, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
-    });
+    }));
   }
 
   std::chrono::milliseconds timeout(10000);
@@ -102,16 +102,15 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
 
   // get
   for (const auto &elem : actor_datas_) {
-    const auto &actor = elem.second;
     ++pending_count_;
-    actor_accessor.AsyncGet(elem.first,
-                            [this](Status status, std::vector<ActorTableData> datas) {
-                              ASSERT_EQ(datas.size(), 1U);
-                              ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
-                              auto it = actor_datas_.find(actor_id);
-                              ASSERT_TRUE(it != actor_datas_.end());
-                              --pending_count_;
-                            });
+    RAY_CHECK_OK(actor_accessor.AsyncGet(
+        elem.first, [this](Status status, std::vector<ActorTableData> datas) {
+          ASSERT_EQ(datas.size(), 1U);
+          ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
+          auto it = actor_datas_.find(actor_id);
+          ASSERT_TRUE(it != actor_datas_.end());
+          --pending_count_;
+        }));
   }
 
   WaitPendingDone(timeout);
@@ -135,7 +134,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   };
 
   ++do_sub_pending_count;
-  actor_accessor.AsyncSubscribe(subscribe, done);
+  RAY_CHECK_OK(actor_accessor.AsyncSubscribe(subscribe, done));
   // Wait until subscribe finishes.
   WaitPendingDone(do_sub_pending_count, timeout);
 
@@ -145,10 +144,11 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
     const auto &actor = elem.second;
     ++sub_pending_count;
     ++register_pending_count;
-    actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
-      RAY_CHECK_OK(status);
-      --register_pending_count;
-    });
+    RAY_CHECK_OK(
+        actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
+          RAY_CHECK_OK(status);
+          --register_pending_count;
+        }));
   }
   // Wait until register finishes.
   WaitPendingDone(register_pending_count, timeout);

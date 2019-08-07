@@ -1021,7 +1021,7 @@ void NodeManager::HandleFetchOrReconstructRequest(
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   const auto &object_ids = request.object_ids();
   std::vector<ObjectID> required_object_ids;
-  for (size_t i = 0; i < object_ids.size(); ++i) {
+  for (int64_t i = 0; i < object_ids.size(); ++i) {
     ObjectID object_id = ObjectID::FromBinary(object_ids[i]);
     if (request.fetch_only()) {
       // If only a fetch is required, then do not subscribe to the
@@ -1513,7 +1513,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           // The actor is local.
           int64_t expected_task_counter = GetExpectedTaskCounter(
               actor_registry_, spec.ActorId(), spec.ActorHandleId());
-          if (spec.ActorCounter() < expected_task_counter) {
+          if (static_cast<int64_t>(spec.ActorCounter()) < expected_task_counter) {
             // A task that has already been executed before has been found. The
             // task will be treated as failed if at least one of the task's
             // return values have been evicted, to prevent the application from
@@ -1751,7 +1751,7 @@ bool NodeManager::AssignTask(const Task &task) {
     // expected task counter.
     int64_t expected_task_counter =
         GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.ActorHandleId());
-    RAY_CHECK(spec.ActorCounter() == expected_task_counter)
+    RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
         << "Expected actor counter: " << expected_task_counter << ", task "
         << spec.TaskId() << " has: " << spec.ActorCounter();
   }
@@ -2341,7 +2341,7 @@ void NodeManager::ForwardTask(
         // Iterate through the object's arguments. NOTE(swang): We do not include
         // the execution dependencies here since those cannot be transferred
         // between nodes.
-        for (int i = 0; i < spec.NumArgs(); ++i) {
+        for (size_t i = 0; i < spec.NumArgs(); ++i) {
           int count = spec.ArgIdCount(i);
           for (int j = 0; j < count; j++) {
             ObjectID argument_id = spec.ArgId(i, j);
