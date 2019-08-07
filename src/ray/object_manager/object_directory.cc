@@ -8,8 +8,8 @@ ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
 
 namespace {
 
-using ray::rpc::ClientTableData;
 using ray::rpc::GcsChangeMode;
+using ray::rpc::GcsNodeInfo;
 using ray::rpc::ObjectTableData;
 
 /// Process a notification of the object table entries and store the result in
@@ -106,14 +106,14 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  ClientTableData client_data;
-  gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
-  ClientID result_client_id = ClientID::FromBinary(client_data.client_id());
+  GcsNodeInfo node_info;
+  gcs_client_->client_table().GetClient(connection_info.client_id, node_info);
+  ClientID result_client_id = ClientID::FromBinary(node_info.node_id());
   if (!result_client_id.IsNil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
-    if (client_data.is_insertion()) {
-      connection_info.ip = client_data.node_manager_address();
-      connection_info.port = static_cast<uint16_t>(client_data.object_manager_port());
+    if (node_info.state() == GcsNodeInfo::ALIVE) {
+      connection_info.ip = node_info.node_manager_address();
+      connection_info.port = static_cast<uint16_t>(node_info.object_manager_port());
     }
   }
 }

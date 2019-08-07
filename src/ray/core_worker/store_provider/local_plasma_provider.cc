@@ -8,12 +8,7 @@ namespace ray {
 
 CoreWorkerLocalPlasmaStoreProvider::CoreWorkerLocalPlasmaStoreProvider(
     const std::string &store_socket) {
-  auto status = store_client_.Connect(store_socket);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Connecting plasma store failed when trying to construct"
-                   << " core worker: " << status.message();
-    throw std::runtime_error(status.message());
-  }
+  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
 Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
@@ -72,7 +67,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
                                                 int num_objects, int64_t timeout_ms,
                                                 const TaskID &task_id,
                                                 std::vector<bool> *results) {
-  if (num_objects != object_ids.size()) {
+  if (num_objects != static_cast<int>(object_ids.size())) {
     return Status::Invalid("num_objects should equal to number of items in object_ids");
   }
 
@@ -81,7 +76,7 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
 
   (*results).resize(object_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
-    (*results)[i] = objects[i]->GetData() != nullptr;
+    (*results)[i] = (objects[i] != nullptr);
   }
 
   return Status::OK();

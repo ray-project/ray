@@ -48,7 +48,7 @@ public class WorkerContext {
    * for other threads, this method returns a random ID.
    */
   public TaskId getCurrentTaskId() {
-    return new TaskId(nativeGetCurrentTaskId(nativeWorkerContextPointer));
+    return TaskId.fromBytes(nativeGetCurrentTaskId(nativeWorkerContextPointer));
   }
 
   /**

@@ -29,8 +29,8 @@ namespace ray {
 namespace raylet {
 
 using rpc::ActorTableData;
-using rpc::ClientTableData;
 using rpc::ErrorType;
+using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
@@ -94,6 +94,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
  public:
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  /// Preprocess request from raylet client. We will check whether the worker is being
+  /// killed due to job finishing.
+  ///
+  /// \param worker_id The worker id.
+  /// \param request_name The request name.
+  /// \return False if there is no need to process this request.
+  bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name);
 
   /// Implementation of node manager grpc service.
 
@@ -175,12 +183,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param data Data associated with the new client.
   /// \return Void.
-  void ClientAdded(const ClientTableData &data);
+  void ClientAdded(const GcsNodeInfo &data);
 
   /// Handler for the removal of a GCS client.
-  /// \param client_data Data associated with the removed client.
+  /// \param node_info Data associated with the removed client.
   /// \return Void.
-  void ClientRemoved(const ClientTableData &client_data);
+  void ClientRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param client_id ID of the node that created or updated resources.
@@ -287,8 +295,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param task_spec Task specification of the actor creation task that created the
   /// actor.
+  /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec);
+      const TaskSpecification &task_spec, int port);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -302,10 +311,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param task_spec Task specification of the actor creation task that created the
   /// actor.
   /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param port Rpc server port that the actor is listening on.
   /// \return Void.
   void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                        const TaskSpecification &task_spec,
-                                       bool resumed_from_checkpoint);
+                                       bool resumed_from_checkpoint, int port);
   /// Extend actor frontier after an actor task or actor creation task executes.
   ///
   /// \param dummy_object Dummy object corresponding to the task.

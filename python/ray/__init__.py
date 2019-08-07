@@ -96,6 +96,7 @@ from ray.worker import (
     wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
+import ray.projects  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: F401
@@ -103,7 +104,7 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.7.3"
+__version__ = "0.8.0.dev3"
 
 __all__ = [
     "global_state",
@@ -135,6 +136,7 @@ __all__ = [
     "is_initialized",
     "method",
     "profile",
+    "projects",
     "put",
     "register_custom_serializer",
     "remote",

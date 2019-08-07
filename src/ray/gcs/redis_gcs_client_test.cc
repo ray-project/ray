@@ -8,6 +8,7 @@ extern "C" {
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -104,7 +105,7 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
 }
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  const auto task_id = TaskID::FromRandom();
+  const auto task_id = RandomTaskId();
   const auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
@@ -151,7 +152,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 
 void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   // Append some entries to the log at an object ID.
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
   for (auto &node_manager_id : node_manager_ids) {
     auto data = std::make_shared<TaskReconstructionData>();
@@ -196,7 +197,7 @@ TEST_F(TestGcsWithAsio, TestLogLookup) {
 
 void TestTableLookupFailure(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
 
   // Check that the lookup does not return data.
   auto lookup_callback = [](gcs::RedisGcsClient *client, const TaskID &id,
@@ -222,7 +223,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
 
 void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   std::vector<std::string> node_manager_ids = {"A", "B"};
   std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
   for (const auto &node_manager_id : node_manager_ids) {
@@ -352,7 +353,7 @@ void TestDeleteKeysFromLog(
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::FromRandom();
+    task_id = RandomTaskId();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
@@ -400,7 +401,7 @@ void TestDeleteKeysFromTable(const JobID &job_id,
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::FromRandom();
+    task_id = RandomTaskId();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
@@ -521,7 +522,7 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   std::vector<std::shared_ptr<TaskTableData>> task_vector;
   auto AppendTaskData = [&task_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      task_vector.push_back(CreateTaskTableData(TaskID::FromRandom()));
+      task_vector.push_back(CreateTaskTableData(RandomTaskId()));
     }
   };
   AppendTaskData(1);
@@ -700,13 +701,13 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeAll) {
 
 void TestTableSubscribeId(const JobID &job_id,
                           std::shared_ptr<gcs::RedisGcsClient> client) {
-  int num_modifications = 3;
+  size_t num_modifications = 3;
 
   // Add a table entry.
-  TaskID task_id1 = TaskID::FromRandom();
+  TaskID task_id1 = RandomTaskId();
 
   // Add a table entry at a second key.
-  TaskID task_id2 = TaskID::FromRandom();
+  TaskID task_id2 = RandomTaskId();
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
@@ -927,7 +928,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
 void TestTableSubscribeCancel(const JobID &job_id,
                               std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a table entry.
-  const auto task_id = TaskID::FromRandom();
+  const auto task_id = RandomTaskId();
   const int num_modifications = 3;
   const auto data = CreateTaskTableData(task_id, 0);
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
@@ -1151,17 +1152,16 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
 }
 
 void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client_id,
-                             const ClientTableData &data, bool is_insertion) {
+                             const GcsNodeInfo &data, bool is_alive) {
   ClientID added_id = client->client_table().GetLocalClientId();
   ASSERT_EQ(client_id, added_id);
-  ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
-  ASSERT_EQ(ClientID::FromBinary(data.client_id()), added_id);
-  ASSERT_EQ(data.is_insertion(), is_insertion);
+  ASSERT_EQ(ClientID::FromBinary(data.node_id()), added_id);
+  ASSERT_EQ(data.state() == GcsNodeInfo::ALIVE, is_alive);
 
-  ClientTableData cached_client;
+  GcsNodeInfo cached_client;
   client->client_table().GetClient(added_id, cached_client);
-  ASSERT_EQ(ClientID::FromBinary(cached_client.client_id()), added_id);
-  ASSERT_EQ(cached_client.is_insertion(), is_insertion);
+  ASSERT_EQ(ClientID::FromBinary(cached_client.node_id()), added_id);
+  ASSERT_EQ(cached_client.state() == GcsNodeInfo::ALIVE, is_alive);
 }
 
 void TestClientTableConnect(const JobID &job_id,
@@ -1169,18 +1169,18 @@ void TestClientTableConnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
         ClientTableNotification(client, id, data, true);
         test->Stop();
       });
 
   // Connect and disconnect to client table. We should receive notifications
   // for the addition and removal of our own entry.
-  ClientTableData local_client_info = client->client_table().GetLocalClient();
-  local_client_info.set_node_manager_address("127.0.0.1");
-  local_client_info.set_node_manager_port(0);
-  local_client_info.set_object_manager_port(0);
-  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
   test->Start();
 }
 
@@ -1194,24 +1194,24 @@ void TestClientTableDisconnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/true);
         // Disconnect from the client table. We should receive a notification
         // for the removal of our own entry.
         RAY_CHECK_OK(client->client_table().Disconnect());
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
         ClientTableNotification(client, id, data, /*is_insertion=*/false);
         test->Stop();
       });
   // Connect to the client table. We should receive notification for the
   // addition of our own entry.
-  ClientTableData local_client_info = client->client_table().GetLocalClient();
-  local_client_info.set_node_manager_address("127.0.0.1");
-  local_client_info.set_node_manager_port(0);
-  local_client_info.set_object_manager_port(0);
-  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
   test->Start();
 }
 
@@ -1225,21 +1225,21 @@ void TestClientTableImmediateDisconnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
         ClientTableNotification(client, id, data, true);
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::RedisGcsClient *client, const ClientID &id, const ClientTableData &data) {
+      [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });
   // Connect to then immediately disconnect from the client table. We should
   // receive notifications for the addition and removal of our own entry.
-  ClientTableData local_client_info = client->client_table().GetLocalClient();
-  local_client_info.set_node_manager_address("127.0.0.1");
-  local_client_info.set_node_manager_port(0);
-  local_client_info.set_object_manager_port(0);
-  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
   RAY_CHECK_OK(client->client_table().Disconnect());
   test->Start();
 }
@@ -1251,12 +1251,12 @@ TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
 
 void TestClientTableMarkDisconnected(const JobID &job_id,
                                      std::shared_ptr<gcs::RedisGcsClient> client) {
-  ClientTableData local_client_info = client->client_table().GetLocalClient();
-  local_client_info.set_node_manager_address("127.0.0.1");
-  local_client_info.set_node_manager_port(0);
-  local_client_info.set_object_manager_port(0);
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
   // Connect to the client table to start receiving notifications.
-  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
   // Mark a different client as dead.
   ClientID dead_client_id = ClientID::FromRandom();
   RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id));
@@ -1264,8 +1264,8 @@ void TestClientTableMarkDisconnected(const JobID &job_id,
   // marked as dead.
   client->client_table().RegisterClientRemovedCallback(
       [dead_client_id](gcs::RedisGcsClient *client, const UniqueID &id,
-                       const ClientTableData &data) {
-        ASSERT_EQ(ClientID::FromBinary(data.client_id()), dead_client_id);
+                       const GcsNodeInfo &data) {
+        ASSERT_EQ(ClientID::FromBinary(data.node_id()), dead_client_id);
         test->Stop();
       });
   test->Start();
