@@ -21,6 +21,9 @@ class WorkerContext {
   const TaskID &GetCurrentTaskID() const;
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentJobId(const JobID &job_id);
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetCurrentTask(const TaskSpecification &task_spec);

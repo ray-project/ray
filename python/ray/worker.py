@@ -315,7 +315,7 @@ class Worker(object):
                     self.core_worker.put_raw_buffer(
                         value,
                         object_id,
-                        metadata=ray_constants.RAW_BUFFER_METADATA,
+                        metadata_str=ray_constants.RAW_BUFFER_METADATA,
                         memcopy_threads=self.memcopy_threads)
                 else:
                     self.core_worker.serialize_and_put(
@@ -833,12 +833,14 @@ class Worker(object):
             # needed so that if the task throws an exception, we propagate
             # the error message to the correct driver.
             self.current_job_id = task.job_id()
+            self.core_worker.set_current_job_id(task.job_id())
         else:
             # If this worker is an actor, current_job_id wasn't reset.
             # Check that current task's driver ID equals the previous one.
             assert self.current_job_id == task.job_id()
 
         self.task_context.current_task_id = task.task_id()
+        self.core_worker.set_current_task_id(task.task_id())
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
@@ -972,6 +974,7 @@ class Worker(object):
                 self._process_task(task, execution_info)
             # Reset the state fields so the next task can run.
             self.task_context.current_task_id = TaskID.nil()
+            self.core_worker.set_current_task_id(TaskID.nil())
             self.task_context.task_index = 0
             self.task_context.put_index = 1
             if self.actor_id.is_nil():
@@ -979,6 +982,7 @@ class Worker(object):
                 # actor. Because the following tasks should all have the
                 # same driver id.
                 self.current_job_id = WorkerID.nil()
+                self.core_worker.set_current_job_id(JobID.nil())
                 # Reset signal counters so that the next task can get
                 # all past signals.
                 ray_signal.reset()
@@ -1903,6 +1907,8 @@ def connect(node,
         worker.current_job_id,
         gcs_options,
     )
+    worker.core_worker.set_current_job_id(worker.current_job_id)
+    worker.core_worker.set_current_task_id(worker.current_task_id)
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     # Start the import thread

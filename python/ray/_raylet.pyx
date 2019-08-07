@@ -402,7 +402,6 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
-            self.core_worker.get().SetCurrentTaskId(c_task_id)
             check_status(self.core_worker.get().Objects().Get(
                 c_object_ids, -1, &results))
 
@@ -477,7 +476,6 @@ cdef class CoreWorker:
 
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            self.core_worker.get().SetCurrentTaskId(c_task_id)
             check_status(self.core_worker.get().Objects().Wait(
                 wait_ids, num_returns, timeout_milliseconds, &results))
 
@@ -500,3 +498,17 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Objects().Free(
                 free_ids, local_only, delete_creating_tasks))
+
+    def set_current_task_id(self, TaskID task_id):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+
+        with nogil:
+            self.core_worker.get().SetCurrentTaskId(c_task_id)
+
+    def set_current_job_id(self, JobID job_id):
+        cdef:
+            CJobID c_job_id = job_id.native()
+
+        with nogil:
+            self.core_worker.get().SetCurrentJobId(c_job_id)
