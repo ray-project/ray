@@ -51,7 +51,7 @@ def validate(verbose):
             print(proj)
     except (jsonschema.exceptions.ValidationError, ValueError) as e:
         print("💔 Validation failed for the following reason", file=sys.stderr)
-        raise e
+        raise click.ClickException(e)
 
 
 @project_cli.command(help="Create a new project within current directory")
