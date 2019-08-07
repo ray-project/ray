@@ -149,7 +149,8 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
                     reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
                 return_object.metadata().size());
           }
-          RAY_CHECK_OK(store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
+          RAY_CHECK_OK(
+	      store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   return status;
