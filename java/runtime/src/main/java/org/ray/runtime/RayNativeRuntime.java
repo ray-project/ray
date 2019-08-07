@@ -52,7 +52,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
-    nativeStartRayLog(rayConfig.logDir);
   }
 
   protected void resetLibraryPath() {
@@ -115,7 +114,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.cleanup();
     }
     ((WorkerImpl)worker).destroy();
-    nativeShutdownRayLog();
   }
 
   public void loop() {
@@ -146,7 +144,4 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       redisClient.hmset("Workers:" + workerId, workerInfo);
     }
   }
-
-  private static native void nativeStartRayLog(String logDir);
-  private static native void nativeShutdownRayLog();
 }
