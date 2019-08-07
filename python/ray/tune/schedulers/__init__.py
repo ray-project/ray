@@ -8,6 +8,7 @@ from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.schedulers.async_hyperband import (AsyncHyperBandScheduler,
                                                  ASHAScheduler)
 from ray.tune.schedulers.median_stopping_rule import MedianStoppingRule
+from ray.tune.schedulers.median_stopping_result import MedianStoppingResult
 from ray.tune.schedulers.pbt import PopulationBasedTraining
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "MedianStoppingRule",
     "FIFOScheduler",
     "PopulationBasedTraining",
+    "MedianStoppingResult"
 ]
