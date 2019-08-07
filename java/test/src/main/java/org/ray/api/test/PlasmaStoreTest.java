@@ -15,7 +15,7 @@ public class PlasmaStoreTest extends BaseTest {
   @Test
   public void testPutWithDuplicateId() {
     TestUtils.skipTestUnderSingleProcess();
-    ObjectId objectId = ObjectId.randomId();
+    ObjectId objectId = ObjectId.fromRandom();
     AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     ObjectInterface objectInterface = runtime.getWorker().getObjectStoreProxy()
         .getObjectInterface();

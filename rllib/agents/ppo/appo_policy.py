@@ -112,6 +112,7 @@ class VTraceSurrogateLoss(object):
                  rewards,
                  values,
                  bootstrap_value,
+                 config,
                  dist_class,
                  valid_mask,
                  vf_loss_coeff=0.5,
@@ -143,6 +144,7 @@ class VTraceSurrogateLoss(object):
             rewards: A float32 tensor of shape [T, B].
             values: A float32 tensor of shape [T, B].
             bootstrap_value: A float32 tensor of shape [B].
+            config: Trainer config dict.
             dist_class: action distribution class for logits.
             valid_mask: A bool tensor of valid RNN input elements (#2992).
             vf_loss_coeff (float): Coefficient of the value function loss.
@@ -165,6 +167,7 @@ class VTraceSurrogateLoss(object):
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
+                config=config,
                 dist_class=dist_class,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
@@ -251,8 +254,10 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         old_policy_behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
-    old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits)
-    prev_action_dist = policy.dist_class(behaviour_logits)
+    old_policy_action_dist = policy.dist_class(
+        old_policy_behaviour_logits, model_config=policy.config["model"])
+    prev_action_dist = policy.dist_class(
+        behaviour_logits, model_config=policy.config["model"])
     values = policy.value_function
 
     policy.model_vars = policy.model.variables()
@@ -298,6 +303,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
+            config=policy.config,
             dist_class=Categorical if is_multidiscrete else policy.dist_class,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],

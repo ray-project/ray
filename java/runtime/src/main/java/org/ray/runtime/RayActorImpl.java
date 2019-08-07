@@ -7,6 +7,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
 import org.ray.api.RayPyActor;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.Language;
 
@@ -22,6 +23,9 @@ public class RayActorImpl extends AbstractRayActor implements RayPyActor, Extern
     this.nativeActorHandle = nativeActorHandle;
   }
 
+  /**
+   * Required by FST
+   */
   public RayActorImpl() {
   }
 
@@ -30,8 +34,8 @@ public class RayActorImpl extends AbstractRayActor implements RayPyActor, Extern
   }
 
   @Override
-  public UniqueId getId() {
-    return new UniqueId(nativeGetActorId(nativeActorHandle));
+  public ActorId getId() {
+    return ActorId.fromBytes(nativeGetActorId(nativeActorHandle));
   }
 
   @Override

@@ -18,7 +18,7 @@ public class RaySerializerTest extends BaseMultiLanguageTest {
         .getObjectStoreProxy();
     NativeRayObject nativeRayObject = objectStoreProxy.serialize(pyActor);
     RayPyActor result = (RayPyActor) objectStoreProxy
-        .deserialize(nativeRayObject, ObjectId.randomId());
+        .deserialize(nativeRayObject, ObjectId.fromRandom());
     Assert.assertEquals(result.getId(), pyActor.getId());
     Assert.assertEquals(result.getModuleName(), "test");
     Assert.assertEquals(result.getClassName(), "RaySerializerTest");

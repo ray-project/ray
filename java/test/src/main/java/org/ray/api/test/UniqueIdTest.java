@@ -3,6 +3,7 @@ package org.ray.api.test;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import javax.xml.bind.DatatypeConverter;
+
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -47,14 +48,6 @@ public class UniqueIdTest {
     UniqueId id6 = UniqueId.NIL;
     Assert.assertEquals("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".toLowerCase(), id6.toString());
     Assert.assertTrue(id6.isNil());
-  }
-
-  @Test
-  public void testComputeTaskId() {
-    ObjectId objId = ObjectId.fromHexString("123456789ABCDEF123456789ABCDEF0034421980");
-    TaskId taskId = objId.getTaskId();
-
-    Assert.assertEquals("123456789abcdef123456789abcdef00", taskId.toString());
   }
 
   @Test

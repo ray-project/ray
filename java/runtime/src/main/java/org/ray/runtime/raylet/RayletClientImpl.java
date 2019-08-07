@@ -1,7 +1,10 @@
 package org.ray.runtime.raylet;
 
+import java.nio.ByteBuffer;
 import org.ray.api.exception.RayException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 
 public class RayletClientImpl implements RayletClient {
 
@@ -15,12 +18,12 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public UniqueId prepareCheckpoint(UniqueId actorId) {
+  public UniqueId prepareCheckpoint(ActorId actorId) {
     return new UniqueId(nativePrepareCheckpoint(nativeCoreWorkerPointer, actorId.getBytes()));
   }
 
   @Override
-  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+  public void notifyActorResumedFromCheckpoint(ActorId actorId, UniqueId checkpointId) {
     nativeNotifyActorResumedFromCheckpoint(nativeCoreWorkerPointer, actorId.getBytes(),
         checkpointId.getBytes());
   }

@@ -29,7 +29,7 @@ class ValueLoss(object):
 
 class ReweightedImitationLoss(object):
     def __init__(self, state_values, cumulative_rewards, logits, actions,
-                 action_space, beta):
+                 action_space, beta, model_config):
         ma_adv_norm = tf.get_variable(
             name="moving_average_of_advantage_norm",
             dtype=tf.float32,
@@ -48,8 +48,8 @@ class ReweightedImitationLoss(object):
                 beta * tf.divide(adv, 1e-8 + tf.sqrt(ma_adv_norm)))
 
         # log\pi_\theta(a|s)
-        dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
-        action_dist = dist_cls(logits)
+        dist_cls, _ = ModelCatalog.get_action_dist(action_space, model_config)
+        action_dist = dist_cls(logits, model_config=model_config)
         logprobs = action_dist.logp(actions)
 
         self.loss = -1.0 * tf.reduce_mean(
@@ -106,7 +106,7 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
             self.p_func_vars = scope_vars(scope.name)
 
         # Action outputs
-        action_dist = dist_cls(logits)
+        action_dist = dist_cls(logits, model_config=self.config["model"])
         self.output_actions = action_dist.sample()
 
         # Training inputs
@@ -164,7 +164,8 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
     def _build_policy_loss(self, state_values, cum_rwds, logits, actions,
                            action_space):
         return ReweightedImitationLoss(state_values, cum_rwds, logits, actions,
-                                       action_space, self.config["beta"])
+                                       action_space, self.config["beta"],
+                                       self.config["model"])
 
     @override(TFPolicy)
     def extra_compute_grad_fetches(self):

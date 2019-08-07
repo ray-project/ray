@@ -1,5 +1,6 @@
 package org.ray.runtime;
 
+import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
@@ -18,8 +19,9 @@ public interface WorkerContext {
 
   /**
    * The ID of the current job.
+   * @return
    */
-  UniqueId getCurrentActorId();
+  ActorId getCurrentActorId();
 
   /**
    * The class loader which is associated with the current job.

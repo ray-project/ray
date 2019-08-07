@@ -7,6 +7,7 @@ import org.ray.api.Checkpointable;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.Checkpointable.CheckpointContext;
 import org.ray.api.exception.RayTaskException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
@@ -20,6 +21,7 @@ import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,18 +105,18 @@ public abstract class AbstractWorker {
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (taskType == TaskType.ACTOR_TASK) {
-          UniqueId actorId = UniqueId
+          ActorId actorId = ActorId
               .fromByteBuffer(taskSpec.getActorTaskSpec().getActorId().asReadOnlyByteBuffer());
           maybeSaveCheckpoint(actor, actorId);
         }
         returnObjects.add(objectStoreProxy.serialize(result));
       } else {
-        UniqueId actorId = UniqueId.fromByteBuffer(
+        ActorId actorId = ActorId.fromByteBuffer(
             taskSpec.getActorCreationTaskSpec().getActorId().asReadOnlyByteBuffer());
         maybeLoadCheckpoint(result, actorId);
         currentActor = result;
       }
-      LOGGER.debug("Finished executing task {}", new TaskId(taskSpec.getTaskId().toByteArray()));
+      LOGGER.debug("Finished executing task {}", TaskId.fromBytes(taskSpec.getTaskId().toByteArray()));
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskSpec, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
@@ -136,7 +138,7 @@ public abstract class AbstractWorker {
         rayFunctionInfo.get(2));
   }
 
-  private void maybeSaveCheckpoint(Object actor, UniqueId actorId) {
+  private void maybeSaveCheckpoint(Object actor, ActorId actorId) {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
@@ -161,7 +163,7 @@ public abstract class AbstractWorker {
     checkpointable.saveCheckpoint(actorId, checkpointId);
   }
 
-  private void maybeLoadCheckpoint(Object actor, UniqueId actorId) {
+  private void maybeLoadCheckpoint(Object actor, ActorId actorId) {
     if (!(actor instanceof Checkpointable)) {
       return;
     }

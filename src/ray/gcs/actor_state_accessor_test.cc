@@ -5,6 +5,7 @@
 #include <vector>
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -45,13 +46,13 @@ class ActorStateAccessorTest : public ::testing::Test {
   void GenActorData() {
     for (size_t i = 0; i < 2; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
-      ActorID actor_id = ActorID::FromRandom();
-      actor->set_actor_id(actor_id.Binary());
       actor->set_max_reconstructions(1);
       actor->set_remaining_reconstructions(1);
       JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
+      ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
+      actor->set_actor_id(actor_id.Binary());
       actor_datas_[actor_id] = actor;
     }
   }

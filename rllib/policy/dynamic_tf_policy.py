@@ -166,7 +166,8 @@ class DynamicTFPolicy(TFPolicy):
                 self, self.model, self.input_dict, obs_space, action_space,
                 config)
         else:
-            self.action_dist = self.dist_class(self.model_out)
+            self.action_dist = self.dist_class(
+                self.model_out, model_config=self.config["model"])
             action_sampler = self.action_dist.sample()
             action_prob = self.action_dist.sampled_action_prob()
 
@@ -261,7 +262,7 @@ class DynamicTFPolicy(TFPolicy):
     def _initialize_loss(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
-            shape[0] = 1
+            shape = [s if s is not None else 1 for s in shape]
             return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
 
         dummy_batch = {

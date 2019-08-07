@@ -1,6 +1,7 @@
 package org.ray.runtime.raylet;
 
 import org.apache.commons.lang3.NotImplementedException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,12 +10,12 @@ public class MockRayletClient implements RayletClient {
   private static final Logger LOGGER = LoggerFactory.getLogger(MockRayletClient.class);
 
   @Override
-  public UniqueId prepareCheckpoint(UniqueId actorId) {
+  public UniqueId prepareCheckpoint(ActorId actorId) {
     throw new NotImplementedException("Not implemented.");
   }
 
   @Override
-  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+  public void notifyActorResumedFromCheckpoint(ActorId actorId, UniqueId checkpointId) {
     throw new NotImplementedException("Not implemented.");
   }
 

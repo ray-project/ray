@@ -8,7 +8,7 @@ import numpy as np
 from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
-    _global_registry
+    RLLIB_ACTION_DIST, _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
@@ -80,6 +80,8 @@ MODEL_DEFAULTS = {
     "custom_preprocessor": None,
     # Name of a custom model to use
     "custom_model": None,
+    # Name of a custom action distribution to use
+    "custom_action_dist": None,
     # Extra options to pass to the custom classes
     "custom_options": {},
 }
@@ -119,22 +121,30 @@ class ModelCatalog(object):
         """
 
         config = config or MODEL_DEFAULTS
-        if isinstance(action_space, gym.spaces.Box):
+        if config.get("custom_action_dist"):
+            action_dist_name = config["custom_action_dist"]
+            logger.debug(
+                "Using custom action distribution {}".format(action_dist_name))
+            dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
+
+        elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
                     "Action space has multiple dimensions "
                     "{}. ".format(action_space.shape) +
                     "Consider reshaping this into a single dimension, "
+                    "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
                 dist = TorchDiagGaussian if torch else DiagGaussian
-                return dist, action_space.shape[0] * 2
             elif dist_type == "deterministic":
-                return Deterministic, action_space.shape[0]
+                dist = Deterministic
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = TorchCategorical if torch else Categorical
-            return dist, action_space.n
         elif isinstance(action_space, gym.spaces.Tuple):
+            if torch:
+                raise NotImplementedError("Tuple action spaces not supported "
+                                          "for Pytorch.")
             child_dist = []
             input_lens = []
             for action in action_space.spaces:
@@ -142,8 +152,6 @@ class ModelCatalog(object):
                     action, config)
                 child_dist.append(dist)
                 input_lens.append(action_size)
-            if torch:
-                raise NotImplementedError
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
@@ -151,13 +159,17 @@ class ModelCatalog(object):
                 input_lens=input_lens), sum(input_lens)
         elif isinstance(action_space, Simplex):
             if torch:
-                raise NotImplementedError
-            return Dirichlet, action_space.shape[0]
-        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
+                raise NotImplementedError("Simplex action spaces not "
+                                          "supported for Pytorch.")
+            dist = Dirichlet
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if torch:
-                raise NotImplementedError
+                raise NotImplementedError("MultiDiscrete action spaces not "
+                                          "supported for Pytorch.")
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+
+        return dist, dist.required_model_output_shape(action_space, config)
 
         raise NotImplementedError("Unsupported args: {} {}".format(
             action_space, dist_type))
@@ -173,11 +185,16 @@ class ModelCatalog(object):
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        if isinstance(action_space, gym.spaces.Box):
-            return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]), name="action")
-        elif isinstance(action_space, gym.spaces.Discrete):
+        if isinstance(action_space, gym.spaces.Discrete):
             return tf.placeholder(tf.int64, shape=(None, ), name="action")
+        elif isinstance(action_space, (gym.spaces.Box, Simplex)):
+            return tf.placeholder(
+                tf.float32, shape=(None, ) + action_space.shape, name="action")
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+            return tf.placeholder(
+                tf.as_dtype(action_space.dtype),
+                shape=(None, ) + action_space.shape,
+                name="action")
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -190,14 +207,6 @@ class ModelCatalog(object):
             return tf.placeholder(
                 tf.int64 if all_discrete else tf.float32,
                 shape=(None, size),
-                name="action")
-        elif isinstance(action_space, Simplex):
-            return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]), name="action")
-        elif isinstance(action_space, gym.spaces.multi_discrete.MultiDiscrete):
-            return tf.placeholder(
-                tf.as_dtype(action_space.dtype),
-                shape=(None, len(action_space.nvec)),
                 name="action")
         else:
             raise NotImplementedError("action space {}"
@@ -361,6 +370,21 @@ class ModelCatalog(object):
             model_class (type): Python class of the model.
         """
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
+
+    @staticmethod
+    @PublicAPI
+    def register_custom_action_dist(action_dist_name, action_dist_class):
+        """Register a custom action distribution class by name.
+
+        The model can be later used by specifying
+        {"custom_action_dist": action_dist_name} in the model config.
+
+        Args:
+            model_name (str): Name to register the action distribution under.
+            model_class (type): Python class of the action distribution.
+        """
+        _global_registry.register(RLLIB_ACTION_DIST, action_dist_name,
+                                  action_dist_class)
 
     @staticmethod
     def _wrap_if_needed(model_cls, model_interface):

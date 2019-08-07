@@ -25,7 +25,8 @@ ray_files = [
     "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/dashboard/dashboard.py", "ray/dashboard/index.html",
-    "ray/dashboard/res/main.css", "ray/dashboard/res/main.js"
+    "ray/dashboard/res/main.css", "ray/dashboard/res/main.js",
+    "ray/projects/schema.json"
 ]
 
 # These are the directories where automatically generated Python protobuf
@@ -138,6 +139,7 @@ def find_version(*filepath):
 requires = [
     "numpy >= 1.14",
     "filelock",
+    "jsonschema",
     "funcsigs",
     "click",
     "colorama",

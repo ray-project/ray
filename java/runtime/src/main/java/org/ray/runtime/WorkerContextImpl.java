@@ -2,6 +2,7 @@ package org.ray.runtime;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.nio.ByteBuffer;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
@@ -33,8 +34,8 @@ public class WorkerContextImpl implements WorkerContext {
   }
 
   @Override
-  public UniqueId getCurrentActorId() {
-    return UniqueId.fromByteBuffer(nativeGetCurrentActorId(nativeCoreWorkerPointer));
+  public ActorId getCurrentActorId() {
+    return ActorId.fromByteBuffer(nativeGetCurrentActorId(nativeCoreWorkerPointer));
   }
 
   @Override

@@ -5,26 +5,30 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.concurrent.atomic.AtomicReference;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.Language;
 
 public class MockRayActor extends AbstractRayActor implements Externalizable {
 
-  private UniqueId actorId;
+  private ActorId actorId;
 
   private AtomicReference<ObjectId> previousActorTaskDummyObjectId = new AtomicReference<>();
 
-  public MockRayActor(UniqueId actorId) {
+  public MockRayActor(ActorId actorId, ObjectId previousActorTaskDummyObjectId) {
     this.actorId = actorId;
-    this.previousActorTaskDummyObjectId.set(new ObjectId(actorId.getBytes()));
+    this.previousActorTaskDummyObjectId.set(previousActorTaskDummyObjectId);
   }
 
+  /**
+   * Required by FST
+   */
   public MockRayActor() {
   }
 
   @Override
-  public UniqueId getId() {
+  public ActorId getId() {
     return actorId;
   }
 
@@ -50,7 +54,7 @@ public class MockRayActor extends AbstractRayActor implements Externalizable {
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    actorId = (UniqueId) in.readObject();
+    actorId = (ActorId) in.readObject();
     previousActorTaskDummyObjectId.set((ObjectId) in.readObject());
   }
 }

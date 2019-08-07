@@ -11,14 +11,8 @@ import java.util.Random;
 public class ObjectId extends BaseId implements Serializable {
 
   public static final int LENGTH = 20;
-  public static final ObjectId NIL = genNil();
 
-  /**
-   * Create an ObjectId from a hex string.
-   */
-  public static ObjectId fromHexString(String hex) {
-    return new ObjectId(hexString2Bytes(hex));
-  }
+  public static final ObjectId NIL = genNil();
 
   /**
    * Create an ObjectId from a ByteBuffer.
@@ -39,7 +33,7 @@ public class ObjectId extends BaseId implements Serializable {
   /**
    * Generate an ObjectId with random value.
    */
-  public static ObjectId randomId() {
+  public static ObjectId fromRandom() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
     return new ObjectId(b);
@@ -52,11 +46,6 @@ public class ObjectId extends BaseId implements Serializable {
   @Override
   public int size() {
     return LENGTH;
-  }
-
-  public TaskId getTaskId() {
-    byte[] taskIdBytes = Arrays.copyOf(getBytes(), TaskId.LENGTH);
-    return new TaskId(taskIdBytes);
   }
 
 }

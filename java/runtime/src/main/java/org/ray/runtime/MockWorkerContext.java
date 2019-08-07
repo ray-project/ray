@@ -1,5 +1,6 @@
 package org.ray.runtime;
 
+import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
@@ -26,10 +27,10 @@ public class MockWorkerContext implements WorkerContext {
   }
 
   @Override
-  public UniqueId getCurrentActorId() {
+  public ActorId getCurrentActorId() {
     TaskSpec taskSpec = currentTask.get();
     if (taskSpec == null) {
-      return UniqueId.NIL;
+      return ActorId.NIL;
     }
     return MockTaskInterface.getActorId(taskSpec);
   }

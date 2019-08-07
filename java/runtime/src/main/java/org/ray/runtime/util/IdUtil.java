@@ -1,13 +1,15 @@
 package org.ray.runtime.util;
 
+import java.util.Random;
 import org.ray.api.id.BaseId;
+import org.ray.api.id.ObjectId;
 
 /**
- * Helper method for different Ids.
- * Note: any changes to these methods must be synced with C++ helper functions
- * in src/ray/common/id.h
+ * Helper method for different Ids. Note: any changes to these methods must be synced with C++
+ * helper functions in src/ray/common/id.h
  */
 public class IdUtil {
+
   /**
    * Compute the murmur hash code of this ID.
    */
@@ -28,14 +30,14 @@ public class IdUtil {
 
     for (int i = 0; i < length8; i++) {
       final int i8 = i * 8;
-      long k =  ((long)data[i8] & 0xff)
-          + (((long)data[i8 + 1] & 0xff) << 8)
-          + (((long)data[i8 + 2] & 0xff) << 16)
-          + (((long)data[i8 + 3] & 0xff) << 24)
-          + (((long)data[i8 + 4] & 0xff) << 32)
-          + (((long)data[i8 + 5] & 0xff) << 40)
-          + (((long)data[i8 + 6] & 0xff) << 48)
-          + (((long)data[i8 + 7] & 0xff) << 56);
+      long k = ((long) data[i8] & 0xff)
+          + (((long) data[i8 + 1] & 0xff) << 8)
+          + (((long) data[i8 + 2] & 0xff) << 16)
+          + (((long) data[i8 + 3] & 0xff) << 24)
+          + (((long) data[i8 + 4] & 0xff) << 32)
+          + (((long) data[i8 + 5] & 0xff) << 40)
+          + (((long) data[i8 + 6] & 0xff) << 48)
+          + (((long) data[i8 + 7] & 0xff) << 56);
 
       k *= m;
       k ^= k >>> r;

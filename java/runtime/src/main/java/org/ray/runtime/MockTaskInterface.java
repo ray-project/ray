@@ -12,14 +12,15 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
-import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
@@ -46,7 +47,7 @@ public class MockTaskInterface implements TaskInterface {
   private final MockObjectInterface objectInterface;
   private final ExecutorService exec;
   private final Deque<MockWorker> idleWorkers = new ArrayDeque<>();
-  private final Map<UniqueId, MockWorker> actorWorkers = new HashMap<>();
+  private final Map<ActorId, MockWorker> actorWorkers = new HashMap<>();
   private final Object workerLock = new Object();
   private final ThreadLocal<MockWorker> currentWorker = new ThreadLocal<>();
 
@@ -74,8 +75,7 @@ public class MockTaskInterface implements TaskInterface {
   }
 
   /**
-   * Get the worker of current thread. <br>
-   * NOTE: Cannot be used for multi-threading in worker.
+   * Get the worker of current thread. <br> NOTE: Cannot be used for multi-threading in worker.
    */
   public MockWorker getCurrentWorker() {
     return currentWorker.get();
@@ -137,12 +137,14 @@ public class MockTaskInterface implements TaskInterface {
 
   private TaskSpec.Builder getTaskSpecBuilder(TaskType taskType,
       FunctionDescriptor functionDescriptor, FunctionArg[] args) {
+    byte[] taskIdBytes = new byte[TaskId.LENGTH];
+    new Random().nextBytes(taskIdBytes);
     return TaskSpec.newBuilder()
         .setType(taskType)
         .setLanguage(Language.JAVA)
         .setJobId(
             ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
-        .setTaskId(ByteString.copyFrom(TaskId.randomId().getBytes()))
+        .setTaskId(ByteString.copyFrom(taskIdBytes))
         .addAllFunctionDescriptor(functionDescriptor.toList().stream().map(ByteString::copyFromUtf8)
             .collect(Collectors.toList()))
         .addAllArgs(Arrays.stream(args).map(arg -> arg.id != null ? TaskArg.newBuilder()
@@ -165,7 +167,7 @@ public class MockTaskInterface implements TaskInterface {
   @Override
   public RayActor createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
       ActorCreationOptions options) {
-    UniqueId actorId = UniqueId.randomId();
+    ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)
         .setActorCreationTaskSpec(ActorCreationTaskSpec.newBuilder()
@@ -173,7 +175,7 @@ public class MockTaskInterface implements TaskInterface {
             .build())
         .build();
     submitTaskSpec(taskSpec);
-    return new MockRayActor(actorId);
+    return new MockRayActor(actorId, getReturnIds(taskSpec).get(0));
   }
 
   @Override
@@ -181,9 +183,8 @@ public class MockTaskInterface implements TaskInterface {
       FunctionArg[] args, int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns == 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
-    List<ObjectId> returnIds = getReturnIds(TaskType.ACTOR_TASK,
-        new TaskId(builder.getTaskId().toByteArray()),
-        actor.getId(), numReturns + 1);
+    List<ObjectId> returnIds = getReturnIds(
+        TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns + 1);
     TaskSpec taskSpec = builder
         .setNumReturns(numReturns + 1)
         .setActorTaskSpec(
@@ -198,7 +199,7 @@ public class MockTaskInterface implements TaskInterface {
     return Collections.singletonList(returnIds.get(0));
   }
 
-  public static UniqueId getActorId(TaskSpec taskSpec) {
+  public static ActorId getActorId(TaskSpec taskSpec) {
     ByteString actorId = null;
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
       actorId = taskSpec.getActorCreationTaskSpec().getActorId();
@@ -208,7 +209,7 @@ public class MockTaskInterface implements TaskInterface {
     if (actorId == null) {
       return null;
     }
-    return new UniqueId(actorId.toByteArray());
+    return ActorId.fromBytes(actorId.toByteArray());
   }
 
   private void submitTaskSpec(TaskSpec taskSpec) {
@@ -229,17 +230,17 @@ public class MockTaskInterface implements TaskInterface {
                 .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
             ((MockWorkerContext) worker.workerContext).setCurrentTask(null);
             List<ObjectId> returnIds = getReturnIds(taskSpec);
-            for (int i = 0; i < returnObjects.size(); i++) {
-              objectInterface.put(returnObjects.get(i), returnIds.get(i));
-            }
-            // If the task is an actor task or an actor creation task,
-            // put the dummy object in object store, so those tasks which depends on it
-            // can be executed.
-            if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK
-                || taskSpec.getType() == TaskType.ACTOR_TASK) {
-              Preconditions.checkState(returnObjects.size() + 1 == returnIds.size());
-              objectInterface.put(new NativeRayObject(new byte[]{}, new byte[]{}),
-                  returnIds.get(returnIds.size() - 1));
+            for (int i = 0; i < returnIds.size(); i++) {
+              NativeRayObject putObject;
+              if (i >= returnObjects.size()) {
+                // If the task is an actor task or an actor creation task,
+                // put the dummy object in object store, so those tasks which depends on it
+                // can be executed.
+                putObject = new NativeRayObject(new byte[]{}, new byte[]{});
+              } else {
+                putObject = returnObjects.get(i);
+              }
+              objectInterface.put(putObject, returnIds.get(i));
             }
           } finally {
             returnWorker(worker, taskSpec);
@@ -275,21 +276,16 @@ public class MockTaskInterface implements TaskInterface {
   }
 
   private static List<ObjectId> getReturnIds(TaskSpec taskSpec) {
-    return getReturnIds(taskSpec.getType(), new TaskId(taskSpec.getTaskId().toByteArray()),
-        getActorId(taskSpec), taskSpec.getNumReturns());
+    return getReturnIds(TaskId.fromBytes(taskSpec.getTaskId().toByteArray()),
+        taskSpec.getNumReturns());
   }
 
-  private static List<ObjectId> getReturnIds(TaskType taskType, TaskId taskId, UniqueId actorId,
-      long numReturns) {
+  private static List<ObjectId> getReturnIds(TaskId taskId, long numReturns) {
     List<ObjectId> returnIds = new ArrayList<>();
     for (int i = 0; i < numReturns; i++) {
-      if (i + 1 == numReturns && taskType == TaskType.ACTOR_CREATION_TASK) {
-        returnIds.add(new ObjectId(actorId.getBytes()));
-      } else {
-        returnIds.add(ObjectId.fromByteBuffer(
-            (ByteBuffer) ByteBuffer.allocate(ObjectId.LENGTH).put(taskId.getBytes())
-                .putInt(TaskId.LENGTH, i + 1).position(0)));
-      }
+      returnIds.add(ObjectId.fromByteBuffer(
+          (ByteBuffer) ByteBuffer.allocate(ObjectId.LENGTH).put(taskId.getBytes())
+              .putInt(TaskId.LENGTH, i + 1).position(0)));
     }
     return returnIds;
   }

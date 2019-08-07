@@ -204,6 +204,8 @@ void TaskDependencyManager::SubscribeWaitDependencies(
       auto inserted = worker_entry.insert(object_id);
       if (inserted.second) {
         // Get the ID of the task that creates the dependency.
+        // TODO(qwang): Refine here to:
+        // if (object_id.CreatedByTask()) {// ...}
         TaskID creating_task_id = object_id.TaskId();
         // Add the subscribed worker to the mapping from object ID to list of
         // dependent workers.

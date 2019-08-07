@@ -67,7 +67,7 @@ class CustomLossModel(Model):
         print("FYI: You can also use these tensors: {}, ".format(loss_inputs))
 
         # compute the IL loss
-        action_dist = Categorical(logits)
+        action_dist = Categorical(logits, self.options)
         self.policy_loss = policy_loss
         self.imitation_loss = tf.reduce_mean(
             -action_dist.logp(input_ops["actions"]))

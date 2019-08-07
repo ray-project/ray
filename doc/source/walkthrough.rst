@@ -3,24 +3,9 @@ Walkthrough
 
 This walkthrough will overview the core concepts of Ray:
 
-   1. Using remote functions (tasks) [``ray.remote``]
-   2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
-   3. Using remote classes (actors) [``ray.remote``]
-
-.. list-table:: Title
-   :widths: 25 25 50
-   :header-rows: 1
-
-   * - Heading row 1, column 1
-     - Heading row 1, column 2
-     - Heading row 1, column 3
-   * - Row 1, column 1
-     -
-     - Row 1, column 3
-   * - Row 2, column 1
-     - Row 2, column 2
-     - Row 2, column 3
-
+1. Using remote functions (tasks) [``ray.remote``]
+2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
+3. Using remote classes (actors) [``ray.remote``]
 
 With Ray, your code will work on a single machine and can be easily scaled to a
 large cluster. To run this walkthrough, install Ray with ``pip install -U ray``.

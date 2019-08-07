@@ -53,10 +53,20 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CActorClassID FromBinary(const c_string &binary)
 
-    cdef cppclass CActorID "ray::ActorID"(CUniqueID):
+    cdef cppclass CActorID "ray::ActorID"(CBaseID[CActorID]):
 
         @staticmethod
         CActorID FromBinary(const c_string &binary)
+
+        @staticmethod
+        const CActorID Nil()
+
+        @staticmethod
+        size_t Size()
+
+        @staticmethod
+        CActorID Of(CJobID job_id, CTaskID parent_task_id, int64_t parent_task_counter)
+
 
     cdef cppclass CActorHandleID "ray::ActorHandleID"(CUniqueID):
 
@@ -103,7 +113,25 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         size_t Size()
 
+        @staticmethod
+        CTaskID ForDriverTask(const CJobID &job_id)
+
+        @staticmethod
+        CTaskID ForFakeTask()
+
+        @staticmethod
+        CTaskID ForActorCreationTask(CActorID actor_id)
+
+        @staticmethod
+        CTaskID ForActorTask(CJobID job_id, CTaskID parent_task_id, int64_t parent_task_counter, CActorID actor_id)
+
+        @staticmethod
+        CTaskID ForNormalTask(CJobID job_id, CTaskID parent_task_id, int64_t parent_task_counter)
+
     cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
+
+        @staticmethod
+        int64_t MaxObjectIndex()
 
         @staticmethod
         CObjectID FromBinary(const c_string &binary)
@@ -112,7 +140,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         const CObjectID Nil()
 
         @staticmethod
-        CObjectID ForPut(const CTaskID &task_id, int64_t index);
+        CObjectID ForPut(const CTaskID &task_id, int64_t index, int64_t transport_type);
 
         @staticmethod
         CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index);

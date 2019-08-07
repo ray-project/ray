@@ -34,7 +34,7 @@ public class MockObjectInterface implements ObjectInterface {
 
   @Override
   public ObjectId put(NativeRayObject obj) {
-    ObjectId objectId = ObjectId.randomId();
+    ObjectId objectId = ObjectId.fromRandom();
     put(obj, objectId);
     return objectId;
   }

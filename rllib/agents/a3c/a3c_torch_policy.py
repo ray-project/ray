@@ -18,7 +18,7 @@ def actor_critic_loss(policy, batch_tensors):
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
     })  # TODO(ekl) seq lens shouldn't be None
     values = policy.model.value_function()
-    dist = policy.dist_class(logits)
+    dist = policy.dist_class(logits, policy.config["model"])
     log_probs = dist.logp(batch_tensors[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().mean()
     policy.pi_err = -batch_tensors[Postprocessing.ADVANTAGES].dot(
