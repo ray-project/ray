@@ -24,7 +24,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   std::unordered_map<ObjectID, std::vector<int>> unready;
 
   // First, attempt to fetch all of the required objects without reconstructing.
-  for (int64_t start = 0; start < ids.size(); start += batch_size) {
+  for (int64_t start = 0; start < int64_t(ids.size()); start += batch_size) {
     int64_t end = std::min(start + batch_size, int64_t(ids.size()));
     const std::vector<ObjectID> ids_slice(ids.cbegin() + start, ids.cbegin() + end);
     RAY_CHECK_OK(
@@ -66,7 +66,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!unready.empty() && !should_break) {
     std::vector<ObjectID> batch_ids;
     for (const auto &entry : unready) {
-      if (batch_ids.size() == batch_size) {
+      if (int64_t(batch_ids.size()) == batch_size) {
         break;
       }
       batch_ids.push_back(entry.first);
