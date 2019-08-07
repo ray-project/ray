@@ -302,6 +302,8 @@ Implementing a centralized critic that takes as input the observations and actio
 
 2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy, the same as with any other value function. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
 
+It is important to note that there are multiple ways to implement a centralized critic. In the above snippet, we *shared* experiences between agents via the postprocessing function of the policy. However, this experience could instead be shared inside the env itself (i.e., each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions). Another way is to have the policy optimizer collate batches from multiple policies (i.e., in the RLlib MADDPG port).
+
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
