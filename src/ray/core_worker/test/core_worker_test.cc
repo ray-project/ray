@@ -146,6 +146,7 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +
                 store_socket_name + " " + raylet_socket_name + "\"")
+        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
     RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;
