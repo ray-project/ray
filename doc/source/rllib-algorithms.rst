@@ -207,7 +207,7 @@ Policy Gradients
 ----------------
 `[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm in both TensorFlow and PyTorch. This is usually outperformed by PPO.
 
-.. figure:: ppo-arch.svg
+.. figure:: a2c-arch.svg
 
     Policy gradients architecture (same as A2C)
 

@@ -67,7 +67,7 @@ def build_tf_policy(name,
         apply_gradients_fn (func): optional function that returns an apply
             gradients op given (policy, optimizer, grads_and_vars)
         grad_stats_fn (func): optional function that returns a dict of
-            TF fetches given the policy and loss gradient tensors
+            TF fetches given the policy, batch input, and gradient tensors
         extra_action_fetches_fn (func): optional function that returns
             a dict of TF fetches given the policy object
         extra_action_feed_fn (func): optional function that returns a feed dict

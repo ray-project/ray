@@ -225,7 +225,7 @@ def stats(policy, batch_tensors):
     }
 
 
-def grad_stats(policy, grads):
+def grad_stats(policy, batch_tensors, grads):
     return {
         "grad_gnorm": tf.global_norm(grads),
     }

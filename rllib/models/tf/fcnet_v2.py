@@ -80,7 +80,7 @@ class FullyConnectedNetwork(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        model_out, self._value_out = self.base_model(input_dict["obs"])
+        model_out, self._value_out = self.base_model(input_dict["obs_flat"])
         return model_out, state
 
     def value_function(self):
