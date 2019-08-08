@@ -11,14 +11,15 @@ inline ray::CoreWorkerTaskInterface &GetTaskInterfaceFromPointer(
   return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Tasks();
 }
 
-inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject rayFunction) {
+inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
   std::vector<std::string> function_descriptor;
   JavaStringListToNativeStringVector(
-      env, env->GetObjectField(rayFunction, java_native_ray_function_function_descriptor),
+      env, env->CallObjectMethod(functionDescriptor, java_function_descriptor_to_list),
       &function_descriptor);
-  ray::RayFunction ray_function{static_cast<::Language>((int)env->GetIntField(
-                                    rayFunction, java_native_ray_function_language)),
-                                function_descriptor};
+  jobject java_language =
+      env->CallObjectMethod(functionDescriptor, java_function_descriptor_get_language);
+  int language = env->CallIntMethod(java_language, java_language_get_number);
+  ray::RayFunction ray_function{static_cast<::Language>(language), function_descriptor};
   return ray_function;
 }
 
@@ -115,9 +116,9 @@ extern "C" {
  * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTask(
-    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject rayFunction,
+    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
     jobject taskArgs, jobject taskOptions) {
-  auto ray_function = ToRayFunction(env, rayFunction);
+  auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
   auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
@@ -141,9 +142,9 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTas
  * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor(
-    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject rayFunction,
+    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
     jobject taskArgs, jobject actorCreationOptions) {
-  auto ray_function = ToRayFunction(env, rayFunction);
+  auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
   auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
@@ -168,9 +169,9 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jlong nativeActorHandle,
-    jobject rayFunction, jobject taskArgs, jobject taskOptions) {
+    jobject functionDescriptor, jobject taskArgs, jobject taskOptions) {
   auto &actor_handle = *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));
-  auto ray_function = ToRayFunction(env, rayFunction);
+  auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
   auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,

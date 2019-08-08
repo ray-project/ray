@@ -36,12 +36,17 @@ extern jmethodID java_array_list_init_with_capacity;
 /// RayException class
 extern jclass java_ray_exception_class;
 
-/// NativeRayFunction class
-extern jclass java_native_ray_function_class;
-/// language field of NativeRayFunction class
-extern jfieldID java_native_ray_function_language;
-/// function_descriptor field of NativeRayFunction class
-extern jfieldID java_native_ray_function_function_descriptor;
+/// FunctionDescriptor interface
+extern jclass java_function_descriptor_class;
+/// getLanguage method of FunctionDescriptor interface
+extern jmethodID java_function_descriptor_get_language;
+/// toList method of FunctionDescriptor interface
+extern jmethodID java_function_descriptor_to_list;
+
+/// Language class
+extern jclass java_language_class;
+/// getNumber of Language class
+extern jmethodID java_language_get_number;
 
 /// NativeTaskArg class
 extern jclass java_native_task_arg_class;

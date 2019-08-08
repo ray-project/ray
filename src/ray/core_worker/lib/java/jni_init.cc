@@ -17,9 +17,12 @@ jmethodID java_array_list_init_with_capacity;
 
 jclass java_ray_exception_class;
 
-jclass java_native_ray_function_class;
-jfieldID java_native_ray_function_language;
-jfieldID java_native_ray_function_function_descriptor;
+jclass java_function_descriptor_class;
+jmethodID java_function_descriptor_get_language;
+jmethodID java_function_descriptor_to_list;
+
+jclass java_language_class;
+jmethodID java_language_get_number;
 
 jclass java_native_task_arg_class;
 jfieldID java_native_task_arg_id;
@@ -90,12 +93,16 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
-  java_native_ray_function_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeRayFunction");
-  java_native_ray_function_language =
-      env->GetFieldID(java_native_ray_function_class, "language", "I");
-  java_native_ray_function_function_descriptor = env->GetFieldID(
-      java_native_ray_function_class, "functionDescriptor", "Ljava/util/List;");
+  java_function_descriptor_class =
+      LoadClass(env, "org/ray/runtime/functionmanager/FunctionDescriptor");
+  java_function_descriptor_get_language =
+      env->GetMethodID(java_function_descriptor_class, "getLanguage",
+                       "()Lorg/ray/runtime/generated/Common$Language;");
+  java_function_descriptor_to_list =
+      env->GetMethodID(java_function_descriptor_class, "toList", "()Ljava/util/List;");
+
+  java_language_class = LoadClass(env, "org/ray/runtime/generated/Common$Language");
+  java_language_get_number = env->GetMethodID(java_language_class, "getNumber", "()I");
 
   java_native_task_arg_class =
       LoadClass(env, "org/ray/runtime/nativeTypes/NativeTaskArg");
@@ -167,7 +174,8 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_ray_exception_class);
-  env->DeleteGlobalRef(java_native_ray_function_class);
+  env->DeleteGlobalRef(java_function_descriptor_class);
+  env->DeleteGlobalRef(java_language_class);
   env->DeleteGlobalRef(java_native_task_arg_class);
   env->DeleteGlobalRef(java_native_resources_class);
   env->DeleteGlobalRef(java_native_task_options_class);
