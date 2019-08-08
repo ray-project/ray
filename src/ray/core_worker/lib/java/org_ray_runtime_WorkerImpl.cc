@@ -50,6 +50,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerImpl_nativeInit(
     jobject ray_function_array_list =
         NativeStringVectorToJavaStringList(env, ray_function.function_descriptor);
     // convert args
+    // TODO (kfstorm): Avoid copying binary data from Java to C++
     jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
         env, args, NativeRayObjectToJavaNativeRayObject);
 

@@ -39,11 +39,11 @@ class CoreWorkerTaskExecutionInterface {
                                    CoreWorkerObjectInterface &object_interface,
                                    const TaskExecutor &executor);
 
-  /// Start receving and executes tasks.
+  /// Start receiving and executing tasks.
   /// \return void.
   void Run();
 
-  /// Stop receving and executes tasks.
+  /// Stop receiving and executing tasks.
   /// \return void.
   void Stop();
 
@@ -86,7 +86,7 @@ class CoreWorkerTaskExecutionInterface {
   std::shared_ptr<boost::asio::io_service> main_service_;
 
   /// The asio work to keep main_service_ alive.
-  std::shared_ptr<boost::asio::io_service::work> main_work_;
+  boost::asio::io_service::work main_work_;
 
   friend class CoreWorker;
 };

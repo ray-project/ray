@@ -12,10 +12,8 @@ import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
-import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.objectstore.NativeRayObject;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
@@ -34,7 +32,6 @@ public abstract class AbstractWorker {
   protected ObjectStoreProxy objectStoreProxy;
   protected TaskInterface taskInterface;
   protected RayletClient rayletClient;
-  protected FunctionManager functionManager;
   protected AbstractRayRuntime runtime;
   protected WorkerContext workerContext;
 
@@ -65,7 +62,6 @@ public abstract class AbstractWorker {
 
   AbstractWorker(AbstractRayRuntime runtime) {
     this.runtime = runtime;
-    this.functionManager = runtime.functionManager;
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
@@ -79,7 +75,7 @@ public abstract class AbstractWorker {
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Get method
-      RayFunction rayFunction = functionManager
+      RayFunction rayFunction = runtime.functionManager
           .getFunction(jobId, getJavaFunctionDescriptor(rayFunctionInfo));
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       workerContext.setCurrentClassLoader(rayFunction.classLoader);
@@ -104,10 +100,12 @@ public abstract class AbstractWorker {
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (taskType == TaskType.ACTOR_TASK) {
+          // TODO (kfstorm): handle checkpoint in core worker.
           maybeSaveCheckpoint(actor, workerContext.getCurrentActorId());
         }
         returnObjects.add(objectStoreProxy.serialize(result));
       } else {
+        // TODO (kfstorm): handle checkpoint in core worker.
         maybeLoadCheckpoint(result, workerContext.getCurrentActorId());
         currentActor = result;
       }

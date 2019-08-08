@@ -13,7 +13,4 @@ class MockWorker extends AbstractWorker {
     this.rayletClient = new MockRayletClient();
   }
 
-  MockRayActor getCurrentActor() {
-    return (MockRayActor) currentActor;
-  }
 }

@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
+  public static final String PYTHON_INIT_METHOD_NAME = "__init__";
   protected RayConfig rayConfig;
   protected AbstractWorker worker;
   protected FunctionManager functionManager;
@@ -175,7 +176,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       ActorCreationOptions options) {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, className,
-        "__init__");
+        PYTHON_INIT_METHOD_NAME);
     return (RayPyActor) createActorImpl(Language.PYTHON, functionDescriptor, args, options);
   }
 
@@ -194,8 +195,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, rayActor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActor,
-        functionDescriptor, functionArgs, 1 /* core worker will plus it by 1, so put 1 here */,
-        null);
+        functionDescriptor, functionArgs, 1, null);
     return new RayObjectImpl(returnIds.get(0));
   }
 

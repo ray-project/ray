@@ -581,7 +581,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources, {}};
+  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            ActorHandleID::Nil(), function.language, true,
@@ -642,7 +642,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources, {}};
+  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
   // wait for actor creation finish.

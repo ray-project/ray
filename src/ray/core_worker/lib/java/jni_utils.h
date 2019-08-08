@@ -279,7 +279,8 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   auto java_metadata =
       (jbyteArray)env->GetObjectField(java_obj, java_native_ray_object_metadata);
   std::shared_ptr<ray::Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
-  std::shared_ptr<ray::Buffer> metadata_buffer = JavaByteArrayToNativeBuffer(env, java_metadata);
+  std::shared_ptr<ray::Buffer> metadata_buffer =
+      JavaByteArrayToNativeBuffer(env, java_metadata);
   if (!data_buffer) {
     data_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
   }

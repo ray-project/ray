@@ -25,7 +25,8 @@ public interface WorkerContext {
   ActorId getCurrentActorId();
 
   /**
-   * The class loader which is associated with the current job.
+   * The class loader that is associated with the current job. It's used for locating classes when
+   * dealing with serialization and deserialization in {@link org.ray.runtime.util.Serializer}.
    */
   ClassLoader getCurrentClassLoader();
 
