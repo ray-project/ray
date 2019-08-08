@@ -15,6 +15,20 @@ jclass java_array_list_class;
 jmethodID java_array_list_init;
 jmethodID java_array_list_init_with_capacity;
 
+jclass java_map_class;
+jmethodID java_map_entry_set;
+
+jclass java_set_class;
+jmethodID java_set_iterator;
+
+jclass java_iterator_class;
+jmethodID java_iterator_has_next;
+jmethodID java_iterator_next;
+
+jclass java_map_entry_class;
+jmethodID java_map_entry_get_key;
+jmethodID java_map_entry_get_value;
+
 jclass java_ray_exception_class;
 
 jclass java_function_descriptor_class;
@@ -32,15 +46,12 @@ jclass java_native_resources_class;
 jfieldID java_native_resources_keys;
 jfieldID java_native_resources_values;
 
-jclass java_native_task_options_class;
-jfieldID java_native_task_options_num_returns;
-jfieldID java_native_task_options_resources;
+jclass java_base_task_options_class;
+jfieldID java_base_task_options_resources;
 
-jclass java_native_actor_creation_options_class;
-jfieldID java_native_actor_creation_options_max_reconstructions;
-jfieldID java_native_actor_creation_options_is_direct_call;
-jfieldID java_native_actor_creation_options_resources;
-jfieldID java_native_actor_creation_options_dynamic_worker_options;
+jclass java_actor_creation_options_class;
+jfieldID java_actor_creation_options_max_reconstructions;
+jfieldID java_actor_creation_options_jvm_options;
 
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
@@ -91,6 +102,24 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_array_list_init_with_capacity =
       env->GetMethodID(java_array_list_class, "<init>", "(I)V");
 
+  java_map_class = LoadClass(env, "java/util/Map");
+  java_map_entry_set = env->GetMethodID(java_map_class, "entrySet", "()Ljava/util/Set;");
+
+  java_set_class = LoadClass(env, "java/util/Set");
+  java_set_iterator =
+      env->GetMethodID(java_set_class, "iterator", "()Ljava/util/Iterator;");
+
+  java_iterator_class = LoadClass(env, "java/util/Iterator");
+  java_iterator_has_next = env->GetMethodID(java_iterator_class, "hasNext", "()Z");
+  java_iterator_next =
+      env->GetMethodID(java_iterator_class, "next", "()Ljava/lang/Object;");
+
+  java_map_entry_class = LoadClass(env, "java/util/Map$Entry");
+  java_map_entry_get_key =
+      env->GetMethodID(java_map_class, "getKey", "()Ljava/lang/Object;");
+  java_map_entry_get_value =
+      env->GetMethodID(java_map_class, "getValue", "()Ljava/lang/Object;");
+
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
   java_function_descriptor_class =
@@ -116,29 +145,18 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_resources_values =
       env->GetFieldID(java_native_resources_class, "values", "Ljava/util/List;");
 
-  java_native_task_options_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeTaskOptions");
-  java_native_task_options_num_returns =
-      env->GetFieldID(java_native_task_options_class, "numReturns", "I");
-  java_native_task_options_resources =
-      env->GetFieldID(java_native_task_options_class, "resources",
-                      "Lorg/ray/runtime/nativeTypes/NativeResources;");
+  java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
+  java_base_task_options_resources =
+      env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
 
-  java_native_actor_creation_options_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeActorCreationOptions");
-  java_native_actor_creation_options_max_reconstructions = env->GetFieldID(
-      java_native_actor_creation_options_class, "maxReconstructions", "J");
-  java_native_actor_creation_options_is_direct_call =
-      env->GetFieldID(java_native_actor_creation_options_class, "isDirectCall", "Z");
-  java_native_actor_creation_options_resources =
-      env->GetFieldID(java_native_actor_creation_options_class, "resources",
-                      "Lorg/ray/runtime/nativeTypes/NativeResources;");
-  java_native_actor_creation_options_dynamic_worker_options =
-      env->GetFieldID(java_native_actor_creation_options_class, "dynamicWorkerOptions",
-                      "Ljava/util/List;");
+  java_actor_creation_options_class =
+      LoadClass(env, "org/ray/api/options/ActorCreationOptions");
+  java_actor_creation_options_max_reconstructions =
+      env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
+  java_actor_creation_options_jvm_options = env->GetFieldID(
+      java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
 
-  java_gcs_client_options_class =
-      LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
+  java_gcs_client_options_class = LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
   java_gcs_client_options_port =
@@ -173,13 +191,17 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_double_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
+  env->DeleteGlobalRef(java_map_class);
+  env->DeleteGlobalRef(java_set_class);
+  env->DeleteGlobalRef(java_iterator_class);
+  env->DeleteGlobalRef(java_map_entry_class);
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);
   env->DeleteGlobalRef(java_native_task_arg_class);
   env->DeleteGlobalRef(java_native_resources_class);
-  env->DeleteGlobalRef(java_native_task_options_class);
-  env->DeleteGlobalRef(java_native_actor_creation_options_class);
+  env->DeleteGlobalRef(java_base_task_options_class);
+  env->DeleteGlobalRef(java_actor_creation_options_class);
   env->DeleteGlobalRef(java_native_ray_object_class);
   env->DeleteGlobalRef(java_worker_class);
 }

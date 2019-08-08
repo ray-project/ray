@@ -11,16 +11,16 @@ extern "C" {
  * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeSubmitTask
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jobject, jobject, jobject);
+    JNIEnv *, jclass, jlong, jobject, jobject, jint, jobject);
 
 /*
  * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeCreateActor
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)J
+ * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor(
     JNIEnv *, jclass, jlong, jobject, jobject, jobject);
@@ -29,10 +29,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor
  * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeSubmitActorTask
  * Signature:
- * (JJLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ * (JJLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitActorTask(
-    JNIEnv *, jclass, jlong, jlong, jobject, jobject, jobject);
+    JNIEnv *, jclass, jlong, jlong, jobject, jobject, jint, jobject);
 
 #ifdef __cplusplus
 }

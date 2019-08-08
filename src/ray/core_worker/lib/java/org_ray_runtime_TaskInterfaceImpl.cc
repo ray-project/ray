@@ -60,48 +60,42 @@ inline void ReleaseTaskArgs(JNIEnv *env,
 
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
-  jobject resource_keys = env->GetObjectField(java_resources, java_native_resources_keys);
-  jobject resource_values =
-      env->GetObjectField(java_resources, java_native_resources_values);
-  int resource_size = env->CallIntMethod(resource_keys, java_list_size);
+  jobject entry_set = env->CallObjectMethod(java_resources, java_map_entry_set);
+  jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
   std::unordered_map<std::string, double> resources;
-  for (int i = 0; i < resource_size; i++) {
+  while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
+    jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
     std::string key = JavaStringToNativeString(
-        env, (jstring)env->CallObjectMethod(resource_keys, java_list_get, (jint)i));
-    jobject valueObject = env->CallObjectMethod(resource_values, java_list_get, (jint)i);
-    double value = env->GetDoubleField(valueObject, java_double_value);
+        env, (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key));
+    double value = env->GetDoubleField(
+        env->CallObjectMethod(map_entry, java_language_get_number), java_double_value);
     resources.emplace(key, value);
   }
   return resources;
 }
 
-inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jobject taskOptions) {
-  int num_returns = env->GetIntField(taskOptions, java_native_task_options_num_returns);
+inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   jobject java_resources =
-      env->GetObjectField(taskOptions, java_native_task_options_resources);
+      env->GetObjectField(callOptions, java_base_task_options_resources);
   auto resources = ToResources(env, java_resources);
 
-  ray::TaskOptions task_options{num_returns, resources};
+  ray::TaskOptions task_options{numReturns, resources};
   return task_options;
 }
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
-  uint64_t max_reconstructions = env->GetLongField(
-      actorCreationOptions, java_native_actor_creation_options_max_reconstructions);
-  bool is_direct_call = env->GetBooleanField(
-      actorCreationOptions, java_native_actor_creation_options_is_direct_call);
-  jobject java_resources = env->GetObjectField(
-      actorCreationOptions, java_native_actor_creation_options_resources);
+  int max_reconstructions = env->GetIntField(
+      actorCreationOptions, java_actor_creation_options_max_reconstructions);
+  jobject java_resources =
+      env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
   auto resources = ToResources(env, java_resources);
-  jobject java_dynamic_worker_options = env->GetObjectField(
-      actorCreationOptions, java_native_actor_creation_options_dynamic_worker_options);
-  std::vector<std::string> dynamic_worker_options;
-  JavaStringListToNativeStringVector(env, java_dynamic_worker_options,
-                                     &dynamic_worker_options);
+  std::string jvm_options = JavaStringToNativeString(
+      env, (jstring)env->GetObjectField(actorCreationOptions,
+                                        java_actor_creation_options_jvm_options));
 
-  ray::ActorCreationOptions action_creation_options{max_reconstructions, is_direct_call,
-                                                    resources, dynamic_worker_options};
+  ray::ActorCreationOptions action_creation_options{
+      static_cast<uint64_t>(max_reconstructions), false, resources, {jvm_options}};
   return action_creation_options;
 }
 
@@ -113,17 +107,17 @@ extern "C" {
  * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeSubmitTask
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
-    jobject taskArgs, jobject taskOptions) {
+    jobject taskArgs, jint numReturns, jobject callOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
   auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
                          &byte_pointers_to_be_released);
-  auto task_options = ToTaskOptions(env, taskOptions);
+  auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
   auto status = GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
@@ -139,7 +133,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTas
  * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeCreateActor
  * Signature:
- * (JLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeActorCreationOptions;)J
+ * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
@@ -165,18 +159,18 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor
  * Class:     org_ray_runtime_TaskInterfaceImpl
  * Method:    nativeSubmitActorTask
  * Signature:
- * (JJLorg/ray/runtime/nativeTypes/NativeRayFunction;Ljava/util/List;Lorg/ray/runtime/nativeTypes/NativeTaskOptions;)Ljava/util/List;
+ * (JJLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jlong nativeActorHandle,
-    jobject functionDescriptor, jobject taskArgs, jobject taskOptions) {
+    jobject functionDescriptor, jobject taskArgs, jint numReturns, jobject callOptions) {
   auto &actor_handle = *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));
   auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
   auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
                          &byte_pointers_to_be_released);
-  auto task_options = ToTaskOptions(env, taskOptions);
+  auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
   auto status =

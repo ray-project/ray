@@ -9,9 +9,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.runtime.nativeTypes.NativeActorCreationOptions;
 import org.ray.runtime.nativeTypes.NativeTaskArg;
-import org.ray.runtime.nativeTypes.NativeTaskOptions;
 import org.ray.runtime.task.FunctionArg;
 
 public class TaskInterfaceImpl implements TaskInterface {
@@ -30,10 +28,8 @@ public class TaskInterfaceImpl implements TaskInterface {
       int numReturns, CallOptions options) {
     List<NativeTaskArg> nativeArgs =
         Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
-    NativeTaskOptions nativeTaskOptions = new NativeTaskOptions(numReturns, options);
     List<byte[]> returnIds = nativeSubmitTask(nativeCoreWorkerPointer, functionDescriptor,
-        nativeArgs,
-        nativeTaskOptions);
+        nativeArgs, numReturns, options);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
@@ -42,9 +38,8 @@ public class TaskInterfaceImpl implements TaskInterface {
       ActorCreationOptions options) {
     List<NativeTaskArg> nativeArgs =
         Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
-    NativeActorCreationOptions nativeActorCreationOptions = new NativeActorCreationOptions(options);
     long nativeActorHandle = nativeCreateActor(nativeCoreWorkerPointer,
-        functionDescriptor, nativeArgs, nativeActorCreationOptions);
+        functionDescriptor, nativeArgs, options);
     return new RayActorImpl(nativeActorHandle);
   }
 
@@ -54,21 +49,21 @@ public class TaskInterfaceImpl implements TaskInterface {
     Preconditions.checkState(actor instanceof RayActorImpl);
     List<NativeTaskArg> nativeArgs =
         Arrays.stream(args).map(NativeTaskArg::new).collect(Collectors.toList());
-    NativeTaskOptions nativeTaskOptions = new NativeTaskOptions(numReturns, options);
     List<byte[]> returnIds = nativeSubmitActorTask(nativeCoreWorkerPointer,
         ((RayActorImpl) actor).getNativeActorHandle(),
-        functionDescriptor, nativeArgs, nativeTaskOptions);
+        functionDescriptor, nativeArgs, numReturns, options);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
   private static native List<byte[]> nativeSubmitTask(long nativeCoreWorkerPointer,
-      FunctionDescriptor functionDescriptor, List<NativeTaskArg> args, NativeTaskOptions taskOptions);
+      FunctionDescriptor functionDescriptor, List<NativeTaskArg> args, int numReturns,
+      CallOptions callOptions);
 
   private static native long nativeCreateActor(long nativeCoreWorkerPointer,
       FunctionDescriptor functionDescriptor, List<NativeTaskArg> args,
-      NativeActorCreationOptions actorCreationOptions);
+      ActorCreationOptions actorCreationOptions);
 
   private static native List<byte[]> nativeSubmitActorTask(long nativeCoreWorkerPointer,
       long nativeActorHandle, FunctionDescriptor functionDescriptor, List<NativeTaskArg> args,
-      NativeTaskOptions taskOptions);
+      int numReturns, CallOptions callOptions);
 }

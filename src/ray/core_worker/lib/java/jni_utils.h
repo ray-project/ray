@@ -33,6 +33,30 @@ extern jmethodID java_array_list_init;
 /// Constructor of ArrayList class with single parameter capacity
 extern jmethodID java_array_list_init_with_capacity;
 
+/// Map interface
+extern jclass java_map_class;
+/// entrySet method of Map interface
+extern jmethodID java_map_entry_set;
+
+/// Set interface
+extern jclass java_set_class;
+/// iterator method of Set interface
+extern jmethodID java_set_iterator;
+
+/// Iterator interface
+extern jclass java_iterator_class;
+/// hasNext method of Iterator interface
+extern jmethodID java_iterator_has_next;
+/// next method of Iterator interface
+extern jmethodID java_iterator_next;
+
+/// Map.Entry interface
+extern jclass java_map_entry_class;
+/// getKey method of Map.Entry interface
+extern jmethodID java_map_entry_get_key;
+/// getValue method of Map.Entry interface
+extern jmethodID java_map_entry_get_value;
+
 /// RayException class
 extern jclass java_ray_exception_class;
 
@@ -62,23 +86,17 @@ extern jfieldID java_native_resources_keys;
 /// values field of NativeResources class
 extern jfieldID java_native_resources_values;
 
-/// NativeTaskOptions class
-extern jclass java_native_task_options_class;
-/// numReturns field of NativeTaskOptions class
-extern jfieldID java_native_task_options_num_returns;
-/// resources field of NativeTaskOptions class
-extern jfieldID java_native_task_options_resources;
+/// BaseTaskOptions class
+extern jclass java_base_task_options_class;
+/// resources field of BaseTaskOptions class
+extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
-extern jclass java_native_actor_creation_options_class;
+extern jclass java_actor_creation_options_class;
 /// maxReconstructions field of ActorCreationOptions class
-extern jfieldID java_native_actor_creation_options_max_reconstructions;
-/// isDirectCall field of ActorCreationOptions class
-extern jfieldID java_native_actor_creation_options_is_direct_call;
-/// resources field of ActorCreationOptions class
-extern jfieldID java_native_actor_creation_options_resources;
-/// dynamicWorkerOptions field of ActorCreationOptions class
-extern jfieldID java_native_actor_creation_options_dynamic_worker_options;
+extern jfieldID java_actor_creation_options_max_reconstructions;
+/// jvmOptions field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_jvm_options;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
