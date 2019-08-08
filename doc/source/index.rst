@@ -216,6 +216,7 @@ The following are good places to discuss Ray.
 
    distributed_training.rst
    pandas_on_ray.rst
+   projects.rst
    signals.rst
    async_api.rst
 
