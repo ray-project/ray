@@ -26,7 +26,7 @@ public class PlasmaFreeTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
     final boolean result = TestUtils.waitForCondition(() ->
-        ((AbstractRayRuntime) Ray.internal()).getWorker().getObjectStoreProxy().getObjectInterface()
+        ((AbstractRayRuntime) Ray.internal()).getTaskExecutor().getObjectStoreProxy().getObjectStore()
             .get(ImmutableList.of(helloId.getId()), 0).get(0) == null, 50);
     Assert.assertTrue(result);
   }

@@ -63,8 +63,8 @@ jmethodID java_native_ray_object_init;
 jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
 
-jclass java_worker_class;
-jmethodID java_worker_impl_execute;
+jclass java_native_task_executor_class;
+jmethodID java_native_task_executor_execute;
 
 JavaVM *jvm;
 
@@ -161,8 +161,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_gcs_client_options_is_test_client =
       env->GetFieldID(java_gcs_client_options_class, "isTestClient", "Z");
 
-  java_native_ray_object_class =
-      LoadClass(env, "org/ray/runtime/objectstore/NativeRayObject");
+  java_native_ray_object_class = LoadClass(env, "org/ray/runtime/object/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
   java_native_ray_object_data =
@@ -170,9 +169,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
-  java_worker_class = LoadClass(env, "org/ray/runtime/WorkerImpl");
-  java_worker_impl_execute = env->GetMethodID(
-      java_worker_class, "execute", "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
+  java_native_task_executor_class =
+      LoadClass(env, "org/ray/runtime/task/NativeTaskExecutor");
+  java_native_task_executor_execute =
+      env->GetMethodID(java_native_task_executor_class, "execute",
+                       "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   return CURRENT_JNI_VERSION;
 }
@@ -198,5 +199,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_base_task_options_class);
   env->DeleteGlobalRef(java_actor_creation_options_class);
   env->DeleteGlobalRef(java_native_ray_object_class);
-  env->DeleteGlobalRef(java_worker_class);
+  env->DeleteGlobalRef(java_native_task_executor_class);
 }

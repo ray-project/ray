@@ -12,8 +12,6 @@ import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
-import org.ray.api.id.ActorId;
-import org.ray.api.id.JobId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
@@ -21,14 +19,17 @@ import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.context.RuntimeContextImpl;
+import org.ray.runtime.context.WorkerContext;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
-import org.ray.runtime.raylet.RayletClientImpl;
+import org.ray.runtime.object.RayObjectImpl;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
+import org.ray.runtime.task.TaskExecutor;
 import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
   protected RayConfig rayConfig;
-  protected AbstractWorker worker;
+  protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
   protected GcsClient gcsClient;
@@ -62,7 +63,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = worker.getObjectStoreProxy().put(obj);
+    ObjectId objectId = taskExecutor.getObjectStoreProxy().put(obj);
     return new RayObjectImpl<>(objectId);
   }
 
@@ -74,12 +75,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    return getWorker().getObjectStoreProxy().get(objectIds);
+    return getTaskExecutor().getObjectStoreProxy().get(objectIds);
   }
 
   @Override
   public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    worker.getObjectStoreProxy().delete(objectIds, localOnly, deleteCreatingTasks);
+    taskExecutor.getObjectStoreProxy().delete(objectIds, localOnly, deleteCreatingTasks);
   }
 
   @Override
@@ -88,7 +89,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     if (nodeId == null) {
       nodeId = UniqueId.NIL;
     }
-    worker.getRayletClient().setResource(resourceName, capacity, nodeId);
+    taskExecutor.getRayletClient().setResource(resourceName, capacity, nodeId);
   }
 
   @Override
@@ -100,7 +101,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());
 
-    List<Boolean> ready = worker.getObjectStoreProxy().wait(ids, numReturns, timeoutMs);
+    List<Boolean> ready = taskExecutor.getObjectStoreProxy().wait(ids, numReturns, timeoutMs);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -118,19 +119,17 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func)
+        functionManager.getFunction(taskExecutor.getWorkerContext().getCurrentJobId(), func)
             .functionDescriptor;
     return callNormalFunction(functionDescriptor, args, options);
   }
 
   @Override
   public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
-    AbstractRayActor abstractRayActor = (AbstractRayActor) actor;
-    Preconditions.checkState(abstractRayActor.getLanguage() == Language.JAVA);
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), func)
+        functionManager.getFunction(taskExecutor.getWorkerContext().getCurrentJobId(), func)
             .functionDescriptor;
-    return callActorFunction(abstractRayActor, functionDescriptor, args);
+    return callActorFunction(actor, functionDescriptor, args);
   }
 
   @Override
@@ -138,9 +137,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
       Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(worker.getWorkerContext().getCurrentJobId(), actorFactoryFunc)
+        functionManager.getFunction(taskExecutor.getWorkerContext().getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
-    return (RayActor<T>) createActorImpl(Language.JAVA, functionDescriptor, args, options);
+    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
   }
 
   private void checkPyArguments(Object[] args) {
@@ -163,12 +162,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject callPy(RayPyActor pyActor, String functionName, Object... args) {
-    AbstractRayActor abstractRayActor = (AbstractRayActor) pyActor;
-    Preconditions.checkState(abstractRayActor.getLanguage() == Language.PYTHON);
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), functionName);
-    return callActorFunction(abstractRayActor, functionDescriptor, args);
+    return callActorFunction(pyActor, functionDescriptor, args);
   }
 
   @Override
@@ -177,47 +174,50 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, className,
         PYTHON_INIT_METHOD_NAME);
-    return (RayPyActor) createActorImpl(Language.PYTHON, functionDescriptor, args, options);
+    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, CallOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitTask(functionDescriptor,
+    List<ObjectId> returnIds = taskExecutor.getTaskSubmitter().submitTask(functionDescriptor,
         functionArgs, 1, options);
     return new RayObjectImpl(returnIds.get(0));
   }
 
-  private RayObject callActorFunction(AbstractRayActor rayActor,
+  private RayObject callActorFunction(RayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args) {
-    Preconditions.checkState(rayActor.getLanguage() == functionDescriptor.getLanguage());
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, rayActor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActor,
+        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    List<ObjectId> returnIds = taskExecutor.getTaskSubmitter().submitActorTask(rayActor,
         functionDescriptor, functionArgs, 1, null);
     return new RayObjectImpl(returnIds.get(0));
   }
 
-  private AbstractRayActor createActorImpl(Language language, FunctionDescriptor functionDescriptor,
+  private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, language != Language.JAVA);
-    if (language != Language.JAVA && options != null) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder
+        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
-    AbstractRayActor actor = (AbstractRayActor) worker.getTaskInterface()
+    RayActor actor = taskExecutor.getTaskSubmitter()
         .createActor(functionDescriptor, functionArgs,
             options);
-    Preconditions.checkState(actor.getLanguage() == language);
     return actor;
   }
 
-  public AbstractWorker getWorker() {
-    return worker;
+  public TaskExecutor getTaskExecutor() {
+    return taskExecutor;
   }
 
   public WorkerContext getWorkerContext() {
-    return worker.getWorkerContext();
+    return taskExecutor.getWorkerContext();
+  }
+
+  public FunctionManager getFunctionManager() {
+    return functionManager;
   }
 
   public RayConfig getRayConfig() {

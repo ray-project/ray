@@ -3,7 +3,10 @@ package org.ray.runtime;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.objectstore.MockObjectInterface;
+import org.ray.runtime.object.LocalModeObjectStore;
+import org.ray.runtime.task.LocalModeTaskExecutor;
+import org.ray.runtime.task.LocalModeTaskSubmitter;
+import org.ray.runtime.task.TaskExecutor;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
@@ -13,32 +16,32 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
-  MockObjectInterface objectInterface;
-  MockTaskInterface taskInterface;
+  private LocalModeObjectStore objectStore;
+  private LocalModeTaskSubmitter taskSubmitter;
 
   @Override
   public void start() {
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
-    objectInterface = new MockObjectInterface();
-    taskInterface = new MockTaskInterface(this, objectInterface,
+    objectStore = new LocalModeObjectStore();
+    taskSubmitter = new LocalModeTaskSubmitter(this, objectStore,
         rayConfig.numberExecThreadsForDevRuntime);
-    objectInterface.addObjectPutCallback(taskInterface::onObjectPut);
-    worker = new MockWorker(this);
+    objectStore.addObjectPutCallback(taskSubmitter::onObjectPut);
+    taskExecutor = new LocalModeTaskExecutor(this);
   }
 
   @Override
   public void shutdown() {
-    worker = null;
+    taskExecutor = null;
   }
 
   @Override
-  public AbstractWorker getWorker() {
-    AbstractWorker result = ((MockTaskInterface) worker.getTaskInterface()).getCurrentWorker();
+  public TaskExecutor getTaskExecutor() {
+    TaskExecutor result = ((LocalModeTaskSubmitter) taskExecutor.getTaskSubmitter()).getCurrentTaskExecutor();
     if (result == null) {
       // This is a workaround to support multi-threading in driver when running in single process mode.
-      result = worker;
+      result = taskExecutor;
     }
     return result;
   }
@@ -46,4 +49,13 @@ public class RayDevRuntime extends AbstractRayRuntime {
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
   }
+
+  public LocalModeObjectStore getObjectStore() {
+    return objectStore;
+  }
+
+  public LocalModeTaskSubmitter getTaskSubmitter() {
+    return taskSubmitter;
+  }
+
 }

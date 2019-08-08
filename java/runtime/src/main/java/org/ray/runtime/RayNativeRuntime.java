@@ -17,6 +17,7 @@ import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.runner.RunManager;
+import org.ray.runtime.task.NativeTaskExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,7 +98,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setJobId(gcsClient.nextJobId());
     }
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    worker = new WorkerImpl(rayConfig.workerMode, this,
+    taskExecutor = new NativeTaskExecutor(rayConfig.workerMode, this,
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
         rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL);
 
@@ -113,11 +114,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (null != manager) {
       manager.cleanup();
     }
-    ((WorkerImpl)worker).destroy();
+    ((NativeTaskExecutor) taskExecutor).destroy();
   }
 
   public void loop() {
-    ((WorkerImpl)worker).loop();
+    ((NativeTaskExecutor) taskExecutor).loop();
   }
 
   /**
@@ -126,7 +127,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private void registerWorker() {
     RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
     Map<String, String> workerInfo = new HashMap<>();
-    String workerId = new String(worker.getWorkerContext().getCurrentWorkerId().getBytes());
+    String workerId = new String(taskExecutor.getWorkerContext().getCurrentWorkerId().getBytes());
     if (rayConfig.workerMode == WorkerType.DRIVER) {
       workerInfo.put("node_ip_address", rayConfig.nodeIp);
       workerInfo.put("driver_id", workerId);
