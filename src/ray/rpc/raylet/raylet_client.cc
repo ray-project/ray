@@ -109,7 +109,7 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   if (status.ok()) {
     resource_ids_.clear();
     // Parse resources that would be used by this assigned task.
-    for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
+    for (int64_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
       auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];
       auto &acquired_resources = resource_ids_[fractional_resource_ids.resource_name()];
 

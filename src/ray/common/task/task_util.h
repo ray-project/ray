@@ -22,9 +22,9 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
-      const Language &language, const std::vector<std::string> &function_descriptor,
-      const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
-      uint64_t num_returns,
+      const TaskID &task_id, const Language &language,
+      const std::vector<std::string> &function_descriptor, const JobID &job_id,
+      const TaskID &parent_task_id, uint64_t parent_counter, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -33,8 +33,7 @@ class TaskSpecBuilder {
       message_->add_function_descriptor(fd);
     }
     message_->set_job_id(job_id.Binary());
-    message_->set_task_id(
-        GenerateTaskId(job_id, parent_task_id, parent_counter).Binary());
+    message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
     message_->set_parent_counter(parent_counter);
     message_->set_num_returns(num_returns);

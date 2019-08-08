@@ -2520,13 +2520,14 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_id_hex = ray.ObjectID.nil().hex()
+    nil_unique_id_hex = ray.UniqueID.nil().hex()
+    nil_actor_id_hex = ray.ActorID.nil().hex()
 
     assert task_spec["TaskID"] == driver_task_id
-    assert task_spec["ActorID"] == nil_id_hex
+    assert task_spec["ActorID"] == nil_actor_id_hex
     assert task_spec["Args"] == []
     assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["FunctionID"] == nil_id_hex
+    assert task_spec["FunctionID"] == nil_unique_id_hex
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.nodes()
@@ -2551,7 +2552,7 @@ def test_global_state_api(shutdown_only):
     task_id = list(task_id_set)[0]
 
     task_spec = task_table[task_id]["TaskSpec"]
-    assert task_spec["ActorID"] == nil_id_hex
+    assert task_spec["ActorID"] == nil_actor_id_hex
     assert task_spec["Args"] == [1, "hi", x_id]
     assert task_spec["JobID"] == job_id.hex()
     assert task_spec["ReturnObjectIDs"] == [result_id]
