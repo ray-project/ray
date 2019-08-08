@@ -144,10 +144,10 @@ COMMON_CONFIG = {
     # Heap memory to reserve for the trainer process (0 for unlimited). This
     # can be large if your are using large train batches, replay buffers, etc.
     "memory": 0,
-    # Object store memory to reserve for the trainer process. This can be
-    # large if the trainer is gathering large batches (e.g., in PPO), but
-    # otherwise being large enough to fit a few sample batches is sufficient.
-    "object_store_memory": 0,
+    # Object store memory to reserve for the trainer process. Being large
+    # enough to fit a few copies of the model weights should be sufficient.
+    # This is enabled by default since models are typically quite small.
+    "object_store_memory": 200 * 1024 * 1024,
     # Heap memory to reserve for each worker. Should generally be small unless
     # your environment is very heavyweight.
     "memory_per_worker": 0,
