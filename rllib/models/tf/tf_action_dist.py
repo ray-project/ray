@@ -89,8 +89,9 @@ class Categorical(TFActionDistribution):
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    def __init__(self, inputs, input_lens, model):
-        TFActionDistribution.__init__(self, inputs, model)
+    def __init__(self, inputs, model, input_lens):
+        # skip TFActionDistribution init
+        ActionDistribution.__init__(self, inputs, model)
         self.cats = [
             Categorical(input_, model)
             for input_ in tf.split(inputs, input_lens, axis=1)
@@ -207,7 +208,8 @@ class MultiActionDistribution(TFActionDistribution):
 
     def __init__(self, inputs, model, action_space, child_distributions,
                  input_lens):
-        TFActionDistribution.__init__(self, inputs, model)
+        # skip TFActionDistribution init
+        ActionDistribution.__init__(self, inputs, model)
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
