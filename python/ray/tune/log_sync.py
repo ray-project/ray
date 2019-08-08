@@ -56,8 +56,8 @@ def log_sync_template(exclude_patterns=()):
                 "-o ConnectTimeout=120s",
                 "-o StrictHostKeyChecking=no",
             ))),
-        "{{source}}",
-        "{{target}}",
+        "{source}",
+        "{target}",
     ))
 
     return log_sync_command
