@@ -124,7 +124,8 @@ class ActorMethod(object):
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
             return the resulting ObjectIDs. For an example, see
-            "test_decorated_method" in "python/ray/tests/test_actor.py".
+            "test_decorated_method" in "python/ray/tests/
+            ".
     """
 
     def __init__(self, actor, method_name, num_return_vals, decorator=None):
