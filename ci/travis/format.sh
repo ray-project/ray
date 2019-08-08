@@ -17,8 +17,8 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-# Add the upstream branch if it doesn't exist
-if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
+# Add the upstream remote if it doesn't exist
+if ! git remote -v | grep -q upstream; then
     git remote add 'upstream' 'https://github.com/ray-project/ray.git'
 fi
 

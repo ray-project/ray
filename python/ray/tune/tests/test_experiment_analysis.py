@@ -48,6 +48,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
 
+    def testStats(self):
+        assert self.ea.stats()
+        assert self.ea.runner_data()
+
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints
         idx = random.randint(0, len(checkpoints) - 1)

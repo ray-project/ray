@@ -140,7 +140,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
 
     std::unique_lock<std::mutex> lock(lock_);
     // Check for existing objects and see if this get request can be fullfilled.
-    for (int i = 0; i < object_ids.size(); i++) {
+    for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
@@ -178,7 +178,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   {
     std::unique_lock<std::mutex> lock(lock_);
     // Populate results.
-    for (int i = 0; i < object_ids.size(); i++) {
+    for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
       if ((*results)[i] == nullptr) {
         (*results)[i] = get_request->Get(object_id);

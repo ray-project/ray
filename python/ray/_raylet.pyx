@@ -93,19 +93,11 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
         result.push_back(object_id.native())
     return result
 
-
-cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
-    result = []
-    for i in range(object_ids.size()):
-        result.append(ObjectID(object_ids[i].Binary()))
-    return result
-
-
 def compute_put_id(TaskID task_id, int64_t put_index):
-    if put_index < 1 or put_index > kMaxTaskPuts:
+    if put_index < 1 or put_index > <int64_t>CObjectID.MaxObjectIndex():
         raise ValueError("The range of 'put_index' should be [1, %d]"
-                         % kMaxTaskPuts)
-    return ObjectID(CObjectID.ForPut(task_id.native(), put_index).Binary())
+                         % CObjectID.MaxObjectIndex())
+    return ObjectID(CObjectID.ForPut(task_id.native(), put_index, 0).Binary())
 
 
 def compute_task_id(ObjectID object_id):

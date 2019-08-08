@@ -148,4 +148,4 @@ cdef extern from "ray/gcs/gcs_client_interface.h" namespace "ray::gcs" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
                           const c_string &password,
-                          c_bool is_test_client = false)
+                          c_bool is_test_client)
