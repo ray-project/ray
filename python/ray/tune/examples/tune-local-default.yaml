@@ -4,7 +4,7 @@ provider:
     head_ip: YOUR_HEAD_NODE_HOSTNAME
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
 auth: {ssh_user: YOUR_USERNAME, ssh_private_key: ~/.ssh/id_rsa}
-## Typically for local clusters, min_workers == initial_workers == max_workers.
+## Typically for local clusters, min_workers == max_workers.
 min_workers: 3
 max_workers: 3
 setup_commands:  # Set up each node.

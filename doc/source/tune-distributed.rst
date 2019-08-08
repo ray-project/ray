@@ -40,6 +40,12 @@ One common approach to modifying an existing Tune experiment to go distributed i
     # On the head node, connect to an existing ray cluster
     $ python tune_script.py --ray-redis-address=localhost:XXXX
 
+If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray submit --start``), use:
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml tune_script.py --args="--ray-redis-address=localhost:6379"
+
 .. tip::
 
     1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
