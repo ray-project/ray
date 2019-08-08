@@ -12,9 +12,9 @@ environment:
   # dockerimage: The docker image to be used to run the project in. Like ubuntu:18.04
   requirements: {{requirements}}
 
-  shell: # shell commands to be ran for environment setup.
+  shell: # Shell commands to be ran for environment setup.
     - echo "Setting up the environment"
 
 commands:
-  - name: first command
+  - name: first-command
     command: echo "Starting ray job"

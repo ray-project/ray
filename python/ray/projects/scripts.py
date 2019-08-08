@@ -20,7 +20,7 @@ logger = logging.getLogger(__file__)
 PROJECT_DIR = ".rayproject"
 PROJECT_YAML = os.path.join(PROJECT_DIR, "project.yaml")
 CLUSTER_YAML = os.path.join(PROJECT_DIR, "cluster.yaml")
-REQ_TXT = os.path.join(PROJECT_DIR, "requirements.txt")
+REQUIREMENTS_TXT = os.path.join(PROJECT_DIR, "requirements.txt")
 
 # File layout for templates file
 # RAY/.../projects/
@@ -30,9 +30,9 @@ REQ_TXT = os.path.join(PROJECT_DIR, "requirements.txt")
 #     requirements.txt
 _THIS_FILE_DIR = os.path.split(os.path.abspath(__file__))[0]
 _TEMPLATE_DIR = os.path.join(_THIS_FILE_DIR, "templates")
-PROJECT_TMPL = os.path.join(_TEMPLATE_DIR, "project_template.yaml")
-CLUSTER_TMPL = os.path.join(_TEMPLATE_DIR, "cluster_template.yaml")
-REQ_TXT_TMPL = os.path.join(_TEMPLATE_DIR, "requirements.txt")
+PROJECT_TEMPLATE = os.path.join(_TEMPLATE_DIR, "project_template.yaml")
+CLUSTER_TEMPLATE = os.path.join(_TEMPLATE_DIR, "cluster_template.yaml")
+REQUIREMENTS_TXT_TEMPLATE = os.path.join(_TEMPLATE_DIR, "requirements.txt")
 
 
 @click.group("project", help="Commands working with ray project")
@@ -65,35 +65,40 @@ def validate(verbose):
     help="Path to requirements.txt. Created by default",
     default=None)
 def create(project_name, cluster_yaml, requirements):
+    if os.path.exists(PROJECT_DIR):
+        raise click.ClickException(
+            "Project directory {} already exists.".format(PROJECT_DIR))
     os.makedirs(PROJECT_DIR)
 
     if cluster_yaml is None:
-        logging.warn("Using default autoscaler yaml")
+        logger.warn("Using default autoscaler yaml")
 
-        with open(CLUSTER_TMPL) as f:
-            tmpl = f.read().replace(r"{{name}}", project_name)
+        with open(CLUSTER_TEMPLATE) as f:
+            template = f.read().replace(r"{{name}}", project_name)
         with open(CLUSTER_YAML, "w") as f:
-            f.write(tmpl)
+            f.write(template)
 
         cluster_yaml = CLUSTER_YAML
 
     if requirements is None:
-        logging.warn("Using default requirements.txt")
+        logger.warn("Using default requirements.txt")
         # no templating required, just copy the file
-        copyfile(REQ_TXT_TMPL, REQ_TXT)
+        copyfile(REQUIREMENTS_TXT_TEMPLATE, REQUIREMENTS_TXT)
 
-        requirements = REQ_TXT
+        requirements = REQUIREMENTS_TXT
 
-    with open(PROJECT_TMPL) as f:
-        proj_tmpl = f.read()
+    with open(PROJECT_TEMPLATE) as f:
+        project_template = f.read()
         # NOTE(simon):
         # We could use jinja2, which will make the templating part easier.
-        proj_tmpl = proj_tmpl.replace(r"{{name}}", project_name)
-        proj_tmpl = proj_tmpl.replace(r"{{cluster}}", cluster_yaml)
-        proj_tmpl = proj_tmpl.replace(r"{{requirements}}", requirements)
+        project_template = project_template.replace(r"{{name}}", project_name)
+        project_template = project_template.replace(r"{{cluster}}",
+                                                    cluster_yaml)
+        project_template = project_template.replace(r"{{requirements}}",
+                                                    requirements)
 
     with open(PROJECT_YAML, "w") as f:
-        f.write(proj_tmpl)
+        f.write(project_template)
 
 
 @click.group("session", help="Commands working with ray session")
