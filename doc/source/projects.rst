@@ -19,7 +19,7 @@ Quick start (CLI)
     # Launch a cluster and run the appropriate command.
     $ ray session start [--name="default-session"]
 
-    # Open a console for the given session. If the session is stopped
+    # Open a console for the given session. If the session is stopped,
     # this auto-starts the session if --start is specified.
     $ ray session attach [<default-session>] [--start]
 
