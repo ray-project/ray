@@ -32,7 +32,7 @@ from ray.tests.utils import (
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(100)
+@pytest.mark.timeout(200)
 def test_zombie_actors(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
