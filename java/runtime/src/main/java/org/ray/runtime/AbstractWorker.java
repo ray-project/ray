@@ -17,11 +17,10 @@ import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
-import org.ray.runtime.nativeTypes.NativeRayObject;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
-import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

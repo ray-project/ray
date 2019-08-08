@@ -8,7 +8,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.AbstractWorker;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.nativeTypes.NativeRayObject;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.ray.runtime.util.Serializer;
 
 public class ArgumentsBuilder {

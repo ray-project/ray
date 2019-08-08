@@ -84,13 +84,6 @@ extern jfieldID java_function_arg_id;
 /// data field of NativeTaskArg class
 extern jfieldID java_function_arg_data;
 
-/// NativeResources class
-extern jclass java_native_resources_class;
-/// keys field of NativeResources class
-extern jfieldID java_native_resources_keys;
-/// values field of NativeResources class
-extern jfieldID java_native_resources_values;
-
 /// BaseTaskOptions class
 extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class

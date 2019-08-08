@@ -6,7 +6,6 @@ import org.ray.api.exception.RayException;
 import org.ray.api.id.BaseId;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.nativeTypes.NativeRayObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

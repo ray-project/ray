@@ -45,10 +45,6 @@ jclass java_function_arg_class;
 jfieldID java_function_arg_id;
 jfieldID java_function_arg_data;
 
-jclass java_native_resources_class;
-jfieldID java_native_resources_keys;
-jfieldID java_native_resources_values;
-
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
@@ -144,13 +140,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_function_arg_class, "id", "Lorg/ray/api/id/ObjectId;");
   java_function_arg_data = env->GetFieldID(java_function_arg_class, "data", "[B");
 
-  java_native_resources_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeResources");
-  java_native_resources_keys =
-      env->GetFieldID(java_native_resources_class, "keys", "Ljava/util/List;");
-  java_native_resources_values =
-      env->GetFieldID(java_native_resources_class, "values", "Ljava/util/List;");
-
   java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
@@ -173,7 +162,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_gcs_client_options_class, "isTestClient", "Z");
 
   java_native_ray_object_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeRayObject");
+      LoadClass(env, "org/ray/runtime/objectstore/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
   java_native_ray_object_data =
@@ -206,7 +195,6 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);
   env->DeleteGlobalRef(java_function_arg_class);
-  env->DeleteGlobalRef(java_native_resources_class);
   env->DeleteGlobalRef(java_base_task_options_class);
   env->DeleteGlobalRef(java_actor_creation_options_class);
   env->DeleteGlobalRef(java_native_ray_object_class);

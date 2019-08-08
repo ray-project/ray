@@ -13,7 +13,7 @@ import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.nativeTypes.NativeRayObject;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
