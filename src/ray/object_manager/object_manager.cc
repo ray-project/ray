@@ -61,7 +61,7 @@ void ObjectManager::StopRpcService() {
 void ObjectManager::HandleObjectAdded(
     const object_manager::protocol::ObjectInfoT &object_info) {
   // Notify the object directory that the object has been added to this node.
-  ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
+  ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
@@ -769,9 +769,8 @@ void ObjectManager::SpreadFreeObjectsRequest(
     const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
-  for (const auto &e : object_ids) {
-    free_objects_request.add_object_ids(e.Binary());
-  }
+  IdVectorToProtobuf<ObjectID, rpc::FreeObjectsRequest>(
+      object_ids, free_objects_request, &rpc::FreeObjectsRequest::add_object_ids);
 
   for (auto &rpc_client : rpc_clients) {
     rpc_client->FreeObjects(free_objects_request, [](const Status &status,

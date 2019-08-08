@@ -1,12 +1,18 @@
 package org.ray.api.test;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayActorException;
+import org.ray.api.exception.RayException;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
+import org.ray.api.function.RayFunc0;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -20,6 +26,15 @@ public class FailureTest extends BaseTest {
 
   public static int badFunc2() {
     System.exit(-1);
+    return 0;
+  }
+
+  public static int slowFunc() {
+    try {
+      Thread.sleep(10000);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
     return 0;
   }
 
@@ -104,6 +119,27 @@ public class FailureTest extends BaseTest {
     } catch (RayActorException e) {
       // When a actor task is submitted to a dead actor, we should also receive an
       // RayActorException.
+    }
+  }
+
+  @Test
+  public void testGetThrowsQuicklyWhenFoundException() {
+    TestUtils.skipTestUnderSingleProcess();
+    List<RayFunc0<Integer>> badFunctions = Arrays.asList(FailureTest::badFunc,
+        FailureTest::badFunc2);
+    for (RayFunc0<Integer> badFunc : badFunctions) {
+      RayObject<Integer> obj1 = Ray.call(badFunc);
+      RayObject<Integer> obj2 = Ray.call(FailureTest::slowFunc);
+      Instant start = Instant.now();
+      try {
+        Ray.get(Arrays.asList(obj1.getId(), obj2.getId()));
+        Assert.fail("Should throw RayException.");
+      } catch (RayException e) {
+        Instant end = Instant.now();
+        long duration = Duration.between(start, end).toMillis();
+        Assert.assertTrue(duration < 5000, "Should fail quickly. " +
+            "Actual execution time: " + duration + " ms.");
+      }
     }
   }
 }

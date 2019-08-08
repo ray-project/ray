@@ -5,8 +5,10 @@ from __future__ import print_function
 import random
 import threading
 from collections import defaultdict
+import logging
 
 import boto3
+import botocore
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
@@ -14,7 +16,6 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -172,6 +173,13 @@ class AWSNodeProvider(NodeProvider):
     def create_node(self, node_config, tags, count):
         tags = to_aws_format(tags)
         conf = node_config.copy()
+
+        # Delete unsupported keys from the node config
+        try:
+            del conf["Resources"]
+        except KeyError:
+            pass
+
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
             "Value": self.cluster_name,
@@ -207,23 +215,36 @@ class AWSNodeProvider(NodeProvider):
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
-        subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-        self.subnet_idx += 1
-        conf.update({
-            "MinCount": 1,
-            "MaxCount": count,
-            "SubnetId": subnet_id,
-            "TagSpecifications": tag_specs
-        })
 
-        logger.info(
-            "NodeProvider: Calling create_instances (count={}).".format(count))
-        L = self.ec2.create_instances(**conf)
-        for x in L:
-            logger.info("NodeProvider: Created instance "
-                        "[id={}, name={}, info={}]".format(
-                            x.instance_id, x.state["Name"],
-                            x.state_reason["Message"]))
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                logger.info("NodeProvider: calling create_instances "
+                            "with {} (count={}).".format(subnet_id, count))
+                self.subnet_idx += 1
+                conf.update({
+                    "MinCount": 1,
+                    "MaxCount": count,
+                    "SubnetId": subnet_id,
+                    "TagSpecifications": tag_specs
+                })
+                created = self.ec2.create_instances(**conf)
+                for instance in created:
+                    logger.info("NodeProvider: Created instance "
+                                "[id={}, name={}, info={}]".format(
+                                    instance.instance_id,
+                                    instance.state["Name"],
+                                    instance.state_reason["Message"]))
+                break
+            except botocore.exceptions.ClientError as exc:
+                if attempt == max_retries:
+                    logger.error(
+                        "create_instances: Max attempts ({}) exceeded.".format(
+                            max_retries))
+                    raise exc
+                else:
+                    logger.error(exc)
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)

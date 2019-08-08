@@ -1,0 +1,64 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "The name of the project",
+      "type": "string"
+    },
+    "description": {
+      "description": "A short description of the project",
+      "type": "string"
+    },
+    "repo": {
+      "description": "The URL of the repo this project is part of",
+      "type": "string"
+    },
+    "cluster": {
+      "description": "Path to a .yaml cluster configuration file (relative to the project root)",
+      "type": "string"
+    },
+    "environment": {
+      "description": "The environment that needs to be set up to run the project",
+      "type": "object",
+      "properties": {
+        "dockerimage": {
+          "description": "URL to a docker image that can be pulled to run the project in",
+          "type": "string"
+        },
+        "dockerfile": {
+          "description": "Path to a Dockerfile to set up an image the project can run in (relative to the project root)",
+          "type": "string"
+        },
+        "requirements": {
+          "description": "Path to a Python requirements.txt file to set up project dependencies (relative to the project root)",
+          "type": "string"
+        },
+        "shell": {
+          "description": "A sequence of shell commands to run to set up the project environment",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "description": "Possible commands to run to start a session",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Name of the command",
+            "type": "string"
+          },
+          "command": {
+            "description": "Shell command to run on the cluster",
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": ["name", "cluster"]
+}

@@ -66,6 +66,7 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         c_bool IsActorTask() const
         CActorID ActorCreationId() const
         CObjectID ActorCreationDummyObjectId() const
+        CObjectID PreviousActorTaskDummyObjectId() const
         uint64_t MaxActorReconstructions() const
         CActorID ActorId() const
         CActorHandleID ActorHandleId() const
@@ -77,8 +78,9 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
 cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
     cdef cppclass TaskSpecBuilder "ray::TaskSpecBuilder":
         TaskSpecBuilder &SetCommonTaskSpec(
-            const CLanguage &language, const c_vector[c_string] &function_descriptor,
-            const CJobID &job_id, const CTaskID &parent_task_id, uint64_t parent_counter,
+            const CTaskID &task_id, const CLanguage &language,
+            const c_vector[c_string] &function_descriptor, const CJobID &job_id,
+            const CTaskID &parent_task_id, uint64_t parent_counter,
             uint64_t num_returns, const unordered_map[c_string, double] &required_resources,
             const unordered_map[c_string, double] &required_placement_resources)
 
@@ -92,8 +94,10 @@ cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
 
         TaskSpecBuilder &SetActorTaskSpec(
             const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-            const CObjectID &actor_creation_dummy_object_id, uint64_t actor_counter,
-            const c_vector[CActorHandleID] &new_handle_ids)
+            const CObjectID &actor_creation_dummy_object_id,
+            const CObjectID &previous_actor_task_dummy_object_id,
+            uint64_t actor_counter,
+            const c_vector[CActorHandleID] &new_handle_ids);
 
         RpcTaskSpec GetMessage()
 

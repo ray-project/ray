@@ -2,7 +2,6 @@
 
 #include <boost/bind.hpp>
 
-#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
 
 namespace ray {
@@ -10,25 +9,28 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid, const Language &language, int port,
-               std::shared_ptr<LocalClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager)
-    : pid_(pid),
-      language_(language),
+Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
+               rpc::ClientCallManager &client_call_manager, bool is_worker)
+    : worker_id_(worker_id),
+      pid_(pid),
       port_(port),
-      connection_(connection),
-      dead_(false),
+      language_(language),
       blocked_(false),
-      client_call_manager_(client_call_manager) {
+      num_missed_heartbeats_(0),
+      is_being_killed_(false),
+      client_call_manager_(client_call_manager),
+      is_worker_(is_worker) {
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
   }
 }
 
-void Worker::MarkDead() { dead_ = true; }
+void Worker::MarkAsBeingKilled() { is_being_killed_ = true; }
 
-bool Worker::IsDead() const { return dead_; }
+bool Worker::IsBeingKilled() const { return is_being_killed_; }
+
+bool Worker::IsWorker() const { return is_worker_; }
 
 void Worker::MarkBlocked() { blocked_ = true; }
 
@@ -36,9 +38,13 @@ void Worker::MarkUnblocked() { blocked_ = false; }
 
 bool Worker::IsBlocked() const { return blocked_; }
 
+WorkerID Worker::WorkerId() const { return worker_id_; }
+
 pid_t Worker::Pid() const { return pid_; }
 
 Language Worker::GetLanguage() const { return language_; }
+
+const WorkerID &Worker::GetWorkerId() const { return worker_id_; }
 
 int Worker::Port() const { return port_; }
 
@@ -73,10 +79,6 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
-  return connection_;
-}
-
 const ResourceIdSet &Worker::GetLifetimeResourceIds() const {
   return lifetime_resource_ids_;
 }
@@ -110,10 +112,16 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   task_resource_ids_.Release(cpu_resources);
 }
 
+void Worker::SetGetTaskReplyAndCallback(
+    rpc::GetTaskReply *reply, const rpc::SendReplyCallback &&send_reply_callback) {
+  RAY_CHECK(reply_ == nullptr && send_reply_callback_ == nullptr);
+  reply_ = reply;
+  send_reply_callback_ = std::move(send_reply_callback);
+}
+
 bool Worker::UsePush() const { return rpc_client_ != nullptr; }
 
-void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
-                        const std::function<void(Status)> finish_assign_callback) {
+void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (rpc_client_ != nullptr) {
     // Use push mode.
@@ -123,29 +131,32 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
         task.GetTaskSpecification().GetMessage());
     request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
         task.GetTaskExecutionSpec().GetMessage());
-    request.set_resource_ids(resource_id_set.Serialize());
-
+    for (const auto &e : resource_id_set.ToProtobuf()) {
+      auto resource = request.add_resource_ids();
+      *resource = e;
+    }
     auto status = rpc_client_->AssignTask(
         request, [](Status status, const rpc::AssignTaskReply &reply) {
           // Worker has finished this task. There's nothing to do here
           // and assigning new task will be done when raylet receives
           // `TaskDone` message.
         });
-    finish_assign_callback(status);
   } else {
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
-
-    auto message =
-        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
-                                     fbb.CreateVector(resource_id_set_flatbuf));
-    fbb.Finish(message);
-    Connection()->WriteMessageAsync(
-        static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-        fbb.GetBufferPointer(), finish_assign_callback);
+    RAY_CHECK(reply_ != nullptr && send_reply_callback_ != nullptr);
+    reply_->set_task_spec(task.GetTaskSpecification().Serialize());
+    for (const auto &e : resource_id_set.ToProtobuf()) {
+      auto resource = reply_->add_fractional_resource_ids();
+      *resource = e;
+    }
+    send_reply_callback_(Status::OK(), nullptr, nullptr);
+    reply_ = nullptr;
+    send_reply_callback_ = nullptr;
   }
+  // The status will be cleared when the worker dies.
+  AssignTaskId(spec.TaskId());
+  AssignJobId(spec.JobId());
 }
 
 }  // namespace raylet

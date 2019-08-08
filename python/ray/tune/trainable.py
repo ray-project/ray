@@ -26,6 +26,8 @@ from ray.tune.util import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
+SETUP_TIME_THRESHOLD = 10
+
 
 class Trainable(object):
     """Abstract class for trainable models, functions, etc.
@@ -93,7 +95,14 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+        start_time = time.time()
         self._setup(copy.deepcopy(self.config))
+        setup_time = time.time() - start_time
+        if setup_time > SETUP_TIME_THRESHOLD:
+            logger.info("_setup took {:.3f} seconds. If your trainable is "
+                        "slow to initialize, consider setting "
+                        "reuse_actors=True to reduce actor creation "
+                        "overheads.".format(setup_time))
         self._local_ip = ray.services.get_node_ip_address()
         self._monitor = UtilMonitor(start=log_sys_usage)
 
@@ -114,6 +123,7 @@ class Trainable(object):
         return ""
 
     def current_ip(self):
+        logger.warning("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -457,7 +467,9 @@ class Trainable(object):
 
         Args:
             checkpoint_dir (str): The directory where the checkpoint
-                file must be stored.
+                file must be stored. In a Tune run, this defaults to
+                `<self.logdir>/checkpoint_<ITER>` (which is the same as
+                `local_dir/exp_name/trial_name/checkpoint_<ITER>`).
 
         Returns:
             checkpoint (str | dict): If string, the return value is

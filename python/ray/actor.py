@@ -310,7 +310,8 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ActorID.from_random()
+        actor_id = ActorID.of(worker.current_job_id, worker.current_task_id,
+                              worker.task_context.task_index + 1)
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -547,7 +548,7 @@ class ActorHandle(object):
                     actor_counter=self._ray_actor_counter,
                     actor_creation_dummy_object_id=(
                         self._ray_actor_creation_dummy_object_id),
-                    execution_dependencies=[self._ray_actor_cursor],
+                    previous_actor_task_dummy_object_id=self._ray_actor_cursor,
                     new_actor_handles=self._ray_new_actor_handles,
                     # We add one for the dummy return ID.
                     num_return_vals=num_return_vals + 1,

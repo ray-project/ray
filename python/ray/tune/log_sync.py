@@ -31,7 +31,7 @@ def log_sync_template():
     ssh_key = get_ssh_key()
     if ssh_key is None:
         if not _log_sync_warned:
-            logger.error("Log sync requires cluster to be setup with "
+            logger.debug("Log sync requires cluster to be setup with "
                          "`ray up`.")
             _log_sync_warned = True
         return
@@ -55,7 +55,7 @@ class NodeSyncMixin():
 
     def _check_valid_worker_ip(self):
         if not self.worker_ip:
-            logger.info("Worker ip unknown, skipping log sync for {}".format(
+            logger.debug("Worker ip unknown, skipping log sync for {}".format(
                 self._local_dir))
             return False
         if self.worker_ip == self.local_ip:

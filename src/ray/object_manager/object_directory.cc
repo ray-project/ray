@@ -3,13 +3,13 @@
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
-                                 std::shared_ptr<gcs::AsyncGcsClient> &gcs_client)
+                                 std::shared_ptr<gcs::RedisGcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
 
-using ray::rpc::ClientTableData;
 using ray::rpc::GcsChangeMode;
+using ray::rpc::GcsNodeInfo;
 using ray::rpc::ObjectTableData;
 
 /// Process a notification of the object table entries and store the result in
@@ -44,7 +44,7 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
 
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback =
-      [this](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+      [this](gcs::RedisGcsClient *client, const ObjectID &object_id,
              const GcsChangeMode change_mode,
              const std::vector<ObjectTableData> &location_updates) {
         // Objects are added to this map in SubscribeObjectLocations.
@@ -106,14 +106,14 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  ClientTableData client_data;
-  gcs_client_->client_table().GetClient(connection_info.client_id, client_data);
-  ClientID result_client_id = ClientID::FromBinary(client_data.client_id());
+  GcsNodeInfo node_info;
+  gcs_client_->client_table().GetClient(connection_info.client_id, node_info);
+  ClientID result_client_id = ClientID::FromBinary(node_info.node_id());
   if (!result_client_id.IsNil()) {
     RAY_CHECK(result_client_id == connection_info.client_id);
-    if (client_data.is_insertion()) {
-      connection_info.ip = client_data.node_manager_address();
-      connection_info.port = static_cast<uint16_t>(client_data.object_manager_port());
+    if (node_info.state() == GcsNodeInfo::ALIVE) {
+      connection_info.ip = node_info.node_manager_address();
+      connection_info.port = static_cast<uint16_t>(node_info.object_manager_port());
     }
   }
 }
@@ -211,7 +211,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // directly from the GCS.
     status = gcs_client_->object_table().Lookup(
         JobID::Nil(), object_id,
-        [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+        [this, callback](gcs::RedisGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableData> &location_updates) {
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;

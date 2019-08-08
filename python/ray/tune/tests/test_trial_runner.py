@@ -23,13 +23,13 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
                              TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
-                             TIME_THIS_ITER_S, TIME_TOTAL_S)
+                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
 from ray.tune.logger import Logger
-from ray.tune.util import pin_in_object_store, get_pinned_object
+from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
-from ray.tune.trial import (Trial, ExportFormat, Resources, resources_to_json,
-                            json_to_resources)
+from ray.tune.trial import Trial, ExportFormat
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
@@ -44,7 +44,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=int(1e8))
 
     def tearDown(self):
         ray.shutdown()
@@ -115,6 +115,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         NO_COMPARE_FIELDS = {
             HOSTNAME,
             NODE_IP,
+            TRIAL_ID,
             PID,
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
@@ -432,7 +433,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 reporter(test={"test1": {"test2": i}})
 
-        [trial] = tune.run(train, stop={"test": {"test1": {"test2": 6}}})
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(
+                train, stop={
+                    "test": {
+                        "test1": {
+                            "test2": 6
+                        }
+                    }
+                }).trials
+        [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
     def testEarlyReturn(self):
@@ -505,6 +515,53 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
+
+    def testNestedResults(self):
+        def create_result(i):
+            return {"test": {"1": {"2": {"3": i, "4": False}}}}
+
+        flattened_keys = list(flatten_dict(create_result(0)))
+
+        class _MockScheduler(FIFOScheduler):
+            results = []
+
+            def on_trial_result(self, trial_runner, trial, result):
+                self.results += [result]
+                return TrialScheduler.CONTINUE
+
+            def on_trial_complete(self, trial_runner, trial, result):
+                self.complete_result = result
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(**create_result(i))
+
+        algo = _MockSuggestionAlgorithm()
+        scheduler = _MockScheduler()
+        [trial] = tune.run(
+            train,
+            scheduler=scheduler,
+            search_alg=algo,
+            stop={
+                "test/1/2/3": 20
+            }).trials
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["3"], 20)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["4"], False)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 21)
+        self.assertEqual(len(scheduler.results), 20)
+        self.assertTrue(
+            all(
+                set(result) >= set(flattened_keys)
+                for result in scheduler.results))
+        self.assertTrue(set(scheduler.complete_result) >= set(flattened_keys))
+        self.assertEqual(len(algo.results), 20)
+        self.assertTrue(
+            all(set(result) >= set(flattened_keys) for result in algo.results))
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"1/2/3": 20})
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"test": 1}).trials
 
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
@@ -696,9 +753,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 
 class RunExperimentTest(unittest.TestCase):
-    def setUp(self):
-        ray.init()
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -938,7 +992,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_cloud": "echo {source} {target}"
-                })
+                }).trials
 
     @patch("ray.tune.syncer.S3_PREFIX", "test")
     def testCloudProperString(self):
@@ -953,7 +1007,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     },
                     "upload_dir": "test",
                     "sync_to_cloud": "ls {target}"
-                })
+                }).trials
 
         with self.assertRaises(ValueError):
             [trial] = tune.run(
@@ -966,7 +1020,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     },
                     "upload_dir": "test",
                     "sync_to_cloud": "ls {source}"
-                })
+                }).trials
 
         tmpdir = tempfile.mkdtemp()
         logfile = os.path.join(tmpdir, "test.log")
@@ -981,7 +1035,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 "upload_dir": "test",
                 "sync_to_cloud": "echo {source} {target} > " + logfile
-            })
+            }).trials
         with open(logfile) as f:
             lines = f.read()
             self.assertTrue("test" in lines)
@@ -1000,7 +1054,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_driver": "ls {target}"
-                })
+                }).trials
 
         with self.assertRaises(TuneError):
             # This raises TuneError because logger is init in safe zone.
@@ -1013,7 +1067,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_driver": "ls {source}"
-                })
+                }).trials
 
         with patch("ray.tune.syncer.CommandSyncer.sync_function"
                    ) as mock_fn, patch(
@@ -1028,7 +1082,7 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "sync_to_driver": "echo {source} {target}"
-                })
+                }).trials
             self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
@@ -1045,9 +1099,11 @@ class TestSyncFunctionality(unittest.TestCase):
             name="foo",
             max_failures=0,
             local_dir=tmpdir,
-            stop={"training_iteration": 1},
+            stop={
+                "training_iteration": 1
+            },
             upload_dir=tmpdir2,
-            sync_to_cloud=tune.function(sync_func))
+            sync_to_cloud=tune.function(sync_func)).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
@@ -1065,8 +1121,10 @@ class TestSyncFunctionality(unittest.TestCase):
             "__fake",
             name="foo",
             max_failures=0,
-            stop={"training_iteration": 1},
-            sync_to_driver=tune.function(sync_func_driver))
+            stop={
+                "training_iteration": 1
+            },
+            sync_to_driver=tune.function(sync_func_driver)).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -1076,8 +1134,10 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={"training_iteration": 1},
-                sync_to_driver=tune.function(sync_func_driver))
+                stop={
+                    "training_iteration": 1
+                },
+                sync_to_driver=tune.function(sync_func_driver)).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -1098,7 +1158,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "upload_dir": "test",
                     "sync_to_driver": tune.function(sync_func),
                     "sync_to_cloud": tune.function(sync_func)
-                })
+                }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
 
