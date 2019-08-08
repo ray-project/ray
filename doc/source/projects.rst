@@ -16,7 +16,7 @@ Quick start (CLI)
     $ ray project create <project-name>
 
     # Create a new session from the given project with an optional name.
-    # This will launch a cluster and run the appropriate command.
+    # Launch a cluster and run the appropriate command.
     $ ray session start [--name="default-session"]
 
     # Open a console for the given session. If the session is stopped
