@@ -78,9 +78,10 @@ class ResourceSpec(
             raise ValueError(
                 "The minimum amount of object_store_memory that can be "
                 "requested is {}, but you specified {}.".format(
-                    int(math.ceil(
-                        ray_constants.MEMORY_RESOURCE_UNIT_BYTES /
-                        ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)),
+                    int(
+                        math.ceil(
+                            ray_constants.MEMORY_RESOURCE_UNIT_BYTES /
+                            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)),
                     self.object_store_memory))
         object_store_memory_units = ray_constants.to_memory_units(
             self.object_store_memory *
