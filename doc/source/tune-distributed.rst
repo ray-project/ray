@@ -53,13 +53,13 @@ If you have already have a list of nodes, you can follow the local private clust
 .. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
 
-``ray up`` is a command that starts Ray on the cluster of nodes.
+``ray up`` starts Ray on the cluster of nodes.
 
 .. code-block:: bash
 
     ray up tune-default.yaml
 
-``ray submit`` is a command that uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py``.
+``ray submit`` uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py``.
 
 .. code-block:: bash
 
@@ -99,13 +99,13 @@ Launching a cloud cluster
 
     If you have already have a list of nodes, go to the `Local Cluster Setup`_ section.
 
-Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_.
+Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: ../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
    :name: tune-default.yaml
 
-``ray up`` is a command that starts Ray on the cluster of nodes.
+``ray up`` starts Ray on the cluster of nodes.
 
 .. code-block:: bash
 
