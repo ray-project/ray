@@ -28,7 +28,7 @@ class ActorStateAccessor {
   /// \param actor_id The ID of actor to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  /// TODO(micafan) Only need the latest data.So replace
+  /// TODO(micafan) Only need the latest data. So replace
   /// MultiItemCallback with OptionalItemCallback in next PR.
   Status AsyncGet(const ActorID &actor_id,
                   const MultiItemCallback<ActorTableData> &callback);
