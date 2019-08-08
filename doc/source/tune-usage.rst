@@ -255,8 +255,8 @@ If your trainable function / class creates further Ray actors or tasks that also
         }
     )
 
-Saving and Recovery
--------------------
+Save and Restore
+----------------
 
 When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
 
@@ -296,7 +296,7 @@ Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_na
 
 
 Trainable (Trial) Checkpointing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 
@@ -349,7 +349,7 @@ The checkpoint will be saved at a path that looks like ``local_dir/exp_name/tria
     )
 
 Fault Tolerance
-~~~~~~~~~~~~~~~
+---------------
 
 Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
 

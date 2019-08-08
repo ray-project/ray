@@ -71,7 +71,13 @@ Distributed Quick Start
 
 Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`
+2. Download the following example Ray cluster configuration here as ``tune-default.yaml``:
+
+.. literalinclude:: ../../python/ray/tune/examples/tune-default.yaml
+   :language: yaml
+
+Alternatively, download it here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
+
 3. Run ``ray submit`` like the following.
 
 .. code-block:: bash

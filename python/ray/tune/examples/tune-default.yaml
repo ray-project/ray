@@ -1,4 +1,4 @@
-cluster_name: tune-example
+cluster_name: tune-default
 provider: {type: aws, region: us-west-2}
 auth: {ssh_user: ubuntu}
 min_workers: 3

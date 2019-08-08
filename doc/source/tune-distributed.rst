@@ -1,14 +1,36 @@
 Tune Distributed Experiments
 ============================
 
-Tune is commonly used for large-scale distributed hyperparameter optimization. Tune and Ray provide many utilities that enable an effective workflow for interacting with a cluster, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
+Tune is commonly used for large-scale distributed hyperparameter optimization. Tune and Ray provide many utilities that enable an effective workflow for interacting with a cluster, including fast file mounting, one-line cluster launching, and result uploading to cloud storage. Tune will also automatically detect and launch jobs on GPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
 This page will overview the tooling for distributed experiments, covering how to connect to a cluster, how to launch a distributed experiment, and commonly used commands.
 
-Connecting to a cluster
------------------------
+To run a distributed experiment with Tune, you need to:
 
-One common approach to modifying an existing Tune experiment to go distributed is to set an `argparse` variable so that toggling between distributed and single-node is seamless. This allows Tune to utilize all the resources available to the Ray cluster.
+  1. Make sure your script has ``ray.init(redis_address=...)`` to connect to the existing Ray cluster.
+  2. If a ray cluster does not exist, start a Ray cluster.
+  3. Run the script on the head (or use ``ray submit``).
+
+Running a distributed experiment
+--------------------------------
+
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (you can find instructions below [`local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_]).
+
+To execute a distributed experiment, call ``ray.init(redis_address=XXX)`` before ``tune.run``, where ``XXX`` is the ray redis address that you obtain from running ``ray start``. The ray redis address commonly used is ``localhost:6379``. Then, the Tune python script should be executed on the head node of the Ray cluster. If the ray cluster is already setup, you should not need to run anything on the worker nodes.
+
+Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search (``tune.run``).
+
+
+.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch.py
+   :language: python
+   :start-after: if __name__ == "__main__":
+
+.. code-block:: bash
+
+    # Run on head.
+    $ python tune_script.py
+
+One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
 
 .. code-block:: python
 
@@ -20,19 +42,38 @@ One common approach to modifying an existing Tune experiment to go distributed i
     args = parser.parse_args()
     ray.init(redis_address=args.ray_redis_address)
 
-Note that connecting to cluster requires a pre-existing Ray cluster to be started already (`Manual Cluster Setup <using-ray-on-a-cluster.html>`_). The script should be run on the head node of the Ray cluster. Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search.
-
 .. code-block:: bash
-
-    # Single-node execution
-    $ python tune_script.py
 
     # On the head node, connect to an existing ray cluster
     $ python tune_script.py --ray-redis-address=localhost:XXXX
 
-.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch.py
-   :language: python
-   :start-after: if __name__ == "__main__":
+Local Cluster Setup
+-------------------
+
+If you have already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration:
+
+.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
+   :language: yaml
+
+Manual Local Cluster Setup
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you run into issues using the local cluster setup (or want to add nodes manually), you can use the manual cluster setup. `Full documentation here <using-ray-on-a-cluster.html>`__. At a glance,
+
+**One the head node**:
+
+.. code-block:: bash
+
+    # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
+    $ ray start --head --redis-port=6379
+
+The command will print out the address of the Redis server that was started (and some other address information).
+
+**Then on all of the other nodes**, run the following. Make sure to replace ``<redis-address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
+
+.. code-block:: bash
+
+    $ ray start --redis-address=<redis-address>
 
 
 Launching a cloud cluster
@@ -40,7 +81,7 @@ Launching a cloud cluster
 
 .. tip::
 
-    If you have already have a list of nodes, skip down to the `Local Cluster Setup`_ section.
+    If you have already have a list of nodes, go to the `Local Cluster Setup`_ section.
 
 Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_.
 
@@ -67,27 +108,6 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 
 
 Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
-
-Local Cluster Setup
--------------------
-
-If you run into issues (or want to add nodes manually), you can use the manual cluster setup `documentation here <using-ray-on-a-cluster.html>`__. At a glance, On the head node, run the following.
-
-.. code-block:: bash
-
-    # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
-    $ ray start --head --redis-port=6379
-
-The command will print out the address of the Redis server that was started (and some other address information).
-
-**Then on all of the other nodes**, run the following. Make sure to replace ``<redis-address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
-
-.. code-block:: bash
-
-    $ ray start --redis-address=<redis-address>
-
-If you have already have a list of nodes, you can follow the private autoscaling cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_.
-
 
 Pre-emptible Instances (Cloud)
 ------------------------------
@@ -180,7 +200,7 @@ To summarize, here are the commands to run:
     # wait a while until after all nodes have started
     ray kill-random-node tune-default.yaml --hard
 
-You should see Tune eventually continue the trials on a different worker node. See the `Saving and Recovery <tune-usage.html#saving-and-recovery>`__ section for more details.
+You should see Tune eventually continue the trials on a different worker node. See the `Save and Restore <tune-usage.html#save-and-restore>`__ section for more details.
 
 You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, persisting results in case you want to start and stop your cluster automatically.
 
