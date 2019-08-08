@@ -6,7 +6,7 @@
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 inline ray::WorkerContext &GetWorkerContextFromPointer(jlong nativeCoreWorkerPointer) {
-  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Context();
+  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->GetWorkerContext();
 }
 
 #ifdef __cplusplus

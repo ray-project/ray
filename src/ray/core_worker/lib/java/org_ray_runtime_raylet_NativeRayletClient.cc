@@ -7,7 +7,7 @@
 #include "ray/rpc/raylet/raylet_client.h"
 
 inline ray::RayletClient &GetRayletClientFromPointer(jlong nativeCoreWorkerPointer) {
-  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Raylet();
+  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->GetRayletClient();
 }
 
 #ifdef __cplusplus

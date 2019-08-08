@@ -52,7 +52,7 @@ struct ActorCreationOptions {
   const bool is_direct_call = false;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
-  /// The dynamic options used in the worker command when starting the worker process for
+  /// The dynamic options used in the worker command when starting a worker process for
   /// an actor creation task.
   const std::vector<std::string> dynamic_worker_options;
 };
