@@ -4,9 +4,7 @@ from __future__ import print_function
 
 import base64
 import copy
-import fnmatch
 import logging
-import os
 import threading
 import time
 from collections import defaultdict

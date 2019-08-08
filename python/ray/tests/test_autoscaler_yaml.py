@@ -2,15 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from flaky import flaky
 import os
-import shutil
-import tempfile
-import threading
-import time
 import unittest
 import yaml
 
+from ray.tests.util import recursive_fnmatch
 CONFIG_PATHS = recursive_fnmatch(
     os.path.join(__file__, "../autoscaler/"), "*.yaml")
 
@@ -18,9 +14,7 @@ CONFIG_PATHS = recursive_fnmatch(
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
 
-        from ray.tests.util import recursive_fnmatch
-        from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
-            fillout_defaults, validate_config
+        from ray.autoscaler.autoscaler import fillout_defaults, validate_config
 
         for config_path in CONFIG_PATHS:
             with open(config_path) as f:
