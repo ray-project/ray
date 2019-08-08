@@ -4,7 +4,7 @@
 cluster_name: open-tacotron
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
+# node. This takes precedence over min_workers. min_workers defaults to 0.
 max_workers: 1
 
 # Cloud-provider specific configuration.
