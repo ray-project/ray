@@ -95,7 +95,11 @@ To summarize, here are the full set of commands:
     ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
 
-Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
+Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:
+
+ 1. Setting up distributed experiments on your local cluster
+ 2. Using GCP
+ 3. Spot instance usage, and more.
 
 Getting Started
 ---------------

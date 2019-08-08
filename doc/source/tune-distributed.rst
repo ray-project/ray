@@ -9,21 +9,21 @@ To run a distributed experiment with Tune, you need to:
 
   1. Make sure your script has ``ray.init(redis_address=...)`` to connect to the existing Ray cluster.
   2. If a ray cluster does not exist, start a Ray cluster.
-  3. Run the script on the head (or use ``ray submit``).
+  3. Run the script on the head node (or use ``ray submit``).
 
 Running a distributed experiment
 --------------------------------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (you can find instructions below [`local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_]).
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (instructions below [`local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_]).
 
-To execute a distributed experiment, call ``ray.init(redis_address=XXX)`` before ``tune.run``, where ``XXX`` is the ray redis address that you obtain from running ``ray start``. The ray redis address commonly used is ``localhost:6379``. Then, the Tune python script should be executed on the head node of the Ray cluster. If the ray cluster is already setup, you should not need to run anything on the worker nodes.
+To execute a distributed experiment, call ``ray.init(redis_address=XXX)`` before ``tune.run``, where ``XXX`` is the ray redis address (from ``ray start``). Then, the Tune python script should be executed on the head node of the Ray cluster.
+
+.. tip::
+
+    1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
+    2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search (``tune.run``).
-
-
-.. literalinclude:: ../../python/ray/tune/examples/mnist_pytorch.py
-   :language: python
-   :start-after: if __name__ == "__main__":
 
 .. code-block:: bash
 
@@ -42,6 +42,8 @@ One common approach to modifying an existing Tune experiment to go distributed i
     args = parser.parse_args()
     ray.init(redis_address=args.ray_redis_address)
 
+    tune.run(...)
+
 .. code-block:: bash
 
     # On the head node, connect to an existing ray cluster
@@ -50,17 +52,23 @@ One common approach to modifying an existing Tune experiment to go distributed i
 Local Cluster Setup
 -------------------
 
-If you have already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration:
+If you have already have a list of nodes, you can follow the local private cluster setup `instructions here <autoscaling.html#quick-start-private-cluster>`_. Below is an example cluster configuration as ``tune-default.yaml``:
 
 .. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
+
+``ray submit`` is a command that starts Ray on the cluster of nodes, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml tune_script.py --start
 
 Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you run into issues using the local cluster setup (or want to add nodes manually), you can use the manual cluster setup. `Full documentation here <using-ray-on-a-cluster.html>`__. At a glance,
 
-**One the head node**:
+**On the head node**:
 
 .. code-block:: bash
 
@@ -75,6 +83,12 @@ The command will print out the address of the Redis server that was started (and
 
     $ ray start --redis-address=<redis-address>
 
+Then, you can run your Tune Python script on the head node like:
+
+.. code-block:: bash
+
+    # On the head node, execute using existing ray cluster
+    $ python tune_script.py --ray-redis-address=<redis-address>
 
 Launching a cloud cluster
 -------------------------
