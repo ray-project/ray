@@ -24,7 +24,7 @@ Quick start (CLI)
     $ ray session attach [<default-session>] [--start]
 
     # Stop the given session and all of its worker nodes. The nodes/clusters
-    # are not actually terminated unless --terminate is given or unless we
+    # are not actually terminated unless --terminate is given or we
     # configure the cluster to autoterminate after a period of inactivity.
     $ ray session stop [<default-session>] [--terminate]
 
