@@ -43,7 +43,7 @@ In order to use this search algorithm, you will need to install Bayesian Optimiz
 
     $ pip install bayesian-optimization
 
-This algorithm requires `setting a search space and defining a utility function <https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb>`__. You can use BayesOptSearch like follows:
+This algorithm requires `setting a search space and defining a utility function <https://github.com/fmfn/BayesianOptimization/blob/master/doc/examples/advanced-tour.ipynb>`__. You can use BayesOptSearch like follows:
 
 .. code-block:: python
 
