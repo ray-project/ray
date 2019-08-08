@@ -1,34 +1,25 @@
 Tune Distributed Experiments
 ============================
 
-Tune is commonly used for large-scale distributed hyperparameter optimization. Tune and Ray provide many utilities that enable an effective workflow for interacting with a cluster, including fast file mounting, one-line cluster launching, and result uploading to cloud storage. Tune will also automatically detect and launch jobs on GPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
+Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview:
 
-This page will overview the tooling for distributed experiments, covering how to connect to a cluster, how to launch a distributed experiment, and commonly used commands.
+  1. How to setup and launch a distributed experiment,
+  2. `commonly used commands <tune-distributed.html#common-commands>`_, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
 
-To run a distributed experiment with Tune, you need to:
+**Quick Summary**: To run a distributed experiment with Tune, you need to:
 
   1. Make sure your script has ``ray.init(redis_address=...)`` to connect to the existing Ray cluster.
-  2. If a ray cluster does not exist, start a Ray cluster.
+  2. If a ray cluster does not exist, start a Ray cluster (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
   3. Run the script on the head node (or use ``ray submit``).
 
 Running a distributed experiment
 --------------------------------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (instructions below [`local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_]).
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
 
-To execute a distributed experiment, call ``ray.init(redis_address=XXX)`` before ``tune.run``, where ``XXX`` is the ray redis address (from ``ray start``). Then, the Tune python script should be executed on the head node of the Ray cluster.
+Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
-.. tip::
-
-    1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
-    2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
-
-Below, ``tune_script.py`` can be any script that runs a Tune hyperparameter search (``tune.run``).
-
-.. code-block:: bash
-
-    # Run on head.
-    $ python tune_script.py
+To execute a distributed experiment, call ``ray.init(redis_address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray redis address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
 
 One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
 
@@ -49,6 +40,11 @@ One common approach to modifying an existing Tune experiment to go distributed i
     # On the head node, connect to an existing ray cluster
     $ python tune_script.py --ray-redis-address=localhost:XXXX
 
+.. tip::
+
+    1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
+    2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
+
 Local Cluster Setup
 -------------------
 
@@ -57,11 +53,17 @@ If you have already have a list of nodes, you can follow the local private clust
 .. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
 
-``ray submit`` is a command that starts Ray on the cluster of nodes, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
+``ray up`` is a command that starts Ray on the cluster of nodes.
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --start
+    ray up tune-default.yaml
+
+``ray submit`` is a command that uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py``.
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml tune_script.py
 
 Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,7 +105,13 @@ Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will
    :language: yaml
    :name: tune-default.yaml
 
-This code starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
+``ray up`` is a command that starts Ray on the cluster of nodes.
+
+.. code-block:: bash
+
+    ray up tune-default.yaml
+
+``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
 
 .. code-block:: bash
 
