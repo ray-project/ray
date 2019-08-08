@@ -751,33 +751,7 @@ done
     help="Override the redis address to connect to.")
 def timeline(redis_address):
     if not redis_address:
-        import psutil
-        pids = psutil.pids()
-        redis_addresses = set()
-        for pid in pids:
-            try:
-                proc = psutil.Process(pid)
-                for arglist in proc.cmdline():
-                    for arg in arglist.split(" "):
-                        if arg.startswith("--redis-address="):
-                            addr = arg.split("=")[1]
-                            redis_addresses.add(addr)
-            except psutil.AccessDenied:
-                pass
-            except psutil.NoSuchProcess:
-                pass
-        if len(redis_addresses) > 1:
-            logger.info(
-                "Found multiple active Ray instances: {}. ".format(
-                    redis_addresses) +
-                "Please specify the one to connect to with --redis-address.")
-            sys.exit(1)
-        elif not redis_addresses:
-            logger.info(
-                "Could not find any running Ray instance. "
-                "Please specify the one to connect to with --redis-address.")
-            sys.exit(1)
-        redis_address = redis_addresses.pop()
+        redis_addresses = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(redis_address))
     ray.init(redis_address=redis_address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")

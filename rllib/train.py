@@ -43,6 +43,12 @@ def create_parser(parser_creator=None):
         help="Connect to an existing Ray cluster at this address instead "
         "of starting a new one.")
     parser.add_argument(
+        "--api-url",
+        default=None,
+        type=str,
+        help="Connect to an existing Ray cluster at this address instead "
+        "of starting a new one.")
+    parser.add_argument(
         "--ray-num-cpus",
         default=None,
         type=int,
@@ -148,6 +154,7 @@ def run(args, parser):
     else:
         ray.init(
             redis_address=args.redis_address,
+            api_url=args.api_url,
             object_store_memory=args.ray_object_store_memory,
             redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
