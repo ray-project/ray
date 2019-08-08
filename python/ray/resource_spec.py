@@ -140,7 +140,7 @@ class ResourceSpec(
         avail_memory = ray.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
-            object_store_memory = int(system_memory * 0.2)
+            object_store_memory = int(avail_memory * 0.3)
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (object_store_memory >
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
@@ -153,37 +153,12 @@ class ResourceSpec(
                 object_store_memory = (
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
 
-            # Other applications may also be using a lot of memory on the same
-            # node. Try to detect when this is happening and log a warning or
-            # error in more severe cases.
-            object_store_fraction = object_store_memory / avail_memory
-            # Escape hatch, undocumented for now.
-            no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
-            if object_store_fraction > 0.9 and not no_check:
-                raise ValueError(
-                    "The default object store size of {} GB "
-                    "will use more than 90% of the available memory on this "
-                    "node ({} GB). Please reduce the object store memory size "
-                    "to avoid memory contention with other applications, or "
-                    "shut down the applications using this memory.".format(
-                        round(object_store_memory / 1e9, 2),
-                        round(avail_memory / 1e9, 2)))
-            elif object_store_fraction > 0.5:
-                logger.warning(
-                    "WARNING: The default object store size of {} GB "
-                    "will use more than 50% of the available memory on this "
-                    "node ({} GB). Consider setting the object store memory "
-                    "manually to a smaller size to avoid memory contention "
-                    "with other applications.".format(
-                        round(object_store_memory / 1e9, 2),
-                        round(avail_memory / 1e9, 2)))
-
         redis_max_memory = self.redis_max_memory
         if redis_max_memory is None:
             redis_max_memory = min(
                 ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
                 max(
-                    int(system_memory * 0.1),
+                    int(avail_memory * 0.1),
                     ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
         if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
             raise ValueError(
@@ -218,13 +193,15 @@ class ResourceSpec(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 
-            logger.info(
-                "Starting Ray with {} GB memory available for workers. "
-                "You can reserve memory for actors and tasks with "
-                "ray.remote(memory=<bytes>).".format(
-                    round(
-                        ray_constants.round_to_memory_units(
-                            memory, round_up=False) / 1e9, 2)))
+        logger.info(
+            "Starting Ray with {} GB memory available for workers and up to "
+            "{} GB for objects. You can adjust these settings "
+            "with ray.remote(memory=<bytes>, "
+            "object_store_memory=<bytes>).".format(
+                round(
+                    ray_constants.round_to_memory_units(
+                        memory, round_up=False) / 1e9, 2),
+                    round(object_store_memory / 1e9, 2)))
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
