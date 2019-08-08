@@ -94,8 +94,7 @@ class VTraceLoss(object):
                 model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32),
-                config=config)
+                                              tf.float32))
             self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss
