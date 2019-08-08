@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 from collections import namedtuple
 import logging
 import multiprocessing
@@ -69,6 +70,18 @@ class ResourceSpec(
 
         memory_units = ray_constants.to_memory_units(
             self.memory, round_up=False)
+        reservable_object_store_memory = (
+            self.object_store_memory *
+            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)
+        if (reservable_object_store_memory <
+                ray_constants.MEMORY_RESOURCE_UNIT_BYTES):
+            raise ValueError(
+                "The minimum amount of object_store_memory that can be "
+                "requested is {}, but you specified {}.".format(
+                    int(math.ceil(
+                        ray_constants.MEMORY_RESOURCE_UNIT_BYTES /
+                        ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)),
+                    self.object_store_memory))
         object_store_memory_units = ray_constants.to_memory_units(
             self.object_store_memory *
             ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
@@ -182,7 +195,7 @@ class ResourceSpec(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 
-        logger.debug(
+        logger.info(
             "Starting Ray with {} GB memory available for workers and up to "
             "{} GB for objects. You can adjust these settings "
             "with ray.remote(memory=<bytes>, "
