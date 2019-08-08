@@ -13,7 +13,7 @@ extern "C" {
  * Class:     org_ray_runtime_WorkerImpl
  * Method:    nativeInit
  * Signature:
- * (ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/nativeTypes/NativeGcsClientOptions;)J
+ * (ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerImpl_nativeInit(JNIEnv *, jclass, jint,
                                                                    jstring, jstring,

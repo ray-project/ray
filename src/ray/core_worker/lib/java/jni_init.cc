@@ -39,11 +39,11 @@ jfieldID java_native_actor_creation_options_is_direct_call;
 jfieldID java_native_actor_creation_options_resources;
 jfieldID java_native_actor_creation_options_dynamic_worker_options;
 
-jclass java_native_gcs_client_options_class;
-jfieldID java_native_gcs_client_options_ip;
-jfieldID java_native_gcs_client_options_port;
-jfieldID java_native_gcs_client_options_password;
-jfieldID java_native_gcs_client_options_is_test_client;
+jclass java_gcs_client_options_class;
+jfieldID java_gcs_client_options_ip;
+jfieldID java_gcs_client_options_port;
+jfieldID java_gcs_client_options_password;
+jfieldID java_gcs_client_options_is_test_client;
 
 jclass java_native_ray_object_class;
 jmethodID java_native_ray_object_init;
@@ -130,16 +130,16 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_actor_creation_options_class, "dynamicWorkerOptions",
                       "Ljava/util/List;");
 
-  java_native_gcs_client_options_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeGcsClientOptions");
-  java_native_gcs_client_options_ip =
-      env->GetFieldID(java_native_gcs_client_options_class, "ip", "Ljava/lang/String;");
-  java_native_gcs_client_options_port =
-      env->GetFieldID(java_native_gcs_client_options_class, "port", "I");
-  java_native_gcs_client_options_password = env->GetFieldID(
-      java_native_gcs_client_options_class, "password", "Ljava/lang/String;");
-  java_native_gcs_client_options_is_test_client =
-      env->GetFieldID(java_native_gcs_client_options_class, "isTestClient", "Z");
+  java_gcs_client_options_class =
+      LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
+  java_gcs_client_options_ip =
+      env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
+  java_gcs_client_options_port =
+      env->GetFieldID(java_gcs_client_options_class, "port", "I");
+  java_gcs_client_options_password =
+      env->GetFieldID(java_gcs_client_options_class, "password", "Ljava/lang/String;");
+  java_gcs_client_options_is_test_client =
+      env->GetFieldID(java_gcs_client_options_class, "isTestClient", "Z");
 
   java_native_ray_object_class =
       LoadClass(env, "org/ray/runtime/nativeTypes/NativeRayObject");

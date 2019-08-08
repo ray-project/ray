@@ -11,14 +11,13 @@ thread_local jobject local_java_worker = nullptr;
 inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
                                                      jobject gcs_client_options) {
   std::string ip = JavaStringToNativeString(
-      env, (jstring)env->GetObjectField(gcs_client_options,
-                                        java_native_gcs_client_options_ip));
-  int port = env->GetIntField(gcs_client_options, java_native_gcs_client_options_port);
+      env, (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_ip));
+  int port = env->GetIntField(gcs_client_options, java_gcs_client_options_port);
   std::string password = JavaStringToNativeString(
-      env, (jstring)env->GetObjectField(gcs_client_options,
-                                        java_native_gcs_client_options_password));
-  bool is_test_client = env->GetBooleanField(
-      gcs_client_options, java_native_gcs_client_options_is_test_client);
+      env,
+      (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
+  bool is_test_client =
+      env->GetBooleanField(gcs_client_options, java_gcs_client_options_is_test_client);
   return ray::gcs::GcsClientOptions(ip, port, password, is_test_client);
 }
 
@@ -30,7 +29,7 @@ extern "C" {
  * Class:     org_ray_runtime_WorkerImpl
  * Method:    nativeInit
  * Signature:
- * (ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/nativeTypes/NativeGcsClientOptions;)J
+ * (ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerImpl_nativeInit(
     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
@@ -38,7 +37,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerImpl_nativeInit(
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
   auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
-  auto native_gcs_client_options = ToGcsClientOptions(env, gcsClientOptions);
+  auto gcs_client_options = ToGcsClientOptions(env, gcsClientOptions);
 
   auto executor_func = [](const ray::RayFunction &ray_function,
                           const std::vector<std::shared_ptr<ray::RayObject>> &args,
@@ -73,7 +72,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_WorkerImpl_nativeInit(
   try {
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
-        native_raylet_socket, job_id, native_gcs_client_options, executor_func);
+        native_raylet_socket, job_id, gcs_client_options, executor_func);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;

@@ -3,7 +3,7 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;
-import org.ray.runtime.nativeTypes.NativeGcsClientOptions;
+import org.ray.runtime.gcs.GcsClientOptions;
 import org.ray.runtime.objectstore.ObjectInterfaceImpl;
 import org.ray.runtime.objectstore.ObjectStoreProxy;
 import org.ray.runtime.raylet.RayletClientImpl;
@@ -21,7 +21,7 @@ class WorkerImpl extends AbstractWorker {
   WorkerImpl(WorkerType workerType, AbstractRayRuntime runtime,
       String storeSocket, String rayletSocket, JobId jobId) {
     super(runtime);
-    NativeGcsClientOptions gcsClientOptions = new NativeGcsClientOptions(runtime.getRayConfig());
+    GcsClientOptions gcsClientOptions = new GcsClientOptions(runtime.getRayConfig());
     nativeCoreWorkerPointer = nativeInit(workerType.getNumber(), storeSocket, rayletSocket,
         jobId.getBytes(), gcsClientOptions);
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
@@ -41,7 +41,7 @@ class WorkerImpl extends AbstractWorker {
   }
 
   private static native long nativeInit(int workerMode, String storeSocket,
-      String rayletSocket, byte[] jobId, NativeGcsClientOptions gcsClientOptions);
+      String rayletSocket, byte[] jobId, GcsClientOptions gcsClientOptions);
 
   private static native void nativeRunCoreWorker(long nativeCoreWorkerPointer, WorkerImpl worker);
 

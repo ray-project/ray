@@ -75,16 +75,16 @@ extern jfieldID java_native_actor_creation_options_resources;
 /// dynamicWorkerOptions field of ActorCreationOptions class
 extern jfieldID java_native_actor_creation_options_dynamic_worker_options;
 
-/// NativeGcsClientOptions class
-extern jclass java_native_gcs_client_options_class;
-/// ip field of NativeGcsClientOptions class
-extern jfieldID java_native_gcs_client_options_ip;
-/// port field of NativeGcsClientOptions class
-extern jfieldID java_native_gcs_client_options_port;
-/// password field of NativeGcsClientOptions class
-extern jfieldID java_native_gcs_client_options_password;
-/// isTestClient field of NativeGcsClientOptions class
-extern jfieldID java_native_gcs_client_options_is_test_client;
+/// GcsClientOptions class
+extern jclass java_gcs_client_options_class;
+/// ip field of GcsClientOptions class
+extern jfieldID java_gcs_client_options_ip;
+/// port field of GcsClientOptions class
+extern jfieldID java_gcs_client_options_port;
+/// password field of GcsClientOptions class
+extern jfieldID java_gcs_client_options_password;
+/// isTestClient field of GcsClientOptions class
+extern jfieldID java_gcs_client_options_is_test_client;
 
 /// NativeRayObject class
 extern jclass java_native_ray_object_class;
