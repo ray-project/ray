@@ -4,6 +4,9 @@ import org.ray.api.exception.RayException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 
+/**
+ * Raylet client for cluster mode. This is a wrapper class for C++ RayletClient.
+ */
 public class NativeRayletClient implements RayletClient {
 
   /**

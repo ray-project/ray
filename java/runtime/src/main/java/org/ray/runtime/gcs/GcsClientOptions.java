@@ -2,6 +2,9 @@ package org.ray.runtime.gcs;
 
 import org.ray.runtime.config.RayConfig;
 
+/**
+ * Options to create GCS Client.
+ */
 public class GcsClientOptions {
   public String ip;
   public int port;

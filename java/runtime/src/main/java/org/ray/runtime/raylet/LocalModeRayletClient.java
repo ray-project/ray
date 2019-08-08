@@ -6,6 +6,9 @@ import org.ray.api.id.UniqueId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Raylet client for local mode.
+ */
 public class LocalModeRayletClient implements RayletClient {
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeRayletClient.class);
 

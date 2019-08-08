@@ -12,6 +12,9 @@ import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.Language;
 
+/**
+ * RayActor implementation for cluster mode. This is a wrapper class for C++ ActorHandle.
+ */
 public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   /**

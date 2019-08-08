@@ -14,8 +14,7 @@ public class RaySerializerTest extends BaseMultiLanguageTest {
   @Test
   public void testSerializePyActor() {
     RayPyActor pyActor = Ray.createPyActor("test", "RaySerializerTest");
-    ObjectStoreProxy objectStoreProxy = ((AbstractRayRuntime) Ray.internal()).getTaskExecutor()
-        .getObjectStoreProxy();
+    ObjectStoreProxy objectStoreProxy = ((AbstractRayRuntime) Ray.internal()).getObjectStoreProxy();
     NativeRayObject nativeRayObject = objectStoreProxy.serialize(pyActor);
     RayPyActor result = (RayPyActor) objectStoreProxy
         .deserialize(nativeRayObject, ObjectId.fromRandom());

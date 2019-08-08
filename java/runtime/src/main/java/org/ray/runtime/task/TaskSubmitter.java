@@ -7,6 +7,9 @@ import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 
+/**
+ * A set of methods to submit tasks and create actors.
+ */
 public interface TaskSubmitter {
 
   /**

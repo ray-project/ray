@@ -17,8 +17,7 @@ public class PlasmaStoreTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     ObjectId objectId = ObjectId.fromRandom();
     AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
-    ObjectStore objectStore = runtime.getTaskExecutor().getObjectStoreProxy()
-        .getObjectStore();
+    ObjectStore objectStore = runtime.getObjectStore();
     objectStore.put(new NativeRayObject(new byte[]{1}, null), objectId);
     Assert.assertEquals(
         objectStore.get(Collections.singletonList(objectId), -1).get(0).data[0],

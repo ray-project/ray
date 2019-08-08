@@ -10,6 +10,9 @@ import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 
+/**
+ * RayActor implementation for local mode.
+ */
 public class LocalModeRayActor implements RayActor, Externalizable {
 
   private ActorId actorId;

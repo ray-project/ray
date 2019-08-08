@@ -5,6 +5,9 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
 
+/**
+ * Implementation of {@link RayObject}.
+ */
 public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
   private final ObjectId id;

@@ -26,10 +26,14 @@ import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
+import org.ray.runtime.object.ObjectStore;
+import org.ray.runtime.object.ObjectStoreProxy;
 import org.ray.runtime.object.RayObjectImpl;
+import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskExecutor;
+import org.ray.runtime.task.TaskSubmitter;
 import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +50,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
   protected GcsClient gcsClient;
+  protected ObjectStore objectStore;
+
+  protected ObjectStoreProxy objectStoreProxy;
+  protected TaskSubmitter taskSubmitter;
+  protected RayletClient rayletClient;
+  protected WorkerContext workerContext;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -63,7 +73,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = taskExecutor.getObjectStoreProxy().put(obj);
+    ObjectId objectId = objectStoreProxy.put(obj);
     return new RayObjectImpl<>(objectId);
   }
 
@@ -75,12 +85,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    return getTaskExecutor().getObjectStoreProxy().get(objectIds);
+    return objectStoreProxy.get(objectIds);
   }
 
   @Override
   public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    taskExecutor.getObjectStoreProxy().delete(objectIds, localOnly, deleteCreatingTasks);
+    objectStoreProxy.delete(objectIds, localOnly, deleteCreatingTasks);
   }
 
   @Override
@@ -89,7 +99,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     if (nodeId == null) {
       nodeId = UniqueId.NIL;
     }
-    taskExecutor.getRayletClient().setResource(resourceName, capacity, nodeId);
+    rayletClient.setResource(resourceName, capacity, nodeId);
   }
 
   @Override
@@ -101,7 +111,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());
 
-    List<Boolean> ready = taskExecutor.getObjectStoreProxy().wait(ids, numReturns, timeoutMs);
+    List<Boolean> ready = objectStoreProxy.wait(ids, numReturns, timeoutMs);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -119,7 +129,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(taskExecutor.getWorkerContext().getCurrentJobId(), func)
+        functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
     return callNormalFunction(functionDescriptor, args, options);
   }
@@ -127,7 +137,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(taskExecutor.getWorkerContext().getCurrentJobId(), func)
+        functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
     return callActorFunction(actor, functionDescriptor, args);
   }
@@ -137,7 +147,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
       Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(taskExecutor.getWorkerContext().getCurrentJobId(), actorFactoryFunc)
+        functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
     return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
   }
@@ -181,7 +191,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       Object[] args, CallOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = taskExecutor.getTaskSubmitter().submitTask(functionDescriptor,
+    List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, 1, options);
     return new RayObjectImpl(returnIds.get(0));
   }
@@ -190,7 +200,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       FunctionDescriptor functionDescriptor, Object[] args) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = taskExecutor.getTaskSubmitter().submitActorTask(rayActor,
+    List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, 1, null);
     return new RayObjectImpl(returnIds.get(0));
   }
@@ -202,18 +212,26 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
-    RayActor actor = taskExecutor.getTaskSubmitter()
+    RayActor actor = taskSubmitter
         .createActor(functionDescriptor, functionArgs,
             options);
     return actor;
   }
 
-  public TaskExecutor getTaskExecutor() {
-    return taskExecutor;
+  public WorkerContext getWorkerContext() {
+    return workerContext;
   }
 
-  public WorkerContext getWorkerContext() {
-    return taskExecutor.getWorkerContext();
+  public ObjectStore getObjectStore() {
+    return objectStore;
+  }
+
+  public ObjectStoreProxy getObjectStoreProxy() {
+    return objectStoreProxy;
+  }
+
+  public RayletClient getRayletClient() {
+    return rayletClient;
   }
 
   public FunctionManager getFunctionManager() {

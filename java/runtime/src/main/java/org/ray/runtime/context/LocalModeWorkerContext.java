@@ -10,11 +10,13 @@ import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.task.LocalModeTaskSubmitter;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
+/**
+ * Worker context for local mode.
+ */
 public class LocalModeWorkerContext implements WorkerContext {
 
   private final JobId jobId;
   private ThreadLocal<TaskSpec> currentTask = new ThreadLocal<>();
-  private ClassLoader currentClassLoader;
 
   public LocalModeWorkerContext(JobId jobId) {
     this.jobId = jobId;
@@ -41,12 +43,11 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   @Override
   public ClassLoader getCurrentClassLoader() {
-    return currentClassLoader;
+    return null;
   }
 
   @Override
   public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-    this.currentClassLoader = currentClassLoader;
   }
 
   @Override

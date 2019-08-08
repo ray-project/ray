@@ -8,7 +8,7 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskType;
 
 /**
- * This is a wrapper class for worker context of core worker.
+ * Worker context for cluster mode. This is a wrapper class for worker context of core worker.
  */
 public class NativeWorkerContext implements WorkerContext {
 

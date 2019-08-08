@@ -6,6 +6,9 @@ import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskType;
 
+/**
+ * The context of worker.
+ */
 public interface WorkerContext {
 
   /**

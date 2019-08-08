@@ -1,4 +1,4 @@
-#include "ray/core_worker/lib/java/org_ray_runtime_task_NativeTaskExecutor.h"
+#include "ray/core_worker/lib/java/org_ray_runtime_RayNativeRuntime.h"
 #include <jni.h>
 #include <sstream>
 #include "ray/common/id.h"
@@ -6,7 +6,7 @@
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 thread_local JNIEnv *local_env = nullptr;
-thread_local jobject local_java_native_task_executor = nullptr;
+thread_local jobject local_java_task_executor = nullptr;
 
 inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
                                                      jobject gcs_client_options) {
@@ -26,12 +26,12 @@ extern "C" {
 #endif
 
 /*
- * Class:     org_ray_runtime_task_NativeTaskExecutor
+ * Class:     org_ray_runtime_RayNativeRuntime
  * Method:    nativeInit
  * Signature:
  * (ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_task_NativeTaskExecutor_nativeInit(
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInit(
     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
     jbyteArray jobId, jobject gcsClientOptions) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
@@ -45,7 +45,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_task_NativeTaskExecutor_nativeInit(
                           std::vector<std::shared_ptr<ray::RayObject>> *results) {
     JNIEnv *env = local_env;
     RAY_CHECK(env);
-    RAY_CHECK(local_java_native_task_executor);
+    RAY_CHECK(local_java_task_executor);
     // convert RayFunction
     jobject ray_function_array_list =
         NativeStringVectorToJavaStringList(env, ray_function.function_descriptor);
@@ -56,7 +56,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_task_NativeTaskExecutor_nativeInit(
 
     // invoke Java method
     jobject java_return_objects = env->CallObjectMethod(
-        local_java_native_task_executor, java_native_task_executor_execute,
+        local_java_task_executor, java_task_executor_execute,
         ray_function_array_list, args_array_list);
     std::vector<std::shared_ptr<ray::RayObject>> return_objects;
     JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
@@ -84,27 +84,27 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_task_NativeTaskExecutor_nativeInit(
 }
 
 /*
- * Class:     org_ray_runtime_task_NativeTaskExecutor
- * Method:    nativeRunCoreWorker
- * Signature: (JLorg/ray/runtime/task/NativeTaskExecutor;)V
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeRun
+ * Signature: (JLorg/ray/runtime/task/TaskExecutor;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_task_NativeTaskExecutor_nativeRunCoreWorker(
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRun(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer,
-    jobject javaNativeTaskExecutor) {
+    jobject javaTaskExecutor) {
   local_env = env;
-  local_java_native_task_executor = javaNativeTaskExecutor;
+  local_java_task_executor = javaTaskExecutor;
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   core_worker->Execution().Run();
   local_env = nullptr;
-  local_java_native_task_executor = nullptr;
+  local_java_task_executor = nullptr;
 }
 
 /*
- * Class:     org_ray_runtime_task_NativeTaskExecutor
+ * Class:     org_ray_runtime_RayNativeRuntime
  * Method:    nativeDestroy
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_task_NativeTaskExecutor_nativeDestroy(
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeDestroy(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
   delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }

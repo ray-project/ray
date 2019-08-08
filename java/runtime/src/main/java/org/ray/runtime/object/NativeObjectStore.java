@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This is a wrapper class for core worker object interface.
+ * Object store methods for cluster mode. This is a wrapper class for core worker object interface.
  */
 public class NativeObjectStore implements ObjectStore {
 

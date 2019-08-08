@@ -13,11 +13,17 @@ import java.util.HashMap;
 import java.util.Map;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.context.NativeWorkerContext;
 import org.ray.runtime.gcs.GcsClient;
+import org.ray.runtime.gcs.GcsClientOptions;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.generated.Common.WorkerType;
+import org.ray.runtime.object.NativeObjectStore;
+import org.ray.runtime.object.ObjectStoreProxy;
+import org.ray.runtime.raylet.NativeRayletClient;
 import org.ray.runtime.runner.RunManager;
-import org.ray.runtime.task.NativeTaskExecutor;
+import org.ray.runtime.task.NativeTaskSubmitter;
+import org.ray.runtime.task.TaskExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +35,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
 
   private RunManager manager = null;
+
+  /**
+   * The native pointer of core worker.
+   */
+  private long nativeCoreWorkerPointer;
 
   static {
     try {
@@ -98,9 +109,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setJobId(gcsClient.nextJobId());
     }
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    taskExecutor = new NativeTaskExecutor(rayConfig.workerMode, this,
+    nativeCoreWorkerPointer = nativeInit(rayConfig.workerMode.getNumber(),
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
-        rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL);
+        (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
+        new GcsClientOptions(rayConfig));
+    Preconditions.checkState(nativeCoreWorkerPointer != 0);
+
+    taskExecutor = new TaskExecutor(this);
+    objectStore = new NativeObjectStore(nativeCoreWorkerPointer);
+    workerContext = new NativeWorkerContext(nativeCoreWorkerPointer);
+    objectStoreProxy = new ObjectStoreProxy(workerContext, objectStore);
+    taskSubmitter = new NativeTaskSubmitter(nativeCoreWorkerPointer);
+    rayletClient = new NativeRayletClient(nativeCoreWorkerPointer);
 
     // register
     registerWorker();
@@ -114,11 +134,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (null != manager) {
       manager.cleanup();
     }
-    ((NativeTaskExecutor) taskExecutor).destroy();
+    if (nativeCoreWorkerPointer != 0) {
+      nativeDestroy(nativeCoreWorkerPointer);
+      nativeCoreWorkerPointer = 0;
+    }
   }
 
   public void loop() {
-    ((NativeTaskExecutor) taskExecutor).loop();
+    nativeRun(nativeCoreWorkerPointer, taskExecutor);
   }
 
   /**
@@ -127,7 +150,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private void registerWorker() {
     RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
     Map<String, String> workerInfo = new HashMap<>();
-    String workerId = new String(taskExecutor.getWorkerContext().getCurrentWorkerId().getBytes());
+    String workerId = new String(workerContext.getCurrentWorkerId().getBytes());
     if (rayConfig.workerMode == WorkerType.DRIVER) {
       workerInfo.put("node_ip_address", rayConfig.nodeIp);
       workerInfo.put("driver_id", workerId);
@@ -145,4 +168,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       redisClient.hmset("Workers:" + workerId, workerInfo);
     }
   }
+
+  private static native long nativeInit(int workerMode, String storeSocket,
+      String rayletSocket, byte[] jobId, GcsClientOptions gcsClientOptions);
+
+  private static native void nativeRun(long nativeCoreWorkerPointer, TaskExecutor taskExecutor);
+
+  private static native void nativeDestroy(long nativeCoreWorkerPointer);
 }

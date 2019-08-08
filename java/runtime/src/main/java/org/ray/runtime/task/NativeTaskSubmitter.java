@@ -10,6 +10,9 @@ import org.ray.api.options.CallOptions;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 
+/**
+ * Task submitter for cluster mode. This is a wrapper class for core worker task interface.
+ */
 public class NativeTaskSubmitter implements TaskSubmitter {
 
   /**

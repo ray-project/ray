@@ -116,10 +116,10 @@ extern jfieldID java_native_ray_object_data;
 /// metadata field of NativeRayObject class
 extern jfieldID java_native_ray_object_metadata;
 
-/// NativeTaskExecutor class
-extern jclass java_native_task_executor_class;
-/// execute method of NativeTaskExecutor class
-extern jmethodID java_native_task_executor_execute;
+/// TaskExecutor class
+extern jclass java_task_executor_class;
+/// execute method of TaskExecutor class
+extern jmethodID java_task_executor_execute;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 

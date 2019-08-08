@@ -7,7 +7,10 @@ import org.nustaq.serialization.FSTClazzInfo.FSTFieldInfo;
 import org.nustaq.serialization.FSTObjectInput;
 import org.nustaq.serialization.FSTObjectOutput;
 
-public class RayActorSerializer extends FSTBasicObjectSerializer {
+/**
+ * To deal with serialization about {@link NativeRayActor}.
+ */
+public class NativeRayActorSerializer extends FSTBasicObjectSerializer {
 
   @Override
   public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
@@ -17,7 +20,7 @@ public class RayActorSerializer extends FSTBasicObjectSerializer {
 
   @Override
   public void readObject(FSTObjectInput in, Object toRead, FSTClazzInfo clzInfo,
-                         FSTFieldInfo referencedBy) throws Exception {
+      FSTFieldInfo referencedBy) throws Exception {
     super.readObject(in, toRead, clzInfo, referencedBy);
     ((NativeRayActor) toRead).readExternal(in);
   }

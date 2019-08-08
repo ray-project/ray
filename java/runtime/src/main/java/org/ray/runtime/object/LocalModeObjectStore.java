@@ -11,6 +11,9 @@ import org.ray.api.id.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Object store methods for local mode.
+ */
 public class LocalModeObjectStore implements ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
