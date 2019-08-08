@@ -18,7 +18,7 @@ public interface TaskInterface {
    * @param options Options for this task.
    * @return Ids of the return objects.
    */
-  List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, FunctionArg[] args,
+  List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       int numReturns, CallOptions options);
 
   /**
@@ -28,7 +28,7 @@ public interface TaskInterface {
    * @param options Options for this actor creation task.
    * @return Handle to the actor.
    */
-  RayActor createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
+  RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       ActorCreationOptions options);
 
   /**
@@ -41,5 +41,5 @@ public interface TaskInterface {
    * @return Ids of the return objects.
    */
   List<ObjectId> submitActorTask(RayActor actor, FunctionDescriptor functionDescriptor,
-      FunctionArg[] args, int numReturns, CallOptions options);
+      List<FunctionArg> args, int numReturns, CallOptions options);
 }

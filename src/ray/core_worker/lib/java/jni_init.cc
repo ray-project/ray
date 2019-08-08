@@ -31,6 +31,9 @@ jmethodID java_map_entry_get_value;
 
 jclass java_ray_exception_class;
 
+jclass java_base_id_class;
+jmethodID java_base_id_get_bytes;
+
 jclass java_function_descriptor_class;
 jmethodID java_function_descriptor_get_language;
 jmethodID java_function_descriptor_to_list;
@@ -38,9 +41,9 @@ jmethodID java_function_descriptor_to_list;
 jclass java_language_class;
 jmethodID java_language_get_number;
 
-jclass java_native_task_arg_class;
-jfieldID java_native_task_arg_id;
-jfieldID java_native_task_arg_data;
+jclass java_function_arg_class;
+jfieldID java_function_arg_id;
+jfieldID java_function_arg_data;
 
 jclass java_native_resources_class;
 jfieldID java_native_resources_keys;
@@ -122,6 +125,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
+  java_base_id_class = LoadClass(env, "org/ray/api/id/BaseId");
+  java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
+
   java_function_descriptor_class =
       LoadClass(env, "org/ray/runtime/functionmanager/FunctionDescriptor");
   java_function_descriptor_get_language =
@@ -133,10 +139,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_language_class = LoadClass(env, "org/ray/runtime/generated/Common$Language");
   java_language_get_number = env->GetMethodID(java_language_class, "getNumber", "()I");
 
-  java_native_task_arg_class =
-      LoadClass(env, "org/ray/runtime/nativeTypes/NativeTaskArg");
-  java_native_task_arg_id = env->GetFieldID(java_native_task_arg_class, "id", "[B");
-  java_native_task_arg_data = env->GetFieldID(java_native_task_arg_class, "data", "[B");
+  java_function_arg_class = LoadClass(env, "org/ray/runtime/task/FunctionArg");
+  java_function_arg_id =
+      env->GetFieldID(java_function_arg_class, "id", "Lorg/ray/api/id/ObjectId;");
+  java_function_arg_data = env->GetFieldID(java_function_arg_class, "data", "[B");
 
   java_native_resources_class =
       LoadClass(env, "org/ray/runtime/nativeTypes/NativeResources");
@@ -196,9 +202,10 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_iterator_class);
   env->DeleteGlobalRef(java_map_entry_class);
   env->DeleteGlobalRef(java_ray_exception_class);
+  env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);
-  env->DeleteGlobalRef(java_native_task_arg_class);
+  env->DeleteGlobalRef(java_function_arg_class);
   env->DeleteGlobalRef(java_native_resources_class);
   env->DeleteGlobalRef(java_base_task_options_class);
   env->DeleteGlobalRef(java_actor_creation_options_class);

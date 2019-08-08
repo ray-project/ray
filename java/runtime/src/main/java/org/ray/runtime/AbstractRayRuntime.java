@@ -181,7 +181,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, CallOptions options) {
-    FunctionArg[] functionArgs = ArgumentsBuilder
+    List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = worker.getTaskInterface().submitTask(functionDescriptor,
         functionArgs, 1, options);
@@ -191,7 +191,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject callActorFunction(AbstractRayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args) {
     Preconditions.checkState(rayActor.getLanguage() == functionDescriptor.getLanguage());
-    FunctionArg[] functionArgs = ArgumentsBuilder
+    List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, rayActor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = worker.getTaskInterface().submitActorTask(rayActor,
         functionDescriptor, functionArgs, 1 /* core worker will plus it by 1, so put 1 here */,
@@ -201,7 +201,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private AbstractRayActor createActorImpl(Language language, FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
-    FunctionArg[] functionArgs = ArgumentsBuilder.wrap(args, language != Language.JAVA);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, language != Language.JAVA);
     if (language != Language.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }

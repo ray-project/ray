@@ -60,6 +60,11 @@ extern jmethodID java_map_entry_get_value;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// BaseId class
+extern jclass java_base_id_class;
+/// getBytes method of BaseId class
+extern jmethodID java_base_id_get_bytes;
+
 /// FunctionDescriptor interface
 extern jclass java_function_descriptor_class;
 /// getLanguage method of FunctionDescriptor interface
@@ -73,11 +78,11 @@ extern jclass java_language_class;
 extern jmethodID java_language_get_number;
 
 /// NativeTaskArg class
-extern jclass java_native_task_arg_class;
+extern jclass java_function_arg_class;
 /// id field of NativeTaskArg class
-extern jfieldID java_native_task_arg_id;
+extern jfieldID java_function_arg_id;
 /// data field of NativeTaskArg class
-extern jfieldID java_native_task_arg_data;
+extern jfieldID java_function_arg_data;
 
 /// NativeResources class
 extern jclass java_native_resources_class;

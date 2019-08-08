@@ -136,7 +136,7 @@ public class MockTaskInterface implements TaskInterface {
   }
 
   private TaskSpec.Builder getTaskSpecBuilder(TaskType taskType,
-      FunctionDescriptor functionDescriptor, FunctionArg[] args) {
+      FunctionDescriptor functionDescriptor, List<FunctionArg> args) {
     byte[] taskIdBytes = new byte[TaskId.LENGTH];
     new Random().nextBytes(taskIdBytes);
     return TaskSpec.newBuilder()
@@ -147,14 +147,14 @@ public class MockTaskInterface implements TaskInterface {
         .setTaskId(ByteString.copyFrom(taskIdBytes))
         .addAllFunctionDescriptor(functionDescriptor.toList().stream().map(ByteString::copyFromUtf8)
             .collect(Collectors.toList()))
-        .addAllArgs(Arrays.stream(args).map(arg -> arg.id != null ? TaskArg.newBuilder()
+        .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.data)).build())
             .collect(Collectors.toList()));
   }
 
   @Override
-  public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, FunctionArg[] args,
+  public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns == 1);
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.NORMAL_TASK, functionDescriptor, args)
@@ -165,7 +165,7 @@ public class MockTaskInterface implements TaskInterface {
   }
 
   @Override
-  public RayActor createActor(FunctionDescriptor functionDescriptor, FunctionArg[] args,
+  public RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       ActorCreationOptions options) {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
@@ -180,7 +180,7 @@ public class MockTaskInterface implements TaskInterface {
 
   @Override
   public List<ObjectId> submitActorTask(RayActor actor, FunctionDescriptor functionDescriptor,
-      FunctionArg[] args, int numReturns, CallOptions options) {
+      List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns == 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
     List<ObjectId> returnIds = getReturnIds(
@@ -221,7 +221,7 @@ public class MockTaskInterface implements TaskInterface {
         exec.submit(() -> {
           MockWorker worker = getWorker(taskSpec);
           try {
-            List<NativeRayObject> args = Arrays.stream(getFunctionArgs(taskSpec))
+            List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
                 .map(arg -> arg.id != null ? objectInterface.get(
                     Collections.singletonList(arg.id), -1).get(0)
                     : new NativeRayObject(arg.data, null)).collect(Collectors.toList());
@@ -261,15 +261,15 @@ public class MockTaskInterface implements TaskInterface {
         functionDescriptor.get(1).toStringUtf8(), functionDescriptor.get(2).toStringUtf8());
   }
 
-  private static FunctionArg[] getFunctionArgs(TaskSpec taskSpec) {
-    FunctionArg[] functionArgs = new FunctionArg[taskSpec.getArgsCount()];
+  private static List<FunctionArg> getFunctionArgs(TaskSpec taskSpec) {
+    List<FunctionArg> functionArgs = new ArrayList<>();
     for (int i = 0; i < taskSpec.getArgsCount(); i++) {
       TaskArg arg = taskSpec.getArgs(i);
       if (arg.getObjectIdsCount() > 0) {
-        functionArgs[i] = FunctionArg
-            .passByReference(new ObjectId(arg.getObjectIds(0).toByteArray()));
+        functionArgs.add(FunctionArg
+            .passByReference(new ObjectId(arg.getObjectIds(0).toByteArray())));
       } else {
-        functionArgs[i] = FunctionArg.passByValue(arg.getData().toByteArray());
+        functionArgs.add(FunctionArg.passByValue(arg.getData().toByteArray()));
       }
     }
     return functionArgs;

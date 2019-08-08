@@ -24,21 +24,21 @@ inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
 }
 
 inline std::vector<ray::TaskArg> ToTaskArgs(
-    JNIEnv *env, jobject taskArgs, std::vector<jbyteArray> *byte_arrays_to_be_released,
+    JNIEnv *env, jobject args, std::vector<jbyteArray> *byte_arrays_to_be_released,
     std::vector<jbyte *> *byte_pointers_to_be_released) {
-  std::vector<ray::TaskArg> args;
+  std::vector<ray::TaskArg> task_args;
   JavaListToNativeVector<ray::TaskArg>(
-      env, taskArgs, &args,
+      env, args, &task_args,
       [byte_arrays_to_be_released, byte_pointers_to_be_released](JNIEnv *env,
                                                                  jobject arg) {
-        auto java_id =
-            static_cast<jbyteArray>(env->GetObjectField(arg, java_native_task_arg_id));
+        auto java_id = (jbyteArray)env->CallObjectMethod(
+            env->GetObjectField(arg, java_function_arg_id), java_base_id_get_bytes);
         if (java_id) {
           return ray::TaskArg::PassByReference(
               JavaByteArrayToId<ray::ObjectID>(env, java_id));
         }
         auto java_data =
-            static_cast<jbyteArray>(env->GetObjectField(arg, java_native_task_arg_data));
+            static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_data));
         auto data_size = env->GetArrayLength(java_data);
         jbyte *data = env->GetByteArrayElements(java_data, nullptr);
         byte_arrays_to_be_released->push_back(java_data);
@@ -46,7 +46,7 @@ inline std::vector<ray::TaskArg> ToTaskArgs(
         return ray::TaskArg::PassByValue(std::make_shared<ray::LocalMemoryBuffer>(
             reinterpret_cast<uint8_t *>(data), (size_t)data_size));
       });
-  return args;
+  return task_args;
 }
 
 inline void ReleaseTaskArgs(JNIEnv *env,
@@ -111,17 +111,17 @@ extern "C" {
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
-    jobject taskArgs, jint numReturns, jobject callOptions) {
+    jobject args, jint numReturns, jobject callOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
-  auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
-                         &byte_pointers_to_be_released);
+  auto task_args =
+      ToTaskArgs(env, args, &byte_arrays_to_be_released, &byte_pointers_to_be_released);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
   auto status = GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
-                    .SubmitTask(ray_function, args, task_options, &return_ids);
+                    .SubmitTask(ray_function, task_args, task_options, &return_ids);
   ReleaseTaskArgs(env, byte_arrays_to_be_released, byte_pointers_to_be_released);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
@@ -137,18 +137,18 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitTas
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
-    jobject taskArgs, jobject actorCreationOptions) {
+    jobject args, jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
-  auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
-                         &byte_pointers_to_be_released);
+  auto task_args =
+      ToTaskArgs(env, args, &byte_arrays_to_be_released, &byte_pointers_to_be_released);
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
 
   std::unique_ptr<ray::ActorHandle> actor_handle;
   auto status =
       GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
-          .CreateActor(ray_function, args, actor_creation_options, &actor_handle);
+          .CreateActor(ray_function, task_args, actor_creation_options, &actor_handle);
   ReleaseTaskArgs(env, byte_arrays_to_be_released, byte_pointers_to_be_released);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, 0);
@@ -163,19 +163,19 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeCreateActor
  */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_TaskInterfaceImpl_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jlong nativeActorHandle,
-    jobject functionDescriptor, jobject taskArgs, jint numReturns, jobject callOptions) {
+    jobject functionDescriptor, jobject args, jint numReturns, jobject callOptions) {
   auto &actor_handle = *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));
   auto ray_function = ToRayFunction(env, functionDescriptor);
   std::vector<jbyteArray> byte_arrays_to_be_released;
   std::vector<jbyte *> byte_pointers_to_be_released;
-  auto args = ToTaskArgs(env, taskArgs, &byte_arrays_to_be_released,
-                         &byte_pointers_to_be_released);
+  auto task_args =
+      ToTaskArgs(env, args, &byte_arrays_to_be_released, &byte_pointers_to_be_released);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  auto status =
-      GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
-          .SubmitActorTask(actor_handle, ray_function, args, task_options, &return_ids);
+  auto status = GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
+                    .SubmitActorTask(actor_handle, ray_function, task_args, task_options,
+                                     &return_ids);
   ReleaseTaskArgs(env, byte_arrays_to_be_released, byte_pointers_to_be_released);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);

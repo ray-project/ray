@@ -1,5 +1,6 @@
 package org.ray.runtime.task;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
@@ -21,10 +22,9 @@ public class ArgumentsBuilder {
   /**
    * Convert real function arguments to task spec arguments.
    */
-  public static FunctionArg[] wrap(Object[] args, boolean crossLanguage) {
-    FunctionArg[] ret = new FunctionArg[args.length];
-    for (int i = 0; i < ret.length; i++) {
-      Object arg = args[i];
+  public static List<FunctionArg> wrap(Object[] args, boolean crossLanguage) {
+    List<FunctionArg> ret = new ArrayList<>();
+    for (Object arg : args) {
       ObjectId id = null;
       byte[] data = null;
       if (arg == null) {
@@ -48,9 +48,9 @@ public class ArgumentsBuilder {
         }
       }
       if (id != null) {
-        ret[i] = FunctionArg.passByReference(id);
+        ret.add(FunctionArg.passByReference(id));
       } else {
-        ret[i] = FunctionArg.passByValue(data);
+        ret.add(FunctionArg.passByValue(data));
       }
     }
     return ret;
