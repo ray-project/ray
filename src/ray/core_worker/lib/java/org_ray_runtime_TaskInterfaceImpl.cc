@@ -31,14 +31,16 @@ inline std::vector<ray::TaskArg> ToTaskArgs(
       env, args, &task_args,
       [byte_arrays_to_be_released, byte_pointers_to_be_released](JNIEnv *env,
                                                                  jobject arg) {
-        auto java_id = (jbyteArray)env->CallObjectMethod(
-            env->GetObjectField(arg, java_function_arg_id), java_base_id_get_bytes);
+        auto java_id = env->GetObjectField(arg, java_function_arg_id);
         if (java_id) {
+          auto java_id_bytes =
+              (jbyteArray)env->CallObjectMethod(java_id, java_base_id_get_bytes);
           return ray::TaskArg::PassByReference(
-              JavaByteArrayToId<ray::ObjectID>(env, java_id));
+              JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes));
         }
         auto java_data =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_data));
+        RAY_CHECK(java_data) << "Both id and data of FunctionArg are null.";
         auto data_size = env->GetArrayLength(java_data);
         jbyte *data = env->GetByteArrayElements(java_data, nullptr);
         byte_arrays_to_be_released->push_back(java_data);
@@ -60,24 +62,30 @@ inline void ReleaseTaskArgs(JNIEnv *env,
 
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
-  jobject entry_set = env->CallObjectMethod(java_resources, java_map_entry_set);
-  jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
   std::unordered_map<std::string, double> resources;
-  while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
-    jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
-    std::string key = JavaStringToNativeString(
-        env, (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key));
-    double value = env->GetDoubleField(
-        env->CallObjectMethod(map_entry, java_language_get_number), java_double_value);
-    resources.emplace(key, value);
+  if (java_resources) {
+    jobject entry_set = env->CallObjectMethod(java_resources, java_map_entry_set);
+    jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
+    while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
+      jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
+      std::string key = JavaStringToNativeString(
+          env, (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key));
+      double value = env->CallDoubleMethod(
+          env->CallObjectMethod(map_entry, java_map_entry_get_value),
+          java_double_double_value);
+      resources.emplace(key, value);
+    }
   }
   return resources;
 }
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
-  jobject java_resources =
-      env->GetObjectField(callOptions, java_base_task_options_resources);
-  auto resources = ToResources(env, java_resources);
+  std::unordered_map<std::string, double> resources;
+  if (callOptions) {
+    jobject java_resources =
+        env->GetObjectField(callOptions, java_base_task_options_resources);
+    resources = ToResources(env, java_resources);
+  }
 
   ray::TaskOptions task_options{numReturns, resources};
   return task_options;
@@ -85,17 +93,24 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
-  int max_reconstructions = env->GetIntField(
-      actorCreationOptions, java_actor_creation_options_max_reconstructions);
-  jobject java_resources =
-      env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
-  auto resources = ToResources(env, java_resources);
-  std::string jvm_options = JavaStringToNativeString(
-      env, (jstring)env->GetObjectField(actorCreationOptions,
-                                        java_actor_creation_options_jvm_options));
+  uint64_t max_reconstructions = 0;
+  std::unordered_map<std::string, double> resources;
+  std::vector<std::string> dynamic_worker_options;
+  if (actorCreationOptions) {
+    max_reconstructions = static_cast<uint64_t>(env->GetIntField(
+        actorCreationOptions, java_actor_creation_options_max_reconstructions));
+    jobject java_resources =
+        env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
+    resources = ToResources(env, java_resources);
+    std::string jvm_options = JavaStringToNativeString(
+        env, (jstring)env->GetObjectField(actorCreationOptions,
+                                          java_actor_creation_options_jvm_options));
+    dynamic_worker_options.emplace_back(jvm_options);
+  }
 
   ray::ActorCreationOptions action_creation_options{
-      static_cast<uint64_t>(max_reconstructions), false, resources, {jvm_options}};
+      static_cast<uint64_t>(max_reconstructions), false, resources,
+      dynamic_worker_options};
   return action_creation_options;
 }
 

@@ -14,8 +14,8 @@ extern jmethodID java_boolean_init;
 
 /// Double class
 extern jclass java_double_class;
-/// value field of Double class
-extern jfieldID java_double_value;
+/// doubleValue method of Double class
+extern jmethodID java_double_double_value;
 
 /// List class
 extern jclass java_list_class;

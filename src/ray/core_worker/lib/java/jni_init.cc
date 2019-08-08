@@ -4,7 +4,7 @@ jclass java_boolean_class;
 jmethodID java_boolean_init;
 
 jclass java_double_class;
-jfieldID java_double_value;
+jmethodID java_double_double_value;
 
 jclass java_list_class;
 jmethodID java_list_size;
@@ -89,7 +89,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_boolean_init = env->GetMethodID(java_boolean_class, "<init>", "(Z)V");
 
   java_double_class = LoadClass(env, "java/lang/Double");
-  java_double_value = env->GetFieldID(java_double_class, "value", "D");
+  java_double_double_value = env->GetMethodID(java_double_class, "doubleValue", "()D");
 
   java_list_class = LoadClass(env, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
@@ -115,9 +115,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_map_entry_class = LoadClass(env, "java/util/Map$Entry");
   java_map_entry_get_key =
-      env->GetMethodID(java_map_class, "getKey", "()Ljava/lang/Object;");
+      env->GetMethodID(java_map_entry_class, "getKey", "()Ljava/lang/Object;");
   java_map_entry_get_value =
-      env->GetMethodID(java_map_class, "getValue", "()Ljava/lang/Object;");
+      env->GetMethodID(java_map_entry_class, "getValue", "()Ljava/lang/Object;");
 
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
