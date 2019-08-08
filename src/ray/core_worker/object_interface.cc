@@ -61,7 +61,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   int64_t duration = current_time_ms() - start_time;
   int64_t left_timeout_ms =
-      (timeout_ms == -1) ? timeout_ms : std::max(0LL, timeout_ms - duration);
+      (timeout_ms == -1) ? timeout_ms : std::max(static_cast<int64_t>(0), timeout_ms - duration);
 
   // Fetch direct call return objects using `LOCAL_PLASMA` store provider.
   if (!direct_call_return_ids.empty()) {
