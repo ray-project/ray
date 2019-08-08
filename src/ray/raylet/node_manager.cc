@@ -171,8 +171,14 @@ ray::Status NodeManager::RegisterGcs() {
     HandleActorStateTransition(actor_id, ActorRegistration(data));
   };
 
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Actors().AsyncSubscribe(actor_notification_callback, nullptr));
+  auto subscribe_actor_callback = [](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(FATAL) << "Failed to subscribe actors, status " << status;
+    }
+  };
+
+  RAY_RETURN_NOT_OK(gcs_client_->Actors().AsyncSubscribe(actor_notification_callback,
+                                                         subscribe_actor_callback));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,

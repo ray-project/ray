@@ -7,10 +7,18 @@ namespace ray {
 
 namespace gcs {
 
-ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
-    : client_impl_(client_impl) {}
+ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl,
+                                       boost::asio::io_service &io_service)
+    : client_impl_(client_impl), io_service_(io_service) {}
 
 Status ActorStateAccessor::AsyncGet(const ActorID &actor_id,
+                                    const MultiItemCallback<ActorTableData> &callback) {
+  io_service_.dispatch(
+      boost::bind(&ActorStateAccessor::DoAsyncGet, this, actor_id, callback));
+  return Status::OK();
+}
+
+void ActorStateAccessor::DoAsyncGet(const ActorID &actor_id,
                                     const MultiItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -19,10 +27,20 @@ Status ActorStateAccessor::AsyncGet(const ActorID &actor_id,
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.Lookup(JobID::Nil(), actor_id, on_done);
+  Status status = actor_table.Lookup(JobID::Nil(), actor_id, on_done);
+  if (!status.ok()) {
+    callback(status, {});
+  }
 }
 
 Status ActorStateAccessor::AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+                                         const StatusCallback &callback) {
+  io_service_.dispatch(
+      boost::bind(&ActorStateAccessor::DoAsyncRegister, this, data_ptr, callback));
+  return Status::OK();
+}
+
+void ActorStateAccessor::DoAsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                                          const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
@@ -40,11 +58,22 @@ Status ActorStateAccessor::AsyncRegister(const std::shared_ptr<ActorTableData> &
 
   ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
-                              /*log_length*/ 0);
+  Status status = actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success,
+                                       on_failure, /*log_length*/ 0);
+  if (!status.ok() && callback != nullptr) {
+    callback(status);
+  }
 }
 
 Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
+                                       const std::shared_ptr<ActorTableData> &data_ptr,
+                                       const StatusCallback &callback) {
+  io_service_.dispatch(boost::bind(&ActorStateAccessor::DoAsyncUpdate, this, actor_id,
+                                   data_ptr, callback));
+  return Status::OK();
+}
+
+void ActorStateAccessor::DoAsyncUpdate(const ActorID &actor_id,
                                        const std::shared_ptr<ActorTableData> &data_ptr,
                                        const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
@@ -82,11 +111,22 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
-                              log_length);
+  Status status = actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success,
+                                       on_failure, log_length);
+  if (!status.ok() && callback != nullptr) {
+    callback(status);
+  }
 }
 
 Status ActorStateAccessor::AsyncSubscribe(
+    const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  io_service_.dispatch(
+      boost::bind(&ActorStateAccessor::DoAsyncSubscribe, this, subscribe, done));
+  return Status::OK();
+}
+
+void ActorStateAccessor::DoAsyncSubscribe(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
@@ -106,7 +146,11 @@ Status ActorStateAccessor::AsyncSubscribe(
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.Subscribe(JobID::Nil(), ClientID::Nil(), on_subscribe, on_done);
+  Status status =
+      actor_table.Subscribe(JobID::Nil(), ClientID::Nil(), on_subscribe, on_done);
+  if (!status.ok() && done != nullptr) {
+    done(status);
+  }
 }
 
 }  // namespace gcs
