@@ -12,6 +12,7 @@ from ray.includes.task cimport (
     TaskSpecBuilder,
     TaskTableData,
 )
+from ray.utils import decode
 
 
 cdef class TaskSpec:
@@ -209,7 +210,7 @@ cdef class TaskSpec:
         while iterator != resource_map.end():
             resource_name = dereference(iterator).first
             # bytes for Py2, unicode for Py3
-            py_resource_name = resource_name.decode()
+            py_resource_name = decode(resource_name)
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
             postincrement(iterator)

@@ -15,6 +15,24 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def get_rss(memory_info):
+    """Get the estimated non-shared memory usage from psutil memory_info."""
+    mem = memory_info.rss
+    # OSX doesn't have the shared attribute
+    if hasattr(memory_info, "shared"):
+        mem -= memory_info.shared
+    return mem
+
+
+def get_shared(virtual_memory):
+    """Get the estimated shared memory usage from psutil virtual mem info."""
+    # OSX doesn't have the shared attribute
+    if hasattr(virtual_memory, "shared"):
+        return virtual_memory.shared
+    else:
+        return 0
+
+
 class RayOutOfMemoryError(Exception):
     def __init__(self, msg):
         Exception.__init__(self, msg)
@@ -25,9 +43,7 @@ class RayOutOfMemoryError(Exception):
         proc_stats = []
         for pid in pids:
             proc = psutil.Process(pid)
-            proc_stats.append(
-                (proc.memory_info().rss - proc.memory_info().shared, pid,
-                 proc.cmdline()))
+            proc_stats.append(get_rss(proc.memory_info()), pid, proc.cmdline())
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:10]:
             proc_str += "\n{}\t{}GB\t{}".format(
@@ -37,7 +53,7 @@ class RayOutOfMemoryError(Exception):
                 os.uname()[1], round(used_gb, 2), round(total_gb, 2)) +
                 "The top 10 memory consumers are:\n\n{}".format(proc_str) +
                 "\n\nIn addition, up to {} GB of shared memory is ".format(
-                    round(psutil.virtual_memory().shared / 1e9, 2)) +
+                    round(get_shared(psutil.virtual_memory()) / 1e9, 2)) +
                 "currently being used by the Ray object store. You can set "
                 "the object store size with the `object_store_memory` "
                 "parameter when starting Ray, and the max Redis size with "
@@ -116,7 +132,7 @@ class MemoryMonitor(object):
 
             if self.heap_limit:
                 mem_info = psutil.Process(os.getpid()).memory_info()
-                heap_size = mem_info.rss - mem_info.shared
+                heap_size = get_rss(mem_info)
                 if heap_size > self.heap_limit:
                     raise RayOutOfMemoryError(
                         "Heap memory usage for {} is {} / {} GB limit".format(

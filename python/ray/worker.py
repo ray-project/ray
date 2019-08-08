@@ -936,7 +936,7 @@ class Worker(object):
         try:
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
-            self.memory_monitor.raise_if_low_memory()
+                self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments"):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -1353,15 +1353,16 @@ def init(redis_address=None,
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
         memory: The amount of memory (in bytes) that is available for use by
-            workers requesting memory resources.
+            workers requesting memory resources. By default, this is autoset
+            based on available system memory.
         object_store_memory: The amount of memory (in bytes) to start the
-            object store with. By default, this is capped at 20GB but can be
-            set higher.
+            object store with. By default, this is autoset based on available
+            system memory, subject to a 20GB cap.
         redis_max_memory: The max amount of memory (in bytes) to allow each
             redis shard to use. Once the limit is exceeded, redis will start
             LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables). By default, this is
-            capped at 10GB but can be set higher.
+            tables (task, object, and profile tables).  By default, this is
+            autoset based on available system memory, subject to a 10GB cap.
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
@@ -1373,7 +1374,8 @@ def init(redis_address=None,
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
         driver_object_store_memory (int): Limit the amount of memory the driver
-            can use in the object store for creating objects.
+            can use in the object store for creating objects. By default, this
+            is autoset based on available system memory, subject to a 20GB cap.
         ignore_reinit_error: True if we should suppress errors from calling
             ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to

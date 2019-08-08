@@ -40,8 +40,6 @@ class ResourceSpec(
             capped at 10GB but can be set higher.
     """
 
-    __slots__ = ()
-
     def __new__(cls,
                 num_cpus=None,
                 num_gpus=None,
@@ -190,9 +188,9 @@ class ResourceSpec(
                     "After taking into account object store and redis memory "
                     "usage, the amount of memory on this node available for "
                     "tasks and actors ({} GB) is less than {}% of total. "
-                    "Please decrease object_store_memory, "
-                    "redis_max_memory, or shutting down some "
-                    "applications.".format(
+                    "You can adjust these settings with "
+                    "ray.remote(memory=<bytes>, "
+                    "object_store_memory=<bytes>).".format(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 

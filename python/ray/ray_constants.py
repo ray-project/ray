@@ -55,10 +55,10 @@ PICKLE_OBJECT_WARNING_SIZE = 10**7
 # for large resource quantities due to bookkeeping of specific resource IDs.
 MAX_RESOURCE_QUANTITY = 10000
 
-# Each memory "resource" counts as this many bytes of memory
+# Each memory "resource" counts as this many bytes of memory.
 MEMORY_RESOURCE_UNIT_BYTES = 100 * 1024 * 1024
 
-# Number of units 1 resource can be subdivided into
+# Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
 
 # Fraction of plasma memory that can be reserved. It is actually 70% but this
@@ -86,7 +86,8 @@ def to_memory_units(memory_bytes, round_up):
                                                  memory_bytes))
     if isinstance(value, float) and not value.is_integer():
         # TODO(ekl) Ray currently does not support fractional resources when
-        # the quantity is greater than one.
+        # the quantity is greater than one. We should fix memory resources to
+        # be allocated in units of bytes and not 100MB.
         if round_up:
             value = int(math.ceil(value))
         else:

@@ -1,7 +1,8 @@
-import ray
 import numpy as np
-import pyarrow
 import unittest
+
+import ray
+import pyarrow
 
 MB = 1024 * 1024
 

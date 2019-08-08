@@ -1178,7 +1178,7 @@ def determine_plasma_store_config(object_store_memory,
 
     Returns:
         The plasma directory to use. If it is specified by the user, then that
-        value will be preserved.
+            value will be preserved.
     """
     system_memory = ray.utils.get_system_memory()
 
