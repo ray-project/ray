@@ -55,7 +55,7 @@ Here is an example for a minimal project format:
     # Commands/information to build the environment, once the cluster is
     # instantiated. This can include the versions of python libraries etc.
     # It can be specified as a Python requirements.txt, a conda environment,
-    # a Docker file or a shell script to run to set up the libraries.
+    # a Dockerfile, or a shell script to run to set up the libraries.
     environment: <<information/commands to build environment>>
 
     # List of commands that can be executed once the cluster is instantiated
