@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import logging
 import os
 import sys
@@ -35,7 +39,8 @@ CLUSTER_TEMPLATE = os.path.join(_TEMPLATE_DIR, "cluster_template.yaml")
 REQUIREMENTS_TXT_TEMPLATE = os.path.join(_TEMPLATE_DIR, "requirements.txt")
 
 
-@click.group("project", help="Commands working with ray project")
+@click.group(
+    "project", help="[Experimental] Commands working with ray project")
 def project_cli():
     pass
 
@@ -101,6 +106,7 @@ def create(project_name, cluster_yaml, requirements):
         f.write(project_template)
 
 
-@click.group("session", help="Commands working with ray session")
+@click.group(
+    "session", help="[Experimental] Commands working with ray session")
 def session_cli():
     pass
