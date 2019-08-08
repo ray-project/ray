@@ -15,22 +15,26 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_WorkerContextImpl
- * Method:    nativeGetCurrentTask
- * Signature: (J)[B
+ * Method:    nativeGetCurrentTaskType
+ * Signature: (J)I
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTask(
+JNIEXPORT jint JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTaskType(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
-  auto spec = GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetCurrentTask();
-  if (!spec) {
-    return nullptr;
-  }
+  auto task_spec = GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetCurrentTask();
+  RAY_CHECK(task_spec) << "Current task is not set.";
+  return static_cast<int>(task_spec->GetMessage().type());
+}
 
-  auto task_message = spec->Serialize();
-  jbyteArray result = env->NewByteArray(task_message.size());
-  env->SetByteArrayRegion(
-      result, 0, task_message.size(),
-      reinterpret_cast<jbyte *>(const_cast<char *>(task_message.data())));
-  return result;
+/*
+ * Class:     org_ray_runtime_WorkerContextImpl
+ * Method:    nativeGetCurrentTaskId
+ * Signature: (J)Ljava/nio/ByteBuffer;
+ */
+JNIEXPORT jobject JNICALL Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTaskId(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
+  const ray::TaskID &task_id =
+      GetWorkerContextFromPointer(nativeCoreWorkerPointer).GetCurrentTaskID();
+  return IdToJavaByteBuffer<ray::TaskID>(env, task_id);
 }
 
 /*

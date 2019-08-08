@@ -9,11 +9,19 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_WorkerContextImpl
- * Method:    nativeGetCurrentTask
- * Signature: (J)[B
+ * Method:    nativeGetCurrentTaskType
+ * Signature: (J)I
  */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTask(JNIEnv *, jclass, jlong);
+JNIEXPORT jint JNICALL
+Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTaskType(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     org_ray_runtime_WorkerContextImpl
+ * Method:    nativeGetCurrentTaskId
+ * Signature: (J)Ljava/nio/ByteBuffer;
+ */
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_WorkerContextImpl_nativeGetCurrentTaskId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_WorkerContextImpl

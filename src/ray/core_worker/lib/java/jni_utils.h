@@ -1,5 +1,5 @@
-#ifndef RAY_COMMON_JAVA_JNI_HELPER_H
-#define RAY_COMMON_JAVA_JNI_HELPER_H
+#ifndef RAY_COMMON_JAVA_JNI_UTILS_H
+#define RAY_COMMON_JAVA_JNI_UTILS_H
 
 #include <jni.h>
 #include "ray/common/buffer.h"
@@ -134,6 +134,32 @@ extern JavaVM *jvm;
     }                                                                        \
   }
 
+/// Represents a byte buffer of Java byte array.
+/// The destructor will automatically call ReleaseByteArrayElements.
+/// NOTE: Instances of this class cannot be used across threads.
+class JavaByteArrayBuffer : public ray::Buffer {
+ public:
+  JavaByteArrayBuffer(JNIEnv *env, jbyteArray java_byte_array)
+      : env_(env), java_byte_array_(java_byte_array) {
+    native_bytes_ = env_->GetByteArrayElements(java_byte_array_, nullptr);
+  }
+
+  uint8_t *Data() const override { return reinterpret_cast<uint8_t *>(native_bytes_); }
+
+  size_t Size() const override { return env_->GetArrayLength(java_byte_array_); }
+
+  bool OwnsData() const override { return true; }
+
+  ~JavaByteArrayBuffer() {
+    env_->ReleaseByteArrayElements(java_byte_array_, native_bytes_, JNI_ABORT);
+  }
+
+ private:
+  JNIEnv *env_;
+  jbyteArray java_byte_array_;
+  jbyte *native_bytes_;
+};
+
 /// Convert a Java byte array to a C++ UniqueID.
 template <typename ID>
 inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {
@@ -233,25 +259,13 @@ inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
   return java_byte_array;
 }
 
-/// Convert a Java byte[] as a C++ std::shared_ptr<ray::LocalMemoryBuffer>.
-/// The deleter of std::shared_ptr will automatically call ReleaseByteArrayElements.
-/// NOTE: the returned std::shared_ptr cannot be used across threads.
-inline std::shared_ptr<ray::LocalMemoryBuffer> JavaByteArrayToNativeBuffer(
+/// Convert a Java byte[] as a C++ std::shared_ptr<JavaByteArrayBuffer>.
+inline std::shared_ptr<JavaByteArrayBuffer> JavaByteArrayToNativeBuffer(
     JNIEnv *env, const jbyteArray &javaByteArray) {
   if (!javaByteArray) {
     return nullptr;
   }
-  auto size = env->GetArrayLength(javaByteArray);
-  if (size == 0) {
-    return std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
-  }
-  jbyte *data = env->GetByteArrayElements(javaByteArray, nullptr);
-  return std::shared_ptr<ray::LocalMemoryBuffer>(
-      new ray::LocalMemoryBuffer(reinterpret_cast<uint8_t *>(data), size),
-      [env, javaByteArray](ray::LocalMemoryBuffer *p) {
-        env->ReleaseByteArrayElements(javaByteArray, reinterpret_cast<jbyte *>(p->Data()),
-                                      JNI_ABORT);
-      });
+  return std::make_shared<JavaByteArrayBuffer>(env, javaByteArray);
 }
 
 /// Convert a Java NativeRayObject to a C++ ray::RayObject.
@@ -264,8 +278,8 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   auto java_data = (jbyteArray)env->GetObjectField(java_obj, java_native_ray_object_data);
   auto java_metadata =
       (jbyteArray)env->GetObjectField(java_obj, java_native_ray_object_metadata);
-  auto data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
-  auto metadata_buffer = JavaByteArrayToNativeBuffer(env, java_metadata);
+  std::shared_ptr<ray::Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
+  std::shared_ptr<ray::Buffer> metadata_buffer = JavaByteArrayToNativeBuffer(env, java_metadata);
   if (!data_buffer) {
     data_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
   }
@@ -288,4 +302,4 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   return java_obj;
 }
 
-#endif  // RAY_COMMON_JAVA_JNI_HELPER_H
+#endif  // RAY_COMMON_JAVA_JNI_UTILS_H

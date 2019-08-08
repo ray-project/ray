@@ -1,11 +1,11 @@
 package org.ray.runtime;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import java.nio.ByteBuffer;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.generated.Common.TaskSpec;
+import org.ray.runtime.generated.Common.TaskType;
 
 /**
  * This is a wrapper class for worker context of core worker.
@@ -51,19 +51,18 @@ public class WorkerContextImpl implements WorkerContext {
   }
 
   @Override
-  public TaskSpec getCurrentTask() {
-    byte[] bytes = nativeGetCurrentTask(nativeCoreWorkerPointer);
-    if (bytes == null) {
-      return null;
-    }
-    try {
-      return TaskSpec.parseFrom(bytes);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException(e);
-    }
+  public TaskType getCurrentTaskType() {
+    return TaskType.forNumber(nativeGetCurrentTaskType(nativeCoreWorkerPointer));
   }
 
-  private static native byte[] nativeGetCurrentTask(long nativeCoreWorkerPointer);
+  @Override
+  public TaskId getCurrentTaskId() {
+    return TaskId.fromByteBuffer(nativeGetCurrentTaskId(nativeCoreWorkerPointer));
+  }
+
+  private static native int nativeGetCurrentTaskType(long nativeCoreWorkerPointer);
+
+  private static native ByteBuffer nativeGetCurrentTaskId(long nativeCoreWorkerPointer);
 
   private static native ByteBuffer nativeGetCurrentJobId(long nativeCoreWorkerPointer);
 

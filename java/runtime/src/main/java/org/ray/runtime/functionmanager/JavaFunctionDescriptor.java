@@ -1,7 +1,7 @@
 package org.ray.runtime.functionmanager;
 
 import com.google.common.base.Objects;
-import java.util.Arrays;
+import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.ray.runtime.generated.Common.Language;
 
@@ -55,7 +55,7 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
 
   @Override
   public List<String> toList() {
-    return Arrays.asList(className, name, typeDescriptor);
+    return ImmutableList.of(className, name, typeDescriptor);
   }
 
   @Override

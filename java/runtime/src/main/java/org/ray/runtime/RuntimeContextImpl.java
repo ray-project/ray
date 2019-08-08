@@ -36,9 +36,8 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorReconstructed() {
-    TaskSpec currentTask = runtime.getWorkerContext().getCurrentTask();
-    Preconditions.checkState(currentTask != null
-            && currentTask.getType() == TaskType.ACTOR_CREATION_TASK,
+    TaskType currentTaskType = runtime.getWorkerContext().getCurrentTaskType();
+    Preconditions.checkState(currentTaskType == TaskType.ACTOR_CREATION_TASK,
         "This method can only be called from an actor creation task.");
     if (isSingleProcess()) {
       return false;

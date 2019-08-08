@@ -2,8 +2,10 @@ package org.ray.runtime;
 
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
+import org.ray.runtime.generated.Common.TaskType;
 
 public interface WorkerContext {
 
@@ -13,13 +15,12 @@ public interface WorkerContext {
   UniqueId getCurrentWorkerId();
 
   /**
-   * The ID of the current job.
+   * ID of the current job.
    */
   JobId getCurrentJobId();
 
   /**
-   * The ID of the current job.
-   * @return
+   * ID of the current actor.
    */
   ActorId getCurrentActorId();
 
@@ -34,7 +35,12 @@ public interface WorkerContext {
   void setCurrentClassLoader(ClassLoader currentClassLoader);
 
   /**
-   * Get the current task.
+   * Type of the current task.
    */
-  TaskSpec getCurrentTask();
+  TaskType getCurrentTaskType();
+
+  /**
+   * ID of the current task.
+   */
+  TaskId getCurrentTaskId();
 }

@@ -70,10 +70,10 @@ public abstract class AbstractWorker {
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
       List<NativeRayObject> argsBytes) {
-    TaskSpec taskSpec = workerContext.getCurrentTask();
-    JobId jobId = JobId.fromByteBuffer(taskSpec.getJobId().asReadOnlyByteBuffer());
-    TaskType taskType = taskSpec.getType();
-    LOGGER.debug("Executing task {}", taskSpec);
+    JobId jobId = workerContext.getCurrentJobId();
+    TaskType taskType = workerContext.getCurrentTaskType();
+    TaskId taskId = workerContext.getCurrentTaskId();
+    LOGGER.debug("Executing task {}", taskId);
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
@@ -104,23 +104,19 @@ public abstract class AbstractWorker {
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (taskType == TaskType.ACTOR_TASK) {
-          ActorId actorId = ActorId
-              .fromByteBuffer(taskSpec.getActorTaskSpec().getActorId().asReadOnlyByteBuffer());
-          maybeSaveCheckpoint(actor, actorId);
+          maybeSaveCheckpoint(actor, workerContext.getCurrentActorId());
         }
         returnObjects.add(objectStoreProxy.serialize(result));
       } else {
-        ActorId actorId = ActorId.fromByteBuffer(
-            taskSpec.getActorCreationTaskSpec().getActorId().asReadOnlyByteBuffer());
-        maybeLoadCheckpoint(result, actorId);
+        maybeLoadCheckpoint(result, workerContext.getCurrentActorId());
         currentActor = result;
       }
-      LOGGER.debug("Finished executing task {}", TaskId.fromBytes(taskSpec.getTaskId().toByteArray()));
+      LOGGER.debug("Finished executing task {}", taskId);
     } catch (Exception e) {
-      LOGGER.error("Error executing task " + taskSpec, e);
+      LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         returnObjects.add(objectStoreProxy
-            .serialize(new RayTaskException("Error executing task " + taskSpec, e)));
+            .serialize(new RayTaskException("Error executing task " + taskId, e)));
       } else {
         actorCreationException = e;
       }
