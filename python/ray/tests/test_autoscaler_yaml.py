@@ -6,15 +6,19 @@ import os
 import unittest
 import yaml
 
-from ray.tests.util import recursive_fnmatch
+from ray.autoscaler.autoscaler import fillout_defaults, validate_config
+from ray.tests.utils import recursive_fnmatch
+
+RAY_PATH = os.path.abspath(os.path.join(__file__, "../../"))
 CONFIG_PATHS = recursive_fnmatch(
-    os.path.join(__file__, "../autoscaler/"), "*.yaml")
+    os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
+
+CONFIG_PATHS += recursive_fnmatch(
+    os.path.join(RAY_PATH, "tune/examples/"), "*.yaml")
 
 
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
-
-        from ray.autoscaler.autoscaler import fillout_defaults, validate_config
 
         for config_path in CONFIG_PATHS:
             with open(config_path) as f:

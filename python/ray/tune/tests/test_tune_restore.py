@@ -10,7 +10,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.tests.util import recursive_fnmatch
+from ray.tests.utils import recursive_fnmatch
 from ray.tune.util import validate_save_restore
 from ray.rllib import _register_all
 
