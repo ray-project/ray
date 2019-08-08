@@ -135,8 +135,9 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
   // Compute return IDs.
   (*return_ids).resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1,
-        /*transport_type=*/static_cast<int>(transport_type));
+    (*return_ids)[i] =
+        ObjectID::ForTaskReturn(task_id, i + 1,
+                                /*transport_type=*/static_cast<int>(transport_type));
   }
 }
 
@@ -200,7 +201,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle.ActorID());
   BuildCommonTaskSpec(builder, actor_task_id, next_task_index, function, args,
-                      num_returns, task_options.resources, {}, transport_type, return_ids);
+                      num_returns, task_options.resources, {}, transport_type,
+                      return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
@@ -208,7 +210,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       TaskID::ForActorCreationTask(actor_handle.ActorID());
   const auto actor_creation_dummy_object_id =
       ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
-      /*transport_type=*/static_cast<int>(transport_type));
+                              /*transport_type=*/static_cast<int>(transport_type));
   builder.SetActorTaskSpec(
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
       actor_creation_dummy_object_id,

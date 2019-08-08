@@ -1,8 +1,8 @@
 #include "ray/core_worker/object_interface.h"
+#include <algorithm>
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
-#include <algorithm>
 
 namespace ray {
 
@@ -38,7 +38,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   std::vector<ObjectID> other_ids;
   for (const auto &object_id : ids) {
     if (object_id.IsReturnObject() &&
-        object_id.GetTransportType() == static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
+        object_id.GetTransportType() ==
+            static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
       direct_call_return_ids.push_back(object_id);
     } else {
       other_ids.push_back(object_id);
@@ -51,26 +52,27 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   if (!other_ids.empty()) {
     std::vector<std::shared_ptr<RayObject>> objects;
     RAY_RETURN_NOT_OK(store_providers_[StoreProviderType::PLASMA]->Get(
-      other_ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
+        other_ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
     RAY_CHECK(other_ids.size() == objects.size());
     for (int i = 0; i < objects.size(); i++) {
       object_map.emplace(ids[i], objects[i]);
-    }  
+    }
   }
 
   int64_t duration = current_time_ms() - start_time;
-  int64_t left_timeout_ms = (timeout_ms == -1) ?
-      timeout_ms : std::max(0LL, timeout_ms - duration);
+  int64_t left_timeout_ms =
+      (timeout_ms == -1) ? timeout_ms : std::max(0LL, timeout_ms - duration);
 
   // Fetch direct call return objects using `LOCAL_PLASMA` store provider.
   if (!direct_call_return_ids.empty()) {
     std::vector<std::shared_ptr<RayObject>> objects;
     RAY_RETURN_NOT_OK(store_providers_[StoreProviderType::LOCAL_PLASMA]->Get(
-      direct_call_return_ids, left_timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
+        direct_call_return_ids, left_timeout_ms, worker_context_.GetCurrentTaskID(),
+        &objects));
     RAY_CHECK(direct_call_return_ids.size() == objects.size());
     for (int i = 0; i < objects.size(); i++) {
       object_map.emplace(ids[i], objects[i]);
-    } 
+    }
   }
 
   for (int i = 0; i < ids.size(); i++) {
