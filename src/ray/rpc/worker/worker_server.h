@@ -41,9 +41,7 @@ class WorkerTaskGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories)
-      override {
+          *server_call_factories_and_concurrencies) override {
     // Initialize the Factory for `AssignTask` requests.
     std::unique_ptr<ServerCallFactory> push_task_call_Factory(
         new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler, AssignTaskRequest,

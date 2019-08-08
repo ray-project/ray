@@ -38,8 +38,8 @@ namespace rpc {
 // Server handlers for test service.
 class ServiceHandlers : public TestServiceHandler {
  public:
-  void HandleDebugEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
-                       SendReplyCallback send_reply_callback) override {
+  void HandleEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
+                  SendReplyCallback send_reply_callback) override {
     RAY_LOG(DEBUG) << "Server received request from the client, msg: "
                    << request.request_message();
     reply->set_reply_message(
@@ -47,7 +47,7 @@ class ServiceHandlers : public TestServiceHandler {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 
-  void HandleDebugStreamEcho(
+  void HandleStreamEcho(
       const DebugEchoRequest &request,
       StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_reply_writer) override {
     const string &str = request.request_message();
@@ -143,7 +143,7 @@ TEST_F(GrpcTest, AsyncCallTest) {
                 << " requests.";
 }
 
-TEST_F(GrpcTest, StreamRequestTest) {
+TEST_F(GrpcTest, AsyncStreamCallTest) {
   int num_messages = 1000;
   DebugTestClient client("127.0.0.1", 12345, client_call_manager_);
 

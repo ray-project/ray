@@ -90,7 +90,7 @@ class ClientCallManager {
     auto call = std::make_shared<ClientStreamCallImpl<GrpcService, Request, Reply>>(
         callback, max_buffer_size);
     auto tag = new ClientCallTag(call);
-    auto reader_tag = new ClientCallTag(call, ClientCallTag::TagType::REPLY_READER);
+    auto reader_tag = new ClientCallTag(call, ClientCallTag::TagType::REPLY);
     // Should set tag before `Connect` because the tag will be put into completion queue
     // in the `Connect` function.
     call->SetClientCallTag(tag);
@@ -159,7 +159,7 @@ class ClientCallManager {
       auto call = tag->GetCall();
       auto type = call->GetType();
       switch (type) {
-      case ClientCallType::DEFAULT_ASYNC_CALL:
+      case ClientCallType::UNARY_ASYNC_CALL:
         ProcessDefaultCall(call, tag, ok);
         break;
       case ClientCallType::STREAM_ASYNC_CALL:

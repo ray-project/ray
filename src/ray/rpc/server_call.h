@@ -21,20 +21,23 @@ namespace rpc {
 using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
                                              std::function<void()> failure)>;
 
-/// At present, this gRPC server supports two types of request.
-/// The first is default asynchronous request call that each call contains exactly a
-/// request and a reply. Second, asynchronous stream call that the client can send a
-/// sequence of request messages and receive a sequence of reply messages.
-/// The main difference between them is that the requests sent by a stream call are kept
-/// in order and not all the requests should be with a corresponding reply, it's totally
-/// determined by user.
+/// At present, this gRPC server supports two types of call.
+/// - Unary async call: It's the simplest type of RPC,
+/// where the client sends a single request and gets back a single response.
+/// - Stream async call: It's a grpc bi-directional async stream call that the client can
+/// send a sequence of request messages and receive a sequence of reply messages
+/// asynchronously. The main difference between them is that the requests sent by a stream
+/// call are kept in order and not all the requests should be with a corresponding reply,
+/// it's totally determined by user.
+/// See https://grpc.io/docs/guides/concepts/ for more details.
 enum class ServerCallType {
-  DEFAULT_ASYNC_CALL,
+  UNARY_ASYNC_CALL,
   STREAM_ASYNC_CALL,
 };
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
+  /// Only used in bidirectional stream call during receving new request.
   CONNECT,
   /// The call is created and waiting for an incoming request.
   PENDING,
@@ -42,7 +45,7 @@ enum class ServerCallState {
   PROCESSING,
   /// Request processing is done, and reply is being sent to client.
   SENDING_REPLY,
-  /// Stream has finished.
+  /// Only used in stream call, a stream call has finished.
   FINISH,
 };
 
@@ -171,7 +174,7 @@ class ServerCallImpl : public ServerCall {
       const ServerCallFactory &factory, ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       boost::asio::io_service &io_service)
-      : ServerCall(ServerCallType::DEFAULT_ASYNC_CALL),
+      : ServerCall(ServerCallType::UNARY_ASYNC_CALL),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
@@ -267,20 +270,17 @@ class ServerCallImpl : public ServerCall {
 class ServerCallTag {
  public:
   enum class TagType {
-    DEFAULT,
-    REPLY_WRITER,
-    STREAM_DONE,
+    REQUEST,
+    REPLY,
   };
   explicit ServerCallTag(std::shared_ptr<ServerCall> call,
-                         TagType tag_type = TagType::DEFAULT)
+                         TagType tag_type = TagType::REQUEST)
       : call_(call), tag_type_(tag_type) {}
 
   /// Get the wrapped `ServerCall`.
   const std::shared_ptr<ServerCall> &GetCall() const { return call_; }
 
-  bool IsReplyWriterTag() { return tag_type_ == TagType::REPLY_WRITER; }
-
-  bool IsDoneTag() { return tag_type_ == TagType::STREAM_DONE; }
+  bool IsReplyWriterTag() { return tag_type_ == TagType::REPLY; }
 
   const TagType &GetType() { return tag_type_; }
 
@@ -439,8 +439,8 @@ class ServerStreamCallImpl final : public ServerCall {
   void OnConnectingFinished() {
     // We shouldn't setup these tags unless a stream call has connected to the server, or
     // we would never get the tags from the completion queue.
-    auto reply_writer_tag = new ServerCallTag(GetServerCallTag()->GetCall(),
-                                              ServerCallTag::TagType::REPLY_WRITER);
+    auto reply_writer_tag =
+        new ServerCallTag(GetServerCallTag()->GetCall(), ServerCallTag::TagType::REPLY);
     SetReplyWriterTag(reply_writer_tag);
     is_running_ = true;
   }

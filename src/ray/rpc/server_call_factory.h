@@ -15,8 +15,6 @@ class ServerCallFactory {
  public:
   /// Create a new `ServerCall` and request gRPC runtime to start accepting the
   /// corresponding type of requests.
-  ///
-  /// \return Pointer to the `ServerCall` object.
   virtual void CreateCall() const = 0;
 
   virtual ~ServerCallFactory() = default;

@@ -13,7 +13,7 @@ namespace rpc {
 
 /// The type of the client call.
 enum class ClientCallType {
-  DEFAULT_ASYNC_CALL,
+  UNARY_ASYNC_CALL,
   STREAM_ASYNC_CALL,
 };
 
@@ -130,7 +130,7 @@ class ClientCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback)
-      : ClientCall(ClientCallType::DEFAULT_ASYNC_CALL), callback_(callback) {}
+      : ClientCall(ClientCallType::UNARY_ASYNC_CALL), callback_(callback) {}
 
   /// The callback to be called by `ClientCallManager` when the reply of this request is
   /// received.
@@ -349,25 +349,25 @@ class ClientCallTag {
   enum class TagType {
     /// A tag for common uses, such as connecting, sending requests and sending writes
     /// done.
-    DEFAULT,
+    REQUEST,
     /// Only used to read reply from the server. Each client stream call should contains
     /// one
     /// reply reader tag to handle reply.
-    REPLY_READER,
+    REPLY,
   };
   /// Constructor.
   ///
   /// \param call A `ClientCall` that represents a request.
   /// \param is_reader_tag Indicates whether it's a tag for reading reply from server.
   explicit ClientCallTag(std::shared_ptr<ClientCall> call,
-                         TagType tag_type = TagType::DEFAULT)
+                         TagType tag_type = TagType::REQUEST)
       : call_(call), tag_type_(tag_type) {}
 
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
   /// Indicates whether this tag is a reply reader tag.
-  bool IsReplyReaderTag() { return tag_type_ == TagType::REPLY_READER; }
+  bool IsReplyReaderTag() { return tag_type_ == TagType::REPLY; }
 
  private:
   /// Shared pointer to the client call, the call won't be freed until all tags pointing

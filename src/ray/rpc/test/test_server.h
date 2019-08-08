@@ -14,10 +14,10 @@ namespace rpc {
 class TestServiceHandler {
  public:
   /// Handle a `DebugEcho` request.
-  virtual void HandleDebugEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
-                               SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleEcho(const DebugEchoRequest &request, DebugEchoReply *reply,
+                          SendReplyCallback send_reply_callback) = 0;
   /// Handle `DebugStreamEcho` requests.
-  virtual void HandleDebugStreamEcho(
+  virtual void HandleStreamEcho(
       const DebugEchoRequest &request,
       StreamReplyWriter<DebugEchoRequest, DebugEchoReply> &stream_reply_writer) = 0;
 };
@@ -38,16 +38,14 @@ class TestService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_stream_call_factories)
-      override {
+          *server_call_factories_and_concurrencies) override {
     // Initialize the factory for `DebugEcho` requests.
     std::unique_ptr<ServerCallFactory> debug_echo_call_factory(
         new ServerCallFactoryImpl<DebugEchoService, TestServiceHandler, DebugEchoRequest,
                                   DebugEchoReply>(
             main_service_, cq, service_,
             &DebugEchoService::AsyncService::RequestDebugEcho, service_handler_,
-            &TestServiceHandler::HandleDebugEcho));
+            &TestServiceHandler::HandleEcho));
     // Set `DebugEcho`'s accept concurrency.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(debug_echo_call_factory), 3);
@@ -58,9 +56,10 @@ class TestService : public GrpcService {
                                         DebugEchoRequest, DebugEchoReply>(
             main_service_, cq, service_,
             &DebugEchoService::AsyncService::RequestDebugStreamEcho, service_handler_,
-            &TestServiceHandler::HandleDebugStreamEcho));
+            &TestServiceHandler::HandleStreamEcho));
     // Set `DebugStreamEcho`'s accept concurrency.
-    server_stream_call_factories->emplace_back(std::move(debug_stream_echo_call_factory));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(debug_stream_echo_call_factory), 1);
   }
 
  private:

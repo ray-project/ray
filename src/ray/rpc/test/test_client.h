@@ -43,6 +43,7 @@ class DebugTestClient {
     return call->GetStatus();
   }
 
+  // Create the stream call and try to connect to the server synchronously.
   void StartStreamEcho(const ClientCallback<DebugEchoReply> &callback,
                        int max_buffer_size) {
     debug_stream_call_ =

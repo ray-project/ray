@@ -42,10 +42,6 @@ void GrpcServer::Run() {
       entry.first->CreateCall();
     }
   }
-  // Create stream calls for all the stream call factories.
-  for (auto &entry : server_stream_call_factories_) {
-    entry->CreateCall();
-  }
   // Start a thread that polls incoming requests.
   polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
   // Set the server as running.
@@ -54,8 +50,7 @@ void GrpcServer::Run() {
 
 void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
-  service.InitServerCallFactories(cq_, &server_call_factories_and_concurrencies_,
-                                  &server_stream_call_factories_);
+  service.InitServerCallFactories(cq_, &server_call_factories_and_concurrencies_);
 }
 
 void GrpcServer::ProcessDefaultCall(std::shared_ptr<ServerCall> server_call,
@@ -138,15 +133,15 @@ void GrpcServer::PollEventsFromCompletionQueue() {
     auto call = tag->GetCall();
     auto call_type = call->GetType();
     switch (call_type) {
-    case ServerCallType::DEFAULT_ASYNC_CALL:
+    case ServerCallType::UNARY_ASYNC_CALL:
       ProcessDefaultCall(call, tag, ok);
       break;
     case ServerCallType::STREAM_ASYNC_CALL:
       ProcessStreamCall(call, tag, ok);
       break;
     default:
-      RAY_LOG(WARNING) << "Shouldn't reach here, unrecognized type: "
-                       << static_cast<int>(call_type);
+      RAY_LOG(FATAL) << "Shouldn't reach here, unrecognized type: "
+                     << static_cast<int>(call_type);
       break;
     }
   }
