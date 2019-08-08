@@ -59,11 +59,11 @@ If you have already have a list of nodes, you can follow the local private clust
 
     ray up tune-default.yaml
 
-``ray submit`` uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py``.
+``ray submit`` uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py [args]``.
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py
+    ray submit tune-default.yaml tune_script.py --args="--ray-redis-address=localhost:6379"
 
 Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -111,11 +111,11 @@ Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will
 
     ray up tune-default.yaml
 
-``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py``.
+``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py [args]``.
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --start
+    ray submit tune-default.yaml tune_script.py --start --args="--ray-redis-address=localhost:6379"
 
 .. image:: images/tune-upload.png
     :scale: 50%
