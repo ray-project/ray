@@ -59,6 +59,10 @@ Multi-Agent and Hierarchical
    Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
+- `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
+   Example of customizing PPO to leverage a centralized value function.
+- `Centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
+   A simpler method of implementing a centralized critic by augmentating agent observations with global information.
 - `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_custom_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
 - `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__:
@@ -67,8 +71,6 @@ Multi-Agent and Hierarchical
    Example of alternating training between two DQN and PPO trainers.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
-- `PPO with centralized value function <https://github.com/ray-project/ray/pull/3642/files>`__:
-   Example of customizing PPO to include a centralized value function, including a runnable script that demonstrates cooperative CartPole.
 
 Community Examples
 ------------------
