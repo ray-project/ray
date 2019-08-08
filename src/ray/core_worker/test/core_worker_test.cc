@@ -283,6 +283,9 @@ void CoreWorkerTest::TestActorTask(
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
+      ASSERT_TRUE(return_ids[0].IsReturnObject());
+      ASSERT_EQ(static_cast<TaskTransportType>(return_ids[0].GetTransportType()), 
+          is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
