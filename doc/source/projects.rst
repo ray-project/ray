@@ -2,8 +2,8 @@ Ray Projects (Experimental)
 ===========================
 
 Ray projects make it easy to package a Ray application so it can be
-rerun later in the same environment. They allow sharing and reuse
-existing code reliably.
+rerun later in the same environment. They allow for the sharing and
+reuse of existing code reliably.
 
 Quick start (CLI)
 -----------------
@@ -38,8 +38,9 @@ Examples
 Project file format (project.yaml)
 ----------------------------------
 
-A project file contains all information, including cluster configuration,
-environment and dependencies, and inputs required to run a project.
+A project file contains everything required to run a project.
+This includes a cluster configuration, the environment and dependencies
+for the application, and the specific inputs used to run the project.
 
 Here is an example for a minimal project format:
 
