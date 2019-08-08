@@ -45,6 +45,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
+        self.absolute_local_dir = None
         ray.shutdown()
         # Without this line, test_tune_server.testAddTrial would fail.
         _register_all()
@@ -69,7 +70,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             config={
                 "env": "CartPole-v0",
                 "log_level": "DEBUG"
-            })
+            }).trials
 
         exp_dir = os.path.join(absolute_local_dir, exp_name)
         _, abs_trial_dir = self._get_trial_dir(exp_dir)
@@ -131,20 +132,11 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
     def testTildeAbsolutePath(self):
         local_dir = "~/test_tilde_absolute_local_dir"
         exp_name = self.prefix + "TildeAbsolutePath"
-        absolute_local_dir = os.path.expanduser(local_dir)
-        self.assertFalse(os.path.exists(absolute_local_dir))
+        absolute_local_dir = os.path.abspath(os.path.expanduser(local_dir))
         self.absolute_local_dir = absolute_local_dir
+        self.assertFalse(os.path.exists(absolute_local_dir))
         self._train(exp_name, local_dir, absolute_local_dir)
         self._restore(exp_name, local_dir, absolute_local_dir)
-
-    def testAbsolutePath(self):
-        local_dir = "~/test_absolute_local_dir"
-        local_dir = os.path.expanduser(local_dir)
-        exp_name = self.prefix + "AbsolutePath"
-        self.absolute_local_dir = local_dir
-        self.assertFalse(os.path.exists(local_dir))
-        self._train(exp_name, local_dir, local_dir)
-        self._restore(exp_name, local_dir, local_dir)
 
     def testTempfile(self):
         local_dir = tempfile.mkdtemp()
