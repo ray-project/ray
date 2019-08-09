@@ -110,7 +110,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             config={
                 "env": "CartPole-v0",
                 "log_level": "DEBUG"
-            })
+            }).trials
         self.assertIsNone(trial.error_file)
 
     def testDottedRelativePath(self):
