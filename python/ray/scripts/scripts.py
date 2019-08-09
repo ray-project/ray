@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import subprocess
-import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -751,7 +750,7 @@ done
     help="Override the redis address to connect to.")
 def timeline(redis_address):
     if not redis_address:
-        redis_addresses = services.find_redis_address_or_die()
+        redis_address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(redis_address))
     ray.init(redis_address=redis_address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
