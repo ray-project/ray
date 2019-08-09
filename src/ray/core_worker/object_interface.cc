@@ -1,8 +1,9 @@
 #include "ray/core_worker/object_interface.h"
-#include <algorithm>
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+
+#include <algorithm>
 
 namespace ray {
 
@@ -34,50 +35,53 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
-  std::vector<ObjectID> direct_call_return_ids;
-  std::vector<ObjectID> other_ids;
+  // Divide the object ids into two groups: direct call return objects and the rest,
+  // and de-duplicate for each group.
+  std::unordered_set<ObjectID> direct_call_return_ids;
+  std::unordered_set<ObjectID> other_ids;
   for (const auto &object_id : ids) {
     if (object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
             static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
-      direct_call_return_ids.push_back(object_id);
+      direct_call_return_ids.insert(object_id);
     } else {
-      other_ids.push_back(object_id);
+      other_ids.insert(object_id);
     }
   }
 
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> object_map(ids.size());
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;
   auto start_time = current_time_ms();
   // Fetch non-direct-call objects using `PLASMA` store provider.
-  if (!other_ids.empty()) {
-    std::vector<std::shared_ptr<RayObject>> objects;
-    RAY_RETURN_NOT_OK(store_providers_[StoreProviderType::PLASMA]->Get(
-        other_ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
-    RAY_CHECK(other_ids.size() == objects.size());
-    for (int i = 0; i < objects.size(); i++) {
-      object_map.emplace(ids[i], objects[i]);
-    }
-  }
-
+  RAY_RETURN_NOT_OK(Get(StoreProviderType::PLASMA, other_ids,
+      timeout_ms, &objects));
   int64_t duration = current_time_ms() - start_time;
   int64_t left_timeout_ms =
       (timeout_ms == -1) ? timeout_ms
                          : std::max(static_cast<int64_t>(0), timeout_ms - duration);
 
   // Fetch direct call return objects using `LOCAL_PLASMA` store provider.
-  if (!direct_call_return_ids.empty()) {
-    std::vector<std::shared_ptr<RayObject>> objects;
-    RAY_RETURN_NOT_OK(store_providers_[StoreProviderType::LOCAL_PLASMA]->Get(
-        direct_call_return_ids, left_timeout_ms, worker_context_.GetCurrentTaskID(),
-        &objects));
-    RAY_CHECK(direct_call_return_ids.size() == objects.size());
-    for (int i = 0; i < objects.size(); i++) {
-      object_map.emplace(ids[i], objects[i]);
-    }
-  }
+  RAY_RETURN_NOT_OK(Get(StoreProviderType::LOCAL_PLASMA, direct_call_return_ids,
+      left_timeout_ms, &objects));
 
   for (int i = 0; i < ids.size(); i++) {
-    (*results)[i] = object_map[ids[i]];
+    (*results)[i] = objects[ids[i]];
+  }
+
+  return Status::OK();
+}
+
+Status CoreWorkerObjectInterface::Get(StoreProviderType type,
+    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+  std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());  
+  if (!ids.empty()) {
+    std::vector<std::shared_ptr<RayObject>> objects;
+    RAY_RETURN_NOT_OK(store_providers_[type]->Get(
+        ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
+    RAY_CHECK(ids.size() == objects.size());
+    for (int i = 0; i < objects.size(); i++) {
+      (*results).emplace(ids[i], objects[i]);
+    }
   }
 
   return Status::OK();
