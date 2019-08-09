@@ -43,7 +43,7 @@ class ActorStateAccessorTest : public ::testing::Test {
   void GenTestData() { GenActorData(); }
 
   void GenActorData() {
-    for (size_t i = 0; i < 2; ++i) {
+    for (size_t i = 0; i < 100; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       ActorID actor_id = ActorID::FromRandom();
       actor->set_actor_id(actor_id.Binary());

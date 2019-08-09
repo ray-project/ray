@@ -135,17 +135,21 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
 
 int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscription) {
   auto start_time = current_sys_time_us();
+
+  std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.emplace(num_callbacks_,
                           CallbackItem(function, is_subscription, start_time));
   return num_callbacks_++;
 }
 
 RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_index) {
+  std::lock_guard<std::mutex> lock(mutex_);
   RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
   return callback_items_[callback_index];
 }
 
 void RedisCallbackManager::remove(int64_t callback_index) {
+  std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.erase(callback_index);
 }
 
@@ -158,11 +162,11 @@ RedisContext::~RedisContext() {
   if (context_) {
     redisFree(context_);
   }
-  if (async_context_) {
-    redisAsyncFree(async_context_);
+  if (!!async_context_wrapper_) {
+    async_context_wrapper_->RedisAsyncFree();
   }
-  if (subscribe_context_) {
-    redisAsyncFree(subscribe_context_);
+  if (!!async_subscribe_context_wrapper_) {
+    async_subscribe_context_wrapper_->RedisAsyncFree();
   }
 }
 
@@ -225,23 +229,18 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
   freeReplyObject(reply);
 
   // Connect to async context
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context_));
-  RAY_CHECK_OK(AuthenticateRedis(async_context_, password));
+  redisAsyncContext *async_context = nullptr;
+  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
+  RAY_CHECK_OK(AuthenticateRedis(async_context, password));
+  async_context_wrapper_.reset(new RedisAsyncContextWrapper(async_context));
 
   // Connect to subscribe context
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context_));
-  RAY_CHECK_OK(AuthenticateRedis(subscribe_context_, password));
+  redisAsyncContext *subscribe_context = nullptr;
+  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context));
+  RAY_CHECK_OK(AuthenticateRedis(subscribe_context, password));
+  async_subscribe_context_wrapper_.reset(new RedisAsyncContextWrapper(subscribe_context));
 
   return Status::OK();
-}
-
-Status RedisContext::AttachToEventLoop(aeEventLoop *loop) {
-  if (redisAeAttach(loop, async_context_) != REDIS_OK ||
-      redisAeAttach(loop, subscribe_context_) != REDIS_OK) {
-    return Status::RedisError("could not attach redis event loop");
-  } else {
-    return Status::OK();
-  }
 }
 
 Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
@@ -253,13 +252,9 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args) {
     argc.push_back(args[i].size());
   }
   // Run the Redis command.
-  int status;
-  status = redisAsyncCommandArgv(async_context_, nullptr, nullptr, args.size(),
-                                 argv.data(), argc.data());
-  if (status == REDIS_ERR) {
-    return Status::RedisError(std::string(async_context_->errstr));
-  }
-  return Status::OK();
+  Status status = async_context_wrapper_->RedisAsyncCommandArgv(
+      nullptr, nullptr, args.size(), argv.data(), argc.data());
+  return status;
 }
 
 Status RedisContext::SubscribeAsync(const ClientID &client_id,
@@ -272,26 +267,23 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, true);
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
-  int status = 0;
+  Status status = Status::OK();
   if (client_id.IsNil()) {
     // Subscribe to all messages.
     std::string redis_command = "SUBSCRIBE %d";
-    status = redisAsyncCommand(
-        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+    status = async_subscribe_context_wrapper_->RedisAsyncCommand(
+        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel);
   } else {
     // Subscribe only to messages sent to this client.
     std::string redis_command = "SUBSCRIBE %d:%b";
-    status = redisAsyncCommand(
-        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+    status = async_subscribe_context_wrapper_->RedisAsyncCommand(
+        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
         client_id.Data(), client_id.Size());
   }
 
-  if (status == REDIS_ERR) {
-    return Status::RedisError(std::string(subscribe_context_->errstr));
-  }
-  return Status::OK();
+  return status;
 }
 
 }  // namespace gcs

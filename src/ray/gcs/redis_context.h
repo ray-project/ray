@@ -3,12 +3,14 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
+#include "ray/gcs/redis_async_context_wrapper.h"
 #include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -101,18 +103,20 @@ class RedisCallbackManager {
 
   ~RedisCallbackManager() {}
 
+  std::mutex mutex_;
+
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, CallbackItem> callback_items_;
 };
 
 class RedisContext {
  public:
-  RedisContext()
-      : context_(nullptr), async_context_(nullptr), subscribe_context_(nullptr) {}
+  RedisContext() : context_(nullptr) {}
+
   ~RedisContext();
+
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
-  Status AttachToEventLoop(aeEventLoop *loop);
 
   /// Run an operation on some table key.
   ///
@@ -149,14 +153,19 @@ class RedisContext {
   /// \return Status.
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
+
   redisContext *sync_context() { return context_; }
-  redisAsyncContext *async_context() { return async_context_; }
-  redisAsyncContext *subscribe_context() { return subscribe_context_; };
+
+  RedisAsyncContextWrapper &async_context() { return *async_context_wrapper_; }
+
+  RedisAsyncContextWrapper &subscribe_context() {
+    return *async_subscribe_context_wrapper_;
+  }
 
  private:
   redisContext *context_;
-  redisAsyncContext *async_context_;
-  redisAsyncContext *subscribe_context_;
+  std::unique_ptr<RedisAsyncContextWrapper> async_context_wrapper_;
+  std::unique_ptr<RedisAsyncContextWrapper> async_subscribe_context_wrapper_;
 };
 
 template <typename ID>
@@ -165,38 +174,30 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
   int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
+  Status status = Status::OK();
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
-      int status = redisAsyncCommand(
-          async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+      status = async_context_wrapper_->RedisAsyncCommand(
+          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
           pubsub_channel, id.Data(), id.Size(), data, length, log_length);
-      if (status == REDIS_ERR) {
-        return Status::RedisError(std::string(async_context_->errstr));
-      }
     } else {
       std::string redis_command = command + " %d %d %b %b";
-      int status = redisAsyncCommand(
-          async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+      status = async_context_wrapper_->RedisAsyncCommand(
+          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
           pubsub_channel, id.Data(), id.Size(), data, length);
-      if (status == REDIS_ERR) {
-        return Status::RedisError(std::string(async_context_->errstr));
-      }
     }
   } else {
     RAY_CHECK(log_length == -1);
     std::string redis_command = command + " %d %d %b";
-    int status = redisAsyncCommand(
-        async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+    status = async_context_wrapper_->RedisAsyncCommand(
+        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
         pubsub_channel, id.Data(), id.Size());
-    if (status == REDIS_ERR) {
-      return Status::RedisError(std::string(async_context_->errstr));
-    }
   }
-  return Status::OK();
+  return status;
 }
 
 }  // namespace gcs

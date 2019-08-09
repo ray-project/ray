@@ -2,6 +2,7 @@
 
 #include "asio.h"
 #include "gtest/gtest.h"
+#include "ray/gcs/redis_async_context_wrapper.h"
 #include "ray/util/logging.h"
 
 extern "C" {
@@ -30,8 +31,9 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
 TEST(RedisAsioTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", 6379);
   ASSERT_TRUE(ac->err == 0);
+  ray::gcs::RedisAsyncContextWrapper async_context_wrapper(ac);
 
-  RedisAsioClient client(io_service, ac);
+  RedisAsioClient client(io_service, async_context_wrapper);
 
   redisAsyncSetConnectCallback(ac, ConnectCallback);
   redisAsyncSetDisconnectCallback(ac, DisconnectCallback);
