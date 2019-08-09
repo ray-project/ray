@@ -14,5 +14,7 @@ RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
 RUN pip install --upgrade sigopt
 RUN pip install --upgrade nevergrad
 RUN pip install --upgrade scikit-optimize
+RUN pip install --upgrade hpbandster
+RUN pip install --upgrade ConfigSpace
 RUN pip install -U pytest-remotedata>=0.3.1
 RUN conda install pytorch-cpu torchvision-cpu -c pytorch
