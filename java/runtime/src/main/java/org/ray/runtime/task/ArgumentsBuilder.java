@@ -8,7 +8,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.object.NativeRayObject;
-import org.ray.runtime.object.ObjectStoreProxy;
+import org.ray.runtime.object.ObjectStore;
 import org.ray.runtime.util.Serializer;
 
 /**
@@ -44,7 +44,7 @@ public class ArgumentsBuilder {
       } else {
         byte[] serialized = Serializer.encode(arg);
         if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((AbstractRayRuntime) Ray.internal()).getObjectStoreProxy()
+          id = ((AbstractRayRuntime) Ray.internal()).getObjectStore()
               .put(new NativeRayObject(serialized, null));
         } else {
           data = serialized;
@@ -62,10 +62,10 @@ public class ArgumentsBuilder {
   /**
    * Convert list of NativeRayObject to real function arguments.
    */
-  public static Object[] unwrap(ObjectStoreProxy objectStoreProxy, List<NativeRayObject> args) {
+  public static Object[] unwrap(ObjectStore objectStore, List<NativeRayObject> args) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {
-      realArgs[i] = objectStoreProxy.deserialize(args.get(i), null);
+      realArgs[i] = objectStore.deserialize(args.get(i), null);
     }
     return realArgs;
   }

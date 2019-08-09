@@ -1,8 +1,6 @@
 package org.ray.runtime.util;
 
-import java.util.Random;
 import org.ray.api.id.BaseId;
-import org.ray.api.id.ObjectId;
 
 /**
  * Helper method for different Ids. Note: any changes to these methods must be synced with C++

@@ -5,33 +5,34 @@ import java.util.stream.Collectors;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.BaseId;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.context.WorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Object store methods for cluster mode. This is a wrapper class for core worker object interface.
  */
-public class NativeObjectStore implements ObjectStore {
+public class NativeObjectStore extends ObjectStore {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(NativeObjectStore.class);
 
   /**
    * The native pointer of core worker.
    */
   private final long nativeCoreWorkerPointer;
 
-  public NativeObjectStore(long nativeCoreWorkerPointer) {
+  public NativeObjectStore(WorkerContext workerContext, long nativeCoreWorkerPointer) {
+    super(workerContext);
     this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
   }
 
   @Override
-  public ObjectId put(NativeRayObject obj) {
+  public ObjectId putRaw(NativeRayObject obj) {
     return new ObjectId(nativePut(nativeCoreWorkerPointer, obj));
   }
 
   @Override
-  public void put(NativeRayObject obj, ObjectId objectId) {
+  public void putRaw(NativeRayObject obj, ObjectId objectId) {
     try {
       nativePut(nativeCoreWorkerPointer, objectId.getBytes(), obj);
     } catch (RayException e) {
@@ -40,7 +41,7 @@ public class NativeObjectStore implements ObjectStore {
   }
 
   @Override
-  public List<NativeRayObject> get(List<ObjectId> objectIds, long timeoutMs) {
+  public List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs) {
     return nativeGet(nativeCoreWorkerPointer, toBinaryList(objectIds), timeoutMs);
   }
 

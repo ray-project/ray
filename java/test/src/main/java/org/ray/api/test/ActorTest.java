@@ -113,7 +113,7 @@ public class ActorTest extends BaseTest {
     // Wait until the object is deleted, because the above free operation is async.
     while (true) {
       NativeRayObject result = ((AbstractRayRuntime) Ray.internal()).getObjectStore()
-          .get(ImmutableList.of(value.getId()), 0).get(0);
+          .getRaw(ImmutableList.of(value.getId()), 0).get(0);
       if (result == null) {
         break;
       }

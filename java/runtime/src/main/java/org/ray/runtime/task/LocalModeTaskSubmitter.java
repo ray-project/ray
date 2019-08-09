@@ -226,9 +226,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
           TaskExecutor taskExecutor = getTaskExecutor(taskSpec);
           try {
             List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
-                .map(arg -> arg.id != null ? objectStore.get(
-                    Collections.singletonList(arg.id), -1).get(0)
-                    : new NativeRayObject(arg.data, null)).collect(Collectors.toList());
+                .map(arg -> arg.id != null ?
+                    objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
+                    : new NativeRayObject(arg.data, null))
+                .collect(Collectors.toList());
             ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
             List<NativeRayObject> returnObjects = taskExecutor
                 .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
@@ -244,7 +245,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
               } else {
                 putObject = returnObjects.get(i);
               }
-              objectStore.put(putObject, returnIds.get(i));
+              objectStore.putRaw(putObject, returnIds.get(i));
             }
           } finally {
             returnTaskExecutor(taskExecutor, taskSpec);

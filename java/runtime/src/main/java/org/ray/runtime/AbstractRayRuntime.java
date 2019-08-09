@@ -27,7 +27,6 @@ import org.ray.runtime.functionmanager.PyFunctionDescriptor;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.ObjectStore;
-import org.ray.runtime.object.ObjectStoreProxy;
 import org.ray.runtime.object.RayObjectImpl;
 import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
@@ -50,9 +49,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
   protected GcsClient gcsClient;
-  protected ObjectStore objectStore;
 
-  protected ObjectStoreProxy objectStoreProxy;
+  protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
   protected RayletClient rayletClient;
   protected WorkerContext workerContext;
@@ -73,7 +71,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> RayObject<T> put(T obj) {
-    ObjectId objectId = objectStoreProxy.put(obj);
+    ObjectId objectId = objectStore.put(obj);
     return new RayObjectImpl<>(objectId);
   }
 
@@ -85,12 +83,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> List<T> get(List<ObjectId> objectIds) {
-    return objectStoreProxy.get(objectIds);
+    return objectStore.get(objectIds);
   }
 
   @Override
   public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    objectStoreProxy.delete(objectIds, localOnly, deleteCreatingTasks);
+    objectStore.delete(objectIds, localOnly, deleteCreatingTasks);
   }
 
   @Override
@@ -111,7 +109,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());
 
-    List<Boolean> ready = objectStoreProxy.wait(ids, numReturns, timeoutMs);
+    List<Boolean> ready = objectStore.wait(ids, numReturns, timeoutMs);
     List<RayObject<T>> readyList = new ArrayList<>();
     List<RayObject<T>> unreadyList = new ArrayList<>();
 
@@ -224,10 +222,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public ObjectStore getObjectStore() {
     return objectStore;
-  }
-
-  public ObjectStoreProxy getObjectStoreProxy() {
-    return objectStoreProxy;
   }
 
   public RayletClient getRayletClient() {

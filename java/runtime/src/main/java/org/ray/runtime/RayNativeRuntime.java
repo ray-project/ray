@@ -19,7 +19,6 @@ import org.ray.runtime.gcs.GcsClientOptions;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.object.NativeObjectStore;
-import org.ray.runtime.object.ObjectStoreProxy;
 import org.ray.runtime.raylet.NativeRayletClient;
 import org.ray.runtime.runner.RunManager;
 import org.ray.runtime.task.NativeTaskSubmitter;
@@ -116,9 +115,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
 
     taskExecutor = new TaskExecutor(this);
-    objectStore = new NativeObjectStore(nativeCoreWorkerPointer);
     workerContext = new NativeWorkerContext(nativeCoreWorkerPointer);
-    objectStoreProxy = new ObjectStoreProxy(workerContext, objectStore);
+    objectStore = new NativeObjectStore(workerContext, nativeCoreWorkerPointer);
     taskSubmitter = new NativeTaskSubmitter(nativeCoreWorkerPointer);
     rayletClient = new NativeRayletClient(nativeCoreWorkerPointer);
 

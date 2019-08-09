@@ -8,13 +8,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.context.WorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Object store methods for local mode.
  */
-public class LocalModeObjectStore implements ObjectStore {
+public class LocalModeObjectStore extends ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
 
@@ -23,7 +24,8 @@ public class LocalModeObjectStore implements ObjectStore {
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
 
-  public LocalModeObjectStore() {
+  public LocalModeObjectStore(WorkerContext workerContext) {
+    super(workerContext);
   }
 
   public void addObjectPutCallback(Consumer<ObjectId> callback) {
@@ -35,14 +37,14 @@ public class LocalModeObjectStore implements ObjectStore {
   }
 
   @Override
-  public ObjectId put(NativeRayObject obj) {
+  public ObjectId putRaw(NativeRayObject obj) {
     ObjectId objectId = ObjectId.fromRandom();
-    put(obj, objectId);
+    putRaw(obj, objectId);
     return objectId;
   }
 
   @Override
-  public void put(NativeRayObject obj, ObjectId objectId) {
+  public void putRaw(NativeRayObject obj, ObjectId objectId) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
     pool.putIfAbsent(objectId, obj);
@@ -52,7 +54,7 @@ public class LocalModeObjectStore implements ObjectStore {
   }
 
   @Override
-  public List<NativeRayObject> get(List<ObjectId> objectIds, long timeoutMs) {
+  public List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs) {
     waitInternal(objectIds, objectIds.size(), timeoutMs);
     return objectIds.stream().map(pool::get).collect(Collectors.toList());
   }
