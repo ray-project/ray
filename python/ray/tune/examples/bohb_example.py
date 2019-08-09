@@ -9,7 +9,6 @@ import json
 import os
 
 import numpy as np
-import ConfigSpace.util
 
 import ray
 from ray.tune import Trainable, run
@@ -48,6 +47,9 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
+    import argparse
+    import ConfigSpace
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
