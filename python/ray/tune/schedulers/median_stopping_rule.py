@@ -12,6 +12,15 @@ from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 logger = logging.getLogger(__name__)
 
 
+class MedianTrialState(object):
+    def __init__(self, trial):
+        self.orig_tag = trial.experiment_tag
+        self.last_eval_time = 0
+
+    def __repr__(self):
+        return str((self.last_eval_time, ))
+
+
 class MedianStoppingRule(FIFOScheduler):
     """Implements the median stopping rule as described in the Vizier paper:
 
@@ -28,12 +37,18 @@ class MedianStoppingRule(FIFOScheduler):
             minimizing or maximizing the metric attribute.
         grace_period (float): Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
+        eval_interval (float): Compare trial median metric at this interval of time.
+            The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
         hard_stop (bool): If False, pauses trials instead of stopping
             them. When all other trials are complete, paused trials will be
             resumed and allowed to run FIFO.
         verbose (bool): If True, will output the median and best result each
             time a trial reports. Defaults to True.
+        tail_length (float): Median is constructed from means of trial metric,
+            the mean is constructed from the last tail_length results. None
+            implies use all results.
+            The units are the same as the attribute named by `time_attr`.
     """
 
     def __init__(self,
@@ -42,11 +57,12 @@ class MedianStoppingRule(FIFOScheduler):
                  metric="episode_reward_mean",
                  mode="max",
                  grace_period=60.0,
+                 eval_interval=600.0,
                  min_samples_required=3,
                  hard_stop=True,
-                 verbose=True):
+                 verbose=True,
+                 tail_length=None):
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
@@ -54,12 +70,11 @@ class MedianStoppingRule(FIFOScheduler):
                 "`reward_attr` is deprecated and will be removed in a future "
                 "version of Tune. "
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._completed_trials = set()
-        self._results = collections.defaultdict(list)
         self._grace_period = grace_period
+        self._eval_interval = eval_interval
         self._min_samples_required = min_samples_required
         self._metric = metric
         if mode == "max":
@@ -69,21 +84,36 @@ class MedianStoppingRule(FIFOScheduler):
         self._time_attr = time_attr
         self._hard_stop = hard_stop
         self._verbose = verbose
+        self._tail_length = tail_length
+        self._trial_state = {}
+        self._results = collections.defaultdict(list)
+
+    @property
+    def _trials_beyond_grace_period(self):
+        trials = [
+            trial for trial in self._results if (trial.last_result.get(
+                self._time_attr, -float('inf')) > self._grace_period)
+        ]
+        return trials
+
+    def on_trial_add(self, trial_runner, trial):
+        self._trial_state[trial] = MedianTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
-
         This stopping rule stops a running trial if the trial's best objective
-        value by step `t` is strictly worse than the median of the running
-        averages of all completed trials' objectives reported up to step `t`.
+        value by step `t` is strictly worse than the median of the running tail_length
+        averages of all running trials' objectives reported up to step `t`.
         """
-
         if trial in self._stopped_trials:
             assert not self._hard_stop
             return TrialScheduler.CONTINUE  # fall back to FIFO
-
+        state = self._trial_state[trial]
         time = result[self._time_attr]
         self._results[trial].append(result)
+        if time - state.last_eval_time < self._eval_interval:
+            return TrialScheduler.CONTINUE  # avoid overhead
+        state.last_eval_time = time
         median_result = self._get_median_result(time)
         best_result = self._best_result(trial)
         if self._verbose:
@@ -99,6 +129,9 @@ class MedianStoppingRule(FIFOScheduler):
             else:
                 return TrialScheduler.PAUSE
         else:
+            for _trial in trial_runner.get_trials():
+                if _trial.status in [Trial.PENDING, Trial.PAUSED]:
+                    return TrialScheduler.PAUSE  # yield time to other trials
             return TrialScheduler.CONTINUE
 
     def on_trial_complete(self, trial_runner, trial, result):
@@ -116,7 +149,7 @@ class MedianStoppingRule(FIFOScheduler):
 
     def _get_median_result(self, time):
         scores = []
-        for trial in self._completed_trials:
+        for trial in self._trials_beyond_grace_period:
             scores.append(self._running_result(trial, time))
         if len(scores) >= self._min_samples_required:
             return np.median(scores)
@@ -125,11 +158,29 @@ class MedianStoppingRule(FIFOScheduler):
 
     def _running_result(self, trial, t_max=float("inf")):
         results = self._results[trial]
-        # TODO(ekl) we could do interpolation to be more precise, but for now
-        # assume len(results) is large and the time diffs are roughly equal
+        if self._tail_length is not None:
+            results = results[-self._tail_length:]
         return self._metric_op * np.mean(
-            [r[self._metric] for r in results if r[self._time_attr] <= t_max])
+            [r[self._metric] for r in results \
+                if r[self._time_attr] <= t_max])
 
     def _best_result(self, trial):
         results = self._results[trial]
-        return max(self._metric_op * r[self._metric] for r in results)
+        if self._tail_length is not None:
+            results = results[-self._tail_length:]
+        return max(
+            [self._metric_op * r[self._metric] for r in results])
+
+    def choose_trial_to_run(self, trial_runner):
+        """Ensures all trials get fair share of time (as defined by time_attr).
+        This enables the scheduler to support a greater number of
+        concurrent trials than can fit in the cluster at any given time.
+        """
+        candidates = []
+        for trial in trial_runner.get_trials():
+            if trial.status in [Trial.PENDING, Trial.PAUSED] and \
+                    trial_runner.has_resources(trial.resources):
+                candidates.append(trial)
+        candidates.sort(
+            key=lambda trial: self._trial_state[trial].last_eval_time)
+        return candidates[0] if candidates else None
