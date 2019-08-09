@@ -183,7 +183,7 @@ An example of this can be found in `ax_example.py <https://github.com/ray-projec
     :noindex:
 
 BOHB (Bayesian optimization and Hyperband)
----------------------------------------------------
+------------------------------------------
 
 The ``BOHB`` is a SearchAlgorithm that is backed by `HpBandSter <https://github.com/automl/HpBandSter>`__ to perform sequential model-based hyperparameter optimization in conjunction with Hyperband. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BOHB. Also note that BOHB is intended to be paried with the Hyperband scheduler `hp_bohb.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers/hp_bohb.py>`__.
 
