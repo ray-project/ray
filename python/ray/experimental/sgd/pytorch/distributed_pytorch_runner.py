@@ -34,11 +34,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
             backend (string):  see pytorch_trainer.py.
         """
 
-        # Need this for avoiding a connection restart issue
-        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
-        os.environ["NCCL_LL_THRESHOLD"] = "0"
-        os.environ["NCCL_DEBUG"] = "INFO"
-
         super(DistributedPyTorchRunner, self).__init__(
             model_creator, data_creator, optimizer_creator, config, batch_size)
         self.backend = backend
