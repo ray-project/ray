@@ -37,7 +37,7 @@ class MedianStoppingRule(FIFOScheduler):
             minimizing or maximizing the metric attribute.
         grace_period (float): Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
-        eval_interval (float): Compare trial median metric at this interval of time.
+        eval_interval (float): Compare median metric at this time interval.
             The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
         hard_stop (bool): If False, pauses trials instead of stopping
@@ -92,7 +92,7 @@ class MedianStoppingRule(FIFOScheduler):
     def _trials_beyond_grace_period(self):
         trials = [
             trial for trial in self._results if (trial.last_result.get(
-                self._time_attr, -float('inf')) > self._grace_period)
+                self._time_attr, -float("inf")) > self._grace_period)
         ]
         return trials
 
@@ -101,9 +101,12 @@ class MedianStoppingRule(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
+
         This stopping rule stops a running trial if the trial's best objective
-        value by step `t` is strictly worse than the median of the running tail_length
-        averages of all running trials' objectives reported up to step `t`.
+        value by step `t` is strictly worse than the median
+        of the running tail_length averages of all running trials'
+        objectives reported up to step `t`.
+
         """
         if trial in self._stopped_trials:
             assert not self._hard_stop
@@ -161,15 +164,13 @@ class MedianStoppingRule(FIFOScheduler):
         if self._tail_length is not None:
             results = results[-self._tail_length:]
         return self._metric_op * np.mean(
-            [r[self._metric] for r in results \
-                if r[self._time_attr] <= t_max])
+            [r[self._metric] for r in results if r[self._time_attr] <= t_max])
 
     def _best_result(self, trial):
         results = self._results[trial]
         if self._tail_length is not None:
             results = results[-self._tail_length:]
-        return max(
-            [self._metric_op * r[self._metric] for r in results])
+        return max([self._metric_op * r[self._metric] for r in results])
 
     def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).
