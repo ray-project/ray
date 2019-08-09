@@ -9,7 +9,6 @@ public class GcsClientOptions {
   public String ip;
   public int port;
   public String password;
-  public boolean isTestClient;
 
   public GcsClientOptions(RayConfig rayConfig) {
     ip = rayConfig.getRedisIp();

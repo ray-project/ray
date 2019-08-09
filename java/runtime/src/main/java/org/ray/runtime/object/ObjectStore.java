@@ -15,7 +15,6 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.context.WorkerContext;
 import org.ray.runtime.generated.Gcs.ErrorType;
 import org.ray.runtime.util.Serializer;
@@ -36,8 +35,6 @@ public abstract class ObjectStore {
       .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
   private static final byte[] RAW_TYPE_META = "RAW".getBytes();
-
-  private static final byte[] ACTOR_HANDLE_META = "ACTOR_HANDLE".getBytes();
 
   private final WorkerContext workerContext;
 
@@ -162,10 +159,12 @@ public abstract class ObjectStore {
    * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
    * @param deleteCreatingTasks Whether also delete the tasks that created these objects.
    */
-  public abstract void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
+  public abstract void delete(List<ObjectId> objectIds, boolean localOnly,
+      boolean deleteCreatingTasks);
 
   /**
    * Deserialize an object.
+   *
    * @param nativeRayObject The object to deserialize.
    * @param objectId The associated object ID of the object.
    * @return The deserialized object.
@@ -179,8 +178,6 @@ public abstract class ObjectStore {
       // If meta is not null, deserialize the object from meta.
       if (Arrays.equals(meta, RAW_TYPE_META)) {
         return data;
-      } else if (Arrays.equals(meta, ACTOR_HANDLE_META)) {
-        return NativeRayActor.deserialize(data);
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
         return RayWorkerException.INSTANCE;
       } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
@@ -210,9 +207,6 @@ public abstract class ObjectStore {
       // If the object is a byte array, skip serializing it and use a special metadata to
       // indicate it's raw binary. So that this object can also be read by Python.
       return new NativeRayObject((byte[]) object, RAW_TYPE_META);
-    } else if (object instanceof NativeRayActor) {
-      return new NativeRayObject(((NativeRayActor) object).fork().serialize(),
-          ACTOR_HANDLE_META);
     } else if (object instanceof RayTaskException) {
       return new NativeRayObject(Serializer.encode(object),
           TASK_EXECUTION_EXCEPTION_META);

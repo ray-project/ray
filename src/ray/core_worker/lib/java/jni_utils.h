@@ -104,8 +104,6 @@ extern jfieldID java_gcs_client_options_ip;
 extern jfieldID java_gcs_client_options_port;
 /// password field of GcsClientOptions class
 extern jfieldID java_gcs_client_options_password;
-/// isTestClient field of GcsClientOptions class
-extern jfieldID java_gcs_client_options_is_test_client;
 
 /// NativeRayObject class
 extern jclass java_native_ray_object_class;

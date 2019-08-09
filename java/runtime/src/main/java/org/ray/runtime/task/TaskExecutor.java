@@ -73,7 +73,7 @@ public final class TaskExecutor {
     try {
       // Get method
       RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(jobId, getJavaFunctionDescriptor(rayFunctionInfo));
+          .getFunction(jobId, parseFunctionDescriptor(rayFunctionInfo));
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
@@ -122,7 +122,7 @@ public final class TaskExecutor {
     return returnObjects;
   }
 
-  private JavaFunctionDescriptor getJavaFunctionDescriptor(List<String> rayFunctionInfo) {
+  private JavaFunctionDescriptor parseFunctionDescriptor(List<String> rayFunctionInfo) {
     Preconditions.checkState(rayFunctionInfo != null && rayFunctionInfo.size() == 3);
     return new JavaFunctionDescriptor(rayFunctionInfo.get(0), rayFunctionInfo.get(1),
         rayFunctionInfo.get(2));

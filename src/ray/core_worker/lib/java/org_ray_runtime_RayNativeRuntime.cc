@@ -16,9 +16,7 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
   std::string password = JavaStringToNativeString(
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
-  bool is_test_client =
-      env->GetBooleanField(gcs_client_options, java_gcs_client_options_is_test_client);
-  return ray::gcs::GcsClientOptions(ip, port, password, is_test_client);
+  return ray::gcs::GcsClientOptions(ip, port, password, /*is_test_client=*/false);
 }
 
 #ifdef __cplusplus

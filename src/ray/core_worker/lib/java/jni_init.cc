@@ -56,7 +56,6 @@ jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
 jfieldID java_gcs_client_options_port;
 jfieldID java_gcs_client_options_password;
-jfieldID java_gcs_client_options_is_test_client;
 
 jclass java_native_ray_object_class;
 jmethodID java_native_ray_object_init;
@@ -158,8 +157,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_gcs_client_options_class, "port", "I");
   java_gcs_client_options_password =
       env->GetFieldID(java_gcs_client_options_class, "password", "Ljava/lang/String;");
-  java_gcs_client_options_is_test_client =
-      env->GetFieldID(java_gcs_client_options_class, "isTestClient", "Z");
 
   java_native_ray_object_class = LoadClass(env, "org/ray/runtime/object/NativeRayObject");
   java_native_ray_object_init =
