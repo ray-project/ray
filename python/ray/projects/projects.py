@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import json
 import jsonschema
 import os
@@ -110,7 +114,7 @@ def load_project(current_dir):
         raise ValueError("Project file {} not found".format(project_file))
 
     with open(project_file) as f:
-        project_definition = yaml.load(f)
+        project_definition = yaml.safe_load(f)
 
     check_project_definition(project_root, project_definition)
 
