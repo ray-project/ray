@@ -1,5 +1,10 @@
-import ray
-from ray import tune
+"""BOHB (Bayesian Optimization with HyperBand)"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from hpbandster import BOHB
 from ray.tune.suggest import SuggestionAlgorithm
 
 
@@ -7,13 +12,13 @@ class TuneBOHB(SuggestionAlgorithm):
     def __init__(self,
                  space,
                  max_concurrent=8,
-                 reward_attr="neg_mean_loss",
+                 metric="neg_mean_loss",
                  bohb_config=None):
         self._max_concurrent = max_concurrent
         self.trial_to_params = {}
         self.running = set()
         self.paused = set()
-        self.reward_attr = reward_attr
+        self.metric = metric
         bohb_config = bohb_config or {}
         self.bohber = BOHB(space, **bohb_config)
         super(TuneBOHB, self).__init__()
@@ -50,7 +55,7 @@ class TuneBOHB(SuggestionAlgorithm):
 
     def to_wrapper(self, trial_id, result):
         return JobWrapper(
-            -result[self.reward_attr], result["hyperband_info"]["budget"],
+            -result[self.metric], result["hyperband_info"]["budget"],
             {k: result["config"][k] for k in self.trial_to_params[trial_id]})
 
     def on_pause(self, trial_id):

@@ -16,7 +16,8 @@ import ConfigSpace.util
 
 import ray
 from ray.tune import Trainable, run, sample_from
-from ray.tune.schedulers import TuneBOHB, HyperBandForBOHB
+from ray.tune.schedulers import HyperBandForBOHB
+from ray.tune.suggest import TuneBOHB
 
 
 class MyTrainableClass(Trainable):
@@ -85,7 +86,7 @@ if __name__ == "__main__":
             config_space,
             max_concurrent=4,
             # num_concurrent=100,
-            reward_attr="episode_reward_mean",
+            metric="episode_reward_mean",
         ),
         **{
             "stop": {
