@@ -121,6 +121,7 @@ class TFPolicy(Policy):
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
         self._stats_fetches = {}
+        self._loss_input_dict = None
 
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
@@ -155,14 +156,8 @@ class TFPolicy(Policy):
         if name in obs_inputs:
             return obs_inputs[name]
 
-        if not self.loss_initialized():
-            raise RuntimeError(
-                "You cannot call policy.get_placeholder() for non-obs inputs "
-                "before the loss has been initialized. To avoid this, use "
-                "policy.loss_initialized() to check whether this is the "
-                "case, or move the call to later (e.g., from stats_fn to "
-                "grad_stats_fn).")
-
+        assert self._loss_input_dict is not None, \
+            "Should have set this before get_placeholder can be called"
         return self._loss_input_dict[name]
 
     def get_session(self):
