@@ -15,6 +15,9 @@
 import sys
 import os
 import shlex
+sys.path.insert(0, os.path.abspath('.'))
+from custom_directives import (
+    IncludeDirective, GalleryItemDirective, CustomGalleryItemDirective)
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
@@ -70,7 +73,19 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx_click.ext',
+    'sphinx_gallery.gen_gallery'
 ]
+
+sphinx_gallery_conf = {
+    'examples_dirs': ['../../examples'],   # path to your example scripts
+    'gallery_dirs': ['auto_examples'], # path where to save generated examples
+    'plot_gallery': 'False',
+    'filename_pattern': 'tutorial.py',
+    'backreferences_dir': False
+    # 'show_memory': False,
+    # 'min_reported_time': False
+}
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -93,7 +108,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Ray'
-copyright = u'2016, The Ray Team'
+copyright = u'2019, The Ray Team'
 author = u'The Ray Team'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -121,6 +136,7 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
+exclude_patterns += sphinx_gallery_conf['examples_dirs']
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
@@ -330,3 +346,12 @@ texinfo_documents = [
 autodoc_member_order = 'bysource'
 
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
+
+def setup(app):
+    # Custom CSS
+    # app.add_stylesheet('css/pytorch_theme.css')
+    # app.add_stylesheet('https://fonts.googleapis.com/css?family=Lato')
+    # Custom directives
+    app.add_directive('includenodoc', IncludeDirective)
+    app.add_directive('galleryitem', GalleryItemDirective)
+    app.add_directive('customgalleryitem', CustomGalleryItemDirective)
