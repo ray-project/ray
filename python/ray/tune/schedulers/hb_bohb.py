@@ -2,11 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numpy as np
 import logging
 
-from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler, Bracket
 from ray.tune.trial import Trial
 
@@ -14,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class HyperBandForBOHB(HyperBandScheduler):
-    """Implements the HyperBand early stopping algorithm.
+    """Extends HyperBand early stopping algorithm for BOHB.
 
-    @!!!!!!!!!!!!!! Key changes:
+    Key changes:
         Bracket filling is reversed
         Trial results
 
@@ -26,7 +25,7 @@ class HyperBandForBOHB(HyperBandScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        reward_attr (str): The training result objective value attribute. As
+        metric (str): The training result objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         max_t (int): max time units per trial. Trials will be stopped after
@@ -34,6 +33,8 @@ class HyperBandForBOHB(HyperBandScheduler):
             The scheduler will terminate trials after this time has passed.
             Note that this is different from the semantics of `max_t` as
             mentioned in the original HyperBand paper.
+        mode (str): One of {min, max}. Determines whether objective is
+                minimizing or maximizing the metric attribute.
     """
 
     def on_trial_add(self, trial_runner, trial):
@@ -48,7 +49,6 @@ class HyperBandForBOHB(HyperBandScheduler):
         cur_band = self._hyperbands[self._state["band_idx"]]
         if cur_bracket is None or cur_bracket.filled():
             print("Adding a new bracket.")
-            # import ipdb; ipdb.set_trace()
             retry = True
             while retry:
                 # if current iteration is filled, create new iteration
@@ -57,19 +57,21 @@ class HyperBandForBOHB(HyperBandScheduler):
                     self._hyperbands.append(cur_band)
                     self._state["band_idx"] += 1
 
-                #### MAIN CHANGE HERE - largest bracket first!
+                # MAIN CHANGE HERE - largest bracket first!
                 # cur_band will always be less than s_max_1 or else filled
                 s = self._s_max_1 - len(cur_band) - 1
                 assert s >= 0, "Current band is filled!"
-                #### MAIN CHANGE HERE!
+                # MAIN CHANGE HERE!
                 if self._get_r0(s) == 0:
                     logger.info("Bracket too small - Retrying...")
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = ContinuationBracket(self._time_attr, self._get_n0(s),
-                                          self._get_r0(s), self._max_t_attr,
-                                          self._eta, s)
+                    cur_bracket = ContinuationBracket(self._time_attr,
+                                                      self._get_n0(s),
+                                                      self._get_r0(s),
+                                                      self._max_t_attr,
+                                                      self._eta, s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 
@@ -95,19 +97,17 @@ class HyperBandForBOHB(HyperBandScheduler):
 
         result["hyperband_info"]["budget"] = bracket._cumul_r
 
-        #### MAIN CHANGE HERE!
+        # MAIN CHANGE HERE!
         statuses = [(t, t.status) for t in bracket._live_trials]
-        if not bracket.filled() or any(
-                status != Trial.PAUSED for t, status in statuses
-                if t is not trial):
-            print(Counter([status for _, status in statuses]))
+        if not bracket.filled() or any(status != Trial.PAUSED
+                                       for t, status in statuses
+                                       if t is not trial):
             trial_runner._search_alg.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
-        # import ipdb; ipdb.set_trace()
         action = self._process_bracket(trial_runner, bracket, trial)
         return action
 
-    def _process_bracket(self, trial_runner, bracket, trial):
+    def _process_bracket(self, trial_runner, bracket):
         """This is called whenever a trial makes progress.
 
         When all live trials in the bracket have no more iterations left,
@@ -122,7 +122,8 @@ class HyperBandForBOHB(HyperBandScheduler):
                 bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
-            good, bad = bracket.successive_halving(self._reward_attr)
+            good, bad = bracket.successive_halving(
+                self._metric_op * self._metric)
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
@@ -141,9 +142,9 @@ class HyperBandForBOHB(HyperBandScheduler):
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
                         trial_runner.trial_executor.unpause_trial(t)
-                        #### MAIN CHANGE HERE!
+                        # MAIN CHANGE HERE!
                         trial_runner._search_alg.on_unpause(t.trial_id)
-                        #### MAIN CHANGE HERE!
+                        # MAIN CHANGE HERE!
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
@@ -165,15 +166,17 @@ class HyperBandForBOHB(HyperBandScheduler):
                     if (trial.status == Trial.PENDING
                             and trial_runner.has_resources(trial.resources)):
                         return trial
-        #### MAIN CHANGE HERE!
-        if not any(t.status == Trial.RUNNING for t in trial_runner.get_trials()):
+        # MAIN CHANGE HERE!
+        if not any(t.status == Trial.RUNNING
+                   for t in trial_runner.get_trials()):
             for hyperband in self._hyperbands:
                 for bracket in hyperband:
-                    if bracket and any(
-                            trial.status == Trial.PAUSED for trial in bracket.current_trials()):
+                    if bracket and any(trial.status == Trial.PAUSED
+                                       for trial in bracket.current_trials()):
                         self._process_bracket(trial_runner, bracket, None)
-        #### MAIN CHANGE HERE!
+        # MAIN CHANGE HERE!
         return None
+
 
 class ContinuationBracket(Bracket):
     """Logical object for tracking Hyperband bracket progress. Keeps track
@@ -182,7 +185,7 @@ class ContinuationBracket(Bracket):
     Also keeps track of progress to ensure good scheduling.
     """
 
-    def successive_halving(self, reward_attr):
+    def successive_halving(self, metric):
         assert self._halves > 0
         self._halves -= 1
         self._n /= self._eta
@@ -193,19 +196,16 @@ class ContinuationBracket(Bracket):
 
         # MAIN CHANGE HERE - don't accumulate R.
         self._cumul_r = self._r
-        ###################
+
         sorted_trials = sorted(
-            self._live_trials, key=lambda t: self._live_trials[t][reward_attr])
+            self._live_trials, key=lambda t: self._live_trials[t][metric])
 
         good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
         return good, bad
 
     def update_trial_stats(self, trial, result):
         """Update result for trial. Called after trial has finished
-        an iteration - will decrement iteration count.
-
-        TODO(rliaw): The other alternative is to keep the trials
-        in and make sure they're not set as pending later."""
+        an iteration - will decrement iteration count."""
 
         assert trial in self._live_trials
         assert self._get_result_time(result) >= 0

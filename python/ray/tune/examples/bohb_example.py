@@ -7,15 +7,12 @@ from __future__ import print_function
 import argparse
 import json
 import os
-import random
 
 import numpy as np
-import ConfigSpace
-import ConfigSpace.hyperparameters as CSH
 import ConfigSpace.util
 
 import ray
-from ray.tune import Trainable, run, sample_from
+from ray.tune import Trainable, run
 from ray.tune.schedulers import HyperBandForBOHB
 from ray.tune.suggest import TuneBOHB
 
@@ -69,9 +66,9 @@ if __name__ == "__main__":
     CS = ConfigSpace
     config_space = CS.ConfigurationSpace()
     config_space.add_hyperparameter(
-        CS.UniformFloatHyperparameter('height', lower=10, upper=100))
+        CS.UniformFloatHyperparameter("height", lower=10, upper=100))
     config_space.add_hyperparameter(
-        CS.UniformFloatHyperparameter('width', lower=0, upper=100))
+        CS.UniformFloatHyperparameter("width", lower=0, upper=100))
 
     bohb = HyperBandForBOHB(
         time_attr="training_iteration",
@@ -79,7 +76,8 @@ if __name__ == "__main__":
         grace_period=5,
         max_t=100)
 
-    run(MyTrainableClass,
+    run(
+        MyTrainableClass,
         name="bohb_test",
         scheduler=bohb,
         search_alg=TuneBOHB(

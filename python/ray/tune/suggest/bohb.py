@@ -4,7 +4,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hpbandster import BOHB
+try:
+    from hpbandster import BOHB
+except ImportError:
+    hpbandster = None
+
 from ray.tune.suggest import SuggestionAlgorithm
 
 
@@ -16,19 +20,58 @@ class JobWrapper():
         self.kwargs = {"budget": budget, "config": config.copy()}
         self.exception = None
 
+
 class TuneBOHB(SuggestionAlgorithm):
-    """Tune Suggestion Algorithm for BOHB code"""
+    """Tune Suggestion Algorithm for BOHB code
+
+        Requires HpBandSter and ConfigSpace to be installed. You can install
+        HpBandSter with the command: `pip install hpbandster` and
+        ConfigSpace with the command: `pip install ConfigSpace`.
+
+        Parameters:
+            space (dict): Continuous ConfigSpace search space. Parameters will
+                be sampled from this space which will be used to run trials.
+            max_concurrent (int): Number of maximum concurrent trials. Defaults
+                to 10.
+            metric (str): The training result objective value attribute.
+            mode (str): One of {min, max}. Determines whether objective is
+                minimizing or maximizing the metric attribute.
+
+        Example:
+        >>> CS = ConfigSpace
+        >>> config_space = CS.ConfigurationSpace()
+        >>> config_space.add_hyperparameter(
+        >>>     CS.UniformFloatHyperparameter('width', lower=0, upper=20))
+        >>> config_space.add_hyperparameter(
+        >>>     CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
+        >>> config_space.add_hyperparameter(
+        >>>     CS.CategoricalHyperparameter(name='activation', choices=['relu', 'tanh']))
+        >>> current_best_params = [{
+        >>>     'width': 10,
+        >>>     'height': 0,
+        >>>     'activation': 0, # The index of "relu"
+        >>> }]
+        >>> algo = TuneBOHB(
+        >>>     config_space, max_concurrent=4, metric="mean_loss", mode="min")
+        """
 
     def __init__(self,
                  space,
-                 max_concurrent=8,
+                 max_concurrent=10,
                  metric="neg_mean_loss",
-                 bohb_config=None):
+                 bohb_config=None,
+                 mode="max"):
+        assert hpbandster is not None, "HpBandSter must be installed!"
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._max_concurrent = max_concurrent
         self.trial_to_params = {}
         self.running = set()
         self.paused = set()
         self.metric = metric
+        if mode == "max":
+            self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         bohb_config = bohb_config or {}
         self.bohber = BOHB(space, **bohb_config)
         super(TuneBOHB, self).__init__()
@@ -46,7 +89,6 @@ class TuneBOHB(SuggestionAlgorithm):
             self.running.add(trial_id)
         if "budget" in result.get("hyperband_info", {}):
             hbs_wrapper = self.to_wrapper(trial_id, result)
-            print("adding new result", vars(hbs_wrapper))
             self.bohber.new_result(hbs_wrapper)
 
     def on_trial_complete(self,
@@ -57,16 +99,15 @@ class TuneBOHB(SuggestionAlgorithm):
         del self.trial_to_params[trial_id]
         if trial_id in self.paused:
             self.paused.remove(trial_id)
-        elif trial_id in self.running:
+        if trial_id in self.running:
             self.running.remove(trial_id)
-        else:
-            import ipdb; ipdb.set_trace()
-
 
     def to_wrapper(self, trial_id, result):
         return JobWrapper(
-            -result[self.metric], result["hyperband_info"]["budget"],
-            {k: result["config"][k] for k in self.trial_to_params[trial_id]})
+            self._metric_op * result[self.metric],
+            result["hyperband_info"]["budget"],
+            {k: result["config"][k]
+             for k in self.trial_to_params[trial_id]})
 
     def on_pause(self, trial_id):
         self.paused.add(trial_id)
