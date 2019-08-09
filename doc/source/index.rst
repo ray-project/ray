@@ -224,14 +224,9 @@ The following are good places to discuss Ray.
    :maxdepth: 1
    :caption: Examples
 
-   example-rl-pong.rst
-   example-parameter-server.rst
-   example-newsreader.rst
-   example-resnet.rst
-   example-a3c.rst
-   example-lbfgs.rst
-   example-streaming.rst
-   using-ray-with-tensorflow.rst
+   auto_examples/index.rst
+   auto_examples/plot_pong_example.rst
+
 
 .. toctree::
    :maxdepth: 1
@@ -243,3 +238,13 @@ The following are good places to discuss Ray.
    internals-overview.rst
    fault-tolerance.rst
    contrib.rst
+
+
+.. example-rl-pong.rst
+.. example-parameter-server.rst
+.. example-newsreader.rst
+.. example-resnet.rst
+.. example-a3c.rst
+.. example-lbfgs.rst
+.. example-streaming.rst
+.. using-ray-with-tensorflow.rst
