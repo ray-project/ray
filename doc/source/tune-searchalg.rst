@@ -18,6 +18,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 - `Nevergrad <tune-searchalg.html#nevergrad-search>`__
 - `Scikit-Optimize <tune-searchalg.html#scikit-optimize-search>`__
 - `Ax <tune-searchalg.html#ax-search>`__
+- `BOHB <tune-searchalg.html#bohb>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -178,6 +179,30 @@ This algorithm requires specifying a search space and objective. You can use `Ax
 An example of this can be found in `ax_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/ax_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.ax.AxSearch
+    :show-inheritance:
+    :noindex:
+
+BOHB (Bayesian optimization and Hyperband)
+---------------------------------------------------
+
+The ``BOHB`` is a SearchAlgorithm that is backed by `HpBandSter <https://github.com/automl/HpBandSter>`__ to perform sequential model-based hyperparameter optimization in conjunction with Hyperband. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BOHB. Also note that BOHB is intended to be paried with the Hyperband scheduler `hp_bohb.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers/hp_bohb.py>`__.
+
+In order to use this search algorithm, you will need to install HpBandSter and ConfigSpace via the following command:
+
+.. code-block:: bash
+
+    $ pip install hpbandster
+    $ pip install ConfigSpace
+
+This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`__. You can use TuneBOHB like follows:
+
+.. code-block:: python
+
+    tune.run(... , search_alg=TuneBOHB(config_space, ... ))
+
+An example of this can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.bohb.TuneBOHB
     :show-inheritance:
     :noindex:
 
