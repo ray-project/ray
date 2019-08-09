@@ -169,8 +169,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
-  java_task_executor_class =
-      LoadClass(env, "org/ray/runtime/task/TaskExecutor");
+  java_task_executor_class = LoadClass(env, "org/ray/runtime/task/TaskExecutor");
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");

@@ -10,7 +10,14 @@ import org.ray.runtime.generated.Common.Language;
  * load a function in workers.
  */
 public interface FunctionDescriptor {
+
+  /**
+   * @return A list of strings represents the functions.
+   */
   List<String> toList();
 
+  /**
+   * @return The language of the function.
+   */
   Language getLanguage();
 }

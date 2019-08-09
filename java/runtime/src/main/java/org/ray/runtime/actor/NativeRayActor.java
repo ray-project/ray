@@ -67,17 +67,17 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
     return new NativeRayActor(nativeFork(nativeActorHandle));
   }
 
-  public byte[] Binary() {
+  public byte[] serialize() {
     return nativeSerialize(nativeActorHandle);
   }
 
-  public static NativeRayActor fromBinary(byte[] binary) {
+  public static NativeRayActor deserialize(byte[] binary) {
     return new NativeRayActor(nativeDeserialize(binary));
   }
 
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
-    out.writeObject(Binary());
+    out.writeObject(serialize());
   }
 
   @Override

@@ -2,10 +2,7 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -102,26 +99,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
-    Preconditions.checkNotNull(waitList);
-    if (waitList.isEmpty()) {
-      return new WaitResult<>(Collections.emptyList(), Collections.emptyList());
-    }
-
-    List<ObjectId> ids = waitList.stream().map(RayObject::getId).collect(Collectors.toList());
-
-    List<Boolean> ready = objectStore.wait(ids, numReturns, timeoutMs);
-    List<RayObject<T>> readyList = new ArrayList<>();
-    List<RayObject<T>> unreadyList = new ArrayList<>();
-
-    for (int i = 0; i < ready.size(); i++) {
-      if (ready.get(i)) {
-        readyList.add(waitList.get(i));
-      } else {
-        unreadyList.add(waitList.get(i));
-      }
-    }
-
-    return new WaitResult<>(readyList, unreadyList);
+    return objectStore.wait(waitList, numReturns, timeoutMs);
   }
 
   @Override

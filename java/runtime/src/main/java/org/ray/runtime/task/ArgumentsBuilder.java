@@ -6,7 +6,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectStore;
 import org.ray.runtime.util.Serializer;
@@ -32,8 +31,6 @@ public class ArgumentsBuilder {
       byte[] data = null;
       if (arg == null) {
         data = Serializer.encode(null);
-      } else if (arg instanceof NativeRayActor) {
-        id = Ray.internal().put(arg).getId();
       } else if (arg instanceof RayObject) {
         id = ((RayObject) arg).getId();
       } else if (arg instanceof byte[] && crossLanguage) {

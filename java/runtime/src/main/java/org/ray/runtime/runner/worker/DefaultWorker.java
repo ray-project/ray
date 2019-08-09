@@ -20,7 +20,7 @@ public class DefaultWorker {
       });
       Ray.init();
       LOGGER.info("Worker started.");
-      ((RayNativeRuntime)Ray.internal()).loop();
+      ((RayNativeRuntime)Ray.internal()).run();
     } catch (Exception e) {
       LOGGER.error("Failed to start worker.", e);
     }

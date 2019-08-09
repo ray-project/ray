@@ -32,7 +32,7 @@ public class ActorId extends BaseId implements Serializable {
   }
 
   /**
-   * Generate an ActorId with random value.
+   * Generate an ActorId with random value. Used for local mode and test only.
    */
   public static ActorId fromRandom() {
     byte[] b = new byte[LENGTH];

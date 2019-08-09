@@ -2,7 +2,6 @@ package org.ray.runtime.object;
 
 import java.util.List;
 import java.util.stream.Collectors;
-import org.ray.api.exception.RayException;
 import org.ray.api.id.BaseId;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.context.WorkerContext;
@@ -33,11 +32,7 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public void putRaw(NativeRayObject obj, ObjectId objectId) {
-    try {
-      nativePut(nativeCoreWorkerPointer, objectId.getBytes(), obj);
-    } catch (RayException e) {
-      LOGGER.warn(e.getMessage());
-    }
+    nativePut(nativeCoreWorkerPointer, objectId.getBytes(), obj);
   }
 
   @Override

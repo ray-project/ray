@@ -108,7 +108,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setJobId(gcsClient.nextJobId());
     }
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    nativeCoreWorkerPointer = nativeInit(rayConfig.workerMode.getNumber(),
+    nativeCoreWorkerPointer = nativeInitCoreWorker(rayConfig.workerMode.getNumber(),
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
         (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
         new GcsClientOptions(rayConfig));
@@ -133,13 +133,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.cleanup();
     }
     if (nativeCoreWorkerPointer != 0) {
-      nativeDestroy(nativeCoreWorkerPointer);
+      nativeDestroyCoreWorker(nativeCoreWorkerPointer);
       nativeCoreWorkerPointer = 0;
     }
   }
 
-  public void loop() {
-    nativeRun(nativeCoreWorkerPointer, taskExecutor);
+  public void run() {
+    nativeRunTaskExecutor(nativeCoreWorkerPointer, taskExecutor);
   }
 
   /**
@@ -167,10 +167,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
   }
 
-  private static native long nativeInit(int workerMode, String storeSocket,
+  private static native long nativeInitCoreWorker(int workerMode, String storeSocket,
       String rayletSocket, byte[] jobId, GcsClientOptions gcsClientOptions);
 
-  private static native void nativeRun(long nativeCoreWorkerPointer, TaskExecutor taskExecutor);
+  private static native void nativeRunTaskExecutor(long nativeCoreWorkerPointer,
+      TaskExecutor taskExecutor);
 
-  private static native void nativeDestroy(long nativeCoreWorkerPointer);
+  private static native void nativeDestroyCoreWorker(long nativeCoreWorkerPointer);
 }
