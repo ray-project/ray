@@ -8,7 +8,7 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet/raylet_client.h"
 
 namespace ray {
 

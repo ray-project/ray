@@ -26,13 +26,11 @@ class GrpcService;
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:
-  /// Constructor.
+  /// Construct a gRPC server that listens on a TCP port.
   ///
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] main_service The main event loop, to which service handler functions
-  /// will be posted.
   GrpcServer(std::string name, const uint32_t port)
       : name_(std::move(name)), port_(port), is_closed_(true) {}
 
@@ -73,6 +71,8 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
+  /// Flag indicates whether this server has closed.
+  bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
@@ -83,10 +83,8 @@ class GrpcServer {
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
-  /// The polling thread used to check the completion queue
+  /// The polling thread used to check the completion queue.
   std::thread polling_thread_;
-  /// Flag indicates whether this server has closed
-  bool is_closed_;
 };
 
 /// Base class that represents an abstract gRPC service.
