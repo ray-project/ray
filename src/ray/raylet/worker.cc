@@ -10,7 +10,7 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-               rpc::ClientCallManager &client_call_manager)
+               rpc::ClientCallManager &client_call_manager, bool is_worker)
     : worker_id_(worker_id),
       pid_(pid),
       port_(port),
@@ -18,7 +18,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       blocked_(false),
       num_missed_heartbeats_(0),
       is_being_killed_(false),
-      client_call_manager_(client_call_manager) {
+      client_call_manager_(client_call_manager),
+      is_worker_(is_worker) {
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
@@ -28,6 +29,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
 void Worker::MarkAsBeingKilled() { is_being_killed_ = true; }
 
 bool Worker::IsBeingKilled() const { return is_being_killed_; }
+
+bool Worker::IsWorker() const { return is_worker_; }
 
 void Worker::MarkBlocked() { blocked_ = true; }
 

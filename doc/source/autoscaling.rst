@@ -1,5 +1,5 @@
-Cluster Setup and Auto-Scaling
-==============================
+Built-in Autoscaling
+=====================
 
 This document provides instructions for launching a Ray cluster either privately, on AWS, or on GCP.
 

@@ -134,6 +134,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
         self.stall = False
+        self.results = []
         super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
@@ -144,6 +145,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
 
     def on_trial_result(self, trial_id, result):
         self.counter["result"] += 1
+        self.results += [result]
 
     def on_trial_complete(self, trial_id, **kwargs):
         self.counter["complete"] += 1
