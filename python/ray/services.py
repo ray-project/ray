@@ -110,13 +110,13 @@ def find_redis_address_or_die():
         except psutil.NoSuchProcess:
             pass
     if len(redis_addresses) > 1:
-        raise ValueError(
+        raise ConnectionError(
             "Found multiple active Ray instances: {}. ".format(
                 redis_addresses) +
             "Please specify the one to connect to with --redis-address.")
         sys.exit(1)
     elif not redis_addresses:
-        raise ValueError(
+        raise ConnectionError(
             "Could not find any running Ray instance. "
             "Please specify the one to connect to with --redis-address.")
     return redis_addresses.pop()
