@@ -10,12 +10,16 @@ namespace gcs {
 ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
     : client_impl_(client_impl) {}
 
-Status ActorStateAccessor::AsyncGet(const ActorID &actor_id,
-                                    const MultiItemCallback<ActorTableData> &callback) {
+Status ActorStateAccessor::AsyncGet(
+    const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
                             const std::vector<ActorTableData> &data) {
-    callback(Status::OK(), data);
+    boost::optional<ActorTableData> result;
+    if (!data.empty()) {
+      result = data.back();
+    }
+    callback(Status::OK(), result);
   };
 
   ActorTable &actor_table = client_impl_.actor_table();

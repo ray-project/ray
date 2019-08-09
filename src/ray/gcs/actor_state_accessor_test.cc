@@ -103,14 +103,14 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   for (const auto &elem : actor_datas_) {
     const auto &actor = elem.second;
     ++pending_count_;
-    actor_accessor.AsyncGet(elem.first,
-                            [this](Status status, std::vector<ActorTableData> datas) {
-                              ASSERT_EQ(datas.size(), 1U);
-                              ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
-                              auto it = actor_datas_.find(actor_id);
-                              ASSERT_TRUE(it != actor_datas_.end());
-                              --pending_count_;
-                            });
+    actor_accessor.AsyncGet(
+        elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
+          ASSERT_TRUE(!!data);
+          ActorID actor_id = ActorID::FromBinary(data->actor_id());
+          auto it = actor_datas_.find(actor_id);
+          ASSERT_TRUE(it != actor_datas_.end());
+          --pending_count_;
+        });
   }
 
   WaitPendingDone(timeout);
