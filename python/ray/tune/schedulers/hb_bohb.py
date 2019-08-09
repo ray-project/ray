@@ -87,7 +87,7 @@ class HyperBandForBOHB(HyperBandScheduler):
         This scheduler will not start trials but will stop trials.
         The current running trial will not be handled,
         as the trialrunner will be given control to handle it."""
-        
+
         result["hyperband_info"] = {}
         bracket, _ = self._trial_info[trial]
         bracket.update_trial_stats(trial, result)

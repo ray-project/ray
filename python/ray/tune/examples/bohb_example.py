@@ -77,17 +77,7 @@ if __name__ == "__main__":
         grace_period=5,
         max_t=100)
 
-    run(
-        MyTrainableClass,
-        name="bohb_test",
-        scheduler=bohb,
-        search_alg=TuneBOHB(
-            config_space,
-            max_concurrent=4,
-            # num_concurrent=100,
-            metric="episode_reward_mean",
-        ),
-        **{
+    config = {
             "stop": {
                 "training_iteration": 1 if args.smoke_test else 99999
             },
@@ -96,4 +86,19 @@ if __name__ == "__main__":
                 "cpu": 1,
                 "gpu": 0
             },
-        })
+        }
+
+    algo = TuneBOHB(
+            config_space,
+            max_concurrent=4,
+            # num_concurrent=100,
+            metric="mean_loss",
+            mode="min"
+        )
+
+    run(
+        MyTrainableClass,
+        name="bohb_test",
+        scheduler=bohb,
+        search_alg=algo,
+        **config)
