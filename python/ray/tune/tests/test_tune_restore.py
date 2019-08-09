@@ -134,41 +134,29 @@ class HyperoptWarmStartTest(unittest.TestCase):
             loss = space["x"]**2 + space["y"]**2 + space["z"]**2
             reporter(loss=loss)
 
-        return space, cost
-
-    def run_exp_1(self):
-        space, cost = self.set_basic_conf()
-        algo_1 = HyperOptSearch(
+        search_alg = HyperOptSearch(
             space,
             max_concurrent=1,
             metric="loss",
             mode="min",
             random_state_seed=5)
-        results_exp_1 = tune.run(cost, num_samples=15, search_alg=algo_1)
+        return search_alg, cost
+
+    def run_exp_1(self):
+        search_alg, cost = self.set_basic_conf()
+        results_exp_1 = tune.run(cost, num_samples=15, search_alg=search_alg)
         self.log_dir = os.path.join(self.tmpdir, "trials_algo1.pkl")
-        algo_1.save(self.log_dir)
+        search_alg.save(self.log_dir)
         return results_exp_1
 
     def run_exp_2(self):
-        space, cost = self.set_basic_conf()
-        algo_2 = HyperOptSearch(
-            space,
-            max_concurrent=1,
-            metric="loss",
-            mode="min",
-            random_state_seed=5)
-        algo_2.restore(self.log_dir)
-        return tune.run(cost, num_samples=15, search_alg=algo_2)
+        search_alg2, cost = self.set_basic_conf()
+        search_alg2.restore(self.log_dir)
+        return tune.run(cost, num_samples=15, search_alg=search_alg2)
 
     def run_exp_3(self):
-        space, cost = self.set_basic_conf()
-        algo_3 = HyperOptSearch(
-            space,
-            max_concurrent=1,
-            metric="loss",
-            mode="min",
-            random_state_seed=5)
-        return tune.run(cost, num_samples=30, search_alg=algo_3)
+        search_alg3, cost = self.set_basic_conf()
+        return tune.run(cost, num_samples=30, search_alg=search_alg3)
 
     def testHyperoptWarmStart(self):
         results_exp_1 = self.run_exp_1()
