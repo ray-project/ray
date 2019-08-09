@@ -8,7 +8,7 @@ name: {{name}}
 cluster: {{cluster}}
 
 environment:
-  # dockerfile: The dockerfile to be built and ran the commandas with.
+  # dockerfile: The dockerfile to be built and ran the commands with.
   # dockerimage: The docker image to be used to run the project in, e.g. ubuntu:18.04.
   requirements: {{requirements}}
 
