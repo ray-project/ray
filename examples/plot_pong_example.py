@@ -51,7 +51,6 @@ import gym
 
 # Here we'll define a couple of the hyperparameters that are used.
 
-
 # The number of hidden layer neurons.
 H = 200
 learning_rate = 1e-4
@@ -65,8 +64,10 @@ D = 80 * 80
 ##############################################################################
 # Sigmoid is used to "squash" the output to be between 0 and 1.
 
+
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
+
 
 #############################################################################
 # Preprocessing
@@ -241,8 +242,7 @@ while iteration != iterations:
     end_time = time.time()
     print("Batch {} computed {} rollouts in {} seconds, "
           "running mean is {}".format(batch_num, batch_size,
-                                      end_time - start_time,
-                                      running_reward))
+                                      end_time - start_time, running_reward))
     for k, v in model.items():
         g = grad_buffer[k]
         rmsprop_cache[k] = (
