@@ -125,6 +125,7 @@ class Analysis(object):
         return rows
 
     def _get_trial_paths(self):
+
         _trial_paths = []
         for trial_path, _, files in os.walk(self._experiment_dir):
             if EXPR_PROGRESS_FILE in files:
@@ -170,11 +171,11 @@ class ExperimentAnalysis(Analysis):
                 `analysis.trials`.
         """
         with open(experiment_checkpoint_path) as f:
-            _experiment_state = json.load(f)
+            self._experiment_state = json.load(f)
 
-        if "checkpoints" not in _experiment_state:
+        if "checkpoints" not in self._experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = _experiment_state["checkpoints"]
+        self._checkpoints = self._experiment_state["checkpoints"]
         self.trials = trials
         super(ExperimentAnalysis, self).__init__(
             os.path.dirname(experiment_checkpoint_path))

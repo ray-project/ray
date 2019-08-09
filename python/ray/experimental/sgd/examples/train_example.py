@@ -18,6 +18,7 @@ def train_example(num_replicas=1, use_gpu=False):
         optimizer_creator,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
+        batch_size=512,
         backend="gloo")
     trainer1.train()
     trainer1.shutdown()
@@ -30,16 +31,38 @@ def tune_example(num_replicas=1, use_gpu=False):
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
         "num_replicas": num_replicas,
-        "use_gpu": use_gpu
+        "use_gpu": use_gpu,
+        "batch_size": 512, # default 16 was too small for distributed run (->slow)
+        "backend": "gloo"
     }
 
-    # analysis = tune.run(PyTorchTrainable, num_samples=1, config=config)
     analysis = tune.run(
         PyTorchTrainable,
         num_samples=12,
         config=config,
-        stop={"training_iteration": 10},
+        stop={"training_iteration": 2},
         verbose=1)
+
+    ### DEBUG ######
+    # analysis._get_trial_paths()
+    import os
+    EXPR_PROGRESS_FILE = "progress.csv"
+    _trial_paths = []
+    for trial_path, _, files in os.walk(analysis._experiment_dir):
+        if EXPR_PROGRESS_FILE in files:
+            _trial_paths += [trial_path]
+
+    if not _trial_paths:
+        raise TuneError("No trials found in {}.".format(
+            analysis._experiment_dir))
+
+    print(_trial_paths)
+
+    import ipdb; ipdb.set_trace()
+    _trial_path2 = analysis._get_trial_paths()
+    print( _trial_path2)
+
+
     return analysis.get_best_config(metric="validation_loss", mode="min")
 
 
@@ -61,9 +84,20 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        default=False,
+        help="Tune training")
+
     args, _ = parser.parse_known_args()
 
     import ray
 
     ray.init(redis_address=args.redis_address)
-    tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+
+    if args.tune:
+        tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    else:
+        train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+

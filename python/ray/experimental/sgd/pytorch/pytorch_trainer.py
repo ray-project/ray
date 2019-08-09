@@ -184,7 +184,9 @@ class PyTorchTrainable(Trainable):
             optimizer_creator=config["optimizer_creator"],
             config=config,
             num_replicas=config["num_replicas"],
-            use_gpu=config["use_gpu"])
+            use_gpu=config["use_gpu"],
+            batch_size=config["batch_size"],
+            backend=config["backend"])
 
     def _train(self):
 
