@@ -1206,10 +1206,6 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
   checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
 }
 
-void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client) {
-  node_manager_client.ProcessMessages();
-}
-
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
                                     rpc::ForwardTaskReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {

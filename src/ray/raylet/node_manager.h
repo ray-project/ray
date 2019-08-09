@@ -92,12 +92,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
                             int64_t message_type, const uint8_t *message_data);
 
-  /// Handle a new node manager connection.
-  ///
-  /// \param node_manager_client The connection to the remote node manager.
-  /// \return Void.
-  void ProcessNewNodeManager(TcpClientConnection &node_manager_client);
-
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
   /// \return Status indicating whether this was done successfully or not.
