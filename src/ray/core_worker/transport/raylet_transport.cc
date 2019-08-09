@@ -57,7 +57,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   // rpc reply first before the NotifyUnblocked message arrives,
   // as they use different connections, the `TaskDone` message is sent
   // to raylet via the same connection so the order is guaranteed.
-  raylet_client_->TaskDone();
+  RAY_UNUSED(raylet_client_->TaskDone());
   // send rpc reply.
   send_reply_callback(status, nullptr, nullptr);
 }
