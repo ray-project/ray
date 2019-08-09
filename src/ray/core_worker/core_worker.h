@@ -12,8 +12,6 @@
 
 namespace ray {
 
-using rpc::RayletClient;
-
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
