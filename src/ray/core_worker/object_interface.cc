@@ -1,7 +1,7 @@
 #include <algorithm>
 
-#include "ray/core_worker/object_interface.h"
 #include "ray/common/ray_config.h"
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 
