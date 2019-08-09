@@ -53,7 +53,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     analysis = tune.run(
         PyTorchTrainable,
-        num_samples=12,
+        num_samples=2,
         config=config,
         stop={"training_iteration": 2},
         verbose=1)
