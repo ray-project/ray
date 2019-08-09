@@ -9,7 +9,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.WorkerContext;
-import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +36,7 @@ public class MockObjectInterface implements ObjectInterface {
 
   @Override
   public ObjectId put(NativeRayObject obj) {
-    ObjectId objectId = IdUtil.computePutId(workerContext.getCurrentTaskId(),
+    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(),
         workerContext.nextPutIndex());
     put(obj, objectId);
     return objectId;
@@ -71,7 +70,8 @@ public class MockObjectInterface implements ObjectInterface {
     boolean firstCheck = true;
     while (ready < numObjects && (timeoutMs < 0 || remainingTime > 0)) {
       if (!firstCheck) {
-        long sleepTime = Math.min(remainingTime, GET_CHECK_INTERVAL_MS);
+        long sleepTime =
+            timeoutMs < 0 ? GET_CHECK_INTERVAL_MS : Math.min(remainingTime, GET_CHECK_INTERVAL_MS);
         try {
           Thread.sleep(sleepTime);
         } catch (InterruptedException e) {

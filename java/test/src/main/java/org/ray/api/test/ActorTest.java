@@ -11,7 +11,7 @@ import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayActorImpl;
-import org.ray.runtime.objectstore.ObjectStoreProxy.GetResult;
+import org.ray.runtime.objectstore.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -100,9 +100,10 @@ public class ActorTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
     while (true) {
-      GetResult<Integer> result = ((AbstractRayRuntime)
-          Ray.internal()).getObjectStoreProxy().get(value.getId(), 0);
-      if (!result.exists) {
+      NativeRayObject result = ((AbstractRayRuntime)
+          Ray.internal()).getObjectStoreProxy().getObjectInterface()
+          .get(ImmutableList.of(value.getId()), 0).get(0);
+      if (result == null) {
         break;
       }
       TimeUnit.MILLISECONDS.sleep(100);

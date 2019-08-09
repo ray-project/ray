@@ -34,7 +34,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             global_checkpoint_period=0,
             name=self.test_name,
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
@@ -48,6 +47,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
+
+    def testStats(self):
+        assert self.ea.stats()
+        assert self.ea.runner_data()
 
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints

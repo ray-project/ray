@@ -83,7 +83,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   std::vector<ObjectID> object_ids_to_fetch;
   std::vector<int> indices;
 
-  for (int i = 0; i < task.NumArgs(); ++i) {
+  for (size_t i = 0; i < task.NumArgs(); ++i) {
     int count = task.ArgIdCount(i);
     if (count > 0) {
       // pass by reference.

@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.BaseId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
@@ -117,7 +118,7 @@ public class GcsClient {
   /**
    * If the actor exists in GCS.
    */
-  public boolean actorExists(UniqueId actorId) {
+  public boolean actorExists(ActorId actorId) {
     byte[] key = ArrayUtils.addAll(
         TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
     return primary.exists(key);
@@ -136,7 +137,7 @@ public class GcsClient {
   /**
    * Get the available checkpoints for the given actor ID.
    */
-  public List<Checkpoint> getCheckpointsForActor(UniqueId actorId) {
+  public List<Checkpoint> getCheckpointsForActor(ActorId actorId) {
     List<Checkpoint> checkpoints = new ArrayList<>();
     final String prefix = TablePrefix.ACTOR_CHECKPOINT_ID.toString();
     final byte[] key = ArrayUtils.addAll(prefix.getBytes(), actorId.getBytes());

@@ -37,21 +37,6 @@ def has_trainable(trainable_name):
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
-def recursive_criteria_check(result, criteria):
-    for criteria, stop_value in criteria.items():
-        if criteria not in result:
-            raise TuneError(
-                "Stopping criteria {} not provided in result {}.".format(
-                    criteria, result))
-        elif isinstance(result[criteria], dict) and isinstance(
-                stop_value, dict):
-            if recursive_criteria_check(result[criteria], stop_value):
-                return True
-        elif result[criteria] >= stop_value:
-            return True
-    return False
-
-
 class Checkpoint(object):
     """Describes a checkpoint of trial state.
 
@@ -292,7 +277,18 @@ class Trial(object):
         if result.get(DONE):
             return True
 
-        return recursive_criteria_check(result, self.stopping_criterion)
+        for criteria, stop_value in self.stopping_criterion.items():
+            if criteria not in result:
+                raise TuneError(
+                    "Stopping criteria {} not provided in result {}.".format(
+                        criteria, result))
+            elif isinstance(criteria, dict):
+                raise ValueError(
+                    "Stopping criteria is now flattened by default. "
+                    "Use forward slashes to nest values `key1/key2/key3`.")
+            elif result[criteria] >= stop_value:
+                return True
+        return False
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""

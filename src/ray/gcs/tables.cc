@@ -92,7 +92,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
         GcsEntry gcs_entry;
         gcs_entry.ParseFromString(reply.ReadAsString());
         RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
-        for (size_t i = 0; i < gcs_entry.entries_size(); i++) {
+        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
           Data data;
           data.ParseFromString(gcs_entry.entries(i));
           results.emplace_back(std::move(data));
@@ -142,7 +142,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
         gcs_entry.ParseFromString(data);
         ID id = ID::FromBinary(gcs_entry.id());
         std::vector<Data> results;
-        for (size_t i = 0; i < gcs_entry.entries_size(); i++) {
+        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
           Data result;
           result.ParseFromString(gcs_entry.entries(i));
           results.emplace_back(std::move(result));
@@ -685,7 +685,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id) {
   auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
-                             ray::gcs::RedisGcsClient *client, const UniqueID &id,
+                             ray::gcs::RedisGcsClient *client, const ActorID &id,
                              const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
         std::make_shared<ActorCheckpointIdData>(data);
@@ -695,7 +695,6 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     while (copy->timestamps().size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
       const auto &to_delete = ActorCheckpointID::FromBinary(copy->checkpoint_ids(0));
-      RAY_LOG(DEBUG) << "Deleting checkpoint " << to_delete << " for actor " << actor_id;
       copy->mutable_checkpoint_ids()->erase(copy->mutable_checkpoint_ids()->begin());
       copy->mutable_timestamps()->erase(copy->mutable_timestamps()->begin());
       client_->actor_checkpoint_table().Delete(job_id, to_delete);
@@ -703,7 +702,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
   };
   auto failure_callback = [this, checkpoint_id, job_id, actor_id](
-                              ray::gcs::RedisGcsClient *client, const UniqueID &id) {
+                              ray::gcs::RedisGcsClient *client, const ActorID &id) {
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());
