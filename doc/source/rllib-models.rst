@@ -168,7 +168,7 @@ Custom preprocessors should subclass the RLlib `preprocessor class <https://gith
 Custom Action Distributions
 ---------------------------
 
-Similar to custom models and preprocessors, you can also specify a custom action distribution class as follows. The action dist class is passed a reference to the ``model``, which you can use to access ``model.model_config`` or other attributes of the model. This is commonly used to implement `autoregressive action outputs <#autoregressive-action-distributions>`__. Not all algorithms support custom action distributions; see the `feature compatibility matrix <rllib-env.html#feature-compatibility-matrix>`__.
+Similar to custom models and preprocessors, you can also specify a custom action distribution class as follows. The action dist class is passed a reference to the ``model``, which you can use to access ``model.model_config`` or other attributes of the model. This is commonly used to implement `autoregressive action outputs <#autoregressive-action-distributions>`__.
 
 .. code-block:: python
 
@@ -377,4 +377,8 @@ To do this, you need both a custom model that implements the autoregressive patt
             self.action_model.summary()
             self.register_variables(self.action_model.variables)
 
- Not all algorithms support custom action distributions; see the `feature compatibility matrix <rllib-env.html#feature-compatibility-matrix>`__.
+
+
+.. note::
+
+   Not all algorithms support autoregressive action distributions; see the `feature compatibility matrix <rllib-env.html#feature-compatibility-matrix>`__.
