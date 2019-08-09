@@ -1,9 +1,9 @@
+#include <algorithm>
+
 #include "ray/core_worker/object_interface.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
-
-#include <algorithm>
 
 namespace ray {
 
@@ -79,7 +79,7 @@ Status CoreWorkerObjectInterface::Get(
     RAY_RETURN_NOT_OK(store_providers_[type]->Get(
         ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
     RAY_CHECK(ids.size() == objects.size());
-    for (int i = 0; i < objects.size(); i++) {
+    for (size_t i = 0; i < objects.size(); i++) {
       (*results).emplace(ids[i], objects[i]);
     }
   }
