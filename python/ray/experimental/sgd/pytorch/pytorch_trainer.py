@@ -195,7 +195,6 @@ class PyTorchTrainable(Trainable):
 
         train_stats.update(validation_stats)
 
-        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
         return train_stats
 
     def _save(self, checkpoint_dir):
