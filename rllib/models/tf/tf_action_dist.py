@@ -187,7 +187,7 @@ class Deterministic(TFActionDistribution):
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):
-        return np.log(1.0)
+        return 0.0
 
     @override(TFActionDistribution)
     def _build_sample_op(self):

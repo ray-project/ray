@@ -90,7 +90,7 @@ class TFPolicy(Policy):
                 placeholders during loss computation.
             model (rllib.models.Model): used to integrate custom losses and
                 stats from user-defined RLlib models.
-            action_logp (Tensor): probability of the sampled action.
+            action_logp (Tensor): log probability of the sampled action.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
