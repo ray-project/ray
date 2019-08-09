@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from hyperopt import hp
 import os
 import shutil
 import tempfile
@@ -13,7 +14,6 @@ from ray import tune
 from ray.tests.utils import recursive_fnmatch
 from ray.tune.util import validate_save_restore
 from ray.rllib import _register_all
-from hyperopt import hp
 from ray.tune.suggest.hyperopt import HyperOptSearch
 
 
