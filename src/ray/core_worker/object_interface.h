@@ -75,9 +75,9 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(StoreProviderType type,
-    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+  Status Get(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+             int64_t timeout_ms,
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
   /// Create a new store provider for the specified type on demand.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(

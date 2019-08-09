@@ -52,8 +52,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;
   auto start_time = current_time_ms();
   // Fetch non-direct-call objects using `PLASMA` store provider.
-  RAY_RETURN_NOT_OK(Get(StoreProviderType::PLASMA, other_ids,
-      timeout_ms, &objects));
+  RAY_RETURN_NOT_OK(Get(StoreProviderType::PLASMA, other_ids, timeout_ms, &objects));
   int64_t duration = current_time_ms() - start_time;
   int64_t left_timeout_ms =
       (timeout_ms == -1) ? timeout_ms
@@ -61,7 +60,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   // Fetch direct call return objects using `LOCAL_PLASMA` store provider.
   RAY_RETURN_NOT_OK(Get(StoreProviderType::LOCAL_PLASMA, direct_call_return_ids,
-      left_timeout_ms, &objects));
+                        left_timeout_ms, &objects));
 
   for (int i = 0; i < ids.size(); i++) {
     (*results)[i] = objects[ids[i]];
@@ -70,10 +69,11 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
-Status CoreWorkerObjectInterface::Get(StoreProviderType type,
-    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+Status CoreWorkerObjectInterface::Get(
+    StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+    int64_t timeout_ms,
     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
-  std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());  
+  std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());
   if (!ids.empty()) {
     std::vector<std::shared_ptr<RayObject>> objects;
     RAY_RETURN_NOT_OK(store_providers_[type]->Get(
