@@ -16,8 +16,8 @@ import sys
 import os
 import shlex
 sys.path.insert(0, os.path.abspath('.'))
-from custom_directives import (
-    IncludeDirective, GalleryItemDirective, CustomGalleryItemDirective)
+from custom_directives import (IncludeDirective, GalleryItemDirective,
+                               CustomGalleryItemDirective)
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
@@ -69,23 +69,19 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon',
-    'sphinx_click.ext',
-    'sphinx_gallery.gen_gallery'
+    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
+    'sphinx_click.ext', 'sphinx_gallery.gen_gallery'
 ]
 
 sphinx_gallery_conf = {
-    'examples_dirs': ['../../examples'],   # path to your example scripts
-    'gallery_dirs': ['auto_examples'], # path where to save generated examples
+    'examples_dirs': ['../../examples'],  # path to your example scripts
+    'gallery_dirs': ['auto_examples'],  # path where to save generated examples
     'plot_gallery': 'False',
     'filename_pattern': 'tutorial.py',
     'backreferences_dir': False
     # 'show_memory': False,
     # 'min_reported_time': False
 }
-
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

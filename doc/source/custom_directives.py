@@ -1,4 +1,5 @@
-# Originally from: https://github.com/pytorch/tutorials/blob/60d6ef365e36f3ba82c2b61bf32cc40ac4e86c7b/custom_directives.py
+# Originally from:
+# github.com/pytorch/tutorials/blob/60d6ef365e36f3ba82c2b61bf32cc40ac4e86c7b/custom_directives.py # noqa
 from docutils.parsers.rst import Directive, directives
 from docutils.statemachine import StringList
 from docutils import nodes
@@ -71,8 +72,10 @@ class GalleryItemDirective(Directive):
     required_arguments = 1
     optional_arguments = 0
     final_argument_whitespace = True
-    option_spec = {'figure': directives.unchanged,
-                   'intro': directives.unchanged}
+    option_spec = {
+        "figure": directives.unchanged,
+        "intro": directives.unchanged
+    }
     has_content = False
     add_index = False
 
@@ -86,33 +89,35 @@ class GalleryItemDirective(Directive):
         dirname = os.path.dirname(fname)
 
         try:
-            if 'intro' in self.options:
-                intro = self.options['intro'][:195] + '...'
+            if "intro" in self.options:
+                intro = self.options["intro"][:195] + "..."
             else:
-                _, blocks = sphinx_gallery.gen_rst.split_code_and_text_blocks(abs_fname)
-                intro, _ = sphinx_gallery.gen_rst.extract_intro_and_title(abs_fname, blocks[0][1])
+                _, blocks = sphinx_gallery.gen_rst.split_code_and_text_blocks(
+                    abs_fname)
+                intro, _ = sphinx_gallery.gen_rst.extract_intro_and_title(
+                    abs_fname, blocks[0][1])
 
             thumbnail_rst = sphinx_gallery.backreferences._thumbnail_div(
                 dirname, basename, intro)
 
-            if 'figure' in self.options:
-                rel_figname, figname = env.relfn2path(self.options['figure'])
-                save_figname = os.path.join('_static/thumbs/',
+            if "figure" in self.options:
+                rel_figname, figname = env.relfn2path(self.options["figure"])
+                save_figname = os.path.join("_static/thumbs/",
                                             os.path.basename(figname))
 
                 try:
-                    os.makedirs('_static/thumbs')
+                    os.makedirs("_static/thumbs")
                 except OSError:
                     pass
 
-                sphinx_gallery.gen_rst.scale_image(figname, save_figname,
-                                                   400, 280)
+                sphinx_gallery.gen_rst.scale_image(figname, save_figname, 400,
+                                                   280)
                 # replace figure in rst with simple regex
-                thumbnail_rst = re.sub(r'..\sfigure::\s.*\.png',
-                                       '.. figure:: /{}'.format(save_figname),
+                thumbnail_rst = re.sub(r"..\sfigure::\s.*\.png",
+                                       ".. figure:: /{}".format(save_figname),
                                        thumbnail_rst)
 
-            thumbnail = StringList(thumbnail_rst.split('\n'))
+            thumbnail = StringList(thumbnail_rst.split("\n"))
             thumb = nodes.paragraph()
             self.state.nested_parse(thumbnail, self.content_offset, thumb)
 
@@ -153,44 +158,48 @@ class CustomGalleryItemDirective(Directive):
         :description: :doc:`/beginner/deep_learning_nlp_tutorial`
 
     If figure is specified, a thumbnail will be made out of it and stored in
-    _static/thumbs. Therefore, consider _static/thumbs as a 'built' directory.
+    _static/thumbs. Therefore, consider _static/thumbs as a "built" directory.
     """
 
     required_arguments = 0
     optional_arguments = 0
     final_argument_whitespace = True
-    option_spec = {'tooltip': directives.unchanged,
-                   'figure': directives.unchanged,
-                   'description': directives.unchanged}
+    option_spec = {
+        "tooltip": directives.unchanged,
+        "figure": directives.unchanged,
+        "description": directives.unchanged
+    }
 
     has_content = False
     add_index = False
 
     def run(self):
         try:
-            if 'tooltip' in self.options:
-                tooltip = self.options['tooltip'][:195] + '...'
+            if "tooltip" in self.options:
+                tooltip = self.options["tooltip"][:195] + "..."
             else:
-                raise ValueError('tooltip not found')
+                raise ValueError("tooltip not found")
 
-            if 'figure' in self.options:
+            if "figure" in self.options:
                 env = self.state.document.settings.env
-                rel_figname, figname = env.relfn2path(self.options['figure'])
-                thumbnail = os.path.join('_static/thumbs/', os.path.basename(figname))
+                rel_figname, figname = env.relfn2path(self.options["figure"])
+                thumbnail = os.path.join("_static/thumbs/",
+                                         os.path.basename(figname))
 
                 try:
-                    os.makedirs('_static/thumbs')
+                    os.makedirs("_static/thumbs")
                 except FileExistsError:
                     pass
 
-                sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400, 280)
+                sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400,
+                                                   280)
             else:
-                thumbnail = '_static/img/thumbnails/default.png'
+                thumbnail = "_static/img/thumbnails/default.png"
 
-            if 'description' in self.options:
-                description = self.options['description']
+            if "description" in self.options:
+                description = self.options["description"]
             else:
-                raise ValueError('description not doc found')
+                raise ValueError("description not doc found")
 
         except FileNotFoundError as e:
             print(e)
@@ -200,10 +209,9 @@ class CustomGalleryItemDirective(Directive):
             raise
             return []
 
-        thumbnail_rst = GALLERY_TEMPLATE.format(tooltip=tooltip,
-                                                thumbnail=thumbnail,
-                                                description=description)
-        thumbnail = StringList(thumbnail_rst.split('\n'))
+        thumbnail_rst = GALLERY_TEMPLATE.format(
+            tooltip=tooltip, thumbnail=thumbnail, description=description)
+        thumbnail = StringList(thumbnail_rst.split("\n"))
         thumb = nodes.paragraph()
         self.state.nested_parse(thumbnail, self.content_offset, thumb)
         return [thumb]
