@@ -8,11 +8,13 @@ import tempfile
 import torch
 import torch.distributed as dist
 
+from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 
 from ray.experimental.sgd.tests.pytorch_utils import (
     model_creator, optimizer_creator, data_creator)
+
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
@@ -44,8 +46,8 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
         "num_replicas": num_replicas,
-        "use_gpu": use_gpu,
-        "batch_size": 512, # default 16 was too small for distributed run (->slow)
+        "use_gpu": False,
+        "batch_size": 512,
         "backend": "gloo"
     }
 
@@ -58,10 +60,10 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
-        train_loss1 = df.loc[0, 'train_loss']
-        train_loss2 = df.loc[1, 'train_loss']
-        validation_loss1 = df.loc[0, 'validation_loss']
-        validation_loss2 = df.loc[1, 'validation_loss']
+        train_loss1 = df.loc[0, "train_loss"]
+        train_loss2 = df.loc[1, "train_loss"]
+        validation_loss1 = df.loc[0, "validation_loss"]
+        validation_loss2 = df.loc[1, "validation_loss"]
 
         assert train_loss2 <= train_loss1
         assert validation_loss2 <= validation_loss1

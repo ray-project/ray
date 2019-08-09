@@ -43,8 +43,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
             model_creator, data_creator, optimizer_creator, config, batch_size)
         self.backend = backend
 
-
-
     def setup(self, url, world_rank, world_size):
         """Connects to the distributed PyTorch backend and initializes the model.
 
