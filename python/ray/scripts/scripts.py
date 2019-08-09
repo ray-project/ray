@@ -73,6 +73,8 @@ def cli(logging_level, logging_format):
     type=str,
     help="the address to use for connecting to Redis")
 @click.option(
+    "--address", required=False, type=str, help="same as --redis-address")
+@click.option(
     "--redis-port",
     required=False,
     type=str,
@@ -214,12 +216,12 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
-def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, redis_password, redis_shard_ports,
-          object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
-          block, plasma_directory, huge_pages, autoscaling_config,
-          no_redirect_worker_output, no_redirect_output,
+def start(node_ip_address, redis_address, address, redis_port,
+          num_redis_shards, redis_max_clients, redis_password,
+          redis_shard_ports, object_manager_port, node_manager_port,
+          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
+          head, include_webui, block, plasma_directory, huge_pages,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
     # Convert hostnames to numerical IP address.
@@ -227,6 +229,13 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
+    if address:
+        if redis_address:
+            logger.warning(
+                "You should specify address instead of redis_address.")
+        if address == "auto":
+            address = services.find_redis_address_or_die()
+        redis_address = address
 
     try:
         resources = json.loads(resources)
