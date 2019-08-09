@@ -112,12 +112,12 @@ def find_redis_address_or_die():
     if len(redis_addresses) > 1:
         raise ConnectionError(
             "Found multiple active Ray instances: {}. ".format(redis_addresses)
-            + "Please specify the one to connect to with --redis-address.")
+            + "Please specify the one to connect to with --address.")
         sys.exit(1)
     elif not redis_addresses:
         raise ConnectionError(
             "Could not find any running Ray instance. "
-            "Please specify the one to connect to with --redis-address.")
+            "Please specify the one to connect to with --address.")
     return redis_addresses.pop()
 
 

@@ -148,7 +148,6 @@ def run(args, parser):
     else:
         ray.init(
             address=args.ray_address,
-            api_url=args.api_url,
             object_store_memory=args.ray_object_store_memory,
             redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
