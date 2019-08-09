@@ -153,13 +153,13 @@ The following are good places to discuss Ray.
 
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Installation
 
    installation.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Using Ray
 
    walkthrough.rst
@@ -174,7 +174,7 @@ The following are good places to discuss Ray.
    examples.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Cluster Setup
 
    autoscaling.rst
@@ -182,7 +182,7 @@ The following are good places to discuss Ray.
    deploy-on-kubernetes.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Tune
 
    tune.rst
@@ -197,7 +197,7 @@ The following are good places to discuss Ray.
    tune-contrib.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: RLlib
 
    rllib.rst
@@ -212,7 +212,7 @@ The following are good places to discuss Ray.
    rllib-package-ref.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Experimental
 
    distributed_training.rst
@@ -221,7 +221,7 @@ The following are good places to discuss Ray.
    async_api.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Examples
 
    example-rl-pong.rst
@@ -234,7 +234,7 @@ The following are good places to discuss Ray.
    using-ray-with-tensorflow.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Development and Internals
 
    install-source.rst

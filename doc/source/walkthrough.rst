@@ -91,17 +91,20 @@ This causes a few things changes in behavior:
 
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
-**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**.
+**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
 
 .. code:: python
 
-    >>> y1_id = f.remote(x1_id)
-    >>> ray.get(y1_id)
-    1
+    @ray.remote
+    def remote_chain_function(value):
+        return value + 1
 
-    >>> y2_id = f.remote(x2_id)
-    >>> ray.get(y2_id)
-    [1, 2, 3]
+
+    y1_id = remote_function.remote()
+    assert ray.get(y1_id) == 1
+
+    chained_id = remote_chain_function.remote(y1_id)
+    assert ray.get(chained_id) == 2
 
 
 Note the following behaviors:

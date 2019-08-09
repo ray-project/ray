@@ -73,15 +73,5 @@ To get information about the current total resource capacity of your cluster, yo
 
 To get information about the current available resource capacity of your cluster, you can use ``ray.available_resources()``.
 
-.. autofunction:: ray.cluster_resources
+.. autofunction:: ray.available_resources
     :noindex:
-
-
-Object Information
-------------------
-
-To get information about the current objects that have been placed in the Ray object store across the cluster, you can use ``ray.objects()``.
-
-.. autofunction:: ray.objects
-    :noindex:
-
