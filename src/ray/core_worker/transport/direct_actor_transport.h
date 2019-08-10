@@ -125,6 +125,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Map from actor id to the tasks that are waiting for reply.
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
+  /// Type of store provider used.
+  const StoreProviderType store_provider_type_;
+
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
 

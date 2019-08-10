@@ -21,8 +21,9 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
+      store_provider_type_(StoreProviderType::MEMORY),
       store_provider_(
-          store_provider_layer.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
+          store_provider_layer.CreateStoreProvider(store_provider_type_)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
@@ -232,7 +233,7 @@ bool CoreWorkerDirectActorTaskSubmitter::ShouldWaitTask(const TaskID &task_id) c
 
 StoreProviderType
 CoreWorkerDirectActorTaskSubmitter::GetStoreProviderTypeForReturnObject() const {
-  return StoreProviderType::LOCAL_PLASMA;
+  return store_provider_type_;
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(

@@ -36,7 +36,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, std::vector<bool> *results) override;
 
-/// See `CoreWorkerStoreProvider::Delete` for semantics.
+  /// See `CoreWorkerStoreProvider::Delete` for semantics.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
