@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,10 +14,11 @@ import java.util.stream.Collectors;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
-import org.ray.api.id.JobId;
-import org.ray.api.id.ObjectId;
-import org.ray.api.id.TaskId;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
+import org.ray.api.id.ObjectId;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.generated.Common;
 import org.ray.runtime.generated.Common.TaskType;
@@ -94,12 +96,6 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public TaskId generateTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
-    byte[] bytes = nativeGenerateTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
-    return new TaskId(bytes);
-  }
-
-  @Override
   public void freePlasmaObjects(List<ObjectId> objectIds, boolean localOnly,
       boolean deleteCreatingTasks) {
     byte[][] objectIdsArray = IdUtil.getIdBytes(objectIds);
@@ -107,13 +103,28 @@ public class RayletClientImpl implements RayletClient {
   }
 
   @Override
-  public UniqueId prepareCheckpoint(UniqueId actorId) {
+  public UniqueId prepareCheckpoint(ActorId actorId) {
     return new UniqueId(nativePrepareCheckpoint(client, actorId.getBytes()));
   }
 
   @Override
-  public void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+  public void notifyActorResumedFromCheckpoint(ActorId actorId, UniqueId checkpointId) {
     nativeNotifyActorResumedFromCheckpoint(client, actorId.getBytes(), checkpointId.getBytes());
+  }
+
+  public static TaskId generateActorCreationTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateActorCreationTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return TaskId.fromBytes(bytes);
+  }
+
+  public static TaskId generateActorTaskId(JobId jobId, TaskId parentTaskId, int taskIndex, ActorId actorId) {
+    byte[] bytes = nativeGenerateActorTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex, actorId.getBytes());
+    return TaskId.fromBytes(bytes);
+  }
+
+  public static TaskId generateNormalTaskId(JobId jobId, TaskId parentTaskId, int taskIndex) {
+    byte[] bytes = nativeGenerateNormalTaskId(jobId.getBytes(), parentTaskId.getBytes(), taskIndex);
+    return TaskId.fromBytes(bytes);
   }
 
   /**
@@ -160,13 +171,13 @@ public class RayletClientImpl implements RayletClient {
     );
 
     // Parse ActorCreationTaskSpec.
-    UniqueId actorCreationId = UniqueId.NIL;
+    ActorId actorCreationId = ActorId.NIL;
     int maxActorReconstructions = 0;
     UniqueId[] newActorHandles = new UniqueId[0];
     List<String> dynamicWorkerOptions = new ArrayList<>();
     if (taskSpec.getType() == Common.TaskType.ACTOR_CREATION_TASK) {
       Common.ActorCreationTaskSpec actorCreationTaskSpec = taskSpec.getActorCreationTaskSpec();
-      actorCreationId = UniqueId
+      actorCreationId = ActorId
           .fromByteBuffer(actorCreationTaskSpec.getActorId().asReadOnlyByteBuffer());
       maxActorReconstructions = (int) actorCreationTaskSpec.getMaxActorReconstructions();
       dynamicWorkerOptions = ImmutableList
@@ -174,18 +185,18 @@ public class RayletClientImpl implements RayletClient {
     }
 
     // Parse ActorTaskSpec.
-    UniqueId actorId = UniqueId.NIL;
+    ActorId actorId = ActorId.NIL;
     UniqueId actorHandleId = UniqueId.NIL;
     ObjectId previousActorTaskDummyObjectId = ObjectId.NIL;
     int actorCounter = 0;
     if (taskSpec.getType() == Common.TaskType.ACTOR_TASK) {
       Common.ActorTaskSpec actorTaskSpec = taskSpec.getActorTaskSpec();
-      actorId = UniqueId.fromByteBuffer(actorTaskSpec.getActorId().asReadOnlyByteBuffer());
+      actorId = ActorId.fromByteBuffer(actorTaskSpec.getActorId().asReadOnlyByteBuffer());
       actorHandleId = UniqueId
           .fromByteBuffer(actorTaskSpec.getActorHandleId().asReadOnlyByteBuffer());
       actorCounter = (int) actorTaskSpec.getActorCounter();
       previousActorTaskDummyObjectId = ObjectId.fromByteBuffer(
-		      actorTaskSpec.getPreviousActorTaskDummyObjectId().asReadOnlyByteBuffer());
+          actorTaskSpec.getPreviousActorTaskDummyObjectId().asReadOnlyByteBuffer());
       newActorHandles = actorTaskSpec.getNewActorHandlesList().stream()
           .map(byteString -> UniqueId.fromByteBuffer(byteString.asReadOnlyByteBuffer()))
           .toArray(UniqueId[]::new);
@@ -193,8 +204,8 @@ public class RayletClientImpl implements RayletClient {
 
     return new TaskSpec(jobId, taskId, parentTaskId, parentCounter, actorCreationId,
         maxActorReconstructions, actorId, actorHandleId, actorCounter,
-	previousActorTaskDummyObjectId, newActorHandles, args, numReturns, resources,
-	TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
+        previousActorTaskDummyObjectId, newActorHandles, args, numReturns, resources,
+        TaskLanguage.JAVA, functionDescriptor, dynamicWorkerOptions);
   }
 
   /**
@@ -255,13 +266,16 @@ public class RayletClientImpl implements RayletClient {
       builder.setType(TaskType.ACTOR_TASK);
       List<ByteString> newHandles = Arrays.stream(task.newActorHandles)
           .map(id -> ByteString.copyFrom(id.getBytes())).collect(Collectors.toList());
+      final ObjectId actorCreationDummyObjectId = IdUtil.computeActorCreationDummyObjectId(
+          ActorId.fromByteBuffer(ByteBuffer.wrap(task.actorId.getBytes())));
       builder.setActorTaskSpec(
           Common.ActorTaskSpec.newBuilder()
               .setActorId(ByteString.copyFrom(task.actorId.getBytes()))
               .setActorHandleId(ByteString.copyFrom(task.actorHandleId.getBytes()))
-              .setActorCreationDummyObjectId(ByteString.copyFrom(task.actorId.getBytes()))
+              .setActorCreationDummyObjectId(
+                  ByteString.copyFrom(actorCreationDummyObjectId.getBytes()))
               .setPreviousActorTaskDummyObjectId(
-		      ByteString.copyFrom(task.previousActorTaskDummyObjectId.getBytes()))
+                  ByteString.copyFrom(task.previousActorTaskDummyObjectId.getBytes()))
               .setActorCounter(task.actorCounter)
               .addAllNewActorHandles(newHandles)
       );
@@ -307,9 +321,6 @@ public class RayletClientImpl implements RayletClient {
   private static native boolean[] nativeWaitObject(long conn, byte[][] objectIds,
       int numReturns, int timeout, boolean waitLocal, byte[] currentTaskId) throws RayException;
 
-  private static native byte[] nativeGenerateTaskId(byte[] jobId, byte[] parentTaskId,
-      int taskIndex);
-
   private static native void nativeFreePlasmaObjects(long conn, byte[][] objectIds,
       boolean localOnly, boolean deleteCreatingTasks) throws RayException;
 
@@ -320,4 +331,13 @@ public class RayletClientImpl implements RayletClient {
 
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
       byte[] nodeId) throws RayException;
+
+  private static native byte[] nativeGenerateActorCreationTaskId(byte[] jobId, byte[] parentTaskId,
+                                                                 int taskIndex);
+
+  private static native byte[] nativeGenerateActorTaskId(byte[] jobId, byte[] parentTaskId,
+                                                          int taskIndex, byte[] actorId);
+
+  private static native byte[] nativeGenerateNormalTaskId(byte[] jobId, byte[] parentTaskId,
+                                                          int taskIndex);
 }

@@ -44,6 +44,12 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \param[in] task_id The ID of the task.
   /// \return If the task has finished.
   bool IsTaskDone(const TaskID &task_id) override;
+
+  /// Get the store provider type for return objects.
+  ///
+  /// \return Store provider type used.
+  StoreProviderType GetStoreProviderTypeForReturnObject() const override;
+  
  private:
   /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();

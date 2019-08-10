@@ -11,6 +11,7 @@
 
 namespace ray {
 
+class WorkerContext;
 using rpc::RayletClient;
 
 /// The interface that contains all `CoreWorker` methods that are related to object store.

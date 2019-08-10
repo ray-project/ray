@@ -95,6 +95,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
+  /// Preprocess request from raylet client. We will check whether the worker is being
+  /// killed due to job finishing.
+  ///
+  /// \param worker_id The worker id.
+  /// \param request_name The request name.
+  /// \return False if there is no need to process this request.
+  bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name);
+
   /// Implementation of node manager grpc service.
 
   /// Handle a `ForwardTask` request.

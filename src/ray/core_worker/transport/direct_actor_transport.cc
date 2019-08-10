@@ -7,7 +7,7 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 bool HasByReferenceArgs(const TaskSpecification &spec) {
-  for (int i = 0; i < spec.NumArgs(); ++i) {
+  for (size_t i = 0; i < spec.NumArgs(); ++i) {
     if (spec.ArgIdCount(i) > 0) {
       return true;
     }
@@ -189,7 +189,8 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
                     reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
                 return_object.metadata().size());
           }
-          store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id);
+          RAY_CHECK_OK(
+              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   return status;
@@ -198,11 +199,12 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
 void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type) {
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(task_id, i + 1);
+    const auto object_id =
+        ObjectID::ForTaskReturn(task_id, /*index=*/i + 1, /*transport_type=*/0);
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    store_provider_->Put(RayObject(nullptr, meta_buffer), object_id);
+    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
@@ -214,11 +216,14 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 bool CoreWorkerDirectActorTaskSubmitter::IsTaskDone(const TaskID &task_id) {
   std::unique_lock<std::mutex> guard(mutex_);
-  // TODO(zhijunfu) : here we need to figure out the actor iD from task ID.
-  // FIXME.
-  auto actor_id = ActorID::FromRandom(); 
+  auto actor_id = task_id.ActorId();
   return (pending_tasks_[actor_id].count(task_id) > 0 ||
-      waiting_reply_tasks[actor_id].count(task_id) > 0);
+      waiting_reply_tasks_[actor_id].count(task_id) > 0);
+}
+
+StoreProviderType
+CoreWorkerDirectActorTaskSubmitter::GetStoreProviderTypeForReturnObject() const {
+  return StoreProviderType::LOCAL_PLASMA;
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
@@ -248,9 +253,10 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   auto status = task_handler_(task_spec, &results);
   RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
-  for (int i = 0; i < results.size(); i++) {
+  for (size_t i = 0; i < results.size(); i++) {
     auto return_object = (*reply).add_return_objects();
-    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
+    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1,
+                                          /*transport_type=*/0);
     return_object->set_object_id(id.Binary());
     const auto &result = results[i];
     if (result->GetData() != nullptr) {

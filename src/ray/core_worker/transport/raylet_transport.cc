@@ -21,6 +21,11 @@ bool CoreWorkerRayletTaskSubmitter::IsTaskDone(const TaskID &task_id) {
   return false;  
 }
 
+StoreProviderType
+CoreWorkerRayletTaskSubmitter::GetStoreProviderTypeForReturnObject() const {
+  return StoreProviderType::PLASMA;
+}
+
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerStoreProviderLayer &store_provider_layer, boost::asio::io_service &io_service,
@@ -47,9 +52,10 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   RAY_CHECK(results.size() == num_returns);
-  for (int i = 0; i < num_returns; i++) {
-    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
-    store_provider_layer_.Put(StoreProviderType::PLASMA, *results[i], id);
+  for (size_t i = 0; i < num_returns; i++) {
+    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1,
+                                          /*transport_type=*/0);
+    RAY_CHECK_OK(store_provider_layer_.Put(StoreProviderType::PLASMA, *results[i], id));
   }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to

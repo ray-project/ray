@@ -3,17 +3,36 @@
 
 namespace ray {
 
+void GetObjectIdsPerTransport(
+    const std::vector<ObjectID> &object_ids,
+    EnumUnorderedMap<TaskTransportType, std::vector<ObjectID>> *results) {
+
+  for (const auto &object_id : object_ids) {
+    if (object_id.IsReturnObject()) {
+      auto type = static_cast<TaskTransportType>(object_id.GetTransportType());
+      (*results)[type].push_back(object_id);
+    } else {
+      // For non-return objects, treat them the same as return objects
+      // that use raylet transport.
+      (*results)[TaskTransportType::RAYLET].push_back(object_id);
+    }
+  }
+}
+
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerStoreProviderLayer &store_provider_layer)
+    CoreWorkerStoreProviderLayer &store_provider_layer,
+    CoreWorkerTaskSubmitterLayer &task_submitter_layer)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
-      store_provider_layer_(store_provider_layer) {
+      store_provider_layer_(store_provider_layer),
+      task_submitter_layer_(task_submitter_layer) {
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
   ObjectID put_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                     worker_context_.GetNextPutIndex());
+                                     worker_context_.GetNextPutIndex(),
+                                     /*transport_type=*/0);
   *object_id = put_id;
   return Put(object, put_id);
 }
@@ -34,17 +53,17 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   // - for task return objects, find the store provider type for an object from
   //   its transport, and then try to get from the corresponding store provider;
   // - for other objects, try to get from plasma store.
-  std::unordered_map<TaskTransportType, std::vector<ObjectID>> object_ids_per_transport;
+  EnumUnorderedMap<TaskTransportType, std::vector<ObjectID>> object_ids_per_transport;
   GetObjectIdsPerTransport(ids, &object_ids_per_transport);
 
   for (const auto &entry : object_ids_per_transport) {
-    auto object_provider_type = ObjectProviderType::PLASMA;
-    if (entry.first == TaskTrasnportType::RAYLET) {
-      RETURN_NOT_OK(store_provider_layer_.Get(StoreProviderType::PLASMA,
+    if (entry.first == TaskTransportType::RAYLET) {
+      RAY_RETURN_NOT_OK(store_provider_layer_.Get(StoreProviderType::PLASMA,
           entry.second, timeout_ms, results));
     } else {
-      auto object_provider_type = task_submiter_layer_.GetObjectProviderType(entry.first);
-      RETURN_NOT_OK(store_provider_layer_.Get(object_provider_type,
+      auto store_provider_type =
+          task_submitter_layer_.GetStoreProviderTypeForReturnObject(entry.first);
+      RAY_RETURN_NOT_OK(store_provider_layer_.Get(store_provider_type,
           entry.second, timeout_ms, results));
     }
   }
@@ -65,22 +84,6 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
                                          bool local_only, bool delete_creating_tasks) {
   return store_provider_layer_.Delete(StoreProviderType::PLASMA, object_ids, local_only,
                                       delete_creating_tasks);
-}
-
-void CoreWorkerObjectInterface::GetObjectIdsPerTransport(
-    const std::vector<ObjectID> &object_ids,
-    std::unordered_map<TaskTransportType, std::vector<ObjectID>> *results) {
-
-  for (const auto &object_id : ids) {
-    if (object_id.IsReturnObject()) {
-      auto type = object_id.GetTransportType();
-      (*results)[type].push_back(object_id);
-    } else {
-      // For non-return objects, treat them the same as return objects
-      // that use raylet transport.
-      (*results)[TaskTransportType::RAYLET].push_back(object_id);
-    }
-  }
 }
 
 }  // namespace ray

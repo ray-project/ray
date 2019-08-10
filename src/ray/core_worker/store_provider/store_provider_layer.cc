@@ -33,10 +33,7 @@ Status CoreWorkerStoreProviderLayer::Get(StoreProviderType type,
     return store_providers_[type]->Get(ids, timeout_ms, results);
   }
 
-
   (*results).resize(ids.size(), nullptr);
-
-  const TaskID &task_id = worker_context_.GetCurrentTaskID();
 
   std::unordered_map<ObjectID, int> unready;
   for (size_t i = 0; i < ids.size(); i++) {
@@ -124,17 +121,16 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerStoreProviderLayer::CreateSto
         new CoreWorkerPlasmaStoreProvider(worker_context_, store_socket_, raylet_client_));
     break;
   default:
+    // Should never reach here.
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);
-    break;
+    return nullptr;
   }
 }
 
 bool CoreWorkerStoreProviderLayer::ObjectsDone(const std::vector<ObjectID> &object_ids) {
 
   for (const auto &object_id : object_ids) {
-    // TODO(zhijunfu): implement this.
-    // FIXME.
-    auto type = GetTransportType(object_id);
+    auto type = static_cast<TaskTransportType>(object_id.GetTransportType());
     bool is_task_done = task_submitter_layer_.IsTaskdone(type, object_id.TaskId());
     if (!is_task_done) {
       return false;
@@ -186,8 +182,5 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
         << " object(s) pending: " << oss.str() << ".";
   }
 }
-
-
-
 
 }  // namespace ray

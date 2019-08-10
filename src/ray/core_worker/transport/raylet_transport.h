@@ -32,6 +32,11 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return If the task has finished.
   bool IsTaskDone(const TaskID &task_id) override;
 
+  /// Get the store provider type for return objects.
+  ///
+  /// \return Store provider type used.
+  StoreProviderType GetStoreProviderTypeForReturnObject() const override;
+
  private:
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;

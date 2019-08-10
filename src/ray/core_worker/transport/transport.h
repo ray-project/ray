@@ -38,6 +38,13 @@ class CoreWorkerTaskSubmitter {
   /// \return If the task has finished.
   virtual bool IsTaskDone(const TaskID &task_id) = 0;
 
+  /// Get the store provider type for return objects.
+  ///
+  /// \return Store provider type used.
+  /// Note that we currently have a limitation that a TaskSubmitter
+  /// must use a single store provider for all the return objects.
+  virtual StoreProviderType GetStoreProviderTypeForReturnObject() const = 0;
+
   virtual ~CoreWorkerTaskSubmitter() {}
 };
 

@@ -3,8 +3,8 @@
 
 #include <list>
 
-#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
+#include "ray/core_worker/store_provider/store_provider_layer.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
@@ -18,7 +18,7 @@ class CoreWorkerTaskSubmitterLayer {
  public:
   CoreWorkerTaskSubmitterLayer(
                           boost::asio::io_service &io_service,
-                          std::unique_ptr<RayletClient> &raylet_client,
+                          std::unique_ptr<rpc::RayletClient> &raylet_client,
                           gcs::RedisGcsClient &gcs_client,
                           CoreWorkerStoreProviderLayer &store_provider_layer);
 
@@ -34,6 +34,11 @@ class CoreWorkerTaskSubmitterLayer {
   /// \return If the task has finished.
   bool IsTaskDone(TaskTransportType type, const TaskID &task_id);
 
+  /// Get the store provider type for return objects.
+  ///
+  /// \return Store provider type used.
+  StoreProviderType GetStoreProviderTypeForReturnObject(TaskTransportType type) const;
+
  private:
   /// All the task submitters supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
@@ -46,7 +51,7 @@ class CoreWorkerTaskSubmitterLayer {
 class CoreWorkerTaskReceiverLayer {
  public:
   CoreWorkerTaskReceiverLayer(
-                          std::unique_ptr<RayletClient> &raylet_client,
+                          std::unique_ptr<rpc::RayletClient> &raylet_client,
                           CoreWorkerStoreProviderLayer &store_provider_layer,
                           CoreWorkerTaskReceiver::TaskHandler executor_func);
   

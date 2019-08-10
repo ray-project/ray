@@ -83,8 +83,10 @@ class CoreWorker {
   /// GCS client.
   gcs::RedisGcsClient gcs_client_;
 
-  std::unique_ptr<CoreWorkerStoreProviderLayer> object_provider_layer_;
+  /// The store provider layer which wrapps underlying store providers.
+  std::unique_ptr<CoreWorkerStoreProviderLayer> store_provider_layer_;
 
+  /// The task submitter layer which wrapps underlying task submitters.
   std::unique_ptr<CoreWorkerTaskSubmitterLayer> task_submitter_layer_;
 
   /// The `CoreWorkerObjectInterface` instance.

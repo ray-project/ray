@@ -8,6 +8,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/store_provider_layer.h"
+#include "ray/core_worker/transport/transport_layer.h"
 
 namespace ray {
 
@@ -21,7 +22,8 @@ class CoreWorkerObjectInterface {
  public:
   CoreWorkerObjectInterface(WorkerContext &worker_context,
                             std::unique_ptr<RayletClient> &raylet_client,
-                            CoreWorkerStoreProviderLayer &store_provider_layer);
+                            CoreWorkerStoreProviderLayer &store_provider_layer,
+                            CoreWorkerTaskSubmitterLayer &task_submitter_layer);
 
   /// Put an object into object store.
   ///
@@ -75,7 +77,8 @@ class CoreWorkerObjectInterface {
   std::unique_ptr<RayletClient> &raylet_client_;
   /// Reference to store provider layer.
   CoreWorkerStoreProviderLayer &store_provider_layer_;
-
+  /// Transport layer which abstracts task submitters & receivers.
+  CoreWorkerTaskSubmitterLayer &task_submitter_layer_;
 };
 
 }  // namespace ray

@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import json
 import logging
 import os
@@ -13,29 +12,9 @@ except ImportError:
     pd = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE
-from ray.tune.util import flatten_dict
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX
 
 logger = logging.getLogger(__name__)
-
-UNNEST_KEYS = ("config", "last_result")
-
-
-def unnest_checkpoints(checkpoints):
-    checkpoint_dicts = []
-    for g in checkpoints:
-        checkpoint = copy.deepcopy(g)
-        for key in UNNEST_KEYS:
-            if key not in checkpoint:
-                continue
-            try:
-                unnest_dict = flatten_dict(checkpoint.pop(key))
-                checkpoint.update(unnest_dict)
-            except Exception:
-                logger.debug("Failed to flatten dict.")
-        checkpoint = flatten_dict(checkpoint)
-        checkpoint_dicts.append(checkpoint)
-    return checkpoint_dicts
 
 
 class Analysis(object):
@@ -130,7 +109,7 @@ class Analysis(object):
                     config = json.load(f)
                     if prefix:
                         for k in list(config):
-                            config["config/" + k] = config.pop(k)
+                            config[CONFIG_PREFIX + k] = config.pop(k)
                     self._configs[path] = config
             except Exception:
                 fail_count += 1

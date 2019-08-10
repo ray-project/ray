@@ -48,7 +48,8 @@ void RayletClient::TryRegisterClient(int retry_times) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
-  RAY_LOG(FATAL) << "Failed to register to raylet server, worker id: " << worker_id_
+  RAY_LOG(FATAL) << "Worker " << worker_id_
+                 << " failed to register to raylet server, worker id: " << worker_id_
                  << ", pid: " << static_cast<int>(getpid())
                  << ", is worker: " << is_worker_;
 }
@@ -67,7 +68,9 @@ ray::Status RayletClient::Disconnect() {
   grpc::ClientContext context;
   auto status = stub_->DisconnectClient(&context, disconnect_client_request, &reply);
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to disconnect from raylet, msg: " << status.error_message();
+    RAY_LOG(ERROR) << "Worker " << worker_id_
+                   << " failed to disconnect from raylet, msg: "
+                   << status.error_message();
   }
   return GrpcStatusToRayStatus(status);
 }
@@ -75,12 +78,14 @@ ray::Status RayletClient::Disconnect() {
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   RETURN_IF_DISCONNECTED(is_connected_);
   SubmitTaskRequest submit_task_request;
+  submit_task_request.set_worker_id(worker_id_.Binary());
   submit_task_request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   auto callback = [this](const Status &status, const SubmitTaskReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send SubmitTaskRequest, msg: " << status.message();
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send SubmitTaskRequest, msg: " << status.message();
     }
   };
 
@@ -104,7 +109,7 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   if (status.ok()) {
     resource_ids_.clear();
     // Parse resources that would be used by this assigned task.
-    for (size_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
+    for (int64_t i = 0; i < reply.fractional_resource_ids().size(); ++i) {
       auto const &fractional_resource_ids = reply.fractional_resource_ids()[i];
       auto &acquired_resources = resource_ids_[fractional_resource_ids.resource_name()];
 
@@ -128,7 +133,8 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
     task_spec->reset(new ray::TaskSpecification(reply.task_spec()));
   } else {
     *task_spec = nullptr;
-    RAY_LOG(INFO) << "Failed to get task, msg: " << status.error_message();
+    RAY_LOG(INFO) << "Worker " << worker_id_
+                  << " failed to get task, msg: " << status.error_message();
   }
   return GrpcStatusToRayStatus(status);
 }
@@ -141,7 +147,8 @@ ray::Status RayletClient::TaskDone() {
   auto callback = [this](const Status &status, const TaskDoneReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send TaskDoneRequest, msg: " << status.message();
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send TaskDoneRequest, msg: " << status.message();
     }
   };
 
@@ -168,7 +175,8 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
   auto callback = [this](const Status &status, const FetchOrReconstructReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send FetchOrReconstructRequest, msg: "
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send FetchOrReconstructRequest, msg: "
                     << status.message();
     }
   };
@@ -190,7 +198,9 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   auto callback = [this](const Status &status, const NotifyUnblockedReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send NotifyUnblockedRequest, msg: " << status.message();
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send NotifyUnblockedRequest, msg: "
+                    << status.message();
     }
   };
 
@@ -223,7 +233,8 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
     result->first = IdVectorFromProtobuf<ObjectID>(reply.found());
     result->second = IdVectorFromProtobuf<ObjectID>(reply.remaining());
   } else {
-    RAY_LOG(INFO) << "Failed to send WaitRequest, msg: " << status.error_message();
+    RAY_LOG(INFO) << "Worker " << worker_id_
+                  << " failed to send WaitRequest, msg: " << status.error_message();
   }
 
   return GrpcStatusToRayStatus(status);
@@ -237,11 +248,13 @@ ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string 
   push_error_request.set_type(type);
   push_error_request.set_error_message(error_message);
   push_error_request.set_timestamp(timestamp);
+  push_error_request.set_worker_id(worker_id_.Binary());
 
   auto callback = [this](const Status &status, const PushErrorReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send PushErrorRequest, msg: " << status.message();
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send PushErrorRequest, msg: " << status.message();
     }
   };
 
@@ -256,11 +269,13 @@ ray::Status RayletClient::PushProfileEvents(const ProfileTableData &profile_even
   RETURN_IF_DISCONNECTED(is_connected_);
   PushProfileEventsRequest push_profile_events_request;
   push_profile_events_request.mutable_profile_table_data()->CopyFrom(profile_events);
+  push_profile_events_request.set_worker_id(worker_id_.Binary());
 
   auto callback = [this](const Status &status, const PushProfileEventsReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send PushProfileEventsRequest, msg: "
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send PushProfileEventsRequest, msg: "
                     << status.message();
     }
   };
@@ -279,13 +294,15 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
   FreeObjectsInStoreRequest free_objects_request;
   free_objects_request.set_local_only(local_only);
   free_objects_request.set_delete_creating_tasks(delete_creating_tasks);
+  free_objects_request.set_worker_id(worker_id_.Binary());
   IdVectorToProtobuf<ray::ObjectID, FreeObjectsInStoreRequest>(
       object_ids, free_objects_request, &FreeObjectsInStoreRequest::add_object_ids);
 
   auto callback = [this](const Status &status, const FreeObjectsInStoreReply &reply) {
     if (!status.ok() && is_connected_) {
       is_connected_ = false;
-      RAY_LOG(INFO) << "Failed to send FreeObjectsInStoreRequest, msg: "
+      RAY_LOG(INFO) << "Worker " << worker_id_
+                    << " failed to send FreeObjectsInStoreRequest, msg: "
                     << status.message();
     }
   };
@@ -313,7 +330,8 @@ ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   if (status.ok()) {
     checkpoint_id = ActorCheckpointID::FromBinary(reply.checkpoint_id());
   } else {
-    RAY_LOG(INFO) << "Failed to send PrepareActorCheckpointRequest, msg: "
+    RAY_LOG(INFO) << "Worker " << worker_id_
+                  << " failed to send PrepareActorCheckpointRequest, msg: "
                   << status.error_message();
   }
 
@@ -326,6 +344,7 @@ ray::Status RayletClient::NotifyActorResumedFromCheckpoint(
   NotifyActorResumedFromCheckpointRequest notify_actor_resumed_from_checkpoint_request;
   notify_actor_resumed_from_checkpoint_request.set_actor_id(actor_id.Binary());
   notify_actor_resumed_from_checkpoint_request.set_checkpoint_id(checkpoint_id.Binary());
+  notify_actor_resumed_from_checkpoint_request.set_worker_id(worker_id_.Binary());
 
   auto callback = [this](const Status &status,
                          const NotifyActorResumedFromCheckpointReply &reply) {
@@ -353,6 +372,7 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
   set_resource_request.set_resource_name(resource_name);
   set_resource_request.set_capacity(capacity);
   set_resource_request.set_client_id(client_id.Binary());
+  set_resource_request.set_worker_id(worker_id_.Binary());
 
   auto callback = [this](const Status &status, const SetResourceReply &reply) {
     if (!status.ok() && is_connected_) {
@@ -382,7 +402,8 @@ ray::Status RayletClient::RegisterClient() {
   auto status = stub_->RegisterClient(&context, register_client_request, &reply);
 
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Failed to register client, msg: " << status.error_message();
+    RAY_LOG(DEBUG) << "Worker " << worker_id_
+                   << " failed to register client, msg: " << status.error_message();
   }
 
   return GrpcStatusToRayStatus(status);

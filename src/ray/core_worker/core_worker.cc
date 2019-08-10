@@ -17,16 +17,16 @@ CoreWorker::CoreWorker(
   // Initialize gcs client
   RAY_CHECK_OK(gcs_client_.Connect(io_service_));
 
-  object_provider_layer_ = std::unique_ptr<CoreWorkerStoreProviderLayer>(
+  store_provider_layer_ = std::unique_ptr<CoreWorkerStoreProviderLayer>(
       new CoreWorkerStoreProviderLayer(worker_context_, store_socket, raylet_client_));
 
   task_submitter_layer_ = std::unique_ptr<CoreWorkerTaskSubmitterLayer>(
       new CoreWorkerTaskSubmitterLayer(io_service_, raylet_client_,
-      gcs_client_, *object_provider_layer_));
+      gcs_client_, *store_provider_layer_));
 
   object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
       new CoreWorkerObjectInterface(worker_context_, raylet_client_,
-      *object_provider_layer_ /* , *task_submitter_layer_ */));
+      *store_provider_layer_, *task_submitter_layer_));
   task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
       worker_context_, *task_submitter_layer_));
 
@@ -35,7 +35,7 @@ CoreWorker::CoreWorker(
     RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                             *object_provider_layer_, execution_callback));
+                                             *store_provider_layer_, execution_callback));
     rpc_server_port = task_execution_interface_->GetRpcServerPort();
   }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot

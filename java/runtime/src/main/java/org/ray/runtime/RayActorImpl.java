@@ -7,6 +7,7 @@ import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.RayActor;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.util.Sha1Digestor;
@@ -18,7 +19,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   /**
    * Id of this actor.
    */
-  protected UniqueId id;
+  protected ActorId id;
   /**
    * Handle id of this actor.
    */
@@ -47,14 +48,14 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   protected List<UniqueId> newActorHandles;
 
   public RayActorImpl() {
-    this(UniqueId.NIL, UniqueId.NIL);
+    this(ActorId.NIL, UniqueId.NIL);
   }
 
-  public RayActorImpl(UniqueId id) {
+  public RayActorImpl(ActorId id) {
     this(id, UniqueId.NIL);
   }
 
-  public RayActorImpl(UniqueId id, UniqueId handleId) {
+  public RayActorImpl(ActorId id, UniqueId handleId) {
     this.id = id;
     this.handleId = handleId;
     this.taskCounter = 0;
@@ -64,7 +65,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
   }
 
   @Override
-  public UniqueId getId() {
+  public ActorId getId() {
     return id;
   }
 
@@ -120,7 +121,7 @@ public class RayActorImpl<T> implements RayActor<T>, Externalizable {
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    this.id = (UniqueId) in.readObject();
+    this.id = (ActorId) in.readObject();
     this.handleId = (UniqueId) in.readObject();
     this.taskCursor = (ObjectId) in.readObject();
     this.taskCounter = (int) in.readObject();
