@@ -62,7 +62,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   RAY_RETURN_NOT_OK(Get(StoreProviderType::LOCAL_PLASMA, direct_call_return_ids,
                         left_timeout_ms, &objects));
 
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     (*results)[i] = objects[ids[i]];
   }
 
