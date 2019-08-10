@@ -200,6 +200,7 @@ The following are good places to discuss Ray.
    :caption: RLlib
 
    rllib.rst
+   rllib-toc.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst
