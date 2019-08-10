@@ -11,8 +11,8 @@ import numpy as np
 
 import ray
 from ray.tune import Trainable, run
-from ray.tune.schedulers import HyperBandForBOHB
-from ray.tune.suggest import TuneBOHB
+from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
+from ray.tune.suggest.bohb import TuneBOHB
 
 
 class MyTrainableClass(Trainable):
