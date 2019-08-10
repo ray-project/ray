@@ -1,5 +1,5 @@
-Using Ray with GPUs
-===================
+How-to: Using Ray with GPUs
+===========================
 
 GPUs are critical for many machine learning applications. Ray enables remote
 functions and actors to specify their GPU requirements in the ``ray.remote``
@@ -16,8 +16,7 @@ the number of GPUs as follows.
 
   ray.init(num_gpus=4)
 
-If you don't pass in the ``num_gpus`` argument, Ray will assume that there are 0
-GPUs on the machine.
+If you don't pass in the ``num_gpus`` argument, Ray will automatically detect the number of GPUs available.
 
 If you are starting Ray with the ``ray start`` command, you can indicate the
 number of GPUs on the machine with the ``--num-gpus`` argument.
@@ -40,14 +39,19 @@ remote decorator.
 
 .. code-block:: python
 
+  import os
+
   @ray.remote(num_gpus=1)
-  def gpu_method():
-      return "This function is allowed to use GPUs {}.".format(ray.get_gpu_ids())
+  def use_gpu():
+      print("ray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+      print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
 
 Inside of the remote function, a call to ``ray.get_gpu_ids()`` will return a
 list of integers indicating which GPUs the remote function is allowed to use.
+Typically, it is not necessary to call ``ray.get_gpu_ids()`` because Ray will
+automatically set the ``CUDA_VISIBLE_DEVICES`` environment variable.
 
-**Note:** The function ``gpu_method`` defined above doesn't actually use any
+**Note:** The function ``use_gpu`` defined above doesn't actually use any
 GPUs. Ray will schedule it on a machine which has at least one GPU, and will
 reserve one GPU for it while it is being executed, however it is up to the
 function to actually make use of the GPU. This is typically done through an
@@ -57,22 +61,44 @@ TensorFlow.
 
 .. code-block:: python
 
-  import os
   import tensorflow as tf
 
   @ray.remote(num_gpus=1)
-  def gpu_method():
-      os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, ray.get_gpu_ids()))
+  def use_gpu():
       # Create a TensorFlow session. TensorFlow will restrict itself to use the
       # GPUs specified by the CUDA_VISIBLE_DEVICES environment variable.
       tf.Session()
 
-**Note:** It is certainly possible for the person implementing ``gpu_method`` to
+**Note:** It is certainly possible for the person implementing ``use_gpu`` to
 ignore ``ray.get_gpu_ids`` and to use all of the GPUs on the machine. Ray does
 not prevent this from happening, and this can lead to too many workers using the
-same GPU at the same time. For example, if the ``CUDA_VISIBLE_DEVICES``
-environment variable is not set, then TensorFlow will attempt to use all of the
-GPUs on the machine.
+same GPU at the same time. However, Ray does automatically set the
+``CUDA_VISIBLE_DEVICES`` environment variable, which will restrict the GPUs used
+by most deep learning frameworks.
+
+Fractional GPUs
+---------------
+
+If you want two tasks to share the same GPU, then the tasks can each request
+half (or some other fraction) of a GPU.
+
+.. code-block:: python
+
+  import ray
+  import time
+
+  ray.init(num_cpus=4, num_gpus=1)
+
+  @ray.remote(num_gpus=0.25)
+  def f():
+      time.sleep(1)
+
+  # The four tasks created here can execute concurrently.
+  ray.get([f.remote() for _ in range(4)])
+
+It is the developer's responsibility to make sure that the individual tasks
+don't use more than their share of the GPU memory. TensorFlow can be configured
+to limit its memory usage.
 
 Using Actors with GPUs
 ----------------------
@@ -88,12 +114,8 @@ instance requires in the ``ray.remote`` decorator.
           return "This actor is allowed to use GPUs {}.".format(ray.get_gpu_ids())
 
 When the actor is created, GPUs will be reserved for that actor for the lifetime
-of the actor.
-
-Note that Ray must have been started with at least as many GPUs as the number of
-GPUs you pass into the ``ray.remote`` decorator. Otherwise, if you pass in a
-number greater than what was passed into ``ray.init``, an exception will be
-thrown when instantiating the actor.
+of the actor. If sufficient GPU resources are not available, then the actor will
+not be created.
 
 The following is an example of how to use GPUs in an actor through TensorFlow.
 
@@ -102,17 +124,27 @@ The following is an example of how to use GPUs in an actor through TensorFlow.
   @ray.remote(num_gpus=1)
   class GPUActor(object):
       def __init__(self):
-          self.gpu_ids = ray.get_gpu_ids()
-          os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, self.gpu_ids))
           # The call to tf.Session() will restrict TensorFlow to use the GPUs
           # specified in the CUDA_VISIBLE_DEVICES environment variable.
           self.sess = tf.Session()
 
-Troubleshooting
----------------
+Workers not Releasing GPU Resources
+-----------------------------------
 
-**Note:** Currently, when a worker executes a task that uses a GPU, the task may
-allocate memory on the GPU and may not release it when the task finishes
-executing. This can lead to problems. See `this issue`_.
+**Note:** Currently, when a worker executes a task that uses a GPU (e.g.,
+through TensorFlow), the task may allocate memory on the GPU and may not release
+it when the task finishes executing. This can lead to problems the next time a
+task tries to use the same GPU. You can address this by setting ``max_calls=1``
+in the remote decorator so that the worker automatically exits after executing
+the task (thereby releasing the GPU resources).
 
-.. _`this issue`: https://github.com/ray-project/ray/issues/616
+.. code-block:: python
+
+  import tensorflow as tf
+
+  @ray.remote(num_gpus=1, max_calls=1)
+  def leak_gpus():
+      # This task will allocate memory on the GPU and then never release it, so
+      # we include the max_calls argument to kill the worker and release the
+      # resources.
+      sess = tf.Session()

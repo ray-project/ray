@@ -2,6 +2,7 @@ package org.ray.api.id;
 
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -10,7 +11,10 @@ import java.util.Random;
  */
 public class TaskId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 16;
+  private static final int UNIQUE_BYTES_LENGTH = 6;
+
+  public static final int LENGTH = UNIQUE_BYTES_LENGTH + ActorId.LENGTH;
+
   public static final TaskId NIL = genNil();
 
   /**
@@ -28,6 +32,22 @@ public class TaskId extends BaseId implements Serializable {
   }
 
   /**
+   * Creates a TaskId from given bytes.
+   */
+  public static TaskId fromBytes(byte[] bytes) {
+    return new TaskId(bytes);
+  }
+
+  /**
+   * Get the id of the actor to which this task belongs
+   */
+  public ActorId getActorId() {
+    byte[] actorIdBytes = new byte[ActorId.LENGTH];
+    System.arraycopy(getBytes(), UNIQUE_BYTES_LENGTH, actorIdBytes, 0, ActorId.LENGTH);
+    return ActorId.fromByteBuffer(ByteBuffer.wrap(actorIdBytes));
+  }
+
+  /**
    * Generate a nil TaskId.
    */
   private static TaskId genNil() {
@@ -36,16 +56,7 @@ public class TaskId extends BaseId implements Serializable {
     return new TaskId(b);
   }
 
-  /**
-   * Generate an TaskId with random value.
-   */
-  public static TaskId randomId() {
-    byte[] b = new byte[LENGTH];
-    new Random().nextBytes(b);
-    return new TaskId(b);
-  }
-
-  public TaskId(byte[] id) {
+  private TaskId(byte[] id) {
     super(id);
   }
 

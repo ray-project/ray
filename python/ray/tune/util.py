@@ -2,20 +2,100 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 import base64
-import fnmatch
-import os
 import copy
-import numpy as np
+import logging
+import threading
 import time
+from collections import defaultdict
+from threading import Thread
 
+import numpy as np
 import ray
 
 logger = logging.getLogger(__name__)
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+try:
+    import GPUtil
+except ImportError:
+    GPUtil = None
+
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
+START_OF_TIME = time.time()
+
+
+class UtilMonitor(Thread):
+    """Class for system usage utilization monitoring.
+
+    It keeps track of CPU, RAM, GPU, VRAM usage (each gpu separately) by
+    pinging for information every x seconds in a separate thread.
+
+    Requires psutil and GPUtil to be installed. Can be enabled with
+    tune.run(config={"log_sys_usage": True}).
+    """
+
+    def __init__(self, start=True, delay=0.7):
+        self.stopped = True
+        if GPUtil is None and start:
+            logger.warning("Install gputil for GPU system monitoring.")
+
+        if psutil is None and start:
+            logger.warning("Install psutil to monitor system performance.")
+
+        if GPUtil is None and psutil is None:
+            return
+
+        super(UtilMonitor, self).__init__()
+        self.delay = delay  # Time between calls to GPUtil
+        self.values = defaultdict(list)
+        self.lock = threading.Lock()
+        self.daemon = True
+        if start:
+            self.start()
+
+    def _read_utilization(self):
+        with self.lock:
+            if psutil is not None:
+                self.values["cpu_util_percent"].append(
+                    float(psutil.cpu_percent(interval=None)))
+                self.values["ram_util_percent"].append(
+                    float(getattr(psutil.virtual_memory(), "percent")))
+            if GPUtil is not None:
+                for gpu in GPUtil.getGPUs():
+                    self.values["gpu_util_percent" + str(gpu.id)].append(
+                        float(gpu.load))
+                    self.values["vram_util_percent" + str(gpu.id)].append(
+                        float(gpu.memoryUtil))
+
+    def get_data(self):
+        if self.stopped:
+            return {}
+
+        with self.lock:
+            ret_values = copy.deepcopy(self.values)
+            for key, val in self.values.items():
+                del val[:]
+        return {
+            "perf": {
+                k: np.mean(v)
+                for k, v in ret_values.items() if len(v) > 0
+            }
+        }
+
+    def run(self):
+        self.stopped = False
+        while not self.stopped:
+            self._read_utilization()
+            time.sleep(self.delay)
+
+    def stop(self):
+        self.stopped = True
 
 
 def pin_in_object_store(obj):
@@ -58,7 +138,7 @@ class warn_if_slow(object):
 
     def __exit__(self, type, value, traceback):
         now = time.time()
-        if now - self.start > 0.1:
+        if now - self.start > 0.1 and now - START_OF_TIME > 60.0:
             logger.warning("The `{}` operation took {} seconds to complete, ".
                            format(self.name, now - self.start) +
                            "which may be a performance bottleneck.")
@@ -99,14 +179,15 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
     return original
 
 
-def flatten_dict(dt):
+def flatten_dict(dt, delimiter="/"):
+    dt = copy.deepcopy(dt)
     while any(isinstance(v, dict) for v in dt.values()):
         remove = []
         add = {}
         for key, value in dt.items():
             if isinstance(value, dict):
                 for subkey, v in value.items():
-                    add[":".join([key, subkey])] = v
+                    add[delimiter.join([key, subkey])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -130,16 +211,44 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-def recursive_fnmatch(dirpath, pattern):
-    """Looks at a file directory subtree for a filename pattern.
+def validate_save_restore(trainable_cls, config=None, use_object_store=False):
+    """Helper method to check if your Trainable class will resume correctly.
 
-    Similar to glob.glob(..., recursive=True) but also supports 2.7
+    Args:
+        trainable_cls: Trainable class for evaluation.
+        config (dict): Config to pass to Trainable when testing.
+        use_object_store (bool): Whether to save and restore to Ray's object
+            store. Recommended to set this to True if planning to use
+            algorithms that pause training (i.e., PBT, HyperBand).
     """
-    matches = []
-    for root, dirnames, filenames in os.walk(dirpath):
-        for filename in fnmatch.filter(filenames, pattern):
-            matches.append(os.path.join(root, filename))
-    return matches
+    assert ray.is_initialized(), "Need Ray to be initialized."
+    remote_cls = ray.remote(trainable_cls)
+    trainable_1 = remote_cls.remote(config=config)
+    trainable_2 = remote_cls.remote(config=config)
+
+    from ray.tune.result import TRAINING_ITERATION
+
+    for _ in range(3):
+        res = ray.get(trainable_1.train.remote())
+
+    assert res.get(TRAINING_ITERATION), (
+        "Validation will not pass because it requires `training_iteration` "
+        "to be returned.")
+
+    if use_object_store:
+        restore_check = trainable_2.restore_from_object.remote(
+            trainable_1.save_to_object.remote())
+        ray.get(restore_check)
+    else:
+        restore_check = ray.get(
+            trainable_2.restore.remote(trainable_1.save.remote()))
+
+    res = ray.get(trainable_2.train.remote())
+    assert res[TRAINING_ITERATION] == 4
+
+    res = ray.get(trainable_2.train.remote())
+    assert res[TRAINING_ITERATION] == 5
+    return True
 
 
 if __name__ == "__main__":

@@ -9,13 +9,15 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.ray.api.Checkpointable.Checkpoint;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.BaseId;
+import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
-import org.ray.runtime.generated.Gcs.ClientTableData;
-import org.ray.runtime.generated.Gcs.ClientTableData.EntryType;
+import org.ray.runtime.generated.Gcs.GcsNodeInfo;
 import org.ray.runtime.generated.Gcs.TablePrefix;
 import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
@@ -59,59 +61,64 @@ public class GcsClient {
       return new ArrayList<>();
     }
 
-    // This map is used for deduplication of client entries.
-    Map<UniqueId, NodeInfo> clients = new HashMap<>();
+    // This map is used for deduplication of node entries.
+    Map<UniqueId, NodeInfo> nodes = new HashMap<>();
     for (byte[] result : results) {
       Preconditions.checkNotNull(result);
-      ClientTableData data = null;
+      GcsNodeInfo data = null;
       try {
-        data = ClientTableData.parseFrom(result);
+        data = GcsNodeInfo.parseFrom(result);
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
-      final UniqueId clientId = UniqueId
-          .fromByteBuffer(data.getClientId().asReadOnlyByteBuffer());
+      final UniqueId nodeId = UniqueId
+          .fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
 
-      if (data.getEntryType() == EntryType.INSERTION) {
+      if (data.getState() == GcsNodeInfo.GcsNodeState.ALIVE) {
         //Code path of node insertion.
-        Map<String, Double> resources = new HashMap<>();
-        // Compute resources.
-        Preconditions.checkState(
-            data.getResourcesTotalLabelCount() == data.getResourcesTotalCapacityCount());
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          resources.put(data.getResourcesTotalLabel(i), data.getResourcesTotalCapacity(i));
-        }
         NodeInfo nodeInfo = new NodeInfo(
-            clientId, data.getNodeManagerAddress(), true, resources);
-        clients.put(clientId, nodeInfo);
-      } else if (data.getEntryType() == EntryType.RES_CREATEUPDATE) {
-        Preconditions.checkState(clients.containsKey(clientId));
-        NodeInfo nodeInfo = clients.get(clientId);
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          nodeInfo.resources.put(data.getResourcesTotalLabel(i), data.getResourcesTotalCapacity(i));
-        }
-      } else if (data.getEntryType() == EntryType.RES_DELETE) {
-        Preconditions.checkState(clients.containsKey(clientId));
-        NodeInfo nodeInfo = clients.get(clientId);
-        for (int i = 0; i < data.getResourcesTotalLabelCount(); i++) {
-          nodeInfo.resources.remove(data.getResourcesTotalLabel(i));
-        }
+            nodeId, data.getNodeManagerAddress(), true, new HashMap<>());
+        nodes.put(nodeId, nodeInfo);
       } else {
         // Code path of node deletion.
-        Preconditions.checkState(data.getEntryType() == EntryType.DELETION);
-        NodeInfo nodeInfo = new NodeInfo(clientId, clients.get(clientId).nodeAddress,
-            false, clients.get(clientId).resources);
-        clients.put(clientId, nodeInfo);
+        NodeInfo nodeInfo = new NodeInfo(nodeId, nodes.get(nodeId).nodeAddress,
+            false, new HashMap<>());
+        nodes.put(nodeId, nodeInfo);
       }
     }
 
-    return new ArrayList<>(clients.values());
+    // Fill resources.
+    for (Map.Entry<UniqueId, NodeInfo> node : nodes.entrySet()) {
+      if (node.getValue().isAlive) {
+        node.getValue().resources.putAll(getResourcesForClient(node.getKey()));
+      }
+    }
+
+    return new ArrayList<>(nodes.values());
+  }
+
+  private Map<String, Double> getResourcesForClient(UniqueId clientId) {
+    final String prefix = TablePrefix.NODE_RESOURCE.toString();
+    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
+    Map<byte[], byte[]> results = primary.hgetAll(key);
+    Map<String, Double> resources = new HashMap<>();
+    for (Map.Entry<byte[], byte[]> entry : results.entrySet()) {
+      String resourceName = new String(entry.getKey());
+      Gcs.ResourceTableData resourceTableData;
+      try {
+        resourceTableData = Gcs.ResourceTableData.parseFrom(entry.getValue());
+      } catch (InvalidProtocolBufferException e) {
+        throw new RuntimeException("Received invalid protobuf data from GCS.");
+      }
+      resources.put(resourceName, resourceTableData.getResourceCapacity());
+    }
+    return resources;
   }
 
   /**
    * If the actor exists in GCS.
    */
-  public boolean actorExists(UniqueId actorId) {
+  public boolean actorExists(ActorId actorId) {
     byte[] key = ArrayUtils.addAll(
         TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
     return primary.exists(key);
@@ -130,7 +137,7 @@ public class GcsClient {
   /**
    * Get the available checkpoints for the given actor ID.
    */
-  public List<Checkpoint> getCheckpointsForActor(UniqueId actorId) {
+  public List<Checkpoint> getCheckpointsForActor(ActorId actorId) {
     List<Checkpoint> checkpoints = new ArrayList<>();
     final String prefix = TablePrefix.ACTOR_CHECKPOINT_ID.toString();
     final byte[] key = ArrayUtils.addAll(prefix.getBytes(), actorId.getBytes());
@@ -156,6 +163,11 @@ public class GcsClient {
     }
     checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
     return checkpoints;
+  }
+
+  public JobId nextJobId() {
+    int jobCounter = (int) primary.incr("JobCounter".getBytes());
+    return JobId.fromInt(jobCounter);
   }
 
   private RedisClient getShardClient(BaseId key) {

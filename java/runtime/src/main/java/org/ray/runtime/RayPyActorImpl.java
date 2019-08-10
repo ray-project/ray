@@ -4,11 +4,11 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import org.ray.api.RayPyActor;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ActorId;
 
 public class RayPyActorImpl extends RayActorImpl implements RayPyActor {
 
-  public static final RayPyActorImpl NIL = new RayPyActorImpl(UniqueId.NIL, null, null);
+  public static final RayPyActorImpl NIL = new RayPyActorImpl(ActorId.NIL, null, null);
 
   /**
    * Module name of the Python actor class.
@@ -24,7 +24,7 @@ public class RayPyActorImpl extends RayActorImpl implements RayPyActor {
   // since it'll be needed when deserializing.
   public RayPyActorImpl() {}
 
-  public RayPyActorImpl(UniqueId id, String moduleName, String className) {
+  public RayPyActorImpl(ActorId id, String moduleName, String className) {
     super(id);
     this.moduleName = moduleName;
     this.className = className;

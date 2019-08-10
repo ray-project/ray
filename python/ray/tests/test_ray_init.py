@@ -38,7 +38,7 @@ class TestRedisPassword(object):
         # Check that Redis connections require a password
         redis_client = redis.StrictRedis(
             host=redis_ip, port=redis_port, password=None)
-        with pytest.raises(redis.ResponseError):
+        with pytest.raises(redis.exceptions.AuthenticationError):
             redis_client.ping()
 
         # Check that we can connect to Redis using the provided password

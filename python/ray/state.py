@@ -43,61 +43,81 @@ def _parse_client_table(redis_client):
     node_info = {}
     gcs_entry = gcs_utils.GcsEntry.FromString(message)
 
-    ordered_client_ids = []
+    ordered_node_ids = []
 
     # Since GCS entries are append-only, we override so that
     # only the latest entries are kept.
     for entry in gcs_entry.entries:
-        client = gcs_utils.ClientTableData.FromString(entry)
+        item = gcs_utils.GcsNodeInfo.FromString(entry)
 
-        resources = {
-            client.resources_total_label[i]: client.resources_total_capacity[i]
-            for i in range(len(client.resources_total_label))
-        }
-        client_id = ray.utils.binary_to_hex(client.client_id)
+        node_id = ray.utils.binary_to_hex(item.node_id)
 
-        if client.entry_type == gcs_utils.ClientTableData.INSERTION:
-            ordered_client_ids.append(client_id)
-            node_info[client_id] = {
-                "ClientID": client_id,
-                "EntryType": client.entry_type,
-                "NodeManagerAddress": client.node_manager_address,
-                "NodeManagerPort": client.node_manager_port,
-                "ObjectManagerPort": client.object_manager_port,
-                "ObjectStoreSocketName": client.object_store_socket_name,
-                "RayletSocketName": client.raylet_socket_name,
-                "Resources": resources
+        if item.state == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"):
+            ordered_node_ids.append(node_id)
+            node_info[node_id] = {
+                "NodeID": node_id,
+                "Alive": True,
+                "NodeManagerAddress": item.node_manager_address,
+                "NodeManagerPort": item.node_manager_port,
+                "ObjectManagerPort": item.object_manager_port,
+                "ObjectStoreSocketName": item.object_store_socket_name,
+                "RayletSocketName": item.raylet_socket_name
             }
 
-        # If this client is being updated, then it must
+        # If this node is being removed, then it must
         # have previously been inserted, and
         # it cannot have previously been removed.
         else:
-            assert client_id in node_info, "Client not found!"
-            is_deletion = (node_info[client_id]["EntryType"] !=
-                           gcs_utils.ClientTableData.DELETION)
-            assert is_deletion, "Unexpected updation of deleted client."
-            res_map = node_info[client_id]["Resources"]
-            if client.entry_type == gcs_utils.ClientTableData.RES_CREATEUPDATE:
-                for res in resources:
-                    res_map[res] = resources[res]
-            elif client.entry_type == gcs_utils.ClientTableData.RES_DELETE:
-                for res in resources:
-                    res_map.pop(res, None)
-            elif client.entry_type == gcs_utils.ClientTableData.DELETION:
-                pass  # Do nothing with the resmap if client deletion
-            else:
-                raise RuntimeError("Unexpected EntryType {}".format(
-                    client.entry_type))
-            node_info[client_id]["Resources"] = res_map
-            node_info[client_id]["EntryType"] = client.entry_type
+            assert node_id in node_info, "node not found!"
+            assert node_info[node_id]["Alive"], (
+                "Unexpected duplicate removal of node.")
+            node_info[node_id]["Alive"] = False
+    # Fill resource info.
+    for node_id in ordered_node_ids:
+        if node_info[node_id]["Alive"]:
+            resources = _parse_resource_table(redis_client, node_id)
+        else:
+            resources = {}
+        node_info[node_id]["Resources"] = resources
     # NOTE: We return the list comprehension below instead of simply doing
     # 'list(node_info.values())' in order to have the nodes appear in the order
     # that they joined the cluster. Python dictionaries do not preserve
     # insertion order. We could use an OrderedDict, but then we'd have to be
     # sure to only insert a given node a single time (clients that die appear
     # twice in the GCS log).
-    return [node_info[client_id] for client_id in ordered_client_ids]
+    return [node_info[node_id] for node_id in ordered_node_ids]
+
+
+def _parse_resource_table(redis_client, client_id):
+    """Read the resource table with given client id.
+
+    Args:
+        redis_client: A client to the primary Redis shard.
+        client_id: The client ID of the node in hex.
+
+    Returns:
+        A dict of resources about this node.
+    """
+    message = redis_client.execute_command(
+        "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("NODE_RESOURCE"), "",
+        ray.utils.hex_to_binary(client_id))
+
+    if message is None:
+        return {}
+
+    resources = {}
+    gcs_entry = gcs_utils.GcsEntry.FromString(message)
+    entries_len = len(gcs_entry.entries)
+    if entries_len % 2 != 0:
+        raise Exception("Invalid entry size for resource lookup: " +
+                        str(entries_len))
+
+    for i in range(0, entries_len, 2):
+        resource_table_data = gcs_utils.ResourceTableData.FromString(
+            gcs_entry.entries[i + 1])
+        resources[decode(
+            gcs_entry.entries[i])] = resource_table_data.resource_capacity
+    return resources
 
 
 class GlobalState(object):
@@ -305,12 +325,9 @@ class GlobalState(object):
         assert len(gcs_entries.entries) == 1
         task_table_data = gcs_utils.TaskTableData.FromString(
             gcs_entries.entries[0])
-        task_table_message = gcs_utils.Task.GetRootAsTask(
-            task_table_data.task, 0)
 
-        execution_spec = task_table_message.TaskExecutionSpec()
-        task_spec = task_table_message.TaskSpecification()
-        task = ray._raylet.Task.from_string(task_spec)
+        task = ray._raylet.TaskSpec.from_string(
+            task_table_data.task.task_spec.SerializeToString())
         function_descriptor_list = task.function_descriptor_list()
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
@@ -324,6 +341,8 @@ class GlobalState(object):
             "ActorCreationID": task.actor_creation_id().hex(),
             "ActorCreationDummyObjectID": (
                 task.actor_creation_dummy_object_id().hex()),
+            "PreviousActorTaskDummyObjectID": (
+                task.previous_actor_task_dummy_object_id().hex()),
             "ActorCounter": task.actor_counter(),
             "Args": task.arguments(),
             "ReturnObjectIDs": task.returns(),
@@ -335,14 +354,11 @@ class GlobalState(object):
             "FunctionName": function_descriptor.function_name,
         }
 
+        execution_spec = ray._raylet.TaskExecutionSpec.from_string(
+            task_table_data.task.task_execution_spec.SerializeToString())
         return {
             "ExecutionSpec": {
-                "Dependencies": [
-                    execution_spec.Dependencies(i)
-                    for i in range(execution_spec.DependenciesLength())
-                ],
-                "LastTimestamp": execution_spec.LastTimestamp(),
-                "NumForwards": execution_spec.NumForwards()
+                "NumForwards": execution_spec.num_forwards(),
             },
             "TaskSpec": task_spec_info
         }
@@ -382,8 +398,82 @@ class GlobalState(object):
             Information about the Ray clients in the cluster.
         """
         self._check_connected()
+        client_table = _parse_client_table(self.redis_client)
 
-        return _parse_client_table(self.redis_client)
+        for client in client_table:
+            # These are equivalent and is better for application developers.
+            client["alive"] = client["Alive"]
+        return client_table
+
+    def _job_table(self, job_id):
+        """Fetch and parse the job table information for a single job ID.
+
+        Args:
+            job_id: A job ID or hex string to get information about.
+
+        Returns:
+            A dictionary with information about the job ID in question.
+        """
+        # Allow the argument to be either a JobID or a hex string.
+        if not isinstance(job_id, ray.JobID):
+            assert isinstance(job_id, str)
+            job_id = ray.JobID(hex_to_binary(job_id))
+
+        # Return information about a single job ID.
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("JOB"), "",
+            job_id.binary())
+
+        if message is None:
+            return {}
+
+        gcs_entry = gcs_utils.GcsEntry.FromString(message)
+
+        assert len(gcs_entry.entries) > 0
+
+        job_info = {}
+
+        for i in range(len(gcs_entry.entries)):
+            entry = gcs_utils.JobTableData.FromString(gcs_entry.entries[i])
+            assert entry.job_id == job_id.binary()
+            job_info["JobID"] = job_id.hex()
+            job_info["NodeManagerAddress"] = entry.node_manager_address
+            job_info["DriverPid"] = entry.driver_pid
+            if entry.is_dead:
+                job_info["StopTime"] = entry.timestamp
+            else:
+                job_info["StartTime"] = entry.timestamp
+
+        return job_info
+
+    def job_table(self):
+        """Fetch and parse the Redis job table.
+
+        Returns:
+            Information about the Ray jobs in the cluster,
+            namely a list of dicts with keys:
+            - "JobID" (identifier for the job),
+            - "NodeManagerAddress" (IP address of the driver for this job),
+            - "DriverPid" (process ID of the driver for this job),
+            - "StartTime" (UNIX timestamp of the start time of this job),
+            - "StopTime" (UNIX timestamp of the stop time of this job, if any)
+        """
+        self._check_connected()
+
+        job_keys = self.redis_client.keys(gcs_utils.TablePrefix_JOB_string +
+                                          "*")
+
+        job_ids_binary = {
+            key[len(gcs_utils.TablePrefix_JOB_string):]
+            for key in job_keys
+        }
+
+        results = []
+
+        for job_id_binary in job_ids_binary:
+            results.append(self._job_table(binary_to_hex(job_id_binary)))
+
+        return results
 
     def _profile_table(self, batch_id):
         """Get the profile events for a given batch of profile events.
@@ -600,11 +690,11 @@ class GlobalState(object):
         """
         self._check_connected()
 
-        client_id_to_address = {}
-        for client_info in self.client_table():
-            client_id_to_address[client_info["ClientID"]] = "{}:{}".format(
-                client_info["NodeManagerAddress"],
-                client_info["ObjectManagerPort"])
+        node_id_to_address = {}
+        for node_info in self.client_table():
+            node_id_to_address[node_info["NodeID"]] = "{}:{}".format(
+                node_info["NodeManagerAddress"],
+                node_info["ObjectManagerPort"])
 
         all_events = []
 
@@ -615,13 +705,13 @@ class GlobalState(object):
 
             for event in items:
                 if event["event_type"] == "transfer_send":
-                    object_id, remote_client_id, _, _ = event["extra_data"]
+                    object_id, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_id, remote_client_id, _, _ = event["extra_data"]
+                    object_id, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
-                    object_id, remote_client_id = event["extra_data"]
+                    object_id, remote_node_id = event["extra_data"]
 
                 else:
                     assert False, "This should be unreachable."
@@ -639,9 +729,9 @@ class GlobalState(object):
                     "name": event["event_type"],
                     # The identifier for the group of rows that the event
                     # appears in.
-                    "pid": client_id_to_address[key],
+                    "pid": node_id_to_address[key],
                     # The identifier for the row that the event appears in.
-                    "tid": client_id_to_address[remote_client_id],
+                    "tid": node_id_to_address[remote_node_id],
                     # The start time in microseconds.
                     "ts": self._seconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
@@ -735,7 +825,7 @@ class GlobalState(object):
         clients = self.client_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
-            if client["EntryType"] != gcs_utils.ClientTableData.DELETION:
+            if client["Alive"]:
                 for key, value in client["Resources"].items():
                     resources[key] += value
         return dict(resources)
@@ -743,9 +833,8 @@ class GlobalState(object):
     def _live_client_ids(self):
         """Returns a set of client IDs corresponding to clients still alive."""
         return {
-            client["ClientID"]
-            for client in self.client_table()
-            if (client["EntryType"] != gcs_utils.ClientTableData.DELETION)
+            client["NodeID"]
+            for client in self.client_table() if (client["Alive"])
         }
 
     def available_resources(self):
@@ -980,6 +1069,20 @@ state = GlobalState()
 """A global object used to access the cluster's global state."""
 
 global_state = DeprecatedGlobalState()
+
+
+def jobs():
+    """Get a list of the jobs in the cluster.
+
+    Returns:
+        Information from the job table, namely a list of dicts with keys:
+        - "JobID" (identifier for the job),
+        - "NodeManagerAddress" (IP address of the driver for this job),
+        - "DriverPid" (process ID of the driver for this job),
+        - "StartTime" (UNIX timestamp of the start time of this job),
+        - "StopTime" (UNIX timestamp of the stop time of this job, if any)
+    """
+    return state.job_table()
 
 
 def nodes():

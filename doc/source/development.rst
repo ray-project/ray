@@ -84,7 +84,7 @@ like so:
  ray.nodes()
  # Returns current information about the nodes in the cluster, such as:
  # [{'ClientID': '2a9d2b34ad24a37ed54e4fcd32bf19f915742f5b',
- #   'EntryType': 0,
+ #   'IsInsertion': True,
  #   'NodeManagerAddress': '1.2.3.4',
  #   'NodeManagerPort': 43280,
  #   'ObjectManagerPort': 38062,
@@ -159,13 +159,13 @@ Linting
 -------
 
 **Running linter locally:** To run the Python linter on a specific file, run
- something like ``flake8 ray/python/ray/worker.py``. You may need to first run
- ``pip install flake8``.
+something like ``flake8 ray/python/ray/worker.py``. You may need to first run
+``pip install flake8``.
 
-**Autoformatting code**. We use ``yapf`` https://github.com/google/yapf for
- linting, and the config file is located at ``.style.yapf``. We recommend
- running ``scripts/yapf.sh`` prior to pushing to format changed files.
- Note that some projects such as dataframes and rllib are currently excluded.
+**Autoformatting code**. We use `yapf <https://github.com/google/yapf>`_ for
+linting, and the config file is located at ``.style.yapf``. We recommend
+running ``scripts/yapf.sh`` prior to pushing to format changed files.
+Note that some projects such as dataframes and rllib are currently excluded.
 
 
 

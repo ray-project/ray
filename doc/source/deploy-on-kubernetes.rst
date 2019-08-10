@@ -27,14 +27,14 @@ To work interactively, first start Ray on Kubernetes.
   kubectl create -f ray/kubernetes/worker.yaml
 
 This will start one head pod and 3 worker pods. You can check that the pods are
-running by running ``kubectl get pods``.
+running by running ``kubectl get pods -n ray``.
 
 You should see something like the following (you will have to wait a couple
 minutes for the pods to enter the "Running" state).
 
 .. code-block:: shell
 
-  $ kubectl get pods
+  $ kubectl get pods -n ray
   NAME                          READY   STATUS    RESTARTS   AGE
   ray-head-5455bb66c9-6bxvz     1/1     Running   0          10s
   ray-worker-5c49b7cc57-c6xs8   1/1     Running   0          5s
@@ -45,7 +45,7 @@ To run tasks interactively on the cluster, connect to one of the pods, e.g.,
 
 .. code-block:: shell
 
-  kubectl exec -it ray-head-5455bb66c9-6bxvz -- bash
+  kubectl exec -it -n ray ray-head-5455bb66c9-6bxvz -- bash
 
 Start an IPython interpreter, e.g., ``ipython``
 
@@ -86,7 +86,7 @@ running ``kubectl get all``. You'll see output like the following.
 
 .. code-block:: shell
 
-  $ kubectl get all
+  $ kubectl get all -n ray
   NAME                              READY   STATUS    RESTARTS   AGE
   pod/ray-head-5486648dc9-c6hz2     1/1     Running   0          11s
   pod/ray-worker-5c49b7cc57-2jz4l   1/1     Running   0          11s
@@ -108,7 +108,7 @@ Find the name of the ``ray-head`` pod and run the equivalent of
 
 .. code-block:: shell
 
-  kubectl logs ray-head-5486648dc9-c6hz2
+  kubectl logs ray-head-5486648dc9-c6hz2 -n ray
 
 Cleaning Up
 -----------
@@ -117,9 +117,9 @@ To remove the services you have created, run the following.
 
 .. code-block:: shell
 
-  kubectl delete service/ray-head \
-                 deployment.apps/ray-head \
-                 deployment.apps/ray-worker
+  kubectl delete -n ray service/ray-head \
+                        deployment.apps/ray-head \
+                        deployment.apps/ray-worker
 
 
 Customization

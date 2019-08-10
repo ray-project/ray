@@ -7,14 +7,17 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/raylet/task.h"
+#include "ray/rpc/raylet/raylet_server.h"
 #include "ray/object_manager/object_manager.h"
+#include "ray/common/task/task.h"
 #include "ray/common/client_connection.h"
+#include "ray/common/task/task_common.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
-#include "ray/raylet/scheduling_resources.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
@@ -26,8 +29,8 @@ namespace ray {
 namespace raylet {
 
 using rpc::ActorTableData;
-using rpc::ClientTableData;
 using rpc::ErrorType;
+using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
@@ -35,6 +38,8 @@ using rpc::JobTableData;
 struct NodeManagerConfig {
   /// The node's resource configuration.
   ResourceSet resource_config;
+  /// The IP address this node manager is running on.
+  std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
@@ -46,7 +51,7 @@ struct NodeManagerConfig {
   /// worker pool.
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
-  std::unordered_map<Language, std::vector<std::string>> worker_commands;
+  WorkerCommandMap worker_commands;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -61,7 +66,8 @@ struct NodeManagerConfig {
   std::string session_dir;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public rpc::RayletServiceHandler {
  public:
   /// Create a node manager.
   ///
@@ -69,31 +75,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_manager A reference to the local object manager.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager,
-              std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
-
-  /// Process a new client connection.
-  ///
-  /// \param client The client to process.
-  /// \return Void.
-  void ProcessNewClient(LocalClientConnection &client);
-
-  /// Process a message from a client. This method is responsible for
-  /// explicitly listening for more messages from the client if the client is
-  /// still alive.
-  ///
-  /// \param client The client that sent the message.
-  /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                            int64_t message_type, const uint8_t *message_data);
-
-  /// Handle a new node manager connection.
-  ///
-  /// \param node_manager_client The connection to the remote node manager.
-  /// \return Void.
-  void ProcessNewNodeManager(TcpClientConnection &node_manager_client);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
@@ -108,8 +91,90 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Record metrics.
   void RecordMetrics() const;
 
+ public:
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  /// Preprocess request from raylet client. We will check whether the worker is being
+  /// killed due to job finishing.
+  ///
+  /// \param worker_id The worker id.
+  /// \param request_name The request name.
+  /// \return False if there is no need to process this request.
+  bool PreprocessRequest(const WorkerID &worker_id, const std::string &request_name);
+
+  /// Implementation of node manager grpc service.
+
+  /// Handle a `ForwardTask` request.
+  ///
+  /// \param request The request.
+  /// \param reply The reply that will be sent to client.
+  /// \param send_reply_callback Invoke this callback to send reply asynchronously.
+  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
+                         rpc::ForwardTaskReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implementation of raylet grpc service handlers, please see definitions
+  /// in `src/ray/protobuf/raylet.proto` for more details.
+  void HandleRegisterClientRequest(const rpc::RegisterClientRequest &request,
+                                   rpc::RegisterClientReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleSubmitTaskRequest(const rpc::SubmitTaskRequest &request,
+                               rpc::SubmitTaskReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleDisconnectClientRequest(const rpc::DisconnectClientRequest &request,
+                                     rpc::DisconnectClientReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetTaskRequest(const rpc::GetTaskRequest &request, rpc::GetTaskReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleTaskDoneRequest(const rpc::TaskDoneRequest &request,
+                             rpc::TaskDoneReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleFetchOrReconstructRequest(
+      const rpc::FetchOrReconstructRequest &request, rpc::FetchOrReconstructReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleNotifyUnblockedRequest(const rpc::NotifyUnblockedRequest &request,
+                                    rpc::NotifyUnblockedReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleWaitRequest(const rpc::WaitRequest &request, rpc::WaitReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushErrorRequest(const rpc::PushErrorRequest &request,
+                              rpc::PushErrorReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushProfileEventsRequest(
+      const rpc::PushProfileEventsRequest &request, rpc::PushProfileEventsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleFreeObjectsInStoreRequest(
+      const rpc::FreeObjectsInStoreRequest &request, rpc::FreeObjectsInStoreReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePrepareActorCheckpointRequest(
+      const rpc::PrepareActorCheckpointRequest &request,
+      rpc::PrepareActorCheckpointReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleNotifyActorResumedFromCheckpointRequest(
+      const rpc::NotifyActorResumedFromCheckpointRequest &request,
+      rpc::NotifyActorResumedFromCheckpointReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleSetResourceRequest(const rpc::SetResourceRequest &request,
+                                rpc::SetResourceReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleHeartbeatRequest(const rpc::HeartbeatRequest &request,
+                              rpc::HeartbeatReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   /// Methods for handling clients.
@@ -118,22 +183,26 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param data Data associated with the new client.
   /// \return Void.
-  void ClientAdded(const ClientTableData &data);
+  void ClientAdded(const GcsNodeInfo &data);
 
   /// Handler for the removal of a GCS client.
-  /// \param client_data Data associated with the removed client.
+  /// \param node_info Data associated with the removed client.
   /// \return Void.
-  void ClientRemoved(const ClientTableData &client_data);
+  void ClientRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that created or updated resources.
+  /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const ClientTableData &client_data);
+  void ResourceCreateUpdated(const ClientID &client_id,
+                             const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
-  /// \param client_data Data associated with the new client.
+  /// \param client_id ID of the node that deleted resources.
+  /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const ClientTableData &client_data);
+  void ResourceDeleted(const ClientID &client_id,
+                       const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local client.
@@ -182,6 +251,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param error_type The type of the error that caused this task to fail.
   /// \return Void.
   void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
+  /// Mark the specified objects as failed with the given error type.
+  ///
+  /// \param error_type The type of the error that caused this task to fail.
+  /// \param object_ids The object ids to store error messages into.
+  /// \param job_id The optional job to push errors to if the writes fail.
+  void MarkObjectsAsFailed(const ErrorType &error_type,
+                           const std::vector<plasma::ObjectID> object_ids,
+                           const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -199,6 +276,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
+  /// Handle the case that a worker is available.
+  ///
+  /// \param id Id of the worker.
+  /// \return Void.
+  void HandleWorkerAvailable(const WorkerID &worker_id);
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   ///
   /// \param task The task in question.
@@ -211,13 +293,36 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignedTask(Worker &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task The actor creation task that created the actor.
-  ActorTableData CreateActorTableDataFromCreationTask(const Task &task);
+  /// \param task_spec Task specification of the actor creation task that created the
+  /// actor.
+  /// \param worker The port that the actor is listening on.
+  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
+      const TaskSpecification &task_spec, int port);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
-  /// \param task The actor task or actor creationt ask.
+  /// \param task The actor task or actor creation task.
   /// \return Void.
   void FinishAssignedActorTask(Worker &worker, const Task &task);
+  /// Helper function for handling worker to finish its assigned actor task
+  /// or actor creation task. Gets invoked when tasks's parent actor is known.
+  ///
+  /// \param parent_actor_id The actor id corresponding to the actor which creates
+  /// the new actor.
+  /// \param task_spec Task specification of the actor creation task that created the
+  /// actor.
+  /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
+  /// \param port Rpc server port that the actor is listening on.
+  /// \return Void.
+  void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
+                                       const TaskSpecification &task_spec,
+                                       bool resumed_from_checkpoint, int port);
+  /// Extend actor frontier after an actor task or actor creation task executes.
+  ///
+  /// \param dummy_object Dummy object corresponding to the task.
+  /// \param actor_id The relevant actor ID.
+  /// \param actor_handle_id The relevant actor handle ID.
+  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
+                           const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
@@ -230,14 +335,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
+  /// \param required_object_id The object id we are reconstructing for.
   /// \return Void.
-  void HandleTaskReconstruction(const TaskID &task_id);
+  void HandleTaskReconstruction(const TaskID &task_id,
+                                const ObjectID &required_object_id);
   /// Resubmit a task for execution. This is a task that was previously already
   /// submitted to a raylet but which must now be re-executed.
   ///
   /// \param task The task being resubmitted.
+  /// \param required_object_id The object id that triggered the resubmission.
   /// \return Void.
-  void ResubmitTask(const Task &task);
+  void ResubmitTask(const Task &task, const ObjectID &required_object_id);
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///
@@ -281,10 +389,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
+  /// \param ray_get Whether the task is blocked in a `ray.get` call, as
+  /// opposed to a `ray.wait` call.
   /// \return Void.
-  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
+  void HandleTaskBlocked(const WorkerID &worker_id,
                          const std::vector<ObjectID> &required_object_ids,
-                         const TaskID &current_task_id);
+                         const TaskID &current_task_id, bool ray_get);
 
   /// Handle a task that is unblocked. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
@@ -295,8 +405,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
   /// \return Void.
-  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const TaskID &current_task_id);
+  void HandleTaskUnblocked(const WorkerID &worker_id, const TaskID &current_task_id);
 
   /// Kill a worker.
   ///
@@ -315,16 +424,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id,
                                   ActorRegistration &&actor_registration);
-
-  /// Publish an actor's state transition to all other nodes.
-  ///
-  /// \param actor_id The actor ID of the actor whose state was updated.
-  /// \param data Data to publish.
-  /// \param failure_callback An optional callback to call if the publish is
-  /// unsuccessful.
-  void PublishActorStateTransition(
-      const ActorID &actor_id, const ActorTableData &data,
-      const ray::gcs::ActorTable::WriteCallback &failure_callback);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -368,11 +467,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
 
-  /// Process client message of GetTask
+  /// Handle the case that a worker is available.
   ///
-  /// \param client The client that sent the message.
+  /// \param client The connection for the worker.
   /// \return Void.
-  void ProcessGetTaskMessage(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
@@ -380,11 +479,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param intentional_disconnect Wether the client was intentionally disconnected.
+  /// \param intentional_disconnect Whether the client was intentionally disconnected.
   /// \return Void.
-  void ProcessDisconnectClientMessage(
-      const std::shared_ptr<LocalClientConnection> &client,
-      bool intentional_disconnect = false);
+  void ProcessDisconnectClientMessage(const WorkerID &worker_id,
+                                      bool intentional_disconnect = false);
 
   /// Process client message of SubmitTask
   ///
@@ -452,11 +550,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// Handle a `ForwardTask` request.
-  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                         rpc::ForwardTaskReply *reply,
-                         rpc::RequestDoneCallback done_callback) override;
-
   // GCS client ID for this node.
   ClientID client_id_;
   boost::asio::io_service &io_service_;
@@ -466,7 +559,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// because the actor died).
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The timer used to send heartbeats.
@@ -513,10 +606,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
-  /// The RPC service.
+  /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
 
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
+  /// The raylet RPC service.
+  rpc::RayletGrpcService raylet_service_;
+
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// as well as all `WorkerTaskClient`s.
   rpc::ClientCallManager client_call_manager_;
 
   /// Map from node ids to clients of the remote node managers.

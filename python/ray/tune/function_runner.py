@@ -3,10 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import sys
 import time
 import inspect
 import threading
+import traceback
 from six.moves import queue
 
 from ray.tune import track
@@ -33,10 +33,11 @@ class StatusReporter(object):
         >>>     reporter(timesteps_this_iter=1)
     """
 
-    def __init__(self, result_queue, continue_semaphore):
+    def __init__(self, result_queue, continue_semaphore, logdir=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
+        self._logdir = logdir
 
     def __call__(self, **kwargs):
         """Report updated training status.
@@ -77,6 +78,10 @@ class StatusReporter(object):
     def _start(self):
         self._last_report_time = time.time()
 
+    @property
+    def logdir(self):
+        return self._logdir
+
 
 class _RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
@@ -100,12 +105,9 @@ class _RunnerThread(threading.Thread):
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
-                err_type, err_value, err_tb = sys.exc_info()
-                err_tb = err_tb.format_exc()
+                err_tb_str = traceback.format_exc()
                 self._error_queue.put(
-                    (err_type, err_value, err_tb),
-                    block=True,
-                    timeout=ERROR_REPORT_TIMEOUT)
+                    err_tb_str, block=True, timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
                 logger.critical(
                     ("Runner Thread was unable to report error to main "
@@ -134,8 +136,8 @@ class FunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._status_reporter = StatusReporter(self._results_queue,
-                                               self._continue_semaphore)
+        self._status_reporter = StatusReporter(
+            self._results_queue, self._continue_semaphore, self.logdir)
         self._last_result = {}
         config = config.copy()
 
@@ -234,13 +236,10 @@ class FunctionRunner(Trainable):
 
     def _report_thread_runner_error(self, block=False):
         try:
-            err_type, err_value, err_tb = self._error_queue.get(
+            err_tb_str = self._error_queue.get(
                 block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError(("Trial raised a {err_type} exception with value: "
-                             "{err_value}\nWith traceback:\n{err_tb}").format(
-                                 err_type=err_type,
-                                 err_value=err_value,
-                                 err_tb=err_tb))
+            raise TuneError(("Trial raised an exception. Traceback:\n{}"
+                             .format(err_tb_str)))
         except queue.Empty:
             pass
 

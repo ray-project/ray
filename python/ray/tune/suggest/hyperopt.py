@@ -5,6 +5,8 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
+from functools import partial
+import pickle
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
@@ -24,7 +26,9 @@ class HyperOptSearch(SuggestionAlgorithm):
     Requires HyperOpt to be installed from source.
     Uses the Tree-structured Parzen Estimators algorithm, although can be
     trivially extended to support any algorithm HyperOpt uses. Externally
-    added trials will not be tracked by HyperOpt.
+    added trials will not be tracked by HyperOpt. Trials of the current run
+    can be saved using save method, trials of a previous run can be loaded
+    using restore method, thus enabling a warm start feature.
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
@@ -42,6 +46,13 @@ class HyperOptSearch(SuggestionAlgorithm):
             a list of dict of hyperopt-named variables.
             Choice variables should be indicated by their index in the
             list (see example)
+        n_initial_points (int): number of random evaluations of the
+            objective function before starting to aproximate it with
+            tree parzen estimators. Defaults to 20.
+        random_state_seed (int, array_like, None): seed for reproducible
+            results. Defaults to None.
+        gamma (float in range (0,1)): parameter governing the tree parzen
+            estimators suggestion algorithm. Defaults to 0.25.
 
     Example:
         >>> space = {
@@ -66,6 +77,9 @@ class HyperOptSearch(SuggestionAlgorithm):
                  metric="episode_reward_mean",
                  mode="max",
                  points_to_evaluate=None,
+                 n_initial_points=20,
+                 random_state_seed=None,
+                 gamma=0.25,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
         from hyperopt.fmin import generate_trials_to_calculate
@@ -87,7 +101,13 @@ class HyperOptSearch(SuggestionAlgorithm):
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
-        self.algo = hpo.tpe.suggest
+        if n_initial_points is None:
+            self.algo = hpo.tpe.suggest
+        else:
+            self.algo = partial(
+                hpo.tpe.suggest, n_startup_jobs=n_initial_points)
+        if gamma is not None:
+            self.algo = partial(self.algo, gamma=gamma)
         self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:
             self._hpopt_trials = hpo.Trials()
@@ -99,7 +119,10 @@ class HyperOptSearch(SuggestionAlgorithm):
             self._hpopt_trials.refresh()
             self._points_to_evaluate = len(points_to_evaluate)
         self._live_trial_mapping = {}
-        self.rstate = np.random.RandomState()
+        if random_state_seed is None:
+            self.rstate = np.random.RandomState()
+        else:
+            self.rstate = np.random.RandomState(random_state_seed)
 
         super(HyperOptSearch, self).__init__(**kwargs)
 
@@ -183,3 +206,14 @@ class HyperOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = (self._hpopt_trials, self.rstate.get_state())
+        with open(checkpoint_dir, "wb") as output:
+            pickle.dump(trials_object, output)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as input:
+            trials_object = pickle.load(input)
+        self._hpopt_trials = trials_object[0]
+        self.rstate.set_state(trials_object[1])

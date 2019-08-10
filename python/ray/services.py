@@ -93,6 +93,38 @@ def include_java_from_redis(redis_client):
     return redis_client.get("INCLUDE_JAVA") == b"1"
 
 
+def find_redis_address_or_die():
+    try:
+        import psutil
+    except ImportError:
+        raise ImportError(
+            "Please install `psutil` to automatically detect the Ray cluster.")
+    pids = psutil.pids()
+    redis_addresses = set()
+    for pid in pids:
+        try:
+            proc = psutil.Process(pid)
+            for arglist in proc.cmdline():
+                for arg in arglist.split(" "):
+                    if arg.startswith("--redis-address="):
+                        addr = arg.split("=")[1]
+                        redis_addresses.add(addr)
+        except psutil.AccessDenied:
+            pass
+        except psutil.NoSuchProcess:
+            pass
+    if len(redis_addresses) > 1:
+        raise ConnectionError(
+            "Found multiple active Ray instances: {}. ".format(redis_addresses)
+            + "Please specify the one to connect to by setting `address`.")
+        sys.exit(1)
+    elif not redis_addresses:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting `address`.")
+    return redis_addresses.pop()
+
+
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
@@ -404,7 +436,7 @@ def wait_for_redis_to_start(redis_ip_address,
     while counter < num_retries:
         try:
             # Run some random command and see if it worked.
-            logger.info(
+            logger.debug(
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
@@ -615,6 +647,9 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to enable cross-languages.
     primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
+    # Init job counter to GCS.
+    primary_redis_client.set("JobCounter", 0)
+
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(primary_redis_client)
 
@@ -802,7 +837,7 @@ def _start_redis_instance(executable,
         redis_client.config_set("maxmemory", str(redis_max_memory))
         redis_client.config_set("maxmemory-policy", "allkeys-lru")
         redis_client.config_set("maxmemory-samples", "10")
-        logger.info("Starting Redis shard with {} GB max memory.".format(
+        logger.debug("Starting Redis shard with {} GB max memory.".format(
             round(redis_max_memory / 1e9, 2)))
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
@@ -1300,6 +1335,32 @@ def determine_plasma_store_config(object_store_memory=None,
             object_store_memory = (
                 ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
 
+        # Other applications may also be using a lot of memory on the same
+        # node. Try to detect when this is happening and log a warning or
+        # error in more severe cases.
+        avail_memory = ray.utils.estimate_available_memory()
+        object_store_fraction = object_store_memory / avail_memory
+        # Escape hatch, undocumented for now.
+        no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
+        if object_store_fraction > 0.9 and not no_check:
+            raise ValueError(
+                "The default object store size of {} GB "
+                "will use more than 90% of the available memory on this node "
+                "({} GB). Please reduce the object store memory size "
+                "to avoid memory contention with other applications, or "
+                "shut down the applications using this memory.".format(
+                    round(object_store_memory / 1e9, 2),
+                    round(avail_memory / 1e9, 2)))
+        elif object_store_fraction > 0.5:
+            logger.warning(
+                "WARNING: The default object store size of {} GB "
+                "will use more than 50% of the available memory on this node "
+                "({} GB). Consider setting the object store memory manually "
+                "to a smaller size to avoid memory contention with other "
+                "applications.".format(
+                    round(object_store_memory / 1e9, 2),
+                    round(avail_memory / 1e9, 2)))
+
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
     # in which case we default to /tmp on Linux.
@@ -1441,9 +1502,9 @@ def start_plasma_store(stdout_file=None,
 
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
-    logger.info("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(
-                    round(object_store_memory_str, 2), plasma_directory))
+    logger.debug("Starting the Plasma object store with {} GB memory "
+                 "using {}.".format(
+                     round(object_store_memory_str, 2), plasma_directory))
     # Start the Plasma store.
     process_info = _start_plasma_store(
         object_store_memory,

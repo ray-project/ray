@@ -3,15 +3,20 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/raylet/lineage_cache.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "ray/raylet/task_spec.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
 namespace raylet {
+
+const static JobID kDefaultJobId = JobID::FromInt(1);
+
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
                 public gcs::PubsubInterface<TaskID> {
@@ -23,14 +28,14 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status Add(const JobID &job_id, const TaskID &task_id,
-             std::shared_ptr<TaskTableData> &task_data,
+             const std::shared_ptr<TaskTableData> &task_data,
              const gcs::TableInterface<TaskID, TaskTableData>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     auto callback = done;
     // If we requested notifications for this task ID, send the notification as
     // part of the callback.
     if (subscribed_tasks_.count(task_id) == 1) {
-      callback = [this, done](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+      callback = [this, done](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
                               const TaskTableData &data) {
         done(client, task_id, data);
         // If we're subscribed to the task to be added, also send a
@@ -50,7 +55,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
     // Send a notification after the add if the lineage cache requested
     // notifications for this key.
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
-    auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
+    auto callback = [this, send_notification](ray::gcs::RedisGcsClient *client,
                                               const TaskID &task_id,
                                               const TaskTableData &data) {
       if (send_notification) {
@@ -110,7 +115,7 @@ class LineageCacheTest : public ::testing::Test {
         num_notifications_(0),
         mock_gcs_(),
         lineage_cache_(ClientID::FromRandom(), mock_gcs_, mock_gcs_, max_lineage_size_) {
-    mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+    mock_gcs_.Subscribe([this](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
                                const TaskTableData &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
       num_notifications_++;
@@ -125,21 +130,16 @@ class LineageCacheTest : public ::testing::Test {
 };
 
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
-                               int64_t num_returns) {
-  std::unordered_map<std::string, double> required_resources;
-  std::vector<std::shared_ptr<TaskArgument>> task_arguments;
-  for (auto &argument : arguments) {
-    std::vector<ObjectID> references = {argument};
-    task_arguments.emplace_back(std::make_shared<TaskArgumentByReference>(references));
+                               uint64_t num_returns) {
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                            RandomTaskId(), 0, num_returns, {}, {});
+  for (const auto &arg : arguments) {
+    builder.AddByRefArg(arg);
   }
-  std::vector<std::string> function_descriptor(3);
-  auto spec = TaskSpecification(JobID::Nil(), TaskID::FromRandom(), 0, task_arguments,
-                                num_returns, required_resources, Language::PYTHON,
-                                function_descriptor);
-  auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
-  execution_spec.IncrementNumForwards();
-  Task task = Task(execution_spec, spec);
-  return task;
+  rpc::TaskExecutionSpec execution_spec_message;
+  execution_spec_message.set_num_forwards(1);
+  return Task(builder.Build(), TaskExecutionSpecification(execution_spec_message));
 }
 
 /// Helper method to create a Lineage object with a single task.
@@ -160,7 +160,7 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
     lineage_cache.AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
     inserted_tasks.push_back(task);
     arguments.clear();
-    for (int j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
+    for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
       arguments.push_back(task.GetTaskSpecification().ReturnId(j));
     }
   }
