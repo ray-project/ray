@@ -12,6 +12,7 @@ import traceback
 
 import ray
 from ray import ray_constants
+from ray.resource_spec import ResourceSpec
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
 from ray.tune.trial import Trial, Checkpoint
@@ -394,8 +395,7 @@ class RayTrialExecutor(TrialExecutor):
                 # TODO(rliaw): Remove this when local mode is fixed.
                 # https://github.com/ray-project/ray/issues/4147
                 logger.debug("Using resources for local machine.")
-                resources = ray.services.check_and_update_resources(
-                    None, None, None)
+                resources = ResourceSpec.resolve(True).to_resource_dict()
             if not resources:
                 logger.warning(
                     "Cluster resources not detected or are 0. Retrying...")
