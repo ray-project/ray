@@ -505,13 +505,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   wait_ids.push_back(non_existent_id);
 
   std::vector<bool> wait_results;
-  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, RandomTaskId(), &results));
+  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, &results));
 
   ASSERT_EQ(results.size(), ids_with_duplicate.size());
   for (size_t i = 0; i < ids_with_duplicate.size(); i++) {
@@ -533,7 +533,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids, 0, RandomTaskId(), &results));
+  RAY_CHECK_OK(provider.Get(ids, 0, &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);

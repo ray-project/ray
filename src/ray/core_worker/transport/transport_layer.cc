@@ -28,6 +28,18 @@ Status CoreWorkerTaskSubmitterLayer::SubmitTask(TaskTransportType type, const Ta
   return task_submitters_[type]->SubmitTask(task_spec);
 }
 
+bool CoreWorkerTaskSubmitterLayer::ShouldWaitTask(TaskTransportType type, const TaskID &task_id) const {
+  auto iter = task_submitters_.find(type);
+  RAY_CHECK(iter != task_submitters_.end());
+  return iter->second->ShouldWaitTask(task_id);
+}
+
+StoreProviderType CoreWorkerTaskSubmitterLayer::GetStoreProviderTypeForReturnObject(TaskTransportType type) const {
+  auto iter = task_submitters_.find(type);
+  RAY_CHECK(iter != task_submitters_.end());
+  return iter->second->GetStoreProviderTypeForReturnObject(); 
+}
+
 CoreWorkerTaskReceiverLayer::CoreWorkerTaskReceiverLayer(
     std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerStoreProviderLayer &store_provider_layer,

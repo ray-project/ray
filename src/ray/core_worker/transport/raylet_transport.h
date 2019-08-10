@@ -30,7 +30,7 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task_id The ID of the task.
   /// \return If the task has finished.
-  bool IsTaskDone(const TaskID &task_id) override;
+  bool ShouldWaitTask(const TaskID &task_id) const override;
 
   /// Get the store provider type for return objects.
   ///

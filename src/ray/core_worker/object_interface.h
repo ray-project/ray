@@ -71,13 +71,32 @@ class CoreWorkerObjectInterface {
 
  private:
 
+  bool ShouldWaitObjects(const std::vector<ObjectID> &object_ids);
+
+  Status Get(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+    int64_t timeout_ms, std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
+  /// Whether the buffer represents an exception object.
+  ///
+  /// \param[in] object Object data.
+  /// \return Whether it represents an exception object.
+  static bool IsException(const RayObject &object);
+
+  /// Print a warning if we've attempted too many times, but some objects are still
+  /// unavailable.
+  ///
+  /// \param[in] num_attemps The number of attempted times.
+  /// \param[in] unready The unready objects.
+  static void WarnIfAttemptedTooManyTimes(
+      int num_attempts, const std::unordered_set<ObjectID> &unready);
+
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
   /// Reference to the parent CoreWorker's raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
   /// Reference to store provider layer.
   CoreWorkerStoreProviderLayer &store_provider_layer_;
-  /// Transport layer which abstracts task submitters & receivers.
+  /// Reference to task submitter layer.
   CoreWorkerTaskSubmitterLayer &task_submitter_layer_;
 };
 

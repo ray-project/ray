@@ -214,11 +214,20 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsTaskDone(const TaskID &task_id) {
+bool CoreWorkerDirectActorTaskSubmitter::ShouldWaitTask(const TaskID &task_id) const {
   std::unique_lock<std::mutex> guard(mutex_);
   auto actor_id = task_id.ActorId();
-  return (pending_tasks_[actor_id].count(task_id) > 0 ||
-      waiting_reply_tasks_[actor_id].count(task_id) > 0);
+  auto iter = pending_tasks_.find(actor_id);
+  if (iter != pending_tasks_.end() && iter->second.count(task_id) > 0) {
+    return true;
+  }
+
+  iter = waiting_reply_tasks_.find(actor_id);
+  if (iter != waiting_reply_tasks_.end() && iter->second.count(task_id) > 0) {
+    return true;
+  }
+
+  return false;
 }
 
 StoreProviderType

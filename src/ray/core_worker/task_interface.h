@@ -187,7 +187,7 @@ class CoreWorkerTaskInterface {
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
 
-  /// Transport layer which abstracts task submitters & receivers.
+  /// Reference to task submitter layer.
   CoreWorkerTaskSubmitterLayer &task_submitter_layer_;
 
   friend class CoreWorkerTest;

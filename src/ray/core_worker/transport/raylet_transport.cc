@@ -13,12 +13,12 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) 
   return raylet_client_->SubmitTask(task);
 }
 
-bool CoreWorkerRayletTaskSubmitter::IsTaskDone(const TaskID &task_id) {
-  // Return false so that `ray.get` will wait for the objects.
+bool CoreWorkerRayletTaskSubmitter::ShouldWaitTask(const TaskID &task_id) const {
+  // Return true so that `ray.get` will wait for the objects.
   // This is fine since raylet has lineage and can reconstruct the tasks
   // and the objects will eventually be available, or errors will be written
   // into store.
-  return false;  
+  return true;  
 }
 
 StoreProviderType

@@ -32,7 +32,7 @@ class CoreWorkerTaskSubmitterLayer {
   ///
   /// \param[in] task_id The ID of the task.
   /// \return If the task has finished.
-  bool IsTaskDone(TaskTransportType type, const TaskID &task_id);
+  bool ShouldWaitTask(TaskTransportType type, const TaskID &task_id) const;
 
   /// Get the store provider type for return objects.
   ///
