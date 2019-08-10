@@ -5,27 +5,33 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: rllib-envs.svg
 
-**Compatibility matrix**:
+Feature Compatibility Matrix
+----------------------------
 
-=============  =======================  ==================  ===========  ==================
-Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
-=============  =======================  ==================  ===========  ==================
-A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
-DDPG, TD3       No                      **Yes**             **Yes**      No
-APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
-APEX-DDPG       No                      **Yes**             **Yes**      No
-SAC             (todo)                  **Yes**             **Yes**      No
-ES              **Yes**                 **Yes**             No           No
-ARS             **Yes**                 **Yes**             No           No
-QMIX            **Yes**                 No                  **Yes**      **Yes**
-MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-=============  =======================  ==================  ===========  ==================
+=============  =======================  ==================  ===========  ===========================
+Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
+=============  =======================  ==================  ===========  ===========================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
+DDPG, TD3       No                      **Yes**             **Yes**
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
+APEX-DDPG       No                      **Yes**             **Yes**
+SAC             (todo)                  **Yes**             **Yes**
+ES              **Yes**                 **Yes**             No
+ARS             **Yes**                 **Yes**             No
+QMIX            **Yes**                 No                  **Yes**      `+RNN`_
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
+=============  =======================  ==================  ===========  ===========================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+
+Configuring Environments
+------------------------
 
 You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
@@ -68,9 +74,6 @@ For a full runnable code example using the custom environment API, see `custom_e
 .. warning::
 
    The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
-
-Configuring Environments
-------------------------
 
 In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your trainer. You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
 

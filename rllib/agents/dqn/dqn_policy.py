@@ -109,10 +109,9 @@ class QValuePolicy(object):
     def __init__(self, q_values, observations, num_actions, stochastic, eps,
                  softmax, softmax_temp, model_config):
         if softmax:
-            action_dist = Categorical(
-                q_values / softmax_temp, model_config=model_config)
+            action_dist = Categorical(q_values / softmax_temp)
             self.action = action_dist.sample()
-            self.action_prob = action_dist.sampled_action_prob()
+            self.action_prob = tf.exp(action_dist.sampled_action_logp())
             return
 
         deterministic_actions = tf.argmax(q_values, axis=1)
@@ -260,7 +259,10 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
                        config["model"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
-    return policy.output_actions, policy.action_prob
+    actions = policy.output_actions
+    action_prob = (tf.log(policy.action_prob)
+                   if policy.action_prob is not None else None)
+    return actions, action_prob
 
 
 def _build_parameter_noise(policy, pnet_params):
