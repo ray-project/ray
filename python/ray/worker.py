@@ -1380,7 +1380,7 @@ def init(redis_address=None,
 
     if address:
         if redis_address:
-            logger.warning(
+            raise ValueError(
                 "You should specify address instead of redis_address.")
         if address == "auto":
             address = services.find_redis_address_or_die()

@@ -94,7 +94,11 @@ def include_java_from_redis(redis_client):
 
 
 def find_redis_address_or_die():
-    import psutil
+    try:
+        import psutil
+    except ImportError:
+        raise ImportError(
+            "Please install `psutil` to automatically detect the Ray cluster.")
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:

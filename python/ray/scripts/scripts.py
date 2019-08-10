@@ -231,7 +231,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         redis_address = services.address_to_ip(redis_address)
     if address:
         if redis_address:
-            logger.warning(
+            raise ValueError(
                 "You should specify address instead of redis_address.")
         if address == "auto":
             address = services.find_redis_address_or_die()
