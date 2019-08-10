@@ -1,5 +1,6 @@
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -13,9 +14,11 @@ CoreWorkerStoreProviderLayer::CoreWorkerStoreProviderLayer(
     std::unique_ptr<RayletClient> &raylet_client)
     : worker_context_(worker_context),
       store_socket_(store_socket),
-      raylet_client_(raylet_client) {
+      raylet_client_(raylet_client),
+      memory_store_(std::make_shared<CoreWorkerMemoryStore>()) { 
   AddStoreProvider(StoreProviderType::LOCAL_PLASMA);
   AddStoreProvider(StoreProviderType::PLASMA);
+  AddStoreProvider(StoreProviderType::MEMORY);
 }
 
 Status CoreWorkerStoreProviderLayer::Put(StoreProviderType type, 
@@ -63,6 +66,10 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerStoreProviderLayer::CreateSto
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerPlasmaStoreProvider(worker_context_, store_socket_, raylet_client_));
     break;
+  case StoreProviderType::MEMORY:
+    return std::unique_ptr<CoreWorkerStoreProvider>(
+        new CoreWorkerMemoryStoreProvider(memory_store_));
+    break;    
   default:
     // Should never reach here.
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);

@@ -11,6 +11,7 @@
 
 namespace ray {
 
+class CoreWorkerMemoryStore;
 class CoreWorkerTaskSubmitter;
 class WorkerContext;
 using rpc::RayletClient;
@@ -75,6 +76,9 @@ class CoreWorkerStoreProviderLayer {
 
   /// Reference to the CoreWorker's raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
+
+  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
