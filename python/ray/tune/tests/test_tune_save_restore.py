@@ -105,7 +105,9 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         trial, = tune.run(
             self.MockTrainable,
             name=exp_name,
-            stop={"training_iteration": 2},  # train one more iteration.
+            stop={
+                "training_iteration": 2
+            },  # train one more iteration.
             restore=checkpoint_path,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
