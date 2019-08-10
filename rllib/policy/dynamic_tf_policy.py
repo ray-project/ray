@@ -66,7 +66,7 @@ class DynamicTFPolicy(TFPolicy):
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
             action_sampler_fn (func): optional function that returns a
-                tuple of action and action prob tensors given
+                tuple of action and action logp tensors given
                 (policy, model, input_dict, obs_space, action_space, config).
                 If not specified, a default action distribution will be used.
             existing_inputs (OrderedDict): when copying a policy, this
@@ -144,6 +144,7 @@ class DynamicTFPolicy(TFPolicy):
                 logit_dim,
                 self.config["model"],
                 framework="tf")
+
         if existing_inputs:
             self.state_in = [
                 v for k, v in existing_inputs.items()
@@ -162,14 +163,13 @@ class DynamicTFPolicy(TFPolicy):
         # Setup action sampler
         if action_sampler_fn:
             self.action_dist = None
-            action_sampler, action_prob = action_sampler_fn(
+            action_sampler, action_logp = action_sampler_fn(
                 self, self.model, self.input_dict, obs_space, action_space,
                 config)
         else:
-            self.action_dist = self.dist_class(
-                self.model_out, model_config=self.config["model"])
+            self.action_dist = self.dist_class(self.model_out, self.model)
             action_sampler = self.action_dist.sample()
-            action_prob = self.action_dist.sampled_action_prob()
+            action_logp = self.action_dist.sampled_action_logp()
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -184,7 +184,7 @@ class DynamicTFPolicy(TFPolicy):
             sess,
             obs_input=obs,
             action_sampler=action_sampler,
-            action_prob=action_prob,
+            action_logp=action_logp,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
