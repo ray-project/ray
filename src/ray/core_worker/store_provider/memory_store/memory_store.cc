@@ -45,7 +45,7 @@ class GetRequest {
 };
 
 GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, bool remove_after_get)
-    : object_ids_(std::move(object_ids)), remove_after_get_(remove_after_get) {}
+    : object_ids_(std::move(object_ids)), remove_after_get_(remove_after_get), is_ready_(false) {}
 
 const std::unordered_set<ObjectID> &GetRequest::ObjectIds() const { return object_ids_; }
 

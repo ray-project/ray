@@ -1,5 +1,7 @@
-#include "ray/core_worker/object_interface.h"
+#include <algorithm>
+
 #include "ray/common/ray_config.h"
+#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
@@ -137,7 +139,7 @@ Status CoreWorkerObjectInterface::Get(
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
-    RAY_RETURN_NOT_OK(store_provider_layer_.Get(type, unready_ids, timeout_ms, &result_objects));      
+    RAY_RETURN_NOT_OK(store_provider_layer_.Get(type, unready_ids, get_timeout, &result_objects));      
 
     for (size_t i = 0; i < result_objects.size(); i++) {
       if (result_objects[i] != nullptr) {
@@ -178,6 +180,10 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
 
 
 bool CoreWorkerObjectInterface::IsException(const RayObject &object) {
+  if (!object.HasMetadata()) {
+    return false;
+  }
+
   // TODO (kfstorm): metadata should be structured.
   const std::string metadata(reinterpret_cast<const char *>(object.GetMetadata()->Data()),
                              object.GetMetadata()->Size());
