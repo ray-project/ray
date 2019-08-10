@@ -28,7 +28,7 @@ from ray.rllib.examples.twostep_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule
+    EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.utils.explained_variance import explained_variance
@@ -141,10 +141,13 @@ def loss_with_central_critic(policy, batch_tensors):
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
+        policy.dist_class,
+        policy.model,
         batch_tensors[Postprocessing.VALUE_TARGETS],
         batch_tensors[Postprocessing.ADVANTAGES],
         batch_tensors[SampleBatch.ACTIONS],
         batch_tensors[BEHAVIOUR_LOGITS],
+        batch_tensors[ACTION_LOGP],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
         policy.central_value_function,
