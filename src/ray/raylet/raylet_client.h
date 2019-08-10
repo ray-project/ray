@@ -7,8 +7,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include <google/protobuf/message.h>
+
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/protobuf/raylet.pb.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -47,11 +50,25 @@ class RayletConnection {
   /// \return ray::Status.
   ray::Status Disconnect();
   ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
+  ray::Status ReadProtobufMessage(ray::rpc::MessageType type,
+                                  google::protobuf::Message *message);
   ray::Status WriteMessage(MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
+  ray::Status WriteProtobufMessage(ray::rpc::MessageType type,
+                                   const google::protobuf::Message &message);
   ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
                                  std::unique_ptr<uint8_t[]> &reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
+
+  template<typename Message>
+  ray::Status AtomicProtobufRequestReply(
+      ray::rpc::MessageType request_type, ray::rpc::MessageType reply_type,
+      const google::protobuf::Message &request_message, Message *reply_message) {
+    std::unique_lock<std::mutex> guard(mutex_);
+    auto status = WriteProtobufMessage(request_type, request_message);
+    if (!status.ok()) return status;
+    return ReadProtobufMessage(reply_type, reply_message);
+  }
 
  private:
   /// File descriptor of the Unix domain socket that connects to raylet.

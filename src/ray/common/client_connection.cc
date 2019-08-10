@@ -146,6 +146,41 @@ void ServerConnection<T>::WriteMessageAsync(
 }
 
 template <class T>
+void ServerConnection<T>::WriteProtobufMessageAsync(
+    ray::rpc::MessageType type,
+    const google::protobuf::Message &message,
+    const std::function<void(const ray::Status &)> &handler) {
+
+  std::string message_data;
+  message.SerializeToString(&message_data);
+
+  int64_t length = static_cast<int64_t>(message_data.size());
+  const uint8_t *data = reinterpret_cast<const uint8_t *>(message_data.data());
+  async_writes_ += 1;
+  bytes_written_ += length;
+
+  auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
+  write_buffer->write_cookie = RayConfig::instance().ray_cookie();
+  write_buffer->write_type = static_cast<int64_t>(type);
+  write_buffer->write_length = length;
+  write_buffer->write_message.resize(length);
+  write_buffer->write_message.assign(data, data + length);
+  write_buffer->handler = handler;
+
+  auto size = async_write_queue_.size();
+  auto size_is_power_of_two = (size & (size - 1)) == 0;
+  if (size > 1000 && size_is_power_of_two) {
+    RAY_LOG(WARNING) << "ServerConnection has " << size << " buffered async writes";
+  }
+
+  async_write_queue_.push_back(std::move(write_buffer));
+
+  if (!async_write_in_flight_) {
+    DoAsyncWrites();
+  }
+}
+
+template <class T>
 void ServerConnection<T>::DoAsyncWrites() {
   // Make sure we were not writing to the socket.
   RAY_CHECK(!async_write_in_flight_);
@@ -331,7 +366,7 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   }
 
   int64_t start_ms = current_time_ms();
-  message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.data());
+  message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_.size(), read_message_.data());
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;

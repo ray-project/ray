@@ -7,7 +7,9 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
+#include <google/protobuf/message.h>
 
+#include "ray/protobuf/raylet.pb.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 
@@ -55,6 +57,16 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// \param handler A callback to run on write completion.
   void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
                          const std::function<void(const ray::Status &)> &handler);
+
+  /// Write a message to the client asynchronously.
+  ///
+  /// \param type The message type (e.g., a protobuf enum).
+  /// \param message A serialized protobuf message.
+  /// \param handler A callback to run on write completion.
+  void WriteProtobufMessageAsync(
+      ray::rpc::MessageType type,
+      const google::protobuf::Message &message,
+      const std::function<void(const ray::Status &)> &handler);
 
   /// Write a buffer to this connection.
   ///
@@ -130,7 +142,7 @@ template <typename T>
 using ClientHandler = std::function<void(ClientConnection<T> &)>;
 template <typename T>
 using MessageHandler =
-    std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, const uint8_t *)>;
+    std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, int64_t, const uint8_t *)>;
 
 /// \typename ClientConnection
 ///

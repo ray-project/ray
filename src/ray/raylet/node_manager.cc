@@ -6,6 +6,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
+#include "ray/protobuf/raylet.pb.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 
@@ -13,6 +14,14 @@ namespace {
 
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+
+template<typename Message>
+Message ToProtobuf(const uint8_t* data, int64_t size) {
+  Message message;
+  RAY_CHECK(size < std::numeric_limits<int>::max());
+  message.ParseFromArray(reinterpret_cast<const void*>(data), static_cast<int>(size));
+  return message;
+}
 
 /// A helper function to return the expected actor counter for a given actor
 /// and actor handle, according to the given actor registry. If a task's
@@ -722,8 +731,8 @@ void NodeManager::DispatchTasks(
 }
 
 void NodeManager::ProcessClientMessage(
-    const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
-    const uint8_t *message_data) {
+    const std::shared_ptr<LocalClientConnection> &client,
+    int64_t message_type, int64_t message_size, const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(DEBUG) << "[Worker] Message "
@@ -742,57 +751,58 @@ void NodeManager::ProcessClientMessage(
     }
   }
 
-  switch (message_type_value) {
-  case protocol::MessageType::RegisterClientRequest: {
-    ProcessRegisterClientRequestMessage(client, message_data);
+  switch (static_cast<int>(message_type_value)) {
+  case static_cast<int>(ray::rpc::RegisterClient): {
+    ProcessRegisterClientRequestMessage(client,
+        ToProtobuf<ray::rpc::RegisterClientRequest>(message_data, message_size));
   } break;
-  case protocol::MessageType::GetTask: {
+  case static_cast<int>(ray::rpc::GetTask): {
     RAY_CHECK(!registered_worker->UsePush());
     HandleWorkerAvailable(client);
   } break;
-  case protocol::MessageType::TaskDone: {
+  case static_cast<int>(protocol::MessageType::TaskDone): {
     RAY_CHECK(registered_worker->UsePush());
     HandleWorkerAvailable(client);
   } break;
-  case protocol::MessageType::DisconnectClient: {
+  case static_cast<int>(protocol::MessageType::DisconnectClient): {
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::IntentionalDisconnectClient: {
+  case static_cast<int>(protocol::MessageType::IntentionalDisconnectClient): {
     ProcessDisconnectClientMessage(client, /* intentional_disconnect = */ true);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::SubmitTask: {
+  case static_cast<int>(protocol::MessageType::SubmitTask): {
     ProcessSubmitTaskMessage(message_data);
   } break;
-  case protocol::MessageType::SetResourceRequest: {
+  case static_cast<int>(protocol::MessageType::SetResourceRequest): {
     ProcessSetResourceRequest(client, message_data);
   } break;
-  case protocol::MessageType::FetchOrReconstruct: {
+  case static_cast<int>(protocol::MessageType::FetchOrReconstruct): {
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
-  case protocol::MessageType::NotifyUnblocked: {
+  case static_cast<int>(protocol::MessageType::NotifyUnblocked): {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
     HandleTaskUnblocked(client, from_flatbuf<TaskID>(*message->task_id()));
   } break;
-  case protocol::MessageType::WaitRequest: {
+  case static_cast<int>(protocol::MessageType::WaitRequest): {
     ProcessWaitRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::PushErrorRequest: {
+  case static_cast<int>(protocol::MessageType::PushErrorRequest): {
     ProcessPushErrorRequestMessage(message_data);
   } break;
-  case protocol::MessageType::PushProfileEventsRequest: {
+  case static_cast<int>(protocol::MessageType::PushProfileEventsRequest): {
     auto fbs_message = flatbuffers::GetRoot<flatbuffers::String>(message_data);
     rpc::ProfileTableData profile_table_data;
     RAY_CHECK(
         profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size()));
     RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
   } break;
-  case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
+  case static_cast<int>(protocol::MessageType::FreeObjectsInObjectStoreRequest): {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
     // Clean up objects from the object store.
@@ -806,10 +816,10 @@ void NodeManager::ProcessClientMessage(
       gcs_client_->raylet_task_table().Delete(JobID::Nil(), creating_task_ids);
     }
   } break;
-  case protocol::MessageType::PrepareActorCheckpointRequest: {
+  case static_cast<int>(protocol::MessageType::PrepareActorCheckpointRequest): {
     ProcessPrepareActorCheckpointRequest(client, message_data);
   } break;
-  case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
+  case static_cast<int>(protocol::MessageType::NotifyActorResumedFromCheckpoint): {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
 
@@ -822,14 +832,14 @@ void NodeManager::ProcessClientMessage(
 }
 
 void NodeManager::ProcessRegisterClientRequestMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<LocalClientConnection> &client, const ray::rpc::RegisterClientRequest &message) {
   client->Register();
-  auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  Language language = static_cast<Language>(message->language());
-  WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
-  auto worker = std::make_shared<Worker>(worker_id, message->worker_pid(), language,
-                                         message->port(), client, client_call_manager_);
-  if (message->is_worker()) {
+
+  Language language = message.language();
+  WorkerID worker_id = WorkerID::FromBinary(message.worker_id());
+  auto worker = std::make_shared<Worker>(worker_id, message.worker_pid(), language,
+                                         message.port(), client, client_call_manager_);
+  if (message.is_worker()) {
     // Register the new worker.
     bool use_push_task = worker->UsePush();
     auto connection = worker->Connection();
@@ -840,7 +850,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     }
   } else {
     // Register the new driver.
-    const JobID job_id = from_flatbuf<JobID>(*message->job_id());
+    const JobID job_id = JobID::FromBinary(message.job_id());
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
@@ -849,7 +859,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     local_queues_.AddDriverTaskId(driver_task_id);
     RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
         job_id, /*is_dead=*/false, std::time(nullptr),
-        initial_config_.node_manager_address, message->worker_pid()));
+        initial_config_.node_manager_address, message.worker_pid()));
   }
 }
 

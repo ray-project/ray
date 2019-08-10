@@ -119,9 +119,9 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     ClientHandler<boost::asio::local::stream_protocol> client_handler =
         [this](LocalClientConnection &client) { node_manager_.ProcessNewClient(client); };
     MessageHandler<boost::asio::local::stream_protocol> message_handler =
-        [this](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+        [this](std::shared_ptr<LocalClientConnection> client, int64_t message_type, int64_t message_size,
                const uint8_t *message) {
-          node_manager_.ProcessClientMessage(client, message_type, message);
+          node_manager_.ProcessClientMessage(client, message_type, message_size, message);
         };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = LocalClientConnection::Create(

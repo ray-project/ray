@@ -15,6 +15,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/protobuf/raylet.pb.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
 
@@ -137,11 +138,70 @@ ray::Status RayletConnection::Disconnect() {
   return ray::Status::OK();
 }
 
-ray::Status RayletConnection::ReadMessage(MessageType type,
-                                          std::unique_ptr<uint8_t[]> &message) {
+ray::Status RayletConnection::ReadProtobufMessage(ray::rpc::MessageType type,
+                                                  google::protobuf::Message *message) {
   int64_t cookie;
   int64_t type_field;
   int64_t length;
+  std::vector<uint8_t> message_data;
+
+  int closed = read_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
+  if (closed) goto disconnected;
+  RAY_CHECK(cookie == RayConfig::instance().ray_cookie());
+  closed = read_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
+  if (closed) goto disconnected;
+  closed = read_bytes(conn_, (uint8_t *)&length, sizeof(length));
+  if (closed) goto disconnected;
+  closed = read_bytes(conn_, message_data.data(), length);
+  message_data.resize(static_cast<size_t>(length));
+  if (closed) {
+    // Handle the case in which the socket is closed.
+  disconnected:
+    message = nullptr;
+    type_field = static_cast<int64_t>(MessageType::DisconnectClient);
+    length = 0;
+  }
+  // TODO
+  if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
+    return ray::Status::IOError("[RayletClient] Raylet connection closed.");
+  }
+  // TODO
+  if (type_field != static_cast<int64_t>(type)) {
+    return ray::Status::TypeError(
+        std::string("[RayletClient] Raylet connection corrupted. ") +
+        "Expected message type: " + std::to_string(static_cast<int64_t>(type)) +
+        "; got message type: " + std::to_string(type_field) +
+        ". Check logs or dmesg for previous errors.");
+  }
+  message->ParseFromArray(reinterpret_cast<void *>(message_data.data()), message_data.size());
+  return ray::Status::OK();
+}
+
+ray::Status RayletConnection::WriteMessage(MessageType type,
+                                           flatbuffers::FlatBufferBuilder *fbb) {
+  std::unique_lock<std::mutex> guard(write_mutex_);
+  int64_t cookie = RayConfig::instance().ray_cookie();
+  int64_t length = fbb ? fbb->GetSize() : 0;
+  uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
+  int64_t type_field = static_cast<int64_t>(type);
+  auto io_error = ray::Status::IOError("[RayletClient] Connection closed unexpectedly.");
+  int closed;
+  closed = write_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
+  if (closed) return io_error;
+  closed = write_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
+  if (closed) return io_error;
+  closed = write_bytes(conn_, (uint8_t *)&length, sizeof(length));
+  if (closed) return io_error;
+  closed = write_bytes(conn_, bytes, length * sizeof(char));
+  if (closed) return io_error;
+  return ray::Status::OK();
+}
+
+ray::Status RayletConnection::ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message) {
+  int64_t cookie;
+  int64_t type_field;
+  int64_t length;
+
   int closed = read_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
   if (closed) goto disconnected;
   RAY_CHECK(cookie == RayConfig::instance().ray_cookie());
@@ -152,16 +212,18 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
   message = std::unique_ptr<uint8_t[]>(new uint8_t[length]);
   closed = read_bytes(conn_, message.get(), length);
   if (closed) {
-    // Handle the case in which the socket is closed.
     message.reset(nullptr);
+    // Handle the case in which the socket is closed.
   disconnected:
     message = nullptr;
     type_field = static_cast<int64_t>(MessageType::DisconnectClient);
     length = 0;
   }
+  // TODO
   if (type_field == static_cast<int64_t>(MessageType::DisconnectClient)) {
     return ray::Status::IOError("[RayletClient] Raylet connection closed.");
   }
+  // TODO
   if (type_field != static_cast<int64_t>(type)) {
     return ray::Status::TypeError(
         std::string("[RayletClient] Raylet connection corrupted. ") +
@@ -172,12 +234,16 @@ ray::Status RayletConnection::ReadMessage(MessageType type,
   return ray::Status::OK();
 }
 
-ray::Status RayletConnection::WriteMessage(MessageType type,
-                                           flatbuffers::FlatBufferBuilder *fbb) {
+ray::Status RayletConnection::WriteProtobufMessage(ray::rpc::MessageType type,
+                                                   const google::protobuf::Message &message) {
   std::unique_lock<std::mutex> guard(write_mutex_);
+
+  std::string message_data;
+  message.SerializeToString(&message_data);
+
   int64_t cookie = RayConfig::instance().ray_cookie();
-  int64_t length = fbb ? fbb->GetSize() : 0;
-  uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
+  int64_t length = static_cast<int64_t>(message_data.size());
+  uint8_t *bytes = (uint8_t *)(message_data.data());
   int64_t type_field = static_cast<int64_t>(type);
   auto io_error = ray::Status::IOError("[RayletClient] Connection closed unexpectedly.");
   int closed;
@@ -211,14 +277,17 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
-      language, port);
-  fbb.Finish(message);
+  ray::rpc::RegisterClientRequest message;
+  message.set_worker_id(client_id.Binary());
+  message.set_is_worker(is_worker);
+  message.set_worker_pid(getpid());
+  message.set_job_id(job_id.Binary());
+  message.set_language(language);
+  message.set_port(port);
+
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
+  auto status = conn_->WriteProtobufMessage(ray::rpc::RegisterClient, message);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
@@ -231,29 +300,28 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
-  std::unique_ptr<uint8_t[]> reply;
+  ray::rpc::GetTaskRequest request;
+  request.set_worker_id(client_id_.Binary());
+  ray::rpc::GetTaskReply reply;
   // Receive a task from the raylet. This will block until the raylet
   // gives this client a task.
   auto status =
-      conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply);
+      conn_->AtomicProtobufRequestReply(ray::rpc::GetTask, ray::rpc::GetTask, request, &reply);
   if (!status.ok()) return status;
-  // Parse the flatbuffer object.
-  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
   // Set the resource IDs for this task.
   resource_ids_.clear();
-  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
-    auto const &fractional_resource_ids =
-        reply_message->fractional_resource_ids()->Get(i);
+  for (size_t i = 0; i < reply.fractional_resource_ids_size(); ++i) {
+    auto const &fractional_resource_ids = reply.fractional_resource_ids(i);
     auto &acquired_resources =
-        resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
+        resource_ids_[fractional_resource_ids.resource_name()];
 
-    size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
-    size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
+    size_t num_resource_ids = fractional_resource_ids.resource_ids_size();
+    size_t num_resource_fractions = fractional_resource_ids.resource_fractions_size();
     RAY_CHECK(num_resource_ids == num_resource_fractions);
     RAY_CHECK(num_resource_ids > 0);
     for (size_t j = 0; j < num_resource_ids; ++j) {
-      int64_t resource_id = fractional_resource_ids->resource_ids()->Get(j);
-      double resource_fraction = fractional_resource_ids->resource_fractions()->Get(j);
+      int64_t resource_id = fractional_resource_ids.resource_ids(j);
+      double resource_fraction = fractional_resource_ids.resource_fractions(j);
       if (num_resource_ids > 1) {
         int64_t whole_fraction = resource_fraction;
         RAY_CHECK(whole_fraction == resource_fraction);
@@ -264,7 +332,7 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
 
   // Return the copy of the task spec and pass ownership to the caller.
   task_spec->reset(
-      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
+      new ray::TaskSpecification(reply.task_spec()));
   return ray::Status::OK();
 }
 

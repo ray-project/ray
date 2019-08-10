@@ -126,8 +126,10 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
         task.GetTaskSpecification().GetMessage());
     request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
         task.GetTaskExecutionSpec().GetMessage());
-    request.set_resource_ids(resource_id_set.Serialize());
-
+    for (const auto &e : resource_id_set.ToProtobuf()) {
+      auto resource = request.add_resource_ids();
+      *resource = e;
+    }
     auto status = rpc_client_->AssignTask(
         request, [](Status status, const rpc::AssignTaskReply &reply) {
           // Worker has finished this task. There's nothing to do here
@@ -138,16 +140,15 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
   } else {
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
+    rpc::GetTaskReply reply;
+    reply.set_task_spec(spec.Serialize());
+    for (const auto &e : resource_id_set.ToProtobuf()) {
+      auto resource = reply.add_fractional_resource_ids();
+      *resource = e;
+    }
 
-    auto message =
-        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
-                                     fbb.CreateVector(resource_id_set_flatbuf));
-    fbb.Finish(message);
-    Connection()->WriteMessageAsync(
-        static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-        fbb.GetBufferPointer(), finish_assign_callback);
+    Connection()->WriteProtobufMessageAsync(
+        rpc::GetTask, reply, finish_assign_callback);
   }
 }
 

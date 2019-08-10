@@ -65,6 +65,20 @@ cc_proto_library(
     deps = [":object_manager_proto"],
 )
 
+proto_library(	
+    name = "raylet_proto",	
+    srcs = ["src/ray/protobuf/raylet.proto"],	
+    deps = [	
+        ":common_proto",	
+        ":gcs_proto",	
+    ],	
+)	
+
+cc_proto_library(	
+    name = "raylet_cc_proto",	
+    deps = [":raylet_proto"],	
+)	
+
 proto_library(
     name = "worker_proto",
     srcs = ["src/ray/protobuf/worker.proto"],
@@ -223,6 +237,7 @@ cc_library(
         ":common_cc_proto",
         ":node_manager_fbs", # TODO
         ":ray_util",
+        ":raylet_cc_proto",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@plasma//:plasma_client",
@@ -325,6 +340,7 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":raylet_cc_proto",
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",

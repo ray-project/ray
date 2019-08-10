@@ -12,6 +12,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
+#include "ray/protobuf/raylet.pb.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
@@ -90,7 +91,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                            int64_t message_type, const uint8_t *message_data);
+                            int64_t message_type, int64_t message_size, const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
@@ -393,7 +394,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
-      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+      const std::shared_ptr<LocalClientConnection> &client, const ray::rpc::RegisterClientRequest &message);
 
   /// Handle the case that a worker is available.
   ///
