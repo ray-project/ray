@@ -48,14 +48,6 @@ If TensorBoard is installed, automatically visualize all trial results:
 Distributed Quick Start
 -----------------------
 
-.. note::
-
-    This assumes that you have already setup your AWS account and AWS credentials (``aws configure``). To run this example, you will need to install the following:
-
-    .. code-block:: bash
-
-        $ pip install ray torch torchvision filelock
-
 1. Import and initialize Ray by appending the following to your example script.
 
 .. code-block:: python
@@ -71,25 +63,35 @@ Distributed Quick Start
 
 Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
-2. Download an example cluster yaml here: :download:`tune-default.yaml <../../python/ray/tune/examples/tune-default.yaml>`
+2. Download the following example Ray cluster configuration as ``tune-local-default.yaml`` and replace the appropriate fields:
+
+.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
+   :language: yaml
+
+Alternatively, download it here: :download:`tune-local-default.yaml <../../python/ray/tune/examples/tune-local-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
+
 3. Run ``ray submit`` like the following.
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
-This will start 3 AWS machines and run a distributed hyperparameter search across them. Append ``[--stop]`` to automatically shutdown your nodes afterwards.
+This will start Ray on all of your machines and run a distributed hyperparameter search across them.
 
 To summarize, here are the full set of commands:
 
 .. code-block:: bash
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-default.yaml
-    ray submit tune-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-local-default.yaml
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
 
 
-Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including setting up distributed experiments on local machines, using GCP, adding resilience to spot instance usage, and more.
+Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:
+
+ 1. Setting up distributed experiments on your local cluster
+ 2. Using AWS and GCP
+ 3. Spot instance usage/pre-emptible instances, and more.
 
 Getting Started
 ---------------

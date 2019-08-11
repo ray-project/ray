@@ -63,7 +63,8 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
 
   const auto &object_info =
       flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
-  const auto &object_id = from_flatbuf<ObjectID>(*object_info->object_id());
+  const ObjectID object_id =
+      ObjectID::FromPlasmaIdBinary(object_info->object_id()->str());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {

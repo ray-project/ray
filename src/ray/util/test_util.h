@@ -3,6 +3,8 @@
 
 #include <string>
 
+#include "ray/util/util.h"
+
 namespace ray {
 
 /// Wait until the condition is met, or timeout is reached.
@@ -26,6 +28,13 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
     }
   }
   return false;
+}
+
+// A helper function to return a random task id.
+inline TaskID RandomTaskId() {
+  std::string data(TaskID::Size(), 0);
+  FillRandom(&data);
+  return TaskID::FromBinary(data);
 }
 
 }  // namespace ray
