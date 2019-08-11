@@ -146,6 +146,7 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +
                 store_socket_name + " " + raylet_socket_name + "\"")
+        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
     RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;
@@ -283,6 +284,10 @@ void CoreWorkerTest::TestActorTask(
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
+      ASSERT_TRUE(return_ids[0].IsReturnObject());
+      ASSERT_EQ(
+          static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
+          is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
