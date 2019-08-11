@@ -1,8 +1,7 @@
 An Overview of the Internals
 ============================
 
-In this document, we trace through in more detail what happens at the system
-level when certain API calls are made.
+In this document, we overview the internal architecture of Ray.
 
 Connecting to Ray
 -----------------
@@ -32,6 +31,28 @@ similarly the processes will continue running when the script exits. In this
 case, all processes except workers that correspond to actors are shared between
 different driver processes.
 
+
+Ray Processes
+-------------
+
+When using Ray, several processes are involved.
+
+- Multiple **worker** processes execute tasks and store results in object
+  stores. Each worker is a separate process.
+- One **object store** per node stores immutable objects in shared memory and
+  allows workers to efficiently share objects on the same node with minimal
+  copying and deserialization.
+- One **raylet** per node assigns tasks to workers on the same node.
+- A **driver** is the Python process that the user controls. For example, if the
+  user is running a script or using a Python shell, then the driver is the Python
+  process that runs the script or the shell. A driver is similar to a worker in
+  that it can submit tasks to its raylet and get objects from the object
+  store, but it is different in that the raylet will not assign tasks to
+  the driver to be executed.
+- A **Redis server** maintains much of the system's state. For example, it keeps
+  track of which objects live on which machines and of the task specifications
+  (but not data). It can also be queried directly for debugging purposes.
+
 Defining a remote function
 --------------------------
 
@@ -54,12 +75,7 @@ Now, consider a remote function definition as below.
       return x + 1
 
 When the remote function is defined as above, the function is immediately
-pickled, assigned a unique ID, and stored in a Redis server. You can view the
-remote functions in the centralized control plane as below.
-
-.. code-block:: python
-
-  TODO: Fill this in.
+pickled, assigned a unique ID, and stored in a Redis server.
 
 Each worker process has a separate thread running in the background that
 listens for the addition of remote functions to the centralized control state.
@@ -95,9 +111,8 @@ When a driver or worker invokes a remote function, a number of things happen.
     raylet. This is done by peer-to-peer connection between raylets.
     The task table can be inspected as follows.
 
-    .. code-block:: python
-
-      TODO: Fill this in.
+.. autofunction:: ray.tasks
+    :noindex:
 
 - Once a task has been scheduled to a raylet, the raylet queues
   the task for execution. A task is assigned to a worker when enough resources
@@ -109,11 +124,10 @@ When a driver or worker invokes a remote function, a number of things happen.
   state, to reflect the fact that it contains the newly created objects. The
   object table can be viewed as follows.
 
-  .. code-block:: python
+.. autofunction:: ray.objects
+    :noindex:
 
-    TODO: Fill this in.
-
-  When the task's return values are placed into the object store, they are first
+- When the task's return values are placed into the object store, they are first
   serialized into a contiguous blob of bytes using the `Apache Arrow`_ data
   layout, which is helpful for efficiently sharing data between processes using
   shared memory.
@@ -128,8 +142,6 @@ Notes and limitations
   evicted, then the call to ``ray.get`` for that object will initiate the
   reconstruction of the object. The raylet will attempt to reconstruct
   the object by replaying its task lineage.
-
-TODO: Limitations on reconstruction.
 
 Getting an object ID
 --------------------

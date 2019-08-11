@@ -7,7 +7,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 echo "PYTHON is $PYTHON"
 
-cython_examples="$ROOT_DIR/../../examples/cython"
+cython_examples="$ROOT_DIR/../../doc/examples/cython"
 
 if [[ "$PYTHON" == "2.7" ]]; then
 

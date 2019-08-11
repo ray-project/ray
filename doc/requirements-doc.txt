@@ -3,6 +3,7 @@ click
 filelock
 flatbuffers
 funcsigs
+jsonschema
 mock
 numpy
 opencv-python-headless

@@ -149,9 +149,6 @@ install:
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
-  # stats test.
-  - ./ci/suppress_output bazel build //:stats_test -c opt
-  - ./bazel-bin/stats_test
 
   # core worker test.
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
