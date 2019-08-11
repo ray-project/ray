@@ -77,25 +77,20 @@ if __name__ == "__main__":
         max_t=100)
 
     config = {
-            "stop": {
-                "training_iteration": 1 if args.smoke_test else 99999
-            },
-            "num_samples": 20,
-            "resources_per_trial": {
-                "cpu": 1,
-                "gpu": 0
-            },
-        }
+        "stop": {
+            "training_iteration": 1 if args.smoke_test else 99999
+        },
+        "num_samples": 20,
+        "resources_per_trial": {
+            "cpu": 1,
+            "gpu": 0
+        },
+    }
 
     algo = TuneBOHB(
-            config_space,
-            max_concurrent=4,
-            metric="mean_loss",
-            mode="min"
-        )
+        config_space, max_concurrent=4, metric="mean_loss", mode="min")
 
-    run(
-        MyTrainableClass,
+    run(MyTrainableClass,
         name="bohb_test",
         scheduler=bohb,
         search_alg=algo,

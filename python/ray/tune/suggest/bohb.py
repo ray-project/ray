@@ -46,7 +46,8 @@ class TuneBOHB(SuggestionAlgorithm):
         >>> config_space.add_hyperparameter(
         >>>     CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
         >>> config_space.add_hyperparameter(
-        >>>     CS.CategoricalHyperparameter(name='activation', choices=['relu', 'tanh']))
+        >>>     CS.CategoricalHyperparameter(name='actuvation',
+        >>>                                     choices=['relu', 'tanh']))
         >>> current_best_params = [{
         >>>     'width': 10,
         >>>     'height': 0,
