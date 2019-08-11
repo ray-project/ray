@@ -2,13 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import logging
 
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler, Bracket
 from ray.tune.trial import Trial
-from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +53,9 @@ class HyperBandForBOHB(HyperBandScheduler):
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = Bracket(
-                        self._time_attr,
-                        self._get_n0(s),
-                        self._get_r0(s),
-                        self._max_t_attr,
-                        self._eta,
-                        s)
+                    cur_bracket = Bracket(self._time_attr, self._get_n0(s),
+                                          self._get_r0(s), self._max_t_attr,
+                                          self._eta, s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 

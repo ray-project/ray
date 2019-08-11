@@ -11,6 +11,7 @@ except ImportError:
 
 from ray.tune.suggest import SuggestionAlgorithm
 
+logger = logging.getLogger(__name__)
 
 class JobWrapper():
     """Dummy class"""
@@ -98,10 +99,8 @@ class TuneBOHB(SuggestionAlgorithm):
             hbs_wrapper = self.to_wrapper(trial_id, result)
             self.bohber.new_result(hbs_wrapper)
         else:
-            logger.warning(
-                "BOHB Info not detected in result. Are you using "
-                "HyperBandForBOHB as a scheduler?"
-            )
+            logger.warning("BOHB Info not detected in result. Are you using "
+                           "HyperBandForBOHB as a scheduler?")
 
     def on_trial_complete(self,
                           trial_id,

@@ -8,6 +8,7 @@ import logging
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
+from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
@@ -202,12 +203,12 @@ class HyperBandScheduler(FIFOScheduler):
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
-                    raise Exception("Trial with unexpected status encountered")
+                    raise TuneError("Trial with unexpected status encountered")
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
                 if t.status not in [Trial.PAUSED, Trial.RUNNING]:
-                    raise Exception("Trial with unexpected status encountered")
+                    raise TuneError("Trial with unexpected status encountered")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
                         self._unpause_trial(trial_runner, t)
