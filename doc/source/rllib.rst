@@ -30,7 +30,8 @@ Then, you can try out training in the following equivalent ways:
 .. code-block:: python
 
   from ray import tune
-  tune.run("PPO", config={"env": "CartPole-v0"})
+  from ray.rllib.agents.ppo import PPOTrainer
+  tune.run(PPOTrainer, config={"env": "CartPole-v0"})
 
 Policies
 ~~~~~~~~
