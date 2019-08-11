@@ -1,12 +1,20 @@
-""" Trainable using FCNet Benchmark from Tabular Benchmarks for Hyperparameter Optimization and Neural Architecture Search """
+""" Trainable using FCNet Benchmark from Tabular Benchmarks for Hyperparameter
+    Optimization and Neural Architecture Search """
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os
 
+import ray
 from ray.tune import Trainable
 import tarfile
 import urllib
-from nas_benchmarks.tabular_benchmarks import FCNetProteinStructureBenchmark, FCNetSliceLocalizationBenchmark, FCNetNavalPropulsionBenchmark, FCNetParkinsonsTelemonitoringBenchmark
+import time
+import json
+from nas_benchmarks.tabular_benchmarks import FCNetProteinStructureBenchmark, \
+    FCNetSliceLocalizationBenchmark, FCNetNavalPropulsionBenchmark, \
+    FCNetParkinsonsTelemonitoringBenchmark
 
 
 class FCNetTrainable(Trainable):
@@ -14,13 +22,14 @@ class FCNetTrainable(Trainable):
 
         # download dataset
         file_tmp = urllib.urlretrieve(
-            'http://ml4aad.org/wp-content/uploads/2019/01/fcnet_tabular_benchmarks.tar.gz',
-            filename=None)[0]
+            "http://ml4aad.org/wp-content/uploads/2019/01" +
+            "/fcnet_tabular_benchmarks.tar.gz",
+            "./fcnet_tabular_benchmarks")[0]
         base_name = os.path.basename(
-            'http://ml4aad.org/wp-content/uploads/2019/01/fcnet_tabular_benchmarks.tar.gz'
-        )
+            "http://ml4aad.org/wp-content/uploads/2019/01" +
+            "fcnet_tabular_benchmarks.tar.gz")
 
-        self.file_name, self.file_extension = os.path.splitext(base_name)
+        file_name, file_extension = os.path.splitext(base_name)
         tar = tarfile.open(file_tmp)
         tar.extractall(file_name)
 
@@ -35,7 +44,7 @@ class FCNetTrainable(Trainable):
     def _train(self):
         acc, time = self.net.objective_function(self.config, self.iteration)
         self.iteration += 1
-        return {"validation_accuracy": acc, 'runtime': time}
+        return {"validation_accuracy": acc, "runtime": time}
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
@@ -50,27 +59,31 @@ class FCNetTrainable(Trainable):
 
 class FCNetProteinStructureTrainable(FCNetTrainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetProteinStructureBenchmark(self.file_name)
+        self.net = FCNetProteinStructureBenchmark(
+            data_dir="./fcnet_tabular_benchmarks/")
         super(FCNetProteinStructureTrainable, self).__init__(
             config, logger_creator)
 
 
 class FCNetSliceLocalizationTrainable(FCNetTrainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetSliceLocalizationBenchmark(self.file_name)
+        self.net = FCNetSliceLocalizationBenchmark(
+            data_dir="./fcnet_tabular_benchmarks/")
         super(FCNetSliceLocalizationTrainable, self).__init__(
             config, logger_creator)
 
 
 class FCNetNavalPropulsionTrainable(FCNetTrainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetNavalPropulsionBenchmark(self.file_name)
+        self.net = FCNetNavalPropulsionBenchmark(
+            data_dir="./fcnet_tabular_benchmarks/")
         super(FCNetNavalPropulsionTrainable, self).__init__(
             config, logger_creator)
 
 
 class FCNetParkinsonsTelemonitoringTrainable(FCNetTrainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetProteinStructureBenchmark(self.file_name)
+        self.net = FCNetParkinsonsTelemonitoringBenchmark(
+            data_dir="./fcnet_tabular_benchmarks/")
         super(FCNetParkinsonsTelemonitoringTrainable, self).__init__(
             config, logger_creator)
