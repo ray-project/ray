@@ -101,7 +101,7 @@ RLlib uses `Ray actors <actors.html>`__ to scale these architectures from a sing
 Customization
 ~~~~~~~~~~~~~
 
-RLlib provides ways to customize almost all aspects of training, including the `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
+RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
 
 .. image:: rllib-components.svg
 
