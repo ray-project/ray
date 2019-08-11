@@ -2,12 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from ray.rllib.utils import try_import_tf
 from ray.rllib.policy import policy
 from ray.rllib.models import catalog
-
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import DeveloperAPI
+
+tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -52,16 +54,25 @@ class TFEagerPolicy(policy.Policy):
             >>> ev.learn_on_batch(samples)
         """
 
-        samples = tf.nest.map_structure(tf.as_tensor, samples)
-        with tf.gradient_tape() as tape:
-            # Outputs of the model can be an arbitrary nested collection of
-            # collection of tensors/arrays. The model packs what is
-            # necessary.
-            outputs = self.model(samples["obs"])
-            loss = self.loss(outputs, samples)
-            stats = self.stats(outputs, samples)
-        grad = tape.gradient(loss)
-        self.optimizer.apply(grad)
+        samples = {
+            SampleBatch.CUR_OBS: tf.convert_to_tensor(
+                samples[SampleBatch.CUR_OBS], dtype=tf.float32),
+            SampleBatch.ACTIONS: tf.convert_to_tensor(
+                samples[SampleBatch.ACTIONS], dtype=tf.int32),
+            Postprocessing.ADVANTAGES: tf.convert_to_tensor(
+                samples[Postprocessing.ADVANTAGES], dtype=tf.float32),
+        }
+
+        with tf.GradientTape() as tape:
+            seq_len = tf.ones(len(samples[SampleBatch.CUR_OBS]))
+            model_out, states = self.model(samples, None, seq_len)
+            self.action_dist = self.dist_class(model_out)
+            loss = self.loss(self, samples)
+            stats = self.stats(self, samples)
+
+        vars = self.model.trainable_variables()
+        grads = tape.gradient(loss, vars)
+        self.optimizer.apply_gradients(zip(grads, vars))
         return stats
 
     @DeveloperAPI
@@ -140,7 +151,7 @@ class TFEagerPolicy(policy.Policy):
         return NotImplemented
 
 
-def build_tf_policy(name, postprocess_fn, loss_fn, make_model,
+def build_tf_policy(name, postprocess_fn, loss_fn,
                     make_optimizer, get_default_config=None, stats_fn=None):
 
     class EagerPolicy(TFEagerPolicy):
@@ -151,6 +162,7 @@ def build_tf_policy(name, postprocess_fn, loss_fn, make_model,
             self.dist_class, logit_dim = catalog.ModelCatalog.get_action_dist(
                 action_space, config["model"])
 
+            config["model"]["custom_model"] = "mymodel"
             model = catalog.ModelCatalog.get_model_v2(
                 observation_space,
                 action_space,
@@ -160,11 +172,13 @@ def build_tf_policy(name, postprocess_fn, loss_fn, make_model,
             )
             optimizer = make_optimizer(self, observation_space, action_space,
                                        config)
+            self.config = config
             TFEagerPolicy.__init__(self, optimizer, model, observation_space,
                                    action_space)
 
-        def postprocess_trajectory(self, samples):
-            return postprocess_fn(samples)
+        def postprocess_trajectory(self, samples, other_agent_batches=None,
+                                   episode=None):
+            return postprocess_fn(self, samples)
 
         def compute_actions(self,
                             obs_batch,
@@ -175,10 +189,19 @@ def build_tf_policy(name, postprocess_fn, loss_fn, make_model,
                             episodes=None,
                             **kwargs):
             seq_len = tf.ones(len(obs_batch))
-            model_out, states = self.model(obs_batch, state_batches, seq_len)
+            input_dict = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(
+                    obs_batch, dtype=tf.float32),
+                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                    prev_action_batch, dtype=tf.int32),
+                SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                    prev_reward_batch, dtype=tf.float32),
+                "is_training": tf.convert_to_tensor(True),
+            }
+            model_out, states = self.model(input_dict, state_batches, seq_len)
 
             actions_dist = self.dist_class(model_out)
-            return actions_dist.sample(), states, {}
+            return actions_dist.sample().numpy(), states, {}
 
         def loss(self, outputs, samples):
             return loss_fn(outputs, samples)
