@@ -10,9 +10,9 @@ import urllib.request
 class NASCifar10Trainable(Trainable):
     def _setup(self, config=None, logger_creator=None):
         # download dataset
-        urllib.request.urlretrieve(
+        urllib.urlretrieve(
             'https://storage.googleapis.com/nasbench/nasbench_full.tfrecord',
-            './')
+            './nasbench')
 
         self._global_start = config.get("start", time.time())
         self._trial_start = time.time()
@@ -40,17 +40,17 @@ class NASCifar10Trainable(Trainable):
 
 class NASCifar10ATrainable(NASCifar10Trainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = NASCifar10A('./')
+        self.net = NASCifar10A('./nasbench')
         super(NASCifar10ATrainable, self).__init__(config, logger_creator)
 
 
 class NASCifar10BTrainable(NASCifar10Trainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = NASCifar10B('./')
+        self.net = NASCifar10B('./nasbench')
         super(NASCifar10BTrainable, self).__init__(config, logger_creator)
 
 
 class NASCifar10CTrainable(NASCifar10Trainable):
     def __init__(self, config=None, logger_creator=None):
-        self.net = NASCifar10C('./')
+        self.net = NASCifar10C('./nasbench')
         super(NASCifar10CTrainable, self).__init__(config, logger_creator)
