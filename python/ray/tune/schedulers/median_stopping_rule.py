@@ -48,7 +48,7 @@ class MedianStoppingRule(FIFOScheduler):
                  metric="episode_reward_mean",
                  mode="max",
                  grace_period=60.0,
-                 eval_interval=600.0,
+                 eval_interval=0.0,
                  min_samples_required=3,
                  hard_stop=True,
                  verbose=True,
@@ -68,10 +68,8 @@ class MedianStoppingRule(FIFOScheduler):
         self._min_samples_required = min_samples_required
         self._last_eval_times = collections.defaultdict(int)
         self._metric = metric
-        if mode == "max":
-            self._metric_op = 1.
-        elif mode == "min":
-            self._metric_op = -1.
+        assert mode in {"min", "max"}, "`mode` must be 'min' or 'max'."
+        self._mode = mode
         self._time_attr = time_attr
         self._hard_stop = hard_stop
         self._verbose = verbose
@@ -82,10 +80,14 @@ class MedianStoppingRule(FIFOScheduler):
     @property
     def _trials_beyond_grace_period(self):
         trials = [
-            trial for trial in self._results if (trial.last_result.get(
-                self._time_attr, -float("inf")) > self._grace_period)
+            trial for trial, result_log in self._results.items() if (
+                result_log[-1].get(self._time_attr, float("-inf")) > self._grace_period)
         ]
         return trials
+
+    @property
+    def worst(self):
+        return float("-inf") if self._mode == "max" else float("inf")
 
     def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
@@ -111,7 +113,7 @@ class MedianStoppingRule(FIFOScheduler):
             logger.info("Trial {} best res={} vs median res={} at t={}".format(
                 trial, best_result, median_result, result_time))
 
-        if self.mode == "max":
+        if self._mode == "max":
             comparison = best_result < median_result
         else:
             comparison = best_result > median_result
@@ -135,13 +137,14 @@ class MedianStoppingRule(FIFOScheduler):
             len(self._stopped_trials))
 
     def _get_median_result(self, t_max=float("inf")):
-        scores = []
-        for trial in self._trials_beyond_grace_period:
-            scores.append(self._running_result(trial, t_max))
+        scores = [
+            self._running_result(trial, t_max)
+                for trial in self._trials_beyond_grace_period
+        ]
         if len(scores) >= self._min_samples_required:
             return np.median(scores)
         else:
-            return float("-inf")
+            return self.worst
 
     def _running_result(self, trial, t_max=float("inf")):
         results = self._results[trial]
