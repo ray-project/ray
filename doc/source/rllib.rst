@@ -7,8 +7,13 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
-Installation
-------------
+RLlib in 60 seconds
+-------------------
+
+The following is a whirlwind overview of RLlib. See also the full `table of contents <rllib-toc.html>`__ for a more in-depth guide.
+
+Running RLlib
+~~~~~~~~~~~~~
 
 RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the RLlib module:
 
@@ -16,46 +21,88 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
   pip install ray[rllib]  # also recommended: ray[debug]
 
-RLlib in 60 seconds
--------------------
+Then, you can try out training in the following equivalent ways:
 
-This section is a brief overview of RLlib. See also the full `table of contents <rllib-toc.html>`__.
+.. code-block:: bash
 
-Policies and Policy Rollout
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  rllib train --run=PPO --env=CartPole-v0
 
-`Policies` are a core concept in RLlib. In a nutshell, policies are Python classes that define how an agent acts in an environment. In a `single-agent environment`, `rollout workers` query the policy to determine agent actions. In `multi-agent environments`, there may be an ensemble of policies, each controlling `one or more agents`:
+.. code-block:: python
 
-:policy-diagram:
+  from ray import tune
+  tune.run("PPO", config={"env": "CartPole-v0"})
 
-Policies can be implemented using `any framework`. However, for TensorFlow and PyTorch, RLlib has `build_tf_policy` and `build_torch_policy` helper functions that let you define a trainable policy in just a few lines of code:
-
-:build-tf-policy:
-
-Experience Batches
-~~~~~~~~~~~~~~~~~~
-
-Whether running in a single process or `distributed`, all data interchange in RLlib is in the form of `sample batches`. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``sample_batch_size`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
-
-In multi-agent mode, sample batches are collected for each individual policy:
-
-:batch-examples:
-
-Learning
+Policies
 ~~~~~~~~
 
-Policies define a `learn_on_batch` function that improves the policy given a sample batch of input. For TF and Torch policies, this is implemented as a `loss function` that takes as input sample batch tensors and outputs a scalar loss.
+`Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are Python classes that define how an agent acts in an environment. `Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions. In a `gym <rllib-env.html#openai-gym>`__ environment, there is a single agent and policy. In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once, and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies, each controlling one or more agents:
 
-RLlib `Trainer classes` coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizer` classes that implement computation pattern designed (i.e., synchronous or asynchronous sampling, distributed replay, etc).
+.. image:: multi-flat.svg
 
-Execution
-~~~~~~~~~
+Policies can be implemented using `any framework <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__. However, for TensorFlow and PyTorch, RLlib has `build_tf_policy <rllib-concepts.html#building-policies-in-tensorflow>`__ and `build_torch_policy <rllib-concepts.html#building-policies-in-pytorch>`__ helper functions that let you define a trainable policy with a functional-style API, for example:
 
-RLlib uses `Ray` actors to seamlessly scale training from a single core to many thousands of cores in a cluster. You can control the number of rollout workers used for an algorithm by changing the ``num_workers`` parameter.
+.. code-block:: python
+
+    def policy_gradient_loss(policy, batch_tensors):
+        actions = batch_tensors[SampleBatch.ACTIONS]
+        rewards = batch_tensors[SampleBatch.REWARDS]
+        return -tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
+
+    # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>
+    MyTFPolicy = build_tf_policy(
+        name="MyTFPolicy",
+        loss_fn=policy_gradient_loss)
+
+Trajectory Batches
+~~~~~~~~~~~~~~~~~~
+
+Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__, all data interchange in RLlib is in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``sample_batch_size`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
+
+An typical sample batch looks something like the following when summarized. Since all values are kept in arrays, this allows for efficient encoding and transmission across the network:
+
+.. code-block:: python
+
+ { 'action_logp': np.ndarray((200,), dtype=float32, min=-0.701, max=-0.685, mean=-0.694),
+   'actions': np.ndarray((200,), dtype=int64, min=0.0, max=1.0, mean=0.495),
+   'dones': np.ndarray((200,), dtype=bool, min=0.0, max=1.0, mean=0.055),
+   'infos': np.ndarray((200,), dtype=object, head={}),
+   'new_obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.018),
+   'obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.016),
+   'rewards': np.ndarray((200,), dtype=float32, min=1.0, max=1.0, mean=1.0),
+   't': np.ndarray((200,), dtype=int64, min=0.0, max=34.0, mean=9.14)}
+
+In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__, sample batches are collected separately for each individual policy.
+
+Training
+~~~~~~~~
+
+Policies each define a ``learn_on_batch()`` method that improves the policy given a sample batch of input. For TF and Torch policies, this is implemented using a `loss function` that takes as input sample batch tensors and outputs a scalar loss.
+
+RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizers <rllib-concepts.html#policy-optimization>`__ that implement the desired computation pattern (i.e., synchronous or asynchronous sampling, distributed replay, etc):
+
+.. figure:: a2c-arch.svg
+
+    Synchronous Sampling (e.g., A2C, PG, PPO)
+
+.. figure:: dqn-arch.svg
+
+    Synchronous Replay (e.g., DQN, DDPG, TD3)
+
+.. figure:: impala-arch.svg
+
+    Asynchronous Sampling (e.g., IMPALA, APPO)
+
+.. figure:: apex-arch.svg
+
+    Asynchronous Replay (e.g., Ape-X)
+
+RLlib uses `Ray actors <actors.html>`__ to scale these architectures from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
 
 Customization
 ~~~~~~~~~~~~~
 
-RLlib provides ways to customize almost all aspects of training, including the `neural network model`, `action distribution`, `losses`, and `policy definitions`.
+RLlib provides ways to customize almost all aspects of training, including the `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
+
+.. image:: rllib-components.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
