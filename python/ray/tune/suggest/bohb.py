@@ -22,45 +22,51 @@ class JobWrapper():
 
 
 class TuneBOHB(SuggestionAlgorithm):
-    """Tune Suggestion Algorithm for BOHB code
+    """BOHB suggestion component.
 
-        Requires HpBandSter and ConfigSpace to be installed. You can install
-        HpBandSter with the command: `pip install hpbandster` and
-        ConfigSpace with the command: `pip install ConfigSpace`.
+    Requires HpBandSter and ConfigSpace to be installed. You can install
+    HpBandSter with the command: `pip install hpbandster` and
+    ConfigSpace with the command: `pip install ConfigSpace`.
 
-        Parameters:
-            space (dict): Continuous ConfigSpace search space. Parameters will
-                be sampled from this space which will be used to run trials.
-            max_concurrent (int): Number of maximum concurrent trials. Defaults
-                to 10.
-            metric (str): The training result objective value attribute.
-            bohb_config (dict): configuration for HpBandSter BOHB algorithm
-            mode (str): One of {min, max}. Determines whether objective is
-                minimizing or maximizing the metric attribute.
+    This should be used in conjunction with HyperBandForBOHB.
 
-        Example:
-        >>> CS = ConfigSpace
-        >>> config_space = CS.ConfigurationSpace()
-        >>> config_space.add_hyperparameter(
-        >>>     CS.UniformFloatHyperparameter('width', lower=0, upper=20))
-        >>> config_space.add_hyperparameter(
-        >>>     CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
-        >>> config_space.add_hyperparameter(
-        >>>     CS.CategoricalHyperparameter(name='activation', choices=['relu', 'tanh']))
-        >>> current_best_params = [{
-        >>>     'width': 10,
-        >>>     'height': 0,
-        >>>     'activation': 0, # The index of "relu"
-        >>> }]
-        >>> algo = TuneBOHB(
-        >>>     config_space, max_concurrent=4, metric="mean_loss", mode="min")
-        """
+    Parameters:
+        space (ConfigurationSpace): Continuous ConfigSpace search space.
+            Parameters will be sampled from this space which will be used
+            to run trials.
+        bohb_config (dict): configuration for HpBandSter BOHB algorithm
+        max_concurrent (int): Number of maximum concurrent trials. Defaults
+            to 10.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
+
+    Example:
+        CS = ConfigSpace
+        config_space = CS.ConfigurationSpace()
+        config_space.add_hyperparameter(
+            CS.UniformFloatHyperparameter('width', lower=0, upper=20))
+        config_space.add_hyperparameter(
+            CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
+        config_space.add_hyperparameter(
+            CS.CategoricalHyperparameter(
+                name='activation', choices=['relu', 'tanh']))
+        algo = TuneBOHB(
+            config_space, max_concurrent=4, metric="mean_loss", mode="min")
+        bohb = HyperBandForBOHB(
+            time_attr="training_iteration",
+            metric="mean_loss",
+            mode="min",
+            max_t=100)
+        run(MyTrainableClass, scheduler=bohb, search_alg=algo)
+
+    """
 
     def __init__(self,
                  space,
+                 bohb_config=None,
                  max_concurrent=10,
                  metric="neg_mean_loss",
-                 bohb_config=None,
                  mode="max"):
         assert hpbandster is not None, "HpBandSter must be installed!"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
@@ -91,6 +97,11 @@ class TuneBOHB(SuggestionAlgorithm):
         if "budget" in result.get("hyperband_info", {}):
             hbs_wrapper = self.to_wrapper(trial_id, result)
             self.bohber.new_result(hbs_wrapper)
+        else:
+            logger.warning(
+                "BOHB Info not detected in result. Are you using "
+                "HyperBandForBOHB as a scheduler?"
+            )
 
     def on_trial_complete(self,
                           trial_id,

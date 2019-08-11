@@ -210,7 +210,7 @@ class HyperBandScheduler(FIFOScheduler):
                     raise Exception("Trial with unexpected status encountered")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
-                        trial_runner.trial_executor.unpause_trial(t)
+                        self._unpause_trial(trial_runner, t)
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
@@ -278,6 +278,9 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in band:
                 out += "\n  {}".format(bracket)
         return out
+
+    def _unpause_trial(self, trial_runner, trial):
+        trial_runner.trial_executor.unpause_trial(trial)
 
 
 class Bracket():
@@ -349,7 +352,7 @@ class Bracket():
 
         self._r *= self._eta
         self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
-        self._cumul_r += self._r
+        self._cumul_r = self._r
         sorted_trials = sorted(
             self._live_trials,
             key=lambda t: metric_op * self._live_trials[t][metric])

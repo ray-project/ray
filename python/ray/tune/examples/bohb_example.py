@@ -71,7 +71,7 @@ if __name__ == "__main__":
     config_space.add_hyperparameter(
         CS.UniformFloatHyperparameter("width", lower=0, upper=100))
 
-    bohb = HyperBandForBOHB(
+    bohb_hyperband = HyperBandForBOHB(
         time_attr="training_iteration",
         metric="episode_reward_mean",
         max_t=100)
@@ -97,6 +97,6 @@ if __name__ == "__main__":
     run(
         MyTrainableClass,
         name="bohb_test",
-        scheduler=bohb,
+        scheduler=bohb_hyperband,
         search_alg=algo,
         **config)
