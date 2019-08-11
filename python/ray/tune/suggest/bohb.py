@@ -34,6 +34,7 @@ class TuneBOHB(SuggestionAlgorithm):
             max_concurrent (int): Number of maximum concurrent trials. Defaults
                 to 10.
             metric (str): The training result objective value attribute.
+            bohb_config (dict): configuration for HpBandSter BOHB algorithm
             mode (str): One of {min, max}. Determines whether objective is
                 minimizing or maximizing the metric attribute.
 

@@ -74,7 +74,6 @@ if __name__ == "__main__":
     bohb = HyperBandForBOHB(
         time_attr="training_iteration",
         metric="episode_reward_mean",
-        grace_period=5,
         max_t=100)
 
     config = {
@@ -91,7 +90,6 @@ if __name__ == "__main__":
     algo = TuneBOHB(
             config_space,
             max_concurrent=4,
-            # num_concurrent=100,
             metric="mean_loss",
             mode="min"
         )
