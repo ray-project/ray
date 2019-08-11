@@ -10,7 +10,7 @@ To get started, take a look over the `custom env example <https://github.com/ray
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. See also the full `table of contents <rllib-toc.html>`__ for a more in-depth guide.
+The following is a whirlwind overview of RLlib. See also the full `table of contents <rllib-toc.html>`__ for a more in-depth guide including the `list of built-in algorithms <rllib-toc.html#algorithms>`__.
 
 Running RLlib
 ~~~~~~~~~~~~~
