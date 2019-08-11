@@ -102,9 +102,9 @@ class MedianStoppingRule(FIFOScheduler):
 
         result_time = result[self._time_attr]
         self._results[trial].append(result)
-        if result_time - self._last_eval_time[trial] < self._eval_interval:
+        if result_time - self._last_eval_times[trial] < self._eval_interval:
             return TrialScheduler.CONTINUE  # avoid overhead
-        self._last_eval_time[trial] = result_time
+        self._last_eval_times[trial] = result_time
         median_result = self._get_median_result(t_max=result_time)
         best_result = self._best_result(trial)
         if self._verbose:
