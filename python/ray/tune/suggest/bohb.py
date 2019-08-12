@@ -27,9 +27,10 @@ class JobWrapper():
 class TuneBOHB(SuggestionAlgorithm):
     """BOHB suggestion component.
 
-    Requires HpBandSter and ConfigSpace to be installed. You can install
-    HpBandSter with the command: `pip install hpbandster` and
-    ConfigSpace with the command: `pip install ConfigSpace`.
+    Requires HpBandSter and ConfigSpace to be installed.
+    You can install HpBandSter and ConfigSpace with:
+
+        `pip install hpbandster ConfigSpace`
 
     This should be used in conjunction with HyperBandForBOHB.
 

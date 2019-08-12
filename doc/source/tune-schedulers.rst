@@ -145,9 +145,9 @@ HyperBand (BOHB)
 
 This class is a variant of HyperBand that enables the BOHB Algorithm. This implementation is true to the original HyperBand implementation and does not implement pipelining nor straggler mitigation.
 
-This is to be used in conjunction with te Tune BOHB search algorithm. See `TuneBOHB <tune-searchalg.html#BOHB>`_ for package requirements, examples, and details.
+This is to be used in conjunction with the Tune BOHB search algorithm. See `TuneBOHB <tune-searchalg.html#BOHB>`_ for package requirements, examples, and details.
 
-An example of this in use can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`__.
+An example of this in use can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_.
 
 .. autoclass:: ray.tune.schedulers.HyperBandForBOHB
     :noindex:

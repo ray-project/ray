@@ -16,10 +16,12 @@ class HyperBandForBOHB(HyperBandScheduler):
 
     The default HyperBandScheduler implements pipelining for efficiency. This
     class introduces key changes:
-        - Trials are now placed so that the bracket with the largest size
-            is filled first.
-        - Trials will be paused even if the bracket is not filled. This allows
-            BOHB to insert new trials into the training.
+
+    1. Trials are now placed so that the bracket with the largest size is
+    filled first.
+
+    2.Trials will be paused even if the bracket is not filled. This allows
+    BOHB to insert new trials into the training.
 
     """
 
