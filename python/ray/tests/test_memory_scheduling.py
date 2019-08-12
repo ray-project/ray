@@ -33,7 +33,7 @@ def train_oom(config, reporter):
 class TestMemoryScheduling(unittest.TestCase):
     def testMemoryRequest(self):
         try:
-            ray.init(memory=200 * MB)
+            ray.init(num_cpus=1, memory=200 * MB)
             # fits first 2
             a = Actor.remote()
             b = Actor.remote()
@@ -51,7 +51,7 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testObjectStoreMemoryRequest(self):
         try:
-            ray.init(object_store_memory=300 * MB)
+            ray.init(num_cpus=1, object_store_memory=300 * MB)
             # fits first 2 (70% allowed)
             a = Actor2.remote()
             b = Actor2.remote()

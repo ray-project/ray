@@ -1002,7 +1002,7 @@ class Worker(object):
 
     def _set_plasma_client_options(self, client_name, object_store_memory):
         try:
-            logger.info("Setting plasma memory limit to {} for {}".format(
+            logger.debug("Setting plasma memory limit to {} for {}".format(
                 object_store_memory, client_name))
             self.plasma_client.set_client_options(client_name,
                                                   object_store_memory)

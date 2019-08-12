@@ -20,7 +20,8 @@ cdef class TaskSpec:
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
-    def __init__(self, TaskID task_id, JobID job_id, function_descriptor, arguments,
+    def __init__(self, TaskID task_id, JobID job_id, function_descriptor,
+                 arguments,
                  int num_returns, TaskID parent_task_id, int parent_counter,
                  ActorID actor_creation_id,
                  ObjectID actor_creation_dummy_object_id,
@@ -260,7 +261,7 @@ cdef class TaskExecutionSpec:
 
     def __init__(self):
         cdef:
-            RpcTaskExecutionSpec message;
+            RpcTaskExecutionSpec message
 
         self.c_spec.reset(new CTaskExecutionSpec(message))
 
@@ -268,7 +269,8 @@ cdef class TaskExecutionSpec:
     def from_string(const c_string& string):
         """Convert a string to a Ray `TaskExecutionSpec` Python object.
         """
-        cdef TaskExecutionSpec self = TaskExecutionSpec.__new__(TaskExecutionSpec)
+        cdef TaskExecutionSpec self = TaskExecutionSpec.__new__(
+            TaskExecutionSpec)
         self.c_spec.reset(new CTaskExecutionSpec(string))
         return self
 
@@ -281,7 +283,8 @@ cdef class Task:
     cdef:
         unique_ptr[CTask] c_task
 
-    def __init__(self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
+    def __init__(
+            self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
         self.c_task.reset(new CTask(task_spec.task_spec.get()[0],
                                     task_execution_spec.c_spec.get()[0]))
 

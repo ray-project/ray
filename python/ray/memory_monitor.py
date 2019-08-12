@@ -47,14 +47,15 @@ class RayOutOfMemoryError(Exception):
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:10]:
             proc_str += "\n{}\t{}GiB\t{}".format(
-                pid, round(rss / (1024**3), 2), " ".join(cmdline)[:100].strip())
+                pid, round(rss / (1024**3), 2),
+                " ".join(cmdline)[:100].strip())
         return ("More than {}% of the memory on ".format(int(
             100 * threshold)) + "node {} is used ({} / {} GB). ".format(
                 os.uname()[1], round(used_gb, 2), round(total_gb, 2)) +
                 "The top 10 memory consumers are:\n\n{}".format(proc_str) +
                 "\n\nIn addition, up to {} GiB of shared memory is ".format(
-                    round(get_shared(psutil.virtual_memory()) / (1024**3), 2)) +
-                "currently being used by the Ray object store. You can set "
+                    round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
+                + "currently being used by the Ray object store. You can set "
                 "the object store size with the `object_store_memory` "
                 "parameter when starting Ray, and the max Redis size with "
                 "`redis_max_memory`. Note that Ray assumes all system "

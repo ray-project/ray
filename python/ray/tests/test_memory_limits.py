@@ -49,7 +49,7 @@ class TestMemoryLimits(unittest.TestCase):
 
     def testTooLargeAllocation(self):
         try:
-            ray.init(driver_object_store_memory=100 * MB)
+            ray.init(num_cpus=1, driver_object_store_memory=100 * MB)
             ray.put(np.zeros(50 * MB, dtype=np.uint8))
             self.assertRaises(
                 OBJECT_TOO_LARGE,
@@ -61,6 +61,7 @@ class TestMemoryLimits(unittest.TestCase):
         print("*** Testing ***", driver_quota, a_quota, b_quota)
         try:
             ray.init(
+                num_cpus=1,
                 object_store_memory=300 * MB,
                 driver_object_store_memory=driver_quota)
             z = ray.put("hi")
