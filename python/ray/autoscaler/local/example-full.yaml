@@ -1,32 +1,80 @@
+# An unique identifier for the head node and workers of this cluster.
 cluster_name: default
+
+## NOTE: Typically for local clusters, min_workers == initial_workers == max_workers.
+
+# The minimum number of workers nodes to launch in addition to the head
+# node. This number should be >= 0.
+# Typically, min_workers == initial_workers == max_workers.
 min_workers: 0
-max_workers: 0
+# The initial number of worker nodes to launch in addition to the head node.
+# Typically, min_workers == initial_workers == max_workers.
 initial_workers: 0
+
+# The maximum number of workers nodes to launch in addition to the head node.
+# This takes precedence over min_workers.
+# Typically, min_workers == initial_workers == max_workers.
+max_workers: 0
+
+# Autoscaling parameters.
+# Ignore this if min_workers == initial_workers == max_workers.
 autoscaling_mode: default
-docker:
-    image: ""
-    container_name: ""
 target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty string means disabled. Assumes Docker is installed.
+docker:
+    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    container_name: "" # e.g. ray_docker
+    run_options: []  # Extra options to pass into "docker run"
+
+# Local specific configuration.
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
-    worker_ips: []
+    worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
+
+# How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: YOUR_USERNAME
     ssh_private_key: ~/.ssh/id_rsa
+
+# Leave this empty.
 head_node: {}
+
+# Leave this empty.
 worker_nodes: {}
-file_mounts: {}
-setup_commands: []
-head_setup_commands: []
-worker_setup_commands: []
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
 initialization_commands: []
+
+# List of shell commands to run to set up each nodes.
 setup_commands:
-    - source activate ray && pip install -U ray
+    - pip install -U ray
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: []
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
-    - source activate ray && ray stop
-    - source activate ray && ulimit -c unlimited && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray stop
+    - ulimit -c unlimited && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
-    - source activate ray && ray stop
-    - source activate ray && ray start --redis-address=$RAY_HEAD_IP:6379
+    - ray stop
+    - ray start --redis-address=$RAY_HEAD_IP:6379

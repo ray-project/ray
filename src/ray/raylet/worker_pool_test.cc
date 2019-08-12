@@ -33,16 +33,9 @@ class WorkerPoolMock : public WorkerPool {
     WorkerPool::StartWorkerProcess(language, dynamic_options);
   }
 
-  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
+  pid_t StartProcess(const std::vector<std::string> &worker_command_args) override {
     last_worker_pid_ += 1;
-    std::vector<std::string> local_worker_commands_args;
-    for (auto item : worker_command_args) {
-      if (item == nullptr) {
-        break;
-      }
-      local_worker_commands_args.push_back(std::string(item));
-    }
-    worker_commands_by_pid[last_worker_pid_] = std::move(local_worker_commands_args);
+    worker_commands_by_pid[last_worker_pid_] = worker_command_args;
     return last_worker_pid_;
   }
 
@@ -78,19 +71,9 @@ class WorkerPoolTest : public ::testing::Test {
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
-    std::function<void(LocalClientConnection &)> client_handler =
-        [this](LocalClientConnection &client) { HandleNewClient(client); };
-    std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
-        message_handler = [this](std::shared_ptr<LocalClientConnection> client,
-                                 int64_t message_type, const uint8_t *message) {
-          HandleMessage(client, message_type, message);
-        };
-    boost::asio::local::stream_protocol::socket socket(io_service_);
-    auto client =
-        LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
-                                      "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(
-        new Worker(pid, language, -1, client, client_call_manager_));
+    WorkerID worker_id = WorkerID::FromRandom();
+    return std::shared_ptr<Worker>(new Worker(
+        worker_id, pid, language, /* listening port */ -1, client_call_manager_));
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
@@ -103,10 +86,6 @@ class WorkerPoolTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
-
- private:
-  void HandleNewClient(LocalClientConnection &){};
-  void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
 };
 
 static inline TaskSpecification ExampleTaskSpec(
@@ -138,21 +117,23 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     workers.push_back(CreateWorker(pid));
   }
   for (const auto &worker : workers) {
+    WorkerID worker_id = worker->GetWorkerId();
     // Check that there's still a starting worker process
     // before all workers have been registered
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
-    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
-    worker_pool_.RegisterWorker(worker);
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), nullptr);
+    worker_pool_.RegisterWorker(worker_id, worker);
     // Check that we can lookup the worker after it's registered.
-    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), worker);
   }
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
+    WorkerID worker_id = worker->GetWorkerId();
     worker_pool_.DisconnectWorker(worker);
     // Check that we cannot lookup the worker after it's disconnected.
-    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), nullptr);
   }
 }
 
@@ -205,7 +186,8 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   // Assign an actor ID to the worker.
   const auto task_spec = ExampleTaskSpec();
   auto actor = worker_pool_.PopWorker(task_spec);
-  auto actor_id = ActorID::FromRandom();
+  const auto job_id = JobID::FromInt(1);
+  auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
   actor->AssignActorId(actor_id);
   worker_pool_.PushWorker(actor);
 
@@ -242,8 +224,10 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
+  const auto job_id = JobID::FromInt(1);
   TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA, ActorID::FromRandom(), {"test_op_0", "test_op_1"});
+      ActorID::Nil(), Language::JAVA,
+      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
   worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());

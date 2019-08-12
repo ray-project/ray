@@ -12,6 +12,7 @@ import json
 import logging
 import numpy as np
 import os
+import redis
 import signal
 from six.moves import queue
 import sys
@@ -40,7 +41,6 @@ import ray.state
 from ray import (
     ActorHandleID,
     ActorID,
-    ClientID,
     WorkerID,
     JobID,
     ObjectID,
@@ -200,7 +200,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID.from_random()
+                self._task_context.current_task_id = TaskID.for_fake_task()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -362,10 +362,14 @@ class Worker(object):
                         logger.warning(warning_message)
 
     def put_object(self, object_id, value):
-        """Put value in the local object store with object id objectid.
+        """Put value in the local object store with object id `objectid`.
 
-        This assumes that the value for objectid has not yet been placed in the
-        local object store.
+        This assumes that the value for `objectid` has not yet been placed in
+        the local object store. If the plasma store is full, the worker will
+        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
+        retry will delay for an exponentially doubling amount of time,
+        starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
+        will be raised.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
@@ -373,10 +377,9 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
+            plasma.PlasmaStoreFull: This is raised if the attempt to store the
+                object fails because the object store is full even after
+                multiple retries.
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
@@ -387,27 +390,48 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        # Serialize and put the object in the object store.
+        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
+        for attempt in reversed(
+                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
+            try:
+                self._try_store_and_register(object_id, value)
+                break
+            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
+                if attempt:
+                    logger.debug(
+                        "Waiting {} secs for plasma to drain.".format(delay))
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    raise plasma_exc
+
+    def _try_store_and_register(self, object_id, value):
+        """Wraps `store_and_register` with cases for existence and pickling.
+
+        Args:
+            object_id (object_id.ObjectID): The object ID of the value to be
+                put.
+            value: The value to put in the object store.
+        """
         try:
             self.store_and_register(object_id, value)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare the hashes
+            # need to add it again. TODO(rkn): We need to compare hashes
             # and make sure that the objects are in fact the same. We also
-            # should return an error code to the caller instead of printing a
+            # should return an error code to caller instead of printing a
             # message.
-            logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
+            logger.info("The object with ID {} already exists "
+                        "in the object store.".format(object_id))
         except TypeError:
-            # This error can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need these extra
-            # fallbacks here to start from the beginning. Hopefully the object
-            # could have a `__reduce__` method.
+            # TypeError can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need
+            # these extra fallbacks here to start from the beginning.
+            # Hopefully the object could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "falling back to cloudpickle.".format(
+                                   type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
@@ -694,7 +718,24 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(job_id, JobID)
+
+            if actor_creation_id is not None and not actor_creation_id.is_nil(
+            ):
+                # This is an actor creation task.
+                task_id = TaskID.for_actor_creation_task(actor_creation_id)
+            elif actor_id is not None and not actor_id.is_nil():
+                # This is an actor task.
+                task_id = TaskID.for_actor_task(
+                    self.current_job_id, self.current_task_id,
+                    self.task_context.task_index, actor_id)
+            else:
+                # This is a normal task.
+                task_id = TaskID.for_normal_task(self.current_job_id,
+                                                 self.current_task_id,
+                                                 self.task_context.task_index)
+
             task = ray._raylet.TaskSpec(
+                task_id,
                 job_id,
                 function_descriptor_list,
                 args_for_raylet,
@@ -1221,6 +1262,7 @@ def _initialize_serialization(job_id, worker=global_worker):
 
 
 def init(redis_address=None,
+         address=None,
          num_cpus=None,
          num_gpus=None,
          resources=None,
@@ -1272,6 +1314,7 @@ def init(redis_address=None,
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
+        address (str): Same as redis_address.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -1334,6 +1377,14 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if address:
+        if redis_address:
+            raise ValueError(
+                "You should specify address instead of redis_address.")
+        if address == "auto":
+            address = services.find_redis_address_or_die()
+        redis_address = address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1520,8 +1571,12 @@ def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
-                                         {"exception": error_message})
+        try:
+            global_worker.redis_client.hmset(
+                b"Drivers:" + global_worker.worker_id,
+                {"exception": error_message})
+        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
+            logger.warning("Could not push exception to redis.")
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1566,15 +1621,22 @@ def print_logs(redis_client, threads_stopped):
             num_consecutive_messages_received += 1
 
             data = json.loads(ray.utils.decode(msg["data"]))
+
+            def color_for(data):
+                if data["pid"] == "raylet":
+                    return colorama.Fore.YELLOW
+                else:
+                    return colorama.Fore.CYAN
+
             if data["ip"] == localhost:
                 for line in data["lines"]:
                     print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.DIM, color_for(data), data["pid"],
                         colorama.Style.RESET_ALL, line))
             else:
                 for line in data["lines"]:
                     print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.DIM, color_for(data), data["pid"],
                         data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
@@ -1583,6 +1645,8 @@ def print_logs(redis_client, threads_stopped):
                     "The driver may not be able to keep up with the "
                     "stdout/stderr of the workers. To avoid forwarding logs "
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("print_logs: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1681,6 +1745,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 task_error_queue.put((error_message, time.time()))
             else:
                 logger.error(error_message)
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1878,6 +1944,7 @@ def connect(node,
 
         function_descriptor = FunctionDescriptor.for_driver_task()
         driver_task_spec = ray._raylet.TaskSpec(
+            TaskID.for_driver_task(worker.current_job_id),
             worker.current_job_id,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
@@ -1914,7 +1981,7 @@ def connect(node,
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,
-        ClientID(worker.worker_id),
+        WorkerID(worker.worker_id),
         (mode == WORKER_MODE),
         worker.current_job_id,
     )

@@ -4,7 +4,6 @@
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
 #include <grpcpp/grpcpp.h>
-
 #include "status.h"
 
 namespace ray {
@@ -14,30 +13,40 @@ template <class Message>
 class MessageWrapper {
  public:
   /// Construct an empty message wrapper. This should not be used directly.
-  MessageWrapper() {}
+  MessageWrapper() : message_(std::make_shared<Message>()) {}
 
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit MessageWrapper(const Message message) : message_(std::move(message)) {}
+  explicit MessageWrapper(const Message message)
+      : message_(std::make_shared<Message>(std::move(message))) {}
+
+  /// Construct from a protobuf message shared_ptr.
+  ///
+  /// \param message The protobuf message.
+  explicit MessageWrapper(std::shared_ptr<Message> message) : message_(message) {}
 
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
-  explicit MessageWrapper(const std::string &serialized_binary) {
-    message_.ParseFromString(serialized_binary);
+  explicit MessageWrapper(const std::string &serialized_binary)
+      : message_(std::make_shared<Message>()) {
+    message_->ParseFromString(serialized_binary);
   }
 
+  /// Get const reference of the protobuf message.
+  const Message &GetMessage() const { return *message_; }
+
   /// Get reference of the protobuf message.
-  const Message &GetMessage() const { return message_; }
+  Message &GetMutableMessage() const { return *message_; }
 
   /// Serialize the message to a string.
-  const std::string Serialize() const { return message_.SerializeAsString(); }
+  const std::string Serialize() const { return message_->SerializeAsString(); }
 
  protected:
   /// The wrapped message.
-  Message message_;
+  std::shared_ptr<Message> message_;
 };
 
 /// Helper function that converts a ray status to gRPC status.
@@ -71,6 +80,17 @@ template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedField<T> &pb_repeated) {
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
+}
+
+template <typename Message>
+using AddFunction = void (Message::*)(const ::std::string &value);
+/// Add a vector of type ID to protobuf message.
+template <typename ID, typename Message>
+inline void IdVectorToProtobuf(const std::vector<ID> &ids, Message &message,
+                               AddFunction<Message> add_func) {
+  for (const auto &id : ids) {
+    (message.*add_func)(id.Binary());
+  }
 }
 
 /// Converts a Protobuf `RepeatedField` to a vector of IDs.

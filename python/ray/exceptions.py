@@ -77,6 +77,19 @@ class RayActorError(RayError):
         return "The actor died unexpectedly before finishing this task."
 
 
+class RayletError(RayError):
+    """Indicates that the Raylet client has errored.
+
+    This exception can be thrown when the raylet is killed.
+    """
+
+    def __init__(self, client_exc):
+        self.client_exc = client_exc
+
+    def __str__(self):
+        return "The Raylet died with this message: {}".format(self.client_exc)
+
+
 class UnreconstructableError(RayError):
     """Indicates that an object is lost and cannot be reconstructed.
 

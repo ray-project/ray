@@ -26,15 +26,22 @@ class GrpcService;
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:
-  /// Constructor.
+  /// Construct a gRPC server that listens on a TCP port.
   ///
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] main_service The main event loop, to which service handler functions
-  /// will be posted.
   GrpcServer(std::string name, const uint32_t port)
-      : name_(std::move(name)), port_(port), is_closed_(true) {}
+      : name_(std::move(name)), port_(port), is_closed_(false) {}
+
+  /// Construct a gRPC server that listens on unix domain socket.
+  ///
+  /// \param[in] name Name of this server, used for logging and debugging purpose.
+  /// \param[in] unix_socket_path Unix domain socket full path.
+  GrpcServer(std::string name, const std::string &unix_socket_path)
+      : GrpcServer(std::move(name), 0) {
+    unix_socket_path_ = unix_socket_path;
+  }
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -73,20 +80,22 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
+  /// Indicates whether this server has been closed.
+  bool is_closed_;
+  /// Unix domain socket path.
+  std::string unix_socket_path_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
-  /// gRPC server can accept.
+  /// this gRPC server can handle.
   std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
       server_call_factories_and_concurrencies_;
   /// The `ServerCompletionQueue` object used for polling events.
   std::unique_ptr<grpc::ServerCompletionQueue> cq_;
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
-  /// The polling thread used to check the completion queue
+  /// The polling thread used to check the completion queue.
   std::thread polling_thread_;
-  /// Flag indicates whether this server has closed
-  bool is_closed_;
 };
 
 /// Base class that represents an abstract gRPC service.
@@ -112,13 +121,11 @@ class GrpcService {
 
   /// Subclasses should implement this method to initialize the `ServerCallFactory`
   /// instances, as well as specify maximum number of concurrent requests that gRPC
-  /// server can "accept" (not "handle"). Each factory will be used to create
-  /// `accept_concurrency` `ServerCall` objects, each of which will be used to accept and
-  /// handle an incoming request.
+  /// server can handle.
   ///
   /// \param[in] cq The grpc completion queue.
   /// \param[out] server_call_factories_and_concurrencies The `ServerCallFactory` objects,
-  /// and the maximum number of concurrent requests that gRPC server can accept.
+  /// and the maximum number of concurrent requests that this gRPC server can handle.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
