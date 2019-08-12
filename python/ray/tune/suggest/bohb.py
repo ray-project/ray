@@ -6,10 +6,6 @@ from __future__ import print_function
 
 import copy
 import logging
-try:
-    from hpbandster.optimizers.config_generators.bohb import BOHB
-except ImportError:
-    BOHB = None
 
 from ray.tune.suggest import SuggestionAlgorithm
 
@@ -72,6 +68,7 @@ class TuneBOHB(SuggestionAlgorithm):
                  max_concurrent=10,
                  metric="neg_mean_loss",
                  mode="max"):
+        from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, "HpBandSter must be installed!"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._max_concurrent = max_concurrent
