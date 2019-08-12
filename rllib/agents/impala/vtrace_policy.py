@@ -267,7 +267,8 @@ def choose_optimizer(policy, config):
 
 
 def clip_gradients(policy, optimizer, loss):
-    grads = tf.gradients(loss, policy.var_list)
+    grads_and_vars = optimizer.compute_gradients(loss, policy.var_list)
+    grads = [g for (g, v) in grads_and_vars]
     policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
     clipped_grads = list(zip(policy.grads, policy.var_list))
     return clipped_grads

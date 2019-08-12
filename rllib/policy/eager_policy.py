@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy import policy
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
@@ -17,13 +17,15 @@ tf = try_import_tf()
 
 
 @DeveloperAPI
-class TFEagerPolicy(policy.Policy):
+class TFEagerPolicy(Policy):
     @DeveloperAPI
-    def __init__(self, optimizer, model, observation_space, action_space):
+    def __init__(self, optimizer, model, observation_space, action_space,
+                 gradients_fn):
         self.optimizer = optimizer
         self.model = model
         self.observation_space = observation_space
         self.action_space = action_space
+        self._gradients_fn = gradients_fn
         self._sess = None
 
     @DeveloperAPI
@@ -56,15 +58,32 @@ class TFEagerPolicy(policy.Policy):
         }
 
         with tf.GradientTape() as tape:
-            seq_len = tf.ones(len(samples[SampleBatch.CUR_OBS]))
-            model_out, states = self.model(samples, None, seq_len)
-            self.action_dist = self.dist_class(model_out)
+            # TODO: set seq len and state in properly
+            self.seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
+            self.state_in = []
+            self.model_out, self.state_out = self.model(
+                samples, self.state_in, self.seq_lens)
+            self.action_dist = self.dist_class(self.model_out)
             loss = self.loss(self, samples)
             stats = self.stats(self, samples)
 
-        vars = self.model.trainable_variables()
-        grads = tape.gradient(loss, vars)
-        self.optimizer.apply_gradients(zip(grads, vars))
+        variables = self.model.trainable_variables()
+
+        if self._gradients_fn:
+
+            class OptimizerWrapper(object):
+                def __init__(self, tape):
+                    self.tape = tape
+
+                def compute_gradients(self, loss, var_list):
+                    return zip(self.tape.gradient(loss, var_list), var_list)
+
+            grads_and_vars = self._gradients_fn(self, OptimizerWrapper(tape),
+                                                loss)
+        else:
+            grads_and_vars = zip(tape.gradient(loss, variables), variables)
+
+        self.optimizer.apply_gradients(grads_and_vars)
         return stats
 
     @DeveloperAPI
@@ -157,9 +176,6 @@ def build_tf_policy(name,
 
     base = add_mixins(TFEagerPolicy, mixins)
 
-    if gradients_fn:
-        print("WARNING: NOT IMPLEMENTED: custom gradients fn")
-
     class policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
@@ -198,7 +214,7 @@ def build_tf_policy(name,
                   tf.convert_to_tensor([1]))
 
             TFEagerPolicy.__init__(self, optimizer, model, observation_space,
-                                   action_space)
+                                   action_space, gradients_fn)
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 

@@ -8,6 +8,9 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 @DeveloperAPI

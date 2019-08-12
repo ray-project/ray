@@ -195,17 +195,16 @@ def postprocess_ppo_gae(policy,
 
 
 def clip_gradients(policy, optimizer, loss):
+    variables = policy.model.trainable_variables()
     if policy.config["grad_clip"] is not None:
-        policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                            tf.get_variable_scope().name)
-        grads = tf.gradients(loss, policy.var_list)
+        grads_and_vars = optimizer.compute_gradients(loss, variables)
+        grads = [g for (g, v) in grads_and_vars]
         policy.grads, _ = tf.clip_by_global_norm(grads,
                                                  policy.config["grad_clip"])
-        clipped_grads = list(zip(policy.grads, policy.var_list))
+        clipped_grads = list(zip(policy.grads, variables))
         return clipped_grads
     else:
-        return optimizer.compute_gradients(
-            loss, colocate_gradients_with_ops=True)
+        return optimizer.compute_gradients(loss, variables)
 
 
 class KLCoeffMixin(object):
