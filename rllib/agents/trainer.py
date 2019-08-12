@@ -308,9 +308,6 @@ class Trainer(Trainable):
 
         config = config or {}
 
-        if config.get("use_eager"):
-            tf.enable_eager_execution()
-
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
 

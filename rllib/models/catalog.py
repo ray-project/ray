@@ -287,9 +287,8 @@ class ModelCatalog(object):
 
             # XXX
             from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
-            return FullyConnectedNetwork(
-                obs_space, action_space, num_outputs, model_config, name,
-                **model_kwargs)
+            return FullyConnectedNetwork(obs_space, action_space, num_outputs,
+                                         model_config, name, **model_kwargs)
 
             legacy_model_cls = default_model or ModelCatalog.get_model
             wrapper = ModelCatalog._wrap_if_needed(

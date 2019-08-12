@@ -131,7 +131,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
         batch_tensors[ACTION_LOGP],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
-        policy.value_function,
+        policy.model.value_function(),
         policy.kl_coeff,
         mask,
         entropy_coeff=policy.entropy_coeff,
@@ -153,7 +153,7 @@ def kl_and_loss_stats(policy, batch_tensors):
         "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             batch_tensors[Postprocessing.VALUE_TARGETS],
-            policy.value_function),
+            policy.model.value_function()),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
@@ -163,7 +163,7 @@ def kl_and_loss_stats(policy, batch_tensors):
 def vf_preds_and_logits_fetches(policy):
     """Adds value function and logits outputs to experience batches."""
     return {
-        SampleBatch.VF_PREDS: policy.value_function,
+        SampleBatch.VF_PREDS: policy.model.value_function(),
         BEHAVIOUR_LOGITS: policy.model_out,
     }
 
@@ -232,23 +232,26 @@ class KLCoeffMixin(object):
 class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
-            self.value_function = self.model.value_function()
-        else:
-            self.value_function = tf.zeros(
-                shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])
 
-    def _value(self, ob, prev_action, prev_reward, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
-            self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
-            self.seq_lens: [1]
-        }
-        assert len(args) == len(self.state_in), (args, self.state_in)
-        for k, v in zip(self.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.value_function, feed_dict)
-        return vf[0]
+            @tf.function
+            def value(ob, prev_action, prev_reward, *state):
+                model_out, _ = self.model({
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        [prev_action]),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        [prev_reward]),
+                }, [tf.convert_to_tensor(s) for s in state],
+                                          tf.convert_to_tensor([1]))
+                return self.model.value_function()[0]
+
+        else:
+
+            @tf.function
+            def value(ob, prev_action, prev_reward, *state):
+                return 0.0
+
+        self._value = value
 
 
 def setup_config(policy, obs_space, action_space, config):

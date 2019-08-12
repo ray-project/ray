@@ -260,8 +260,7 @@ class DynamicTFPolicy(TFPolicy):
         else:
             return []
 
-    @staticmethod
-    def fake_batch(obs_include_prev_action_reward, state_init, extra_compute_action_fetches):
+    def _initialize_loss(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
             shape = [s if s is not None else 1 for s in shape]
@@ -275,26 +274,19 @@ class DynamicTFPolicy(TFPolicy):
                 ModelCatalog.get_action_placeholder(self.action_space)),
             SampleBatch.REWARDS: np.array([0], dtype=np.float32),
         }
-
-        if obs_include_prev_action_reward:
+        if self._obs_include_prev_action_reward:
             dummy_batch.update({
                 SampleBatch.PREV_ACTIONS: fake_array(self._prev_action_input),
                 SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
             })
-
+        state_init = self.get_initial_state()
         for i, h in enumerate(state_init):
             dummy_batch["state_in_{}".format(i)] = np.expand_dims(h, 0)
             dummy_batch["state_out_{}".format(i)] = np.expand_dims(h, 0)
         if state_init:
             dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
-        for k, v in extra_compute_action_fetches:
+        for k, v in self.extra_compute_action_fetches().items():
             dummy_batch[k] = fake_array(v)
-
-        return dummy_batch
-
-    def _initialize_loss(self):
-        dummy_batch = self.fake_batch(
-            self._obs_include_prev_action_reward, self.get_initial_state(), self.extra_compute_action_fetches())
 
         # postprocessing might depend on variable init, so run it first here
         self._sess.run(tf.global_variables_initializer())

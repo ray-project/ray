@@ -2,23 +2,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.utils import try_import_tf
+import numpy as np
+
+from ray.rllib.evaluation.episode import _flatten_action
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy import policy
-from ray.rllib.models import catalog
-from ray.rllib.models.tf import fcnet_v2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
 from ray.rllib.policy.tf_policy import ACTION_PROB, ACTION_LOGP
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
 
 @DeveloperAPI
 class TFEagerPolicy(policy.Policy):
-
     @DeveloperAPI
     def __init__(self, optimizer, model, observation_space, action_space):
         self.optimizer = optimizer
@@ -52,12 +51,8 @@ class TFEagerPolicy(policy.Policy):
         """
 
         samples = {
-            SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                samples[SampleBatch.CUR_OBS], dtype=tf.float32),
-            SampleBatch.ACTIONS: tf.convert_to_tensor(
-                samples[SampleBatch.ACTIONS], dtype=tf.int32),
-            Postprocessing.ADVANTAGES: tf.convert_to_tensor(
-                samples[Postprocessing.ADVANTAGES], dtype=tf.float32),
+            k: tf.convert_to_tensor(v)
+            for k, v in samples.items() if v.dtype != np.object
         }
 
         with tf.GradientTape() as tape:
@@ -88,8 +83,7 @@ class TFEagerPolicy(policy.Policy):
         # `self.model.trainable_variables()` but this might fail if variables
         # are created during the first call.
         grads, _ = zip(*self.optimizer.compute_gradients(
-            loss=lambda: self.loss(postprocessed_batch),
-        ))
+            loss=lambda: self.loss(postprocessed_batch), ))
         grads = tf.nest.map_structure(lambda grad: grad.numpy(), grads)
 
         return grads, {}
@@ -148,7 +142,8 @@ class TFEagerPolicy(policy.Policy):
         return NotImplemented
 
 
-def build_tf_policy(name, loss_fn,
+def build_tf_policy(name,
+                    loss_fn,
                     get_default_config=None,
                     postprocess_fn=None,
                     stats_fn=None,
@@ -173,10 +168,10 @@ def build_tf_policy(name, loss_fn,
                 config = dict(get_default_config(), **config)
             self.config = config
 
-            self.dist_class, logit_dim = catalog.ModelCatalog.get_action_dist(
+            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, config["model"])
 
-            model = catalog.ModelCatalog.get_model_v2(
+            model = ModelCatalog.get_model_v2(
                 observation_space,
                 action_space,
                 logit_dim,
@@ -194,18 +189,22 @@ def build_tf_policy(name, loss_fn,
                 before_init(self, observation_space, action_space, config)
 
             model({
-                SampleBatch.CUR_OBS: tf.convert_to_tensor([observation_space.sample()]),
-                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor([action_space.sample()]),
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(
+                    np.array([observation_space.sample()])),
+                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                    [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }, [tf.convert_to_tensor([s]) for s in model.get_initial_state()],
-            tf.convert_to_tensor([1]))
+                  tf.convert_to_tensor([1]))
 
             TFEagerPolicy.__init__(self, optimizer, model, observation_space,
                                    action_space)
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-        def postprocess_trajectory(self, samples, other_agent_batches=None,
+        def postprocess_trajectory(self,
+                                   samples,
+                                   other_agent_batches=None,
                                    episode=None):
             assert tf.executing_eagerly()
             return postprocess_fn(self, samples)

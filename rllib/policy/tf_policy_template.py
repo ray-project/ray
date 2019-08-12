@@ -214,10 +214,7 @@ def build_tf_policy(name,
 
     @staticmethod
     def as_eager():
-        minimal = {
-            k: v for k, v in original_kwargs.items()
-            if v is not None
-        }
+        minimal = {k: v for k, v in original_kwargs.items() if v is not None}
         return eager_policy.build_tf_policy(**minimal)
 
     policy_cls.with_updates = with_updates

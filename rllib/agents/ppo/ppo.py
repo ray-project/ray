@@ -71,7 +71,8 @@ def choose_policy_optimizer(workers, config):
         return SyncSamplesOptimizer(
             workers,
             num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"])
+            train_batch_size=config["train_batch_size"],
+            sgd_minibatch_size=config["sgd_minibatch_size"])
 
     return LocalMultiGPUOptimizer(
         workers,

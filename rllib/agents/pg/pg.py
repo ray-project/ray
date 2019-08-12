@@ -5,7 +5,6 @@ from __future__ import print_function
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_policy import PGTFPolicy
-from ray.rllib.utils import try_import_tf
 
 # yapf: disable
 # __sphinx_doc_begin__

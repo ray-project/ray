@@ -70,6 +70,10 @@ def try_import_tf():
         import tensorflow.compat.v1 as tf
         tf.logging.set_verbosity(tf.logging.ERROR)
         tf.disable_v2_behavior()
+
+        # XXX
+        tf.enable_eager_execution()
+
         return tf
     except ImportError:
         try:
