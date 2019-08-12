@@ -640,12 +640,36 @@ class BOHBSuite(unittest.TestCase):
             decision = sched.on_trial_result(runner, trial, trial_result)
             self.assertEqual(decision, TrialScheduler.PAUSE)
             runner._pause_trial(trial)
-        spy_result = result(1, 1)
+        spy_result = result(0, 1)
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
         self.assertEqual(runner._search_alg.on_pause.call_count, 2)
         self.assertEqual(runner._search_alg.on_unpause.call_count, 1)
+        self.assertTrue("hyperband_info" in spy_result)
+        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+
+    def testCheckTrialInfoUpdateMin(self):
+        def result(score, ts):
+            return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
+
+        sched = HyperBandForBOHB(max_t=3, reduction_factor=3, mode="min")
+        runner = _MockTrialRunner(sched)
+        runner._search_alg = MagicMock()
+        trials = [Trial("__fake") for i in range(3)]
+        for t in trials:
+            runner.add_trial(t)
+            runner._launch_trial(t)
+
+        for trial, trial_result in zip(trials, [result(1, 1), result(2, 1)]):
+            decision = sched.on_trial_result(runner, trial, trial_result)
+            self.assertEqual(decision, TrialScheduler.PAUSE)
+            runner._pause_trial(trial)
+        spy_result = result(0, 1)
+        decision = sched.on_trial_result(runner, trials[-1], spy_result)
+        self.assertEqual(decision, TrialScheduler.CONTINUE)
+        sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
