@@ -25,7 +25,7 @@ class AccessorTestBase : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread.reset(new std::thread([this] {
-      std::auto_ptr<boost::asio::io_service::work> work(
+      std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
