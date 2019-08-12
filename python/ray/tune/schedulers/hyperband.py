@@ -73,6 +73,8 @@ class HyperBandScheduler(FIFOScheduler):
             The scheduler will terminate trials after this time has passed.
             Note that this is different from the semantics of `max_t` as
             mentioned in the original HyperBand paper.
+        reduction_factor (float): Same as `eta`. Determines how sharp
+            the difference is between bracket space-time allocation ratios.
     """
 
     def __init__(self,
@@ -80,7 +82,8 @@ class HyperBandScheduler(FIFOScheduler):
                  reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
-                 max_t=81):
+                 max_t=81,
+                 reduction_factor=3):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
@@ -93,8 +96,8 @@ class HyperBandScheduler(FIFOScheduler):
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
-        self._eta = 3
-        self._s_max_1 = 5
+        self._eta = reduction_factor
+        self._s_max_1 = int(np.log(max_t) / np.log(reduction_factor)) + 1
         self._max_t_attr = max_t
         # bracket max trials
         self._get_n0 = lambda s: int(
@@ -279,6 +282,12 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in band:
                 out += "\n  {}".format(bracket)
         return out
+
+    def state(self):
+        return {
+            "num_brackets": sum(len(band) for band in self._hyperbands),
+            "num_stopped": self._num_stopped
+        }
 
     def _unpause_trial(self, trial_runner, trial):
         trial_runner.trial_executor.unpause_trial(trial)

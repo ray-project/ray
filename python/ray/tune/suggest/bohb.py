@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 try:
     from hpbandster import BOHB
 except ImportError:
@@ -12,6 +13,7 @@ except ImportError:
 from ray.tune.suggest import SuggestionAlgorithm
 
 logger = logging.getLogger(__name__)
+
 
 class JobWrapper():
     """Dummy class"""

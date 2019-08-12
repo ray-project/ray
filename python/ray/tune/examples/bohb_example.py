@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import json
 import os
 
@@ -13,6 +14,14 @@ import ray
 from ray.tune import Trainable, run
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.suggest.bohb import TuneBOHB
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--smoke-test", action="store_true", help="Finish quickly for testing")
+parser.add_argument(
+    "--ray-redis-address",
+    help="Address of Ray cluster for seamless distributed execution.")
+args, _ = parser.parse_known_args()
 
 
 class MyTrainableClass(Trainable):
@@ -46,52 +55,25 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
-    import argparse
-    import ConfigSpace
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
-    parser.add_argument(
-        "--ray-redis-address",
-        help="Address of Ray cluster for seamless distributed execution.")
-    args, _ = parser.parse_known_args()
+    import ConfigSpace as CS
     ray.init(redis_address=args.ray_redis_address)
 
-    # asynchronous hyperband early stopping, configured with
-    # `episode_reward_mean` as the
-    # objective and `training_iteration` as the time unit,
-    # which is automatically filled by Tune.
-
     # BOHB uses ConfigSpace for their hyperparameter search space
-    CS = ConfigSpace
     config_space = CS.ConfigurationSpace()
     config_space.add_hyperparameter(
         CS.UniformFloatHyperparameter("height", lower=10, upper=100))
     config_space.add_hyperparameter(
         CS.UniformFloatHyperparameter("width", lower=0, upper=100))
 
+    experiment_metrics = dict(metric="episode_reward_mean", mode="min")
     bohb_hyperband = HyperBandForBOHB(
-        time_attr="training_iteration",
-        metric="episode_reward_mean",
-        max_t=100)
-
-    config = {
-        "stop": {
-            "training_iteration": 1 if args.smoke_test else 99999
-        },
-        "num_samples": 20,
-        "resources_per_trial": {
-            "cpu": 1,
-            "gpu": 0
-        },
-    }
-
-    algo = TuneBOHB(
-        config_space, max_concurrent=4, metric="mean_loss", mode="min")
+        time_attr="training_iteration", max_t=100, **experiment_metrics)
+    bohb_search = TuneBOHB(
+        config_space, max_concurrent=4, **experiment_metrics)
 
     run(MyTrainableClass,
         name="bohb_test",
         scheduler=bohb_hyperband,
-        search_alg=algo,
-        **config)
+        search_alg=bohb_search,
+        num_samples=5,
+        stop={"training_iteration": 10 if args.smoke_test else 100})

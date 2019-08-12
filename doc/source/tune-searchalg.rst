@@ -185,22 +185,48 @@ An example of this can be found in `ax_example.py <https://github.com/ray-projec
 BOHB
 ----
 
-``BOHB`` (Bayesian Optimization HyperBand) is a SearchAlgorithm that is backed by `HpBandSter <https://github.com/automl/HpBandSter>`__ to perform sequential model-based hyperparameter optimization in conjunction with HyperBand. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BOHB. Also note that BOHB is intended to be paired with a specific Hyperband scheduler `ray.tune.schedulers.HyperBandForBOHB` <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers/hp_bohb.py>`__.
+.. tip:: This implementation is still experimental. Please report issues on https://github.com/ray-project/ray/issues/. Thanks!
 
-In order to use this search algorithm, you will need to install HpBandSter and ConfigSpace via the following command:
+``BOHB`` (Bayesian Optimization HyperBand) is a SearchAlgorithm that is backed by `HpBandSter <https://github.com/automl/HpBandSter>`__ to perform sequential model-based hyperparameter optimization in conjunction with HyperBand. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BOHB.
+
+Importantly, BOHB is intended to be paired with a specific scheduler class: `HyperBandForBOHB <<tune-schedulers.html#hyperband-bohb>>`__.
+
+In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace`` via the following command:
 
 .. code-block:: bash
 
     $ pip install hpbandster
     $ pip install ConfigSpace
 
-This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`__. You can use TuneBOHB like follows:
+This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`__.
+
+
+You can use ``TuneBOHB`` in conjunction with ``HyperBandForBOHB`` as follows:
 
 .. code-block:: python
 
-    tune.run(... , search_alg=TuneBOHB(config_space, ... ))
+    # BOHB uses ConfigSpace for their hyperparameter search space
+    import ConfigSpace as CS
 
-An example of this can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`__.
+    config_space = CS.ConfigurationSpace()
+    config_space.add_hyperparameter(
+        CS.UniformFloatHyperparameter("height", lower=10, upper=100))
+    config_space.add_hyperparameter(
+        CS.UniformFloatHyperparameter("width", lower=0, upper=100))
+
+    experiment_metrics = dict(metric="episode_reward_mean", mode="min")
+    bohb_hyperband = HyperBandForBOHB(
+        time_attr="training_iteration", max_t=100, **experiment_metrics)
+    bohb_search = TuneBOHB(
+        config_space, max_concurrent=4, **experiment_metrics)
+
+    tune.run(MyTrainableClass,
+        name="bohb_test",
+        scheduler=bohb_hyperband,
+        search_alg=bohb_search,
+        num_samples=5)
+
+Take a look at `an example here <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_. See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. autoclass:: ray.tune.suggest.bohb.TuneBOHB
     :show-inheritance:

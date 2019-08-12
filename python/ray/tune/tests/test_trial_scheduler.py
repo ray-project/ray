@@ -15,7 +15,7 @@ import ray
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
-                                 TrialScheduler)
+                                 TrialScheduler, HyperBandForBOHB)
 
 from ray.tune.schedulers.pbt import explore
 from ray.tune.trial import Trial, Checkpoint
@@ -601,6 +601,48 @@ class HyperbandSuite(unittest.TestCase):
         # Make sure "choose_trial_to_run" still works
         trial = sched.choose_trial_to_run(runner)
         self.assertIsNotNone(trial)
+
+
+class BOHBSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testLargestBracketFirst(self):
+        sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
+        runner = _MockTrialRunner(sched)
+        for i in range(3):
+            sched.on_trial_add(runner, Trial("__fake"))
+
+        self.assertEqual(sched.state()["num_brackets"], 1)
+        sched.on_trial_add(runner, Trial("__fake"))
+        self.assertEqual(sched.state()["num_brackets"], 2)
+
+    def testCheckTrialInfoUpdate(self):
+        def result(score, ts):
+            return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
+
+        sched = HyperBandScheduler(max_t=3, reduction_factor=3)
+        runner = _MockTrialRunner(sched)
+        runner._search_alg = MagicMock()
+        trials = [Trial("__fake") for i in range(3)]
+        for t in trials:
+            sched.on_trial_add(runner, t)
+
+        decision = sched.on_trial_result(runner, trials[0], result(1, 1))
+        self.assertEqual(decision, TrialScheduler.PAUSE)
+        decision = sched.on_trial_result(runner, trials[1], result(1, 1))
+        self.assertEqual(decision, TrialScheduler.PAUSE)
+        decision = sched.on_trial_result(runner, trials[2], result(1, 1))
+        self.assertEqual(decision, TrialScheduler.CONTINUE)
+
+        self.assertEqual(runner._search_alg.on_pause.call_count, 3)
+        self.assertEqual(runner._search_alg.on_unpause.call_count, 1)
+        call_args = runner._search_alg.on_trial_result.call_args
+        self.assertTrue("hyperband_info" in call_args[2])
 
 
 class _MockTrial(Trial):
