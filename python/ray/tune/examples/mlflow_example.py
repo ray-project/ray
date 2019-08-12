@@ -16,11 +16,7 @@ import time
 import random
 
 from ray import tune
-from ray.tune.logger import MLFLowLogger
-
-
-def trial_str_creator(trial):
-    return "{}_{}_123".format(trial.trainable_name, trial.trial_id)
+from ray.tune.logger import MLFLowLogger, DEFAULT_LOGGERS
 
 
 def easy_objective(config):
@@ -41,8 +37,7 @@ if __name__ == "__main__":
         easy_objective,
         name="mlflow",
         num_samples=5,
-        trial_name_creator=tune.function(trial_str_creator),
-        loggers=[MLFLowLogger],
+        loggers=DEFAULT_LOGGERS + (MLFLowLogger, ),
         config={
             "mlflow_experiment_id": experiment_id,
             "width": tune.sample_from(
