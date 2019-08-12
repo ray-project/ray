@@ -4,11 +4,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import logging
 try:
-    from hpbandster import BOHB
+    from hpbandster.optimizers.config_generators.bohb import BOHB
 except ImportError:
-    hpbandster = None
+    BOHB = None
 
 from ray.tune.suggest import SuggestionAlgorithm
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class _BOHBJobWrapper():
     """Mock object for HpBandSter to process."""
+
     def __init__(self, loss, budget, config):
         self.result = {"loss": loss}
         self.kwargs = {"budget": budget, "config": config.copy()}
@@ -70,7 +72,7 @@ class TuneBOHB(SuggestionAlgorithm):
                  max_concurrent=10,
                  metric="neg_mean_loss",
                  mode="max"):
-        assert hpbandster is not None, "HpBandSter must be installed!"
+        assert BOHB is not None, "HpBandSter must be installed!"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self._max_concurrent = max_concurrent
         self.trial_to_params = {}
@@ -87,8 +89,9 @@ class TuneBOHB(SuggestionAlgorithm):
 
     def _suggest(self, trial_id):
         if len(self.running) < self._max_concurrent:
-            config, info = self.bohber.get_config()
-            self.trial_to_params[trial_id] = list(config)
+            # This parameter is not used in hpbandster implementation.
+            config, info = self.bohber.get_config(None)
+            self.trial_to_params[trial_id] = copy.deepcopy(config)
             self.running.add(trial_id)
             return config
         return None
@@ -96,12 +99,12 @@ class TuneBOHB(SuggestionAlgorithm):
     def on_trial_result(self, trial_id, result):
         if trial_id not in self.paused:
             self.running.add(trial_id)
-        if "budget" in result.get("hyperband_info", {}):
-            hbs_wrapper = self.to_wrapper(trial_id, result)
-            self.bohber.new_result(hbs_wrapper)
-        else:
+        if "hyperband_info" not in result:
             logger.warning("BOHB Info not detected in result. Are you using "
                            "HyperBandForBOHB as a scheduler?")
+        elif "budget" in result.get("hyperband_info", {}):
+            hbs_wrapper = self.to_wrapper(trial_id, result)
+            self.bohber.new_result(hbs_wrapper)
 
     def on_trial_complete(self,
                           trial_id,
@@ -115,11 +118,9 @@ class TuneBOHB(SuggestionAlgorithm):
             self.running.remove(trial_id)
 
     def to_wrapper(self, trial_id, result):
-        return _BOHBJobWrapper(
-            self._metric_op * result[self.metric],
-            result["hyperband_info"]["budget"],
-            {k: result["config"][k]
-             for k in self.trial_to_params[trial_id]})
+        return _BOHBJobWrapper(self._metric_op * result[self.metric],
+                               result["hyperband_info"]["budget"],
+                               self.trial_to_params[trial_id])
 
     def on_pause(self, trial_id):
         self.paused.add(trial_id)

@@ -67,7 +67,10 @@ if __name__ == "__main__":
 
     experiment_metrics = dict(metric="episode_reward_mean", mode="min")
     bohb_hyperband = HyperBandForBOHB(
-        time_attr="training_iteration", max_t=100, **experiment_metrics)
+        time_attr="training_iteration",
+        max_t=100,
+        reduction_factor=4,
+        **experiment_metrics)
     bohb_search = TuneBOHB(
         config_space, max_concurrent=4, **experiment_metrics)
 
@@ -75,5 +78,5 @@ if __name__ == "__main__":
         name="bohb_test",
         scheduler=bohb_hyperband,
         search_alg=bohb_search,
-        num_samples=5,
+        num_samples=10,
         stop={"training_iteration": 10 if args.smoke_test else 100})
