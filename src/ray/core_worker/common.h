@@ -78,7 +78,6 @@ enum class StoreProviderType { LOCAL_PLASMA, PLASMA, MEMORY };
 
 enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 
-
 }  // namespace ray
 
 #endif  // RAY_CORE_WORKER_COMMON_H

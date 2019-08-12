@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "ray/common/ray_config.h"
+#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/core_worker/object_interface.h"
 
 namespace ray {
@@ -66,7 +67,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     auto start_time = current_time_ms();    
     auto store_provider_type =
         task_submitter_layer_.GetStoreProviderTypeForReturnObject(entry.first);
-    RAY_RETURN_NOT_OK(Get(store_provider_type, entry.second, current_timeout_ms, &objects));
+    RAY_RETURN_NOT_OK(Get(store_provider_type, entry.first, entry.second, current_timeout_ms, &objects));
     int64_t duration = current_time_ms() - start_time;
     current_timeout_ms =
         (current_timeout_ms == -1) ? current_timeout_ms
@@ -80,11 +81,11 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
-bool CoreWorkerObjectInterface::ShouldWaitObjects(const std::vector<ObjectID> &object_ids) {
+bool CoreWorkerObjectInterface::ShouldWaitObjects(TaskTransportType transport_type,
+    const std::vector<ObjectID> &object_ids) {
 
   for (const auto &object_id : object_ids) {
-    auto type = static_cast<TaskTransportType>(object_id.GetTransportType());
-    bool should_wait = task_submitter_layer_.ShouldWaitTask(type, object_id.TaskId());
+    bool should_wait = task_submitter_layer_.ShouldWaitTask(transport_type, object_id.TaskId());
     if (should_wait) {
       return true;
     }
@@ -93,9 +94,9 @@ bool CoreWorkerObjectInterface::ShouldWaitObjects(const std::vector<ObjectID> &o
   return false;
 }
 
-
 Status CoreWorkerObjectInterface::Get(
-    StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+    StoreProviderType type, TaskTransportType transport_type,
+    const std::unordered_set<ObjectID> &object_ids,
     int64_t timeout_ms,
     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   if (object_ids.empty()) {
@@ -124,8 +125,9 @@ Status CoreWorkerObjectInterface::Get(
       unready_ids.push_back(entry);
     }
 
-    // TODO(zhijunfu): can call `fetchOrReconstruct` in batches as an optimization.
-    bool should_wait = ShouldWaitObjects(unready_ids);
+    // Check whether we should wait for objects to be created/reconstructed,
+    // or just fetch from store.
+    bool should_wait = ShouldWaitObjects(transport_type, unready_ids);
 
     // Get the objects from the object store, and parse the result.
     int64_t get_timeout = RayConfig::instance().get_timeout_milliseconds();
@@ -147,14 +149,14 @@ Status CoreWorkerObjectInterface::Get(
         const auto &object_id = unready_ids[i];
         (*results).emplace(object_id, result_objects[i]);
         unready.erase(object_id);
-        if (IsException(*result_objects[i])) {
+        if (result_objects[i]->IsException()) {
           should_break = true;
         }
       }
     }
 
     num_attempts += 1;
-    WarnIfAttemptedTooManyTimes(num_attempts, unready);
+    CoreWorkerStoreProvider::WarnIfAttemptedTooManyTimes(num_attempts, unready);
   
     if (!should_wait && !unready.empty()) {
       // If the tasks that created these objects have already finished, but we are still
@@ -187,53 +189,6 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
                                          bool local_only, bool delete_creating_tasks) {
   return store_provider_layer_.Delete(StoreProviderType::PLASMA, object_ids, local_only,
                                       delete_creating_tasks);
-}
-
-
-bool CoreWorkerObjectInterface::IsException(const RayObject &object) {
-  if (!object.HasMetadata()) {
-    return false;
-  }
-
-  // TODO (kfstorm): metadata should be structured.
-  const std::string metadata(reinterpret_cast<const char *>(object.GetMetadata()->Data()),
-                             object.GetMetadata()->Size());
-  const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
-  for (int i = 0; i < error_type_descriptor->value_count(); i++) {
-    const auto error_type_number = error_type_descriptor->value(i)->number();
-    if (metadata == std::to_string(error_type_number)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void CoreWorkerObjectInterface::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const std::unordered_set<ObjectID> &unready) {
-  if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
-      0) {
-    std::ostringstream oss;
-    size_t printed = 0;
-    for (auto &entry : unready) {
-      if (printed >=
-          RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
-        break;
-      }
-      if (printed > 0) {
-        oss << ", ";
-      }
-      oss << entry.Hex();
-    }
-    if (printed < unready.size()) {
-      oss << ", etc";
-    }
-    RAY_LOG(WARNING)
-        << "Attempted " << num_attempts << " times to reconstruct objects, but "
-        << "some objects are still unavailable. If this message continues to print,"
-        << " it may indicate that object's creating task is hanging, or something wrong"
-        << " happened in raylet backend. " << unready.size()
-        << " object(s) pending: " << oss.str() << ".";
-  }
 }
 
 }  // namespace ray

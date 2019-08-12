@@ -63,7 +63,6 @@ class CoreWorkerStoreProviderLayer {
       StoreProviderType type) const;
 
  private:
-  bool ObjectsDone(const std::vector<ObjectID> &object_ids);
 
   /// Helper function to add a store provider for the specified type.
   void AddStoreProvider(StoreProviderType type);

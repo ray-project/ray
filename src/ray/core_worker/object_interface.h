@@ -77,25 +77,17 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+  Status Get(StoreProviderType type, TaskTransportType transport_type,
+             const std::unordered_set<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
-  bool ShouldWaitObjects(const std::vector<ObjectID> &object_ids);
-
-  /// Whether the buffer represents an exception object.
+  /// Helper function to check whether to wait for a list of objects to appear,
+  /// e.g. wait for the tasks which create these objects to finish.
   ///
-  /// \param[in] object Object data.
-  /// \return Whether it represents an exception object.
-  static bool IsException(const RayObject &object);
-
-  /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable.
-  ///
-  /// \param[in] num_attemps The number of attempted times.
-  /// \param[in] unready The unready objects.
-  static void WarnIfAttemptedTooManyTimes(
-      int num_attempts, const std::unordered_set<ObjectID> &unready);
+  /// \param[in] transport_type The type of the transport to check status with.
+  /// \param[in] object_ids A list of object ids.
+  bool ShouldWaitObjects(TaskTransportType transport_type, const std::vector<ObjectID> &object_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

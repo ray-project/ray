@@ -49,6 +49,25 @@ class RayObject {
   /// Whether this object has metadata.
   bool HasMetadata() const { return metadata_ != nullptr && metadata_->Size() > 0; }
 
+  /// Whether this object represents an exception object.
+  bool IsException() const {
+    if (!HasMetadata()) {
+      return false;
+    }
+
+    // TODO (kfstorm): metadata should be structured.
+    const std::string metadata(reinterpret_cast<const char *>(GetMetadata()->Data()),
+                               GetMetadata()->Size());
+    const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
+    for (int i = 0; i < error_type_descriptor->value_count(); i++) {
+      const auto error_type_number = error_type_descriptor->value(i)->number();
+      if (metadata == std::to_string(error_type_number)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
  private:
   /// Data of the ray object.
   std::shared_ptr<Buffer> data_;
@@ -104,6 +123,39 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) = 0;
+
+    /// Print a warning if we've attempted too many times, but some objects are still
+    /// unavailable.
+    ///
+    /// \param[in] num_attemps The number of attempted times.
+    /// \param[in] unready The unready objects.
+    static void WarnIfAttemptedTooManyTimes(
+        int num_attempts, const std::unordered_set<ObjectID> &unready) {
+        if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
+            0) {
+            std::ostringstream oss;
+            size_t printed = 0;
+            for (auto &entry : unready) {
+            if (printed >=
+                RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
+                break;
+            }
+            if (printed > 0) {
+                oss << ", ";
+            }
+            oss << entry.Hex();
+            }
+            if (printed < unready.size()) {
+            oss << ", etc";
+            }
+            RAY_LOG(WARNING)
+                << "Attempted " << num_attempts << " times to reconstruct objects, but "
+                << "some objects are still unavailable. If this message continues to print,"
+                << " it may indicate that object's creating task is hanging, or something wrong"
+                << " happened in raylet backend. " << unready.size()
+                << " object(s) pending: " << oss.str() << ".";
+        }
+    }
 };
 
 }  // namespace ray
