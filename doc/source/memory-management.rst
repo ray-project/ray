@@ -11,7 +11,7 @@ There are several ways that Ray applications use memory:
 .. image:: images/memory.svg
 
 Ray system memory: this is memory used internally by Ray
-  - **Redis**: memory used for storing task lineage and object locations. When Redis becomes full, lineage will start to be be LRU evicted, which makes the corresponding objects ineligible for reconstruction on failure.
+  - **Redis**: memory used for storing task lineage and object metadata. When Redis becomes full, lineage will start to be be LRU evicted, which makes the corresponding objects ineligible for reconstruction on failure.
   - **Raylet**: memory used by the C++ raylet process running on each node. This cannot be controlled, but is usually quite small.
 
 Application memory: this is memory used by your application
@@ -19,7 +19,7 @@ Application memory: this is memory used by your application
   - **Object store memory**: memory used when your application creates objects in the objects store via ``ray.put`` and when returning values from remote functions. Objects are LRU evicted when the store is full. There is an object store server running on each node.
   - **Object store shared memory**: memory used when your application reads objects via ``ray.get``. Note that if an object is already present on the node, this does not cause additional allocations. This allows large objects to be efficiently shared among many actors and tasks.
 
-By default, Ray will cap the memory used by Redis at ``min(20% of node memory, 10GB)``, and object store at ``min(30% of node memory, 20GB)``, leaving half of the remaining memory on the node available for use by worker heap. You can also manually configure this by setting ``redis_max_memory=<bytes>`` and ``object_store_memory=<bytes>`` on Ray init.
+By default, Ray will cap the memory used by Redis at ``min(30% of node memory, 10GiB)``, and object store at ``min(10% of node memory, 20GiB)``, leaving half of the remaining memory on the node available for use by worker heap. You can also manually configure this by setting ``redis_max_memory=<bytes>`` and ``object_store_memory=<bytes>`` on Ray init.
 
 It is important to note that these default Redis and object store limits do not address the following issues:
 
@@ -32,18 +32,18 @@ To avoid these potential sources of instability, you can set *memory quotas* to 
 Heap memory quota
 -----------------
 
-When Ray starts, it queries the available memory on a node / container not reserved for Redis and the object store or being used by other applications. This is considered "available memory" that actors and tasks can request memory out of. You can also set ``available_memory=<bytes>`` on Ray init to tell Ray explicitly how much memory is available.
+When Ray starts, it queries the available memory on a node / container not reserved for Redis and the object store or being used by other applications. This is considered "available memory" that actors and tasks can request memory out of. You can also set ``memory=<bytes>`` on Ray init to tell Ray explicitly how much memory is available.
 
 To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
 .. code-block:: python
 
-  # reserve 500MB of available memory to place this task
+  # reserve 500MiB of available memory to place this task
   @ray.remote(memory=500 * 1024 * 1024)
   def some_function(x):
       pass
 
-  # reserve 2.5GB of available memory to place this actor
+  # reserve 2.5GiB of available memory to place this actor
   @ray.remote(memory=2500 * 1024 * 1024)
   class SomeActor(object):
       def __init__(self, a, b):
@@ -53,17 +53,11 @@ In the above example the memory quota is specified statically by the decorator, 
 
 .. code-block:: python
 
-  # override the memory quota to 100MB when submitting the task
+  # override the memory quota to 100MiB when submitting the task
   some_function._remote(memory=100 * 1024 * 1024, kwargs={"x": 1})
 
-  # override the memory quota to 1GB when creating the actor
+  # override the memory quota to 1GiB when creating the actor
   SomeActor._remote(memory=1000 * 1024 * 1024, kwargs={"a": 1, "b": 2})
-
-For the driver, you can set its memory quota with ``driver_memory``, to tell Ray to deduct this amount of available memory for the driver (the driver does not need to be scheduled):
-
-.. code-block:: python
-
-  ray.init(driver_memory=500 * 1024 * 1024)
 
 **Enforcement**: If an actor exceeds its memory quota, calls to it will throw ``RayOutOfMemoryError`` and it may be killed. Memory quota is currently enforced on a best-effort basis for actors only (but quota is taken into account during scheduling in all cases).
 
@@ -74,12 +68,12 @@ Use ``@ray.remote(object_store_memory=<bytes>)`` to cap the amount of memory an 
 
 Ray takes this resource into account during scheduling, with the caveat that a node will always reserve ~30% of its object store for global shared use.
 
-For the driver, this is ``driver_object_store_memory``. Setting object store quota is not supported for tasks.
+For the driver, you can set its object store memory quota with ``driver_object_store_memory``. Setting object store quota is not supported for tasks.
 
 Object store shared memory
 --------------------------
 
-Object store memory is also used to map objects returned by ``ray.get`` calls in shared memory. While an object is mapped in this way, it is pinned and cannot be evicted from the object store. Ray does *not* provide quota management for shared memory, however it will track and report actors using the most shared memory in "object store full" errors. This helps catch memory leaks involving shared memory, which can happen inadvertently if references to shared numpy arrays etc. are kept longer than necessary in the application.
+Object store memory is also used to map objects returned by ``ray.get`` calls in shared memory. While an object is mapped in this way, it is pinned and cannot be evicted from the object store. However, ray does not provide quota management for this kind of shared memory usage.
 
 Summary
 -------

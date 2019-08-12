@@ -164,11 +164,11 @@ The following are good places to discuss Ray.
 
    walkthrough.rst
    actors.rst
-   memory-management.rst
    using-ray-with-gpus.rst
    user-profiling.rst
    inspect.rst
    configure.rst
+   memory-management.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst
