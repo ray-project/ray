@@ -16,9 +16,9 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
                         std::placeholders::_1, std::placeholders::_2);
-  
+
   task_receiver_layer_ = std::unique_ptr<CoreWorkerTaskReceiverLayer>(
-    new CoreWorkerTaskReceiverLayer(raylet_client, store_provider_layer, func));
+      new CoreWorkerTaskReceiverLayer(raylet_client, store_provider_layer, func));
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
@@ -88,8 +88,8 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = store_provider_layer_.Get(StoreProviderType::PLASMA,
-      object_ids_to_fetch, -1, &results);
+  auto status = store_provider_layer_.Get(StoreProviderType::PLASMA, object_ids_to_fetch,
+                                          -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       (*args)[indices[i]] = results[i];

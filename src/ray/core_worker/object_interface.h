@@ -78,8 +78,7 @@ class CoreWorkerObjectInterface {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(StoreProviderType type, TaskTransportType transport_type,
-             const std::unordered_set<ObjectID> &object_ids,
-             int64_t timeout_ms,
+             const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
   /// Helper function to check whether to wait for a list of objects to appear,
@@ -87,7 +86,8 @@ class CoreWorkerObjectInterface {
   ///
   /// \param[in] transport_type The type of the transport to check status with.
   /// \param[in] object_ids A list of object ids.
-  bool ShouldWaitObjects(TaskTransportType transport_type, const std::vector<ObjectID> &object_ids);
+  bool ShouldWaitObjects(TaskTransportType transport_type,
+                         const std::vector<ObjectID> &object_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

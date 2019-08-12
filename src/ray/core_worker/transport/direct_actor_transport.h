@@ -49,7 +49,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \return Store provider type used.
   StoreProviderType GetStoreProviderTypeForReturnObject() const override;
-  
+
  private:
   /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();

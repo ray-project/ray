@@ -8,8 +8,7 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const WorkerContext &worker_context,
-    const std::string &store_socket,
+    const WorkerContext &worker_context, const std::string &store_socket,
     std::unique_ptr<RayletClient> &raylet_client)
     : worker_context_(worker_context),
       local_store_provider_(store_socket),
@@ -21,7 +20,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
-    const std::vector<ObjectID> &ids, int64_t timeout_ms, 
+    const std::vector<ObjectID> &ids, int64_t timeout_ms,
     std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;

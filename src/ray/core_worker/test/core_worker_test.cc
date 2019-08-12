@@ -5,8 +5,8 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/util/test_util.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/util/test_util.h"
 
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
@@ -309,7 +309,8 @@ void CoreWorkerTest::TestActorTask(
         // so the second one should return `OBJECT_UNRECONSTRUCTABLE`.
         ASSERT_TRUE(results[0]->HasMetadata());
         // Verify if this is the desired error.
-        std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE));
+        std::string meta =
+            std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE));
         ASSERT_TRUE(memcmp(results[0]->GetMetadata()->Data(), meta.data(), meta.size()) ==
                     0);
       }

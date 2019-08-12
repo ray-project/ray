@@ -41,7 +41,6 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
                 bool delete_creating_tasks = false) override;
 
  private:
-
   /// Reference to `WorkerContext`.
   const WorkerContext &worker_context_;
 

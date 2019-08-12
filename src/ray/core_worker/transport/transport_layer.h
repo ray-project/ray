@@ -3,8 +3,8 @@
 
 #include <list>
 
-#include "ray/core_worker/transport/transport.h"
 #include "ray/core_worker/store_provider/store_provider_layer.h"
+#include "ray/core_worker/transport/transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
@@ -12,22 +12,20 @@
 
 namespace ray {
 
-
-/// This class encapsulates all the supported transports, including 
+/// This class encapsulates all the supported transports, including
 class CoreWorkerTaskSubmitterLayer {
  public:
-  CoreWorkerTaskSubmitterLayer(
-                          boost::asio::io_service &io_service,
-                          std::unique_ptr<rpc::RayletClient> &raylet_client,
-                          gcs::RedisGcsClient &gcs_client,
-                          CoreWorkerStoreProviderLayer &store_provider_layer);
+  CoreWorkerTaskSubmitterLayer(boost::asio::io_service &io_service,
+                               std::unique_ptr<rpc::RayletClient> &raylet_client,
+                               gcs::RedisGcsClient &gcs_client,
+                               CoreWorkerStoreProviderLayer &store_provider_layer);
 
   /// Submit a task for execution.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
   Status SubmitTask(TaskTransportType type, const TaskSpecification &task_spec);
- 
+
   /// Check if a task has finished.
   ///
   /// \param[in] task_id The ID of the task.
@@ -47,14 +45,13 @@ class CoreWorkerTaskSubmitterLayer {
   friend class CoreWorkerTest;
 };
 
-/// This class encapsulates all the supported transports, including 
+/// This class encapsulates all the supported transports, including
 class CoreWorkerTaskReceiverLayer {
  public:
-  CoreWorkerTaskReceiverLayer(
-                          std::unique_ptr<rpc::RayletClient> &raylet_client,
-                          CoreWorkerStoreProviderLayer &store_provider_layer,
-                          CoreWorkerTaskReceiver::TaskHandler executor_func);
-  
+  CoreWorkerTaskReceiverLayer(std::unique_ptr<rpc::RayletClient> &raylet_client,
+                              CoreWorkerStoreProviderLayer &store_provider_layer,
+                              CoreWorkerTaskReceiver::TaskHandler executor_func);
+
   void Run();
 
   int GetRpcServerPort() const;
@@ -73,7 +70,6 @@ class CoreWorkerTaskReceiverLayer {
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
 };
-
 
 }  // namespace ray
 

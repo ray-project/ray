@@ -101,7 +101,7 @@ class CoreWorkerStoreProvider {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   virtual Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results) = 0;
+                     std::vector<std::shared_ptr<RayObject>> *results) = 0;
 
   /// Wait for a list of objects to appear in the object store.
   ///
@@ -111,7 +111,7 @@ class CoreWorkerStoreProvider {
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
   virtual Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, std::vector<bool> *results) = 0;
+                      int64_t timeout_ms, std::vector<bool> *results) = 0;
 
   /// Delete a list of objects from the object store.
   ///
@@ -122,40 +122,40 @@ class CoreWorkerStoreProvider {
   /// created these objects.
   /// \return Status.
   virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                bool delete_creating_tasks = false) = 0;
+                        bool delete_creating_tasks = false) = 0;
 
-    /// Print a warning if we've attempted too many times, but some objects are still
-    /// unavailable.
-    ///
-    /// \param[in] num_attemps The number of attempted times.
-    /// \param[in] unready The unready objects.
-    static void WarnIfAttemptedTooManyTimes(
-        int num_attempts, const std::unordered_set<ObjectID> &unready) {
-        if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
-            0) {
-            std::ostringstream oss;
-            size_t printed = 0;
-            for (auto &entry : unready) {
-            if (printed >=
-                RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
-                break;
-            }
-            if (printed > 0) {
-                oss << ", ";
-            }
-            oss << entry.Hex();
-            }
-            if (printed < unready.size()) {
-            oss << ", etc";
-            }
-            RAY_LOG(WARNING)
-                << "Attempted " << num_attempts << " times to reconstruct objects, but "
-                << "some objects are still unavailable. If this message continues to print,"
-                << " it may indicate that object's creating task is hanging, or something wrong"
-                << " happened in raylet backend. " << unready.size()
-                << " object(s) pending: " << oss.str() << ".";
+  /// Print a warning if we've attempted too many times, but some objects are still
+  /// unavailable.
+  ///
+  /// \param[in] num_attemps The number of attempted times.
+  /// \param[in] unready The unready objects.
+  static void WarnIfAttemptedTooManyTimes(int num_attempts,
+                                          const std::unordered_set<ObjectID> &unready) {
+    if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
+        0) {
+      std::ostringstream oss;
+      size_t printed = 0;
+      for (auto &entry : unready) {
+        if (printed >=
+            RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
+          break;
         }
+        if (printed > 0) {
+          oss << ", ";
+        }
+        oss << entry.Hex();
+      }
+      if (printed < unready.size()) {
+        oss << ", etc";
+      }
+      RAY_LOG(WARNING)
+          << "Attempted " << num_attempts << " times to reconstruct objects, but "
+          << "some objects are still unavailable. If this message continues to print,"
+          << " it may indicate that object's creating task is hanging, or something wrong"
+          << " happened in raylet backend. " << unready.size()
+          << " object(s) pending: " << oss.str() << ".";
     }
+  }
 };
 
 }  // namespace ray

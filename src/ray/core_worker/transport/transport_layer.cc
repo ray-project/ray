@@ -1,19 +1,16 @@
 
 #include "ray/core_worker/transport/transport_layer.h"
+#include "ray/common/task/task.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
-#include "ray/common/task/task.h"
 
 using ray::rpc::ActorTableData;
 
 namespace ray {
 
 CoreWorkerTaskSubmitterLayer::CoreWorkerTaskSubmitterLayer(
-    boost::asio::io_service &io_service,
-    std::unique_ptr<RayletClient> &raylet_client,
-    gcs::RedisGcsClient &gcs_client,
-    CoreWorkerStoreProviderLayer &store_provider_layer) {
-
+    boost::asio::io_service &io_service, std::unique_ptr<RayletClient> &raylet_client,
+    gcs::RedisGcsClient &gcs_client, CoreWorkerStoreProviderLayer &store_provider_layer) {
   // Add all task submitters.
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
@@ -24,30 +21,32 @@ CoreWorkerTaskSubmitterLayer::CoreWorkerTaskSubmitterLayer(
                                    io_service, gcs_client, store_provider_layer)));
 }
 
-Status CoreWorkerTaskSubmitterLayer::SubmitTask(TaskTransportType type, const TaskSpecification &task_spec) {
+Status CoreWorkerTaskSubmitterLayer::SubmitTask(TaskTransportType type,
+                                                const TaskSpecification &task_spec) {
   return task_submitters_[type]->SubmitTask(task_spec);
 }
 
-bool CoreWorkerTaskSubmitterLayer::ShouldWaitTask(TaskTransportType type, const TaskID &task_id) const {
+bool CoreWorkerTaskSubmitterLayer::ShouldWaitTask(TaskTransportType type,
+                                                  const TaskID &task_id) const {
   auto iter = task_submitters_.find(type);
   RAY_CHECK(iter != task_submitters_.end());
   return iter->second->ShouldWaitTask(task_id);
 }
 
-StoreProviderType CoreWorkerTaskSubmitterLayer::GetStoreProviderTypeForReturnObject(TaskTransportType type) const {
+StoreProviderType CoreWorkerTaskSubmitterLayer::GetStoreProviderTypeForReturnObject(
+    TaskTransportType type) const {
   auto iter = task_submitters_.find(type);
   RAY_CHECK(iter != task_submitters_.end());
-  return iter->second->GetStoreProviderTypeForReturnObject(); 
+  return iter->second->GetStoreProviderTypeForReturnObject();
 }
 
 CoreWorkerTaskReceiverLayer::CoreWorkerTaskReceiverLayer(
     std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerStoreProviderLayer &store_provider_layer,
     CoreWorkerTaskReceiver::TaskHandler executor_func)
-    : worker_server_("Worker", 0 /* let grpc choose port */),
-      main_work_(main_service_) {
+    : worker_server_("Worker", 0 /* let grpc choose port */), main_work_(main_service_) {
   RAY_CHECK(executor_func != nullptr);
-  
+
   // Add all task receivers.
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
@@ -57,7 +56,7 @@ CoreWorkerTaskReceiverLayer::CoreWorkerTaskReceiverLayer(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
           new CoreWorkerDirectActorTaskReceiver(main_service_, executor_func)));
-  
+
   for (const auto &entry : task_receivers_) {
     worker_server_.RegisterService(entry.second->GetRpcService());
   }
@@ -66,9 +65,7 @@ CoreWorkerTaskReceiverLayer::CoreWorkerTaskReceiverLayer(
   worker_server_.Run();
 }
 
-void CoreWorkerTaskReceiverLayer::Run() {
-  main_service_.run();
-}
+void CoreWorkerTaskReceiverLayer::Run() { main_service_.run(); }
 
 int CoreWorkerTaskReceiverLayer::GetRpcServerPort() const {
   return worker_server_.GetPort();

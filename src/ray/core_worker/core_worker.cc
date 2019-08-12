@@ -20,15 +20,15 @@ CoreWorker::CoreWorker(
   store_provider_layer_ = std::unique_ptr<CoreWorkerStoreProviderLayer>(
       new CoreWorkerStoreProviderLayer(worker_context_, store_socket, raylet_client_));
 
-  task_submitter_layer_ = std::unique_ptr<CoreWorkerTaskSubmitterLayer>(
-      new CoreWorkerTaskSubmitterLayer(io_service_, raylet_client_,
-      gcs_client_, *store_provider_layer_));
+  task_submitter_layer_ =
+      std::unique_ptr<CoreWorkerTaskSubmitterLayer>(new CoreWorkerTaskSubmitterLayer(
+          io_service_, raylet_client_, gcs_client_, *store_provider_layer_));
 
   object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
       new CoreWorkerObjectInterface(worker_context_, raylet_client_,
-      *store_provider_layer_, *task_submitter_layer_));
-  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
-      worker_context_, *task_submitter_layer_));
+                                    *store_provider_layer_, *task_submitter_layer_));
+  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(
+      new CoreWorkerTaskInterface(worker_context_, *task_submitter_layer_));
 
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {

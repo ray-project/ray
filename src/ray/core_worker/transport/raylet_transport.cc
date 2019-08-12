@@ -18,23 +18,22 @@ bool CoreWorkerRayletTaskSubmitter::ShouldWaitTask(const TaskID &task_id) const 
   // This is fine since raylet has lineage and can reconstruct the tasks
   // and the objects will eventually be available, or errors will be written
   // into store.
-  return true;  
+  return true;
 }
 
-StoreProviderType
-CoreWorkerRayletTaskSubmitter::GetStoreProviderTypeForReturnObject() const {
+StoreProviderType CoreWorkerRayletTaskSubmitter::GetStoreProviderTypeForReturnObject()
+    const {
   return StoreProviderType::PLASMA;
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerStoreProviderLayer &store_provider_layer, boost::asio::io_service &io_service,
-    const TaskHandler &task_handler)
+    CoreWorkerStoreProviderLayer &store_provider_layer,
+    boost::asio::io_service &io_service, const TaskHandler &task_handler)
     : raylet_client_(raylet_client),
       store_provider_layer_(store_provider_layer),
       task_service_(io_service, *this),
-      task_handler_(task_handler) {
-}
+      task_handler_(task_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
@@ -75,8 +74,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   send_reply_callback(status, nullptr, nullptr);
 }
 
-rpc::GrpcService &CoreWorkerRayletTaskReceiver::GetRpcService() {
-  return task_service_;
-}
+rpc::GrpcService &CoreWorkerRayletTaskReceiver::GetRpcService() { return task_service_; }
 
 }  // namespace ray

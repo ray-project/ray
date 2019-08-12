@@ -63,6 +63,7 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
 
   /// Return the underlying rpc service.
   rpc::GrpcService &GetRpcService() override;
+
  private:
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;

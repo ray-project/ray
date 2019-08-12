@@ -20,8 +20,8 @@ using rpc::RayletClient;
 class CoreWorkerStoreProviderLayer {
  public:
   CoreWorkerStoreProviderLayer(const WorkerContext &worker_context,
-                            const std::string &store_socket,
-                            std::unique_ptr<RayletClient> &raylet_client);
+                               const std::string &store_socket,
+                               std::unique_ptr<RayletClient> &raylet_client);
 
   ~CoreWorkerStoreProviderLayer() {}
 
@@ -35,18 +35,15 @@ class CoreWorkerStoreProviderLayer {
   ///
   /// \param[in] type The type of the store provider to use.
   /// For the rest see `CoreWorkerStoreProvider` for semantics.
-  Status Get(StoreProviderType type,
-             const std::vector<ObjectID> &ids, int64_t timeout_ms,
+  Status Get(StoreProviderType type, const std::vector<ObjectID> &ids, int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Wait for a list of objects to appear in the object store.
   ///
   /// \param[in] type The type of the store provider to use.
   /// For the rest see `CoreWorkerStoreProvider` for semantics.
-  Status Wait(StoreProviderType type,
-              const std::vector<ObjectID> &object_ids,
-              int num_objects, int64_t timeout_ms,
-              std::vector<bool> *results);
+  Status Wait(StoreProviderType type, const std::vector<ObjectID> &object_ids,
+              int num_objects, int64_t timeout_ms, std::vector<bool> *results);
 
   /// Delete a list of objects from the object store.
   ///
@@ -63,7 +60,6 @@ class CoreWorkerStoreProviderLayer {
       StoreProviderType type) const;
 
  private:
-
   /// Helper function to add a store provider for the specified type.
   void AddStoreProvider(StoreProviderType type);
 
@@ -85,7 +81,5 @@ class CoreWorkerStoreProviderLayer {
 };
 
 }  // namespace ray
-
-
 
 #endif  // RAY_CORE_WORKER_STORE_PROVIDER_LAYER_H

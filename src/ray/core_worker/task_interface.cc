@@ -97,10 +97,8 @@ std::vector<ray::ActorHandleID> ActorHandle::NewActorHandles() const {
 void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
-    WorkerContext &worker_context,
-    CoreWorkerTaskSubmitterLayer &task_submitter_layer)
-    : worker_context_(worker_context),
-      task_submitter_layer_(task_submitter_layer) {}
+    WorkerContext &worker_context, CoreWorkerTaskSubmitterLayer &task_submitter_layer)
+    : worker_context_(worker_context), task_submitter_layer_(task_submitter_layer) {}
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const TaskID &task_id, const int task_index,

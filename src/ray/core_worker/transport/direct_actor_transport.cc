@@ -22,8 +22,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_type_(StoreProviderType::MEMORY),
-      store_provider_(
-          store_provider_layer.CreateStoreProvider(store_provider_type_)) {
+      store_provider_(store_provider_layer.CreateStoreProvider(store_provider_type_)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
@@ -122,7 +121,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
           }
           pending_tasks_.erase(actor_id);
         }
-      }  
+      }
     }
 
     RAY_LOG(INFO) << "received notification on actor, state="
@@ -145,9 +144,9 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
     const auto &request = *requests.front();
-    auto status =
-        PushTask(*client, request, actor_id, TaskID::FromBinary(request.task_spec().task_id()),
-                 request.task_spec().num_returns());
+    auto status = PushTask(*client, request, actor_id,
+                           TaskID::FromBinary(request.task_spec().task_id()),
+                           request.task_spec().num_returns());
     requests.pop_front();
   }
 
@@ -160,10 +159,9 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
                                                     const TaskID &task_id,
                                                     int num_returns) {
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
-  auto status = client.PushTask(
-      request,
-      [this, actor_id, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
-        
+  auto status =
+      client.PushTask(request, [this, actor_id, task_id, num_returns](
+                                   Status status, const rpc::PushTaskReply &reply) {
         {
           std::unique_lock<std::mutex> guard(mutex_);
           waiting_reply_tasks_[actor_id].erase(task_id);
@@ -238,10 +236,8 @@ CoreWorkerDirectActorTaskSubmitter::GetStoreProviderTypeForReturnObject() const 
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-   boost::asio::io_service &io_service,
-   const TaskHandler &task_handler)
-    : task_service_(io_service, *this),
-      task_handler_(task_handler) {}
+    boost::asio::io_service &io_service, const TaskHandler &task_handler)
+    : task_service_(io_service, *this), task_handler_(task_handler) {}
 
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
