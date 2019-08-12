@@ -138,6 +138,11 @@ class WorkerPool {
   void TickHeartbeatTimer(int max_missed_heartbeats,
                           std::vector<std::shared_ptr<Worker>> *dead_workers);
 
+  /// Return the pointer to the worker according to the worker id.
+  ///
+  /// \param worker_id The worker id.
+  std::shared_ptr<Worker> GetWorker(const WorkerID &worker_id);
+
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and

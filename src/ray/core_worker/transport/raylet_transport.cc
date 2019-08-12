@@ -40,9 +40,11 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   RAY_CHECK(results.size() == num_returns);
-  for (int i = 0; i < num_returns; i++) {
-    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), i + 1);
-    object_interface_.Put(*results[i], id);
+  for (size_t i = 0; i < num_returns; i++) {
+    ObjectID id = ObjectID::ForTaskReturn(
+        task_spec.TaskId(), /*index=*/i + 1,
+        /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
+    RAY_CHECK_OK(object_interface_.Put(*results[i], id));
   }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to

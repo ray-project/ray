@@ -7,12 +7,14 @@ import org.ray.api.Checkpointable;
 import org.ray.api.Checkpointable.Checkpoint;
 import org.ray.api.Checkpointable.CheckpointContext;
 import org.ray.api.exception.RayTaskException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.util.IdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +39,7 @@ public class Worker {
   /**
    * Id of the current actor object, if the worker is an actor, otherwise NIL.
    */
-  private UniqueId currentActorId = UniqueId.NIL;
+  private ActorId currentActorId = ActorId.NIL;
 
   /**
    * The exception that failed the actor creation task, if any.
@@ -64,7 +66,7 @@ public class Worker {
     this.runtime = runtime;
   }
 
-  public UniqueId getCurrentActorId() {
+  public ActorId getCurrentActorId() {
     return currentActorId;
   }
 
@@ -92,7 +94,7 @@ public class Worker {
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
 
       if (spec.isActorCreationTask()) {
-        currentActorId = new UniqueId(returnId.getBytes());
+        currentActorId = spec.taskId.getActorId();
       }
 
       // Get local actor object and arguments.
@@ -118,9 +120,10 @@ public class Worker {
         if (spec.isActorTask()) {
           maybeSaveCheckpoint(actor, spec.actorId);
         }
+
         runtime.put(returnId, result);
       } else {
-        maybeLoadCheckpoint(result, new UniqueId(returnId.getBytes()));
+        maybeLoadCheckpoint(result, spec.taskId.getActorId());
         currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", spec.taskId);
@@ -136,7 +139,7 @@ public class Worker {
     }
   }
 
-  private void maybeSaveCheckpoint(Object actor, UniqueId actorId) {
+  private void maybeSaveCheckpoint(Object actor, ActorId actorId) {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
@@ -161,7 +164,7 @@ public class Worker {
     checkpointable.saveCheckpoint(actorId, checkpointId);
   }
 
-  private void maybeLoadCheckpoint(Object actor, UniqueId actorId) {
+  private void maybeLoadCheckpoint(Object actor, ActorId actorId) {
     if (!(actor instanceof Checkpointable)) {
       return;
     }

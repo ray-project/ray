@@ -19,7 +19,7 @@ cdef class TaskSpec:
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
-    def __init__(self, JobID job_id, function_descriptor, arguments,
+    def __init__(self, TaskID task_id, JobID job_id, function_descriptor, arguments,
                  int num_returns, TaskID parent_task_id, int parent_counter,
                  ActorID actor_creation_id,
                  ObjectID actor_creation_dummy_object_id,
@@ -51,6 +51,7 @@ cdef class TaskSpec:
 
         # Build common task spec.
         builder.SetCommonTaskSpec(
+            task_id.native(),
             LANGUAGE_PYTHON,
             c_function_descriptor,
             job_id.native(),

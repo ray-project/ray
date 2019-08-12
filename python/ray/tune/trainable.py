@@ -350,6 +350,14 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
+        logger.info("Restored from checkpoint: {}".format(checkpoint_path))
+        state = {
+            "_iteration": self._iteration,
+            "_timesteps_total": self._timesteps_total,
+            "_time_total": self._time_total,
+            "_episodes_total": self._episodes_total,
+        }
+        logger.info("Current state after restoring: {}".format(state))
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -459,7 +467,9 @@ class Trainable(object):
 
         Args:
             checkpoint_dir (str): The directory where the checkpoint
-                file must be stored.
+                file must be stored. In a Tune run, this defaults to
+                `<self.logdir>/checkpoint_<ITER>` (which is the same as
+                `local_dir/exp_name/trial_name/checkpoint_<ITER>`).
 
         Returns:
             checkpoint (str | dict): If string, the return value is

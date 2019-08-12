@@ -15,6 +15,15 @@ namespace raylet {
 
 using rpc::TaskLeaseData;
 
+// A helper function to get a normal task id.
+inline TaskID ForNormalTask() {
+  const static JobID job_id = JobID::FromInt(1);
+  const static TaskID driver_task_id = TaskID::ForDriverTask(job_id);
+  static TaskID task_id =
+      TaskID::ForNormalTask(job_id, driver_task_id, /*parent_task_counter=*/1);
+  return task_id;
+}
+
 class MockObjectDirectory : public ObjectDirectoryInterface {
  public:
   MockObjectDirectory() {}
@@ -226,8 +235,9 @@ class ReconstructionPolicyTest : public ::testing::Test {
 };
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -244,8 +254,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
   mock_object_directory_->SetObjectLocations(object_id, {ClientID::FromRandom()});
 
   // Listen for both objects.
@@ -267,8 +278,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
   ClientID client_id = ClientID::FromRandom();
   mock_object_directory_->SetObjectLocations(object_id, {client_id});
 
@@ -291,9 +303,11 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
 
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // Create two object IDs produced by the same task.
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id1 = ObjectID::ForTaskReturn(task_id, 1);
-  ObjectID object_id2 = ObjectID::ForTaskReturn(task_id, 2);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id1 =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
+  ObjectID object_id2 =
+      ObjectID::ForTaskReturn(task_id, /*index=*/2, /*transport_type=*/0);
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id1);
@@ -311,8 +325,9 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
   // Run the test for much longer than the reconstruction timeout.
   int64_t test_period = 2 * reconstruction_timeout_ms_;
 
@@ -337,8 +352,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -364,8 +380,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -390,8 +407,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
 }
 
 TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
-  TaskID task_id = TaskID::FromRandom();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, 1);
+  TaskID task_id = ForNormalTask();
+  ObjectID object_id =
+      ObjectID::ForTaskReturn(task_id, /*index=*/1, /*transport_type=*/0);
 
   // Log a reconstruction attempt to simulate a different node attempting the
   // reconstruction first. This should suppress this node's first attempt at

@@ -11,6 +11,7 @@ import org.ray.api.RayActor;
 import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
@@ -106,13 +107,13 @@ public class ActorReconstructionTest extends BaseTest {
     }
 
     @Override
-    public void saveCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+    public void saveCheckpoint(ActorId actorId, UniqueId checkpointId) {
       // In practice, user should save the checkpoint id and data to a persistent store.
       // But for simplicity, we don't do that in this unit test.
     }
 
     @Override
-    public UniqueId loadCheckpoint(UniqueId actorId, List<Checkpoint> availableCheckpoints) {
+    public UniqueId loadCheckpoint(ActorId actorId, List<Checkpoint> availableCheckpoints) {
       // Restore previous value and return checkpoint id.
       this.value = 3;
       this.resumedFromCheckpoint = true;
@@ -120,7 +121,7 @@ public class ActorReconstructionTest extends BaseTest {
     }
 
     @Override
-    public void checkpointExpired(UniqueId actorId, UniqueId checkpointId) {
+    public void checkpointExpired(ActorId actorId, UniqueId checkpointId) {
     }
   }
 
