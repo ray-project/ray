@@ -306,6 +306,9 @@ class Trainer(Trainable):
 
         config = config or {}
 
+        if config.get("use_eager"):
+            tf.enable_eager_execution()
+
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
 
@@ -439,7 +442,7 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         def get_scope():
-            if tf:
+            if tf and not self.config.get("use_eager"):
                 return tf.Graph().as_default()
             else:
                 return open("/dev/null")  # fake a no-op scope

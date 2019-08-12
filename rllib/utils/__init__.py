@@ -68,11 +68,8 @@ def try_import_tf():
         if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
             os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
         import tensorflow.compat.v1 as tf
-<<<<<<< HEAD:python/ray/rllib/utils/__init__.py
-=======
         tf.logging.set_verbosity(tf.logging.ERROR)
         tf.disable_v2_behavior()
->>>>>>> 158567b952d7e7d7d0dde5cb6dcce0eca45d91b5:rllib/utils/__init__.py
         return tf
     except ImportError:
         try:
