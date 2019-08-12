@@ -35,20 +35,23 @@ Training APIs
 Environments
 ------------
 * `RLlib Environments Overview <rllib-env.html>`__
+* `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
 * `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
-Models and Preprocessors
-------------------------
-* `RLlib Models and Preprocessors Overview <rllib-models.html>`__
+Models, Preprocessors, and Action Distributions
+-----------------------------------------------
+* `RLlib Models, Preprocessors, and Action Distributions Overview <rllib-models.html>`__
 * `TensorFlow Models <rllib-models.html#tensorflow-models>`__
 * `PyTorch Models <rllib-models.html#pytorch-models>`__
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+* `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
+* `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
 Algorithms
 ----------
@@ -84,7 +87,7 @@ Algorithms
 *  Multi-agent specific
 
    -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
-   -  `Multi-Agent Actor Critic (contrib/MADDPG) <rllib-algorithms.html#multi-agent-actor-critic-contrib-maddpg>`__
+   -  `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <rllib-algorithms.html#multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`__
 
 *  Offline
 

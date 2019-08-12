@@ -30,7 +30,7 @@ class TorchPolicy(Policy):
     """
 
     def __init__(self, observation_space, action_space, model, loss,
-                 action_distribution_cls):
+                 action_distribution_class):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -44,7 +44,7 @@ class TorchPolicy(Policy):
                 first item is action logits, and the rest can be any value.
             loss (func): Function that takes (policy, batch_tensors)
                 and returns a single scalar loss.
-            action_distribution_cls (ActionDistribution): Class for action
+            action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
         self.observation_space = observation_space
@@ -56,7 +56,7 @@ class TorchPolicy(Policy):
         self._model = model.to(self.device)
         self._loss = loss
         self._optimizer = self.optimizer()
-        self._action_dist_cls = action_distribution_cls
+        self._action_dist_class = action_distribution_class
 
     @override(Policy)
     def compute_actions(self,
@@ -78,8 +78,7 @@ class TorchPolicy(Policy):
                     input_dict["prev_rewards"] = prev_reward_batch
                 model_out = self._model(input_dict, state_batches, [1])
                 logits, state = model_out
-                action_dist = self._action_dist_cls(
-                    logits, model_config=self.config["model"])
+                action_dist = self._action_dist_class(logits, self._model)
                 actions = action_dist.sample()
                 return (actions.cpu().numpy(),
                         [h.cpu().numpy() for h in state],
