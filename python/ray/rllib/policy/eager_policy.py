@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.rllib.utils import try_import_tf
 from ray.rllib.policy import policy
 from ray.rllib.models import catalog
+from ray.rllib.models.tf import fcnet_v2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -153,7 +154,8 @@ class TFEagerPolicy(policy.Policy):
 
 def build_tf_policy(name, postprocess_fn, loss_fn,
                     make_optimizer, get_default_config=None, stats_fn=None):
-
+    catalog.ModelCatalog.register_custom_model("keras_model",
+                                               fcnet_v2.FullyConnectedNetwork)
     class EagerPolicy(TFEagerPolicy):
         def __init__(self, observation_space, action_space, config):
             if get_default_config:
@@ -162,7 +164,6 @@ def build_tf_policy(name, postprocess_fn, loss_fn,
             self.dist_class, logit_dim = catalog.ModelCatalog.get_action_dist(
                 action_space, config["model"])
 
-            config["model"]["custom_model"] = "mymodel"
             model = catalog.ModelCatalog.get_model_v2(
                 observation_space,
                 action_space,
