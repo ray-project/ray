@@ -461,7 +461,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testReporterNoUsage(self):
         def run_task(config, reporter):
-            print('hello')
+            print("hello")
 
         experiment = Experiment(run=run_task, name="ray_crash_repro")
         [trial] = ray.tune.run(experiment).trials
