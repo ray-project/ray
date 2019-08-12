@@ -16,7 +16,7 @@ const std::vector<ObjectID> &Task::GetDependencies() const { return dependencies
 
 void Task::ComputeDependencies() {
   dependencies_.clear();
-  for (int i = 0; i < task_spec_.NumArgs(); ++i) {
+  for (size_t i = 0; i < task_spec_.NumArgs(); ++i) {
     int count = task_spec_.ArgIdCount(i);
     for (int j = 0; j < count; j++) {
       dependencies_.push_back(task_spec_.ArgId(i, j));
