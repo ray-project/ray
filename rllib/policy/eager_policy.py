@@ -7,7 +7,10 @@ from ray.rllib.policy import policy
 from ray.rllib.models import catalog
 from ray.rllib.models.tf import fcnet_v2
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.policy.tf_policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import DeveloperAPI
 
 tf = try_import_tf()
@@ -18,18 +21,11 @@ class TFEagerPolicy(policy.Policy):
 
     @DeveloperAPI
     def __init__(self, optimizer, model, observation_space, action_space):
-        self._optimizer = optimizer
-        self._model = model
+        self.optimizer = optimizer
+        self.model = model
         self.observation_space = observation_space
         self.action_space = action_space
-
-    @property
-    def optimizer(self):
-        return self._optimizer
-
-    @property
-    def model(self):
-        return self._model
+        self._sess = None
 
     @DeveloperAPI
     def loss(self, outputs, samples):
@@ -157,9 +153,19 @@ def build_tf_policy(name, loss_fn,
                     postprocess_fn=None,
                     stats_fn=None,
                     optimizer_fn=None,
+                    gradients_fn=None,
+                    extra_action_fetches_fn=None,
+                    before_init=None,
+                    before_loss_init=None,
+                    mixins=None,
                     obs_include_prev_action_reward=True):
 
-    class EagerPolicy(TFEagerPolicy):
+    base = add_mixins(TFEagerPolicy, mixins)
+
+    if gradients_fn:
+        print("WARNING: NOT IMPLEMENTED: custom gradients fn")
+
+    class policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
 
@@ -184,8 +190,20 @@ def build_tf_policy(name, loss_fn,
             else:
                 optimizer = tf.train.AdamOptimizer(config["lr"])
 
+            if before_init:
+                before_init(self, observation_space, action_space, config)
+
+            model({
+                SampleBatch.CUR_OBS: tf.convert_to_tensor([observation_space.sample()]),
+                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor([action_space.sample()]),
+                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
+            }, [tf.convert_to_tensor([s]) for s in model.get_initial_state()],
+            tf.convert_to_tensor([1]))
+
             TFEagerPolicy.__init__(self, optimizer, model, observation_space,
                                    action_space)
+            if before_loss_init:
+                before_loss_init(self, observation_space, action_space, config)
 
         def postprocess_trajectory(self, samples, other_agent_batches=None,
                                    episode=None):
@@ -214,10 +232,22 @@ def build_tf_policy(name, loss_fn,
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         prev_reward_batch, dtype=tf.float32),
                 })
-            model_out, states = self.model(input_dict, state_batches, seq_len)
+            self.state_in = state_batches
+            self.model_out, self.state_out = self.model(
+                input_dict, state_batches, seq_len)
 
-            actions_dist = self.dist_class(model_out)
-            return actions_dist.sample().numpy(), states, {}
+            action_dist = self.dist_class(self.model_out)
+            fetches = {}
+            action = action_dist.sample().numpy()
+            logp = action_dist.sampled_action_logp()
+            if logp is not None:
+                fetches.update({
+                    ACTION_PROB: tf.exp(logp).numpy(),
+                    ACTION_LOGP: logp.numpy(),
+                })
+            if extra_action_fetches_fn:
+                fetches.update(extra_action_fetches_fn(self))
+            return action, self.state_out, fetches
 
         def loss(self, outputs, samples):
             assert tf.executing_eagerly()
@@ -229,5 +259,5 @@ def build_tf_policy(name, loss_fn,
                 return {}
             return stats_fn(outputs, samples)
 
-    EagerPolicy.__name__ = name
-    return EagerPolicy
+    policy_cls.__name__ = name
+    return policy_cls
