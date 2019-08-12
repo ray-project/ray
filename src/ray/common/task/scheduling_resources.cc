@@ -299,6 +299,7 @@ ResourceIds::ResourceIds() {}
 ResourceIds::ResourceIds(double resource_quantity) {
   RAY_CHECK(IsWhole(resource_quantity));
   int64_t whole_quantity = resource_quantity;
+  whole_ids_.reserve(whole_quantity);
   for (int64_t i = 0; i < whole_quantity; ++i) {
     whole_ids_.push_back(i);
   }
