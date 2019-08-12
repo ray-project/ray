@@ -1293,6 +1293,7 @@ def _initialize_serialization(job_id, worker=global_worker):
 
 
 def init(redis_address=None,
+         address=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -1346,6 +1347,7 @@ def init(redis_address=None,
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
+        address (str): Same as redis_address.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -1414,6 +1416,14 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if address:
+        if redis_address:
+            raise ValueError(
+                "You should specify address instead of redis_address.")
+        if address == "auto":
+            address = services.find_redis_address_or_die()
+        redis_address = address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)

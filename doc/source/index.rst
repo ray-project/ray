@@ -47,7 +47,7 @@ To use Ray's actor model:
         def __init__(self):
             self.n = 0
 
-        def inc(self):
+        def increment(self):
             self.n += 1
 
         def read(self):

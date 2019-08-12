@@ -117,7 +117,7 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids) {
+    TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.language, function.function_descriptor,
                             worker_context_.GetCurrentJobID(),
@@ -135,7 +135,9 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
   // Compute return IDs.
   (*return_ids).resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1, /*transport_type=*/0);
+    (*return_ids)[i] =
+        ObjectID::ForTaskReturn(task_id, i + 1,
+                                /*transport_type=*/static_cast<int>(transport_type));
   }
 }
 
@@ -149,7 +151,8 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
   BuildCommonTaskSpec(builder, task_id, next_task_index, function, args,
-                      task_options.num_returns, task_options.resources, {}, return_ids);
+                      task_options.num_returns, task_options.resources, {},
+                      TaskTransportType::RAYLET, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
@@ -166,7 +169,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(builder, actor_creation_task_id, next_task_index, function, args, 1,
                       actor_creation_options.resources, actor_creation_options.resources,
-                      &return_ids);
+                      TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    {});
 
@@ -187,6 +190,10 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   // Add one for actor cursor object id for tasks.
   const auto num_returns = task_options.num_returns + 1;
 
+  const bool is_direct_call = actor_handle.IsDirectCallActor();
+  const auto transport_type =
+      is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
+
   // Build common task spec.
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
@@ -194,14 +201,16 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle.ActorID());
   BuildCommonTaskSpec(builder, actor_task_id, next_task_index, function, args,
-                      num_returns, task_options.resources, {}, return_ids);
+                      num_returns, task_options.resources, {}, transport_type,
+                      return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.
   const auto actor_creation_task_id =
       TaskID::ForActorCreationTask(actor_handle.ActorID());
   const auto actor_creation_dummy_object_id =
-      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1, /*transport_type=*/0);
+      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
+                              /*transport_type=*/static_cast<int>(transport_type));
   builder.SetActorTaskSpec(
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
       actor_creation_dummy_object_id,
@@ -216,9 +225,6 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   guard.unlock();
 
   // Submit task.
-  const bool is_direct_call = actor_handle.IsDirectCallActor();
-  const auto transport_type =
-      is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
   auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());
   // Remove cursor from return ids.
   (*return_ids).pop_back();
