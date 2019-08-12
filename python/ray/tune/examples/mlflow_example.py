@@ -10,17 +10,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import json
 import mlflow
-from  mlflow.tracking import MlflowClient
-import numpy as np
+from mlflow.tracking import MlflowClient
 import time
-import os
 import random
 
 from ray import tune
-from ray.tune import Trainable, run
+from ray.tune.logger import MLFLowLogger
 
 
 def trial_str_creator(trial):
@@ -31,8 +27,7 @@ def easy_objective(config):
     for i in range(20):
         result = dict(
             timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3)
-        )
+            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
         tune.track.log(**result)
         time.sleep(0.02)
     tune.track.log(done=True)
@@ -42,7 +37,7 @@ if __name__ == "__main__":
     client = MlflowClient()
     experiment_id = client.create_experiment("test")
 
-    trials = run(
+    trials = tune.run(
         easy_objective,
         name="mlflow",
         num_samples=5,
