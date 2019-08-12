@@ -1515,7 +1515,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         const ActorID &actor_id = spec.ActorId();
         auto lookup_callback =
             [this, actor_id](Status status, const boost::optional<ActorTableData> &data) {
-              if (!!data) {
+              if (data) {
                 // The actor has been created. We only need the last entry, because
                 // it represents the latest state of this actor.
                 HandleActorStateTransition(actor_id, ActorRegistration(*data));

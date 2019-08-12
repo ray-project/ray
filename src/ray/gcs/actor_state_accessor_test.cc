@@ -105,7 +105,7 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
     ++pending_count_;
     actor_accessor.AsyncGet(
         elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
-          ASSERT_TRUE(!!data);
+          ASSERT_TRUE(data);
           ActorID actor_id = ActorID::FromBinary(data->actor_id());
           auto it = actor_datas_.find(actor_id);
           ASSERT_TRUE(it != actor_datas_.end());
