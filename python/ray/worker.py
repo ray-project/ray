@@ -200,7 +200,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID.from_random()
+                self._task_context.current_task_id = TaskID.for_fake_task()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -718,7 +718,24 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(job_id, JobID)
+
+            if actor_creation_id is not None and not actor_creation_id.is_nil(
+            ):
+                # This is an actor creation task.
+                task_id = TaskID.for_actor_creation_task(actor_creation_id)
+            elif actor_id is not None and not actor_id.is_nil():
+                # This is an actor task.
+                task_id = TaskID.for_actor_task(
+                    self.current_job_id, self.current_task_id,
+                    self.task_context.task_index, actor_id)
+            else:
+                # This is a normal task.
+                task_id = TaskID.for_normal_task(self.current_job_id,
+                                                 self.current_task_id,
+                                                 self.task_context.task_index)
+
             task = ray._raylet.TaskSpec(
+                task_id,
                 job_id,
                 function_descriptor_list,
                 args_for_raylet,
@@ -1245,6 +1262,7 @@ def _initialize_serialization(job_id, worker=global_worker):
 
 
 def init(redis_address=None,
+         address=None,
          num_cpus=None,
          num_gpus=None,
          resources=None,
@@ -1296,6 +1314,7 @@ def init(redis_address=None,
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
+        address (str): Same as redis_address.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -1358,6 +1377,14 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if address:
+        if redis_address:
+            raise ValueError(
+                "You should specify address instead of redis_address.")
+        if address == "auto":
+            address = services.find_redis_address_or_die()
+        redis_address = address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1594,15 +1621,22 @@ def print_logs(redis_client, threads_stopped):
             num_consecutive_messages_received += 1
 
             data = json.loads(ray.utils.decode(msg["data"]))
+
+            def color_for(data):
+                if data["pid"] == "raylet":
+                    return colorama.Fore.YELLOW
+                else:
+                    return colorama.Fore.CYAN
+
             if data["ip"] == localhost:
                 for line in data["lines"]:
                     print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.DIM, color_for(data), data["pid"],
                         colorama.Style.RESET_ALL, line))
             else:
                 for line in data["lines"]:
                     print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.DIM, color_for(data), data["pid"],
                         data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
@@ -1910,6 +1944,7 @@ def connect(node,
 
         function_descriptor = FunctionDescriptor.for_driver_task()
         driver_task_spec = ray._raylet.TaskSpec(
+            TaskID.for_driver_task(worker.current_job_id),
             worker.current_job_id,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.

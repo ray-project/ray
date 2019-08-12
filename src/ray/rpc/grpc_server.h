@@ -87,7 +87,7 @@ class GrpcServer {
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that
-  /// gRPC server can accept.
+  /// this gRPC server can handle.
   std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
       server_call_factories_and_concurrencies_;
   /// The `ServerCompletionQueue` object used for polling events.
@@ -121,13 +121,11 @@ class GrpcService {
 
   /// Subclasses should implement this method to initialize the `ServerCallFactory`
   /// instances, as well as specify maximum number of concurrent requests that gRPC
-  /// server can "accept" (not "handle"). Each factory will be used to create
-  /// `accept_concurrency` `ServerCall` objects, each of which will be used to accept and
-  /// handle an incoming request.
+  /// server can handle.
   ///
   /// \param[in] cq The grpc completion queue.
   /// \param[out] server_call_factories_and_concurrencies The `ServerCallFactory` objects,
-  /// and the maximum number of concurrent requests that gRPC server can accept.
+  /// and the maximum number of concurrent requests that this gRPC server can handle.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
