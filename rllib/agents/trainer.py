@@ -70,6 +70,8 @@ COMMON_CONFIG = {
     "ignore_worker_failures": False,
     # Log system resource metrics to results.
     "log_sys_usage": True,
+    # Run policy using TF eager if possible
+    "use_eager": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the

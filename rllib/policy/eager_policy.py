@@ -152,14 +152,20 @@ class TFEagerPolicy(policy.Policy):
         return NotImplemented
 
 
-def build_tf_policy(name, postprocess_fn, loss_fn,
-                    make_optimizer, get_default_config=None, stats_fn=None):
-    catalog.ModelCatalog.register_custom_model("keras_model",
-                                               fcnet_v2.FullyConnectedNetwork)
+def build_tf_policy(name, loss_fn,
+                    get_default_config=None,
+                    postprocess_fn=None,
+                    stats_fn=None,
+                    optimizer_fn=None,
+                    obs_include_prev_action_reward=True):
+
     class EagerPolicy(TFEagerPolicy):
         def __init__(self, observation_space, action_space, config):
+            assert tf.executing_eagerly()
+
             if get_default_config:
                 config = dict(get_default_config(), **config)
+            self.config = config
 
             self.dist_class, logit_dim = catalog.ModelCatalog.get_action_dist(
                 action_space, config["model"])
@@ -171,14 +177,19 @@ def build_tf_policy(name, postprocess_fn, loss_fn,
                 config["model"],
                 framework="tf",
             )
-            optimizer = make_optimizer(self, observation_space, action_space,
-                                       config)
-            self.config = config
+
+            if optimizer_fn:
+                optimizer = optimizer_fn(self, observation_space, action_space,
+                                         config)
+            else:
+                optimizer = tf.train.AdamOptimizer(config["lr"])
+
             TFEagerPolicy.__init__(self, optimizer, model, observation_space,
                                    action_space)
 
         def postprocess_trajectory(self, samples, other_agent_batches=None,
                                    episode=None):
+            assert tf.executing_eagerly()
             return postprocess_fn(self, samples)
 
         def compute_actions(self,
@@ -189,25 +200,31 @@ def build_tf_policy(name, postprocess_fn, loss_fn,
                             info_batch=None,
                             episodes=None,
                             **kwargs):
+            assert tf.executing_eagerly()
             seq_len = tf.ones(len(obs_batch))
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     obs_batch, dtype=tf.float32),
-                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    prev_action_batch, dtype=tf.int32),
-                SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                    prev_reward_batch, dtype=tf.float32),
                 "is_training": tf.convert_to_tensor(True),
             }
+            if obs_include_prev_action_reward:
+                input_dict.update({
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        prev_action_batch, dtype=tf.int32),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        prev_reward_batch, dtype=tf.float32),
+                })
             model_out, states = self.model(input_dict, state_batches, seq_len)
 
             actions_dist = self.dist_class(model_out)
             return actions_dist.sample().numpy(), states, {}
 
         def loss(self, outputs, samples):
+            assert tf.executing_eagerly()
             return loss_fn(outputs, samples)
 
         def stats(self, outputs, samples):
+            assert tf.executing_eagerly()
             if stats_fn is None:
                 return {}
             return stats_fn(outputs, samples)

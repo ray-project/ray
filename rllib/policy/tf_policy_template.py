@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.policy import eager_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
@@ -211,7 +212,16 @@ def build_tf_policy(name,
     def with_updates(**overrides):
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
+    @staticmethod
+    def as_eager():
+        minimal = {
+            k: v for k, v in original_kwargs.items()
+            if v is not None
+        }
+        return eager_policy.build_tf_policy(**minimal)
+
     policy_cls.with_updates = with_updates
+    policy_cls.as_eager = as_eager
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

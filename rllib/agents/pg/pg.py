@@ -5,7 +5,6 @@ from __future__ import print_function
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_policy import PGTFPolicy
-from ray.rllib.agents.pg.eager_pg_policy import PGTFPolicy as EagerPGTFPolicy
 from ray.rllib.utils import try_import_tf
 
 # yapf: disable
@@ -17,8 +16,6 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 0.0004,
     # Use PyTorch as backend
     "use_pytorch": False,
-    # Use TF eager:
-    "use_eager": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -32,10 +29,6 @@ def get_policy_class(config):
     if config["use_pytorch"]:
         from ray.rllib.agents.pg.torch_pg_policy import PGTorchPolicy
         return PGTorchPolicy
-    elif config["use_eager"]:
-        tf = try_import_tf()
-        tf.enable_eager_execution()
-        return EagerPGTFPolicy
     else:
         return PGTFPolicy
 
