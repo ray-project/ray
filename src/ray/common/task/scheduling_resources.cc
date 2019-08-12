@@ -244,6 +244,13 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
+const std::string format_resources(std::string resource_name, double quantity) {
+  if (resource_name == "object_store_memory" || resource_name == "memory") {
+    return std::string(std::round(100 * quantity / (1024 * 1024 * 1024)) / 100) + " GiB";
+  }
+  return std::string(quantity);
+}
+
 const std::string ResourceSet::ToString() const {
   if (resource_capacity_.size() == 0) {
     return "{}";
@@ -255,14 +262,14 @@ const std::string ResourceSet::ToString() const {
     // Convert the first element to a string.
     if (it != resource_capacity_.end()) {
       double resource_amount = (it->second).ToDouble();
-      return_string += "{" + it->first + "," + std::to_string(resource_amount) + "}";
+      return_string += "{" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
       it++;
     }
 
     // Add the remaining elements to the string (along with a comma).
     for (; it != resource_capacity_.end(); ++it) {
       double resource_amount = (it->second).ToDouble();
-      return_string += ",{" + it->first + "," + std::to_string(resource_amount) + "}";
+      return_string += ", {" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
     }
 
     return return_string;

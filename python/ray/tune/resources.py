@@ -85,13 +85,13 @@ class Resources(
         summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
                                             self.gpu + self.extra_gpu)
         if self.memory or self.extra_memory:
-            summary += ", {} GB heap".format(
-                round((self.memory + self.extra_memory) / 1e9, 2))
+            summary += ", {} GiB heap".format(
+                round((self.memory + self.extra_memory) / (1024**3), 2))
         if self.object_store_memory or self.extra_object_store_memory:
-            summary += ", {} GB objects".format(
+            summary += ", {} GiB objects".format(
                 round(
                     (self.object_store_memory + self.extra_object_store_memory)
-                    / 1e9, 2))
+                    / (1024**3), 2))
         custom_summary = ", ".join([
             "{} {}".format(self.get_res_total(res), res)
             for res in self.custom_resources

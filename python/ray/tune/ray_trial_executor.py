@@ -482,7 +482,7 @@ class RayTrialExecutor(TrialExecutor):
 
         if self._resources_initialized:
             status = ("Resources requested: {}/{} CPUs, {}/{} GPUs, "
-                      "{}/{} GB heap, {}/{} GB objects".format(
+                      "{}/{} GiB heap, {}/{} GiB objects".format(
                           self._committed_resources.cpu,
                           self._avail_resources.cpu,
                           self._committed_resources.gpu,
@@ -509,7 +509,7 @@ class RayTrialExecutor(TrialExecutor):
 
         if self._resources_initialized:
             res_str = ("{} CPUs, {} GPUs, "
-                       "{} GB heap, {} GB objects".format(
+                       "{} GiB heap, {} GiB objects".format(
                            self._avail_resources.cpu,
                            self._avail_resources.gpu,
                            _to_gb(self._avail_resources.memory),
@@ -624,4 +624,4 @@ class RayTrialExecutor(TrialExecutor):
 
 
 def _to_gb(n_bytes):
-    return round(n_bytes / 1e9, 2)
+    return round(n_bytes / (1024**3), 2)
