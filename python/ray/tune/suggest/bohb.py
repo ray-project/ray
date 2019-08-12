@@ -16,8 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 class JobWrapper():
-    """Dummy class"""
-
     def __init__(self, loss, budget, config):
         self.result = {"loss": loss}
         self.kwargs = {"budget": budget, "config": config.copy()}
@@ -27,14 +25,13 @@ class JobWrapper():
 class TuneBOHB(SuggestionAlgorithm):
     """BOHB suggestion component.
 
-    Requires HpBandSter and ConfigSpace to be installed.
-    You can install HpBandSter and ConfigSpace with:
 
-        `pip install hpbandster ConfigSpace`
+    Requires HpBandSter and ConfigSpace to be installed. You can install
+    HpBandSter and ConfigSpace with: `pip install hpbandster ConfigSpace`.
 
     This should be used in conjunction with HyperBandForBOHB.
 
-    Parameters:
+    Args:
         space (ConfigurationSpace): Continuous ConfigSpace search space.
             Parameters will be sampled from this space which will be used
             to run trials.
@@ -46,23 +43,23 @@ class TuneBOHB(SuggestionAlgorithm):
             minimizing or maximizing the metric attribute.
 
     Example:
-        CS = ConfigSpace
-        config_space = CS.ConfigurationSpace()
-        config_space.add_hyperparameter(
-            CS.UniformFloatHyperparameter('width', lower=0, upper=20))
-        config_space.add_hyperparameter(
-            CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
-        config_space.add_hyperparameter(
-            CS.CategoricalHyperparameter(
-                name='activation', choices=['relu', 'tanh']))
-        algo = TuneBOHB(
-            config_space, max_concurrent=4, metric="mean_loss", mode="min")
-        bohb = HyperBandForBOHB(
-            time_attr="training_iteration",
-            metric="mean_loss",
-            mode="min",
-            max_t=100)
-        run(MyTrainableClass, scheduler=bohb, search_alg=algo)
+        >>> import ConfigSpace as CS
+        >>> config_space = CS.ConfigurationSpace()
+        >>> config_space.add_hyperparameter(
+                CS.UniformFloatHyperparameter('width', lower=0, upper=20))
+        >>> config_space.add_hyperparameter(
+                CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
+        >>> config_space.add_hyperparameter(
+                CS.CategoricalHyperparameter(
+                    name='activation', choices=['relu', 'tanh']))
+        >>> algo = TuneBOHB(
+                config_space, max_concurrent=4, metric='mean_loss', mode='min')
+        >>> bohb = HyperBandForBOHB(
+                time_attr='training_iteration',
+                metric='mean_loss',
+                mode='min',
+                max_t=100)
+        >>> run(MyTrainableClass, scheduler=bohb, search_alg=algo)
 
     """
 

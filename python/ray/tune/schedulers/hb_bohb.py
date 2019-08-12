@@ -23,6 +23,7 @@ class HyperBandForBOHB(HyperBandScheduler):
     2.Trials will be paused even if the bracket is not filled. This allows
     BOHB to insert new trials into the training.
 
+    See ray.tune.schedulers.HyperBandScheduler for parameter docstring.
     """
 
     def on_trial_add(self, trial_runner, trial):
@@ -90,7 +91,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                                        if t is not trial):
             trial_runner._search_alg.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
-        action = self._process_bracket(trial_runner, bracket, trial)
+        action = self._process_bracket(trial_runner, bracket)
         return action
 
     def _unpause_trial(self, trial_runner, trial):
@@ -121,6 +122,8 @@ class HyperBandForBOHB(HyperBandScheduler):
                 for bracket in hyperband:
                     if bracket and any(trial.status == Trial.PAUSED
                                        for trial in bracket.current_trials()):
-                        self._process_bracket(trial_runner, bracket, None)
+                        # This will change the trial state and let the
+                        # trial runner retry.
+                        self._process_bracket(trial_runner, bracket)
         # MAIN CHANGE HERE!
         return None

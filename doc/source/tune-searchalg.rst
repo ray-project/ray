@@ -189,16 +189,13 @@ BOHB
 
 ``BOHB`` (Bayesian Optimization HyperBand) is a SearchAlgorithm that is backed by `HpBandSter <https://github.com/automl/HpBandSter>`__ to perform sequential model-based hyperparameter optimization in conjunction with HyperBand. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BOHB.
 
-Importantly, BOHB is intended to be paired with a specific scheduler class: `HyperBandForBOHB <<tune-schedulers.html#hyperband-bohb>>`__.
+Importantly, BOHB is intended to be paired with a specific scheduler class: `HyperBandForBOHB <tune-schedulers.html#hyperband-bohb>`__.
 
-In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace`` via the following command:
+This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`_. In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace``:
 
 .. code-block:: bash
 
-    $ pip install hpbandster
-    $ pip install ConfigSpace
-
-This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`__.
+    $ pip install hpbandster ConfigSpace
 
 
 You can use ``TuneBOHB`` in conjunction with ``HyperBandForBOHB`` as follows:

@@ -97,7 +97,8 @@ class HyperBandScheduler(FIFOScheduler):
 
         FIFOScheduler.__init__(self)
         self._eta = reduction_factor
-        self._s_max_1 = int(np.log(max_t) / np.log(reduction_factor)) + 1
+        self._s_max_1 = int(
+            np.round(np.log(max_t) / np.log(reduction_factor))) + 1
         self._max_t_attr = max_t
         # bracket max trials
         self._get_n0 = lambda s: int(
@@ -177,10 +178,10 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
-        action = self._process_bracket(trial_runner, bracket, trial)
+        action = self._process_bracket(trial_runner, bracket)
         return action
 
-    def _process_bracket(self, trial_runner, bracket, trial):
+    def _process_bracket(self, trial_runner, bracket):
         """This is called whenever a trial makes progress.
 
         When all live trials in the bracket have no more iterations left,
@@ -227,7 +228,7 @@ class HyperBandScheduler(FIFOScheduler):
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
         if not bracket.finished():
-            self._process_bracket(trial_runner, bracket, trial)
+            self._process_bracket(trial_runner, bracket)
 
     def on_trial_complete(self, trial_runner, trial, result):
         """Cleans up trial info from bracket if trial completed early."""

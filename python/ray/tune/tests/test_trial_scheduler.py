@@ -236,7 +236,7 @@ class _MockTrialRunner():
 
 class HyperbandSuite(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
         ray.shutdown()
@@ -319,17 +319,19 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._n, 81)
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
-        sched = HyperBandScheduler(max_t=810)
+        reduction_factor = 10
+        sched = HyperBandScheduler(
+            max_t=1000, reduction_factor=reduction_factor)
         i = 0
         while not sched._cur_band_filled():
             t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
-        self.assertEqual(len(sched._hyperbands[0]), 5)
-        self.assertEqual(sched._hyperbands[0][0]._n, 5)
-        self.assertEqual(sched._hyperbands[0][0]._r, 810)
-        self.assertEqual(sched._hyperbands[0][-1]._n, 81)
-        self.assertEqual(sched._hyperbands[0][-1]._r, 10)
+        self.assertEqual(len(sched._hyperbands[0]), 4)
+        self.assertEqual(sched._hyperbands[0][0]._n, 4)
+        self.assertEqual(sched._hyperbands[0][0]._r, 1000)
+        self.assertEqual(sched._hyperbands[0][-1]._n, 1000)
+        self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
     def testConfigSameEtaSmall(self):
         sched = HyperBandScheduler(max_t=1)
@@ -338,8 +340,7 @@ class HyperbandSuite(unittest.TestCase):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
-        self.assertEqual(len(sched._hyperbands[0]), 5)
-        self.assertTrue(all(v is None for v in sched._hyperbands[0][1:]))
+        self.assertEqual(len(sched._hyperbands[0]), 1)
 
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=81)
@@ -605,7 +606,7 @@ class HyperbandSuite(unittest.TestCase):
 
 class BOHBSuite(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
         ray.shutdown()
@@ -615,7 +616,9 @@ class BOHBSuite(unittest.TestCase):
         sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
         runner = _MockTrialRunner(sched)
         for i in range(3):
-            sched.on_trial_add(runner, Trial("__fake"))
+            t = Trial("__fake")
+            sched.on_trial_add(runner, t)
+            runner._launch_trial(t)
 
         self.assertEqual(sched.state()["num_brackets"], 1)
         sched.on_trial_add(runner, Trial("__fake"))
@@ -625,24 +628,26 @@ class BOHBSuite(unittest.TestCase):
         def result(score, ts):
             return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
 
-        sched = HyperBandScheduler(max_t=3, reduction_factor=3)
+        sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
-            sched.on_trial_add(runner, t)
+            runner.add_trial(t)
+            runner._launch_trial(t)
 
-        decision = sched.on_trial_result(runner, trials[0], result(1, 1))
-        self.assertEqual(decision, TrialScheduler.PAUSE)
-        decision = sched.on_trial_result(runner, trials[1], result(1, 1))
-        self.assertEqual(decision, TrialScheduler.PAUSE)
-        decision = sched.on_trial_result(runner, trials[2], result(1, 1))
-        self.assertEqual(decision, TrialScheduler.CONTINUE)
-
-        self.assertEqual(runner._search_alg.on_pause.call_count, 3)
+        for trial, trial_result in zip(trials, [result(1, 1), result(2, 1)]):
+            decision = sched.on_trial_result(runner, trial, trial_result)
+            self.assertEqual(decision, TrialScheduler.PAUSE)
+            runner._pause_trial(trial)
+        spy_result = result(1, 1)
+        decision = sched.on_trial_result(runner, trials[-1], spy_result)
+        self.assertEqual(decision, TrialScheduler.STOP)
+        sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
         self.assertEqual(runner._search_alg.on_unpause.call_count, 1)
-        call_args = runner._search_alg.on_trial_result.call_args
-        self.assertTrue("hyperband_info" in call_args[2])
+        self.assertTrue("hyperband_info" in spy_result)
+        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
 
 class _MockTrial(Trial):
