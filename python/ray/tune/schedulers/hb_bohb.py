@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 class HyperBandForBOHB(HyperBandScheduler):
     """Extends HyperBand early stopping algorithm for BOHB.
 
-    The default HyperBandScheduler implements pipelining for efficiency. This
+    This implementation removes the ``HyperBandScheduler`` pipelining. This
     class introduces key changes:
 
     1. Trials are now placed so that the bracket with the largest size is
     filled first.
 
-    2.Trials will be paused even if the bracket is not filled. This allows
+    2. Trials will be paused even if the bracket is not filled. This allows
     BOHB to insert new trials into the training.
 
     See ray.tune.schedulers.HyperBandScheduler for parameter docstring.
@@ -29,10 +29,10 @@ class HyperBandForBOHB(HyperBandScheduler):
     def on_trial_add(self, trial_runner, trial):
         """Adds new trial.
 
-        On a new trial add, if current bracket is not filled,
-        add to current bracket. Else, if current band is not filled,
-        create new bracket, add to current bracket.
-        Else, create new iteration, create new bracket, add to bracket.
+        On a new trial add, if current bracket is not filled, add to current
+        bracket. Else, if current band is not filled, create new bracket, add
+        to current bracket. Else, create new iteration, create new bracket,
+        add to bracket.
         """
 
         cur_bracket = self._state["bracket"]
@@ -50,9 +50,8 @@ class HyperBandForBOHB(HyperBandScheduler):
                 # cur_band will always be less than s_max_1 or else filled
                 s = self._s_max_1 - len(cur_band) - 1
                 assert s >= 0, "Current band is filled!"
-                # MAIN CHANGE HERE!
                 if self._get_r0(s) == 0:
-                    logger.info("Bracket too small - Retrying...")
+                    logger.debug("BOHB: Bracket too small - Retrying...")
                     cur_bracket = None
                 else:
                     retry = False
