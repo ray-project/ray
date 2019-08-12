@@ -15,7 +15,8 @@ from ray.tune.suggest import SuggestionAlgorithm
 logger = logging.getLogger(__name__)
 
 
-class JobWrapper():
+class _BOHBJobWrapper():
+    """Mock object for HpBandSter to process."""
     def __init__(self, loss, budget, config):
         self.result = {"loss": loss}
         self.kwargs = {"budget": budget, "config": config.copy()}
@@ -114,7 +115,7 @@ class TuneBOHB(SuggestionAlgorithm):
             self.running.remove(trial_id)
 
     def to_wrapper(self, trial_id, result):
-        return JobWrapper(
+        return _BOHBJobWrapper(
             self._metric_op * result[self.metric],
             result["hyperband_info"]["budget"],
             {k: result["config"][k]
