@@ -128,14 +128,15 @@ Status CoreWorkerObjectInterface::Get(
     bool should_wait = ShouldWaitObjects(unready_ids);
 
     // Get the objects from the object store, and parse the result.
-    int64_t get_timeout;
-    if (remaining_timeout >= 0) {
-      get_timeout =
-          std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
+    int64_t get_timeout = RayConfig::instance().get_timeout_milliseconds();
+    if (!should_wait) {
+      get_timeout = 0;
+      remaining_timeout = 0;
+      should_break = true;
+    } else if (remaining_timeout >= 0) {
+      get_timeout = std::min(remaining_timeout, get_timeout);
       remaining_timeout -= get_timeout;
       should_break = remaining_timeout <= 0;
-    } else {
-      get_timeout = RayConfig::instance().get_timeout_milliseconds();
     }
 
     std::vector<std::shared_ptr<RayObject>> result_objects;
@@ -154,8 +155,18 @@ Status CoreWorkerObjectInterface::Get(
 
     num_attempts += 1;
     WarnIfAttemptedTooManyTimes(num_attempts, unready);
-    if (!should_wait) {
-      break;
+  
+    if (!should_wait && !unready.empty()) {
+      // If the tasks that created these objects have already finished, but we are still
+      // not able to get some of the objects from store, it's likely that these objects
+      // have been evicted from store, so them as unreconstructable.
+      std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE));
+      auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+      auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size(), true);
+      auto object = std::make_shared<RayObject>(nullptr, meta_buffer);
+      for (const auto &entry : unready) {
+        (*results).emplace(entry, object);
+      }
     }
   }
 

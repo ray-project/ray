@@ -299,6 +299,20 @@ void CoreWorkerTest::TestActorTask(
       ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
                        buffer2->Size()),
                 0);
+
+      if (is_direct_call) {
+        results.clear();
+        RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+        ASSERT_EQ(results.size(), 1);
+
+        // For memory store the objects are removed after the first `Get`,
+        // so the second one should return `OBJECT_UNRECONSTRUCTABLE`.
+        ASSERT_TRUE(results[0]->HasMetadata());
+        // Verify if this is the desired error.
+        std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE));
+        ASSERT_TRUE(memcmp(results[0]->GetMetadata()->Data(), meta.data(), meta.size()) ==
+                    0);
+      }
     }
   }
 
