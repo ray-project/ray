@@ -32,10 +32,10 @@ class CoreWorkerTaskSubmitter {
   /// \return Status.
   virtual Status SubmitTask(const TaskSpecification &task_spec) = 0;
 
-  /// Check if a task has finished.
+  /// Check task status, return whether to wait for the task to finish.
   ///
   /// \param[in] task_id The ID of the task.
-  /// \return If the task has finished.
+  /// \return Whether to wait for task.
   virtual bool ShouldWaitTask(const TaskID &task_id) const = 0;
 
   /// Get the store provider type for return objects.

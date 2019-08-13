@@ -26,10 +26,11 @@ class CoreWorkerTaskSubmitterLayer {
   /// \return Status.
   Status SubmitTask(TaskTransportType type, const TaskSpecification &task_spec);
 
-  /// Check if a task has finished.
+  /// Check task status, return whether to wait for the task to finish.
   ///
+  /// \param[in] type The type of the task transport.
   /// \param[in] task_id The ID of the task.
-  /// \return If the task has finished.
+  /// \return Whether to wait for task.
   bool ShouldWaitTask(TaskTransportType type, const TaskID &task_id) const;
 
   /// Get the store provider type for return objects.

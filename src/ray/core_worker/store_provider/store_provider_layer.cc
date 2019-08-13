@@ -34,8 +34,6 @@ Status CoreWorkerStoreProviderLayer::Wait(StoreProviderType type,
                                           const std::vector<ObjectID> &object_ids,
                                           int num_objects, int64_t timeout_ms,
                                           std::vector<bool> *results) {
-  // TODO(zhijunfu): for other types other than PLASMA, we need to use a loop
-  // like in `Get`.
   return store_providers_[type]->Wait(object_ids, num_objects, timeout_ms, results);
 }
 

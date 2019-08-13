@@ -48,8 +48,6 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
-  // TODO(zhijunfu): should determine transport based on object id, and then
-  // find the store provider that the transport is using.
 
   // There can be a few cases here:
   // - for task return objects, find the store provider type for an object from

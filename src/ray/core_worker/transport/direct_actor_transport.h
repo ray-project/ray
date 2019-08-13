@@ -39,10 +39,10 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
-  /// Check if a task has finished.
+  /// Check task status, return whether to wait for the task to finish.
   ///
   /// \param[in] task_id The ID of the task.
-  /// \return If the task has finished.
+  /// \return Whether to wait for task.
   bool ShouldWaitTask(const TaskID &task_id) const override;
 
   /// Get the store provider type for return objects.

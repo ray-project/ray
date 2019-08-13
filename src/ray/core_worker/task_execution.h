@@ -72,7 +72,7 @@ class CoreWorkerTaskExecutionInterface {
   /// Reference to `CoreWorkerStoreProviderLayer`.
   CoreWorkerStoreProviderLayer &store_provider_layer_;
 
-  // Task execution callback.
+  /// Task execution callback.
   const TaskExecutor execution_callback_;
 
   /// Task receiver layer.
