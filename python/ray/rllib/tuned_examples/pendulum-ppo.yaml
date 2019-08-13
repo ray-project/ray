@@ -1,0 +1,18 @@
+# can expect improvement to -140 reward in ~300-500k timesteps
+pendulum-ppo:
+    env: Pendulum-v0
+    run: PPO
+    config:
+        train_batch_size: 2048
+        vf_clip_param: 10.0
+        num_workers: 0
+        num_envs_per_worker: 10
+        lambda: 0.1
+        gamma: 0.95
+        lr: 0.0003
+        sgd_minibatch_size: 64
+        num_sgd_iter: 10
+        model:
+            fcnet_hiddens: [64, 64]
+        batch_mode: complete_episodes
+        observation_filter: MeanStdFilter

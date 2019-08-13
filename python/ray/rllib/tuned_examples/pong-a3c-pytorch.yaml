@@ -1,0 +1,21 @@
+pong-a3c-pytorch-cnn:
+    env: PongDeterministic-v4
+    run: A3C
+    config:
+        num_workers: 16
+        sample_batch_size: 20
+        use_pytorch: true
+        vf_loss_coeff: 0.5
+        entropy_coeff: 0.01
+        gamma: 0.99
+        grad_clip: 40.0
+        lambda: 1.0
+        lr: 0.0001
+        observation_filter: NoFilter
+        model:
+            use_lstm: false
+            dim: 84
+            grayscale: true
+            zero_mean: false
+        optimizer:
+            grads_per_step: 1000

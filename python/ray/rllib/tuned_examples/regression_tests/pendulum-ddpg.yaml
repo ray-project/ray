@@ -1,0 +1,10 @@
+pendulum-ddpg:
+    env: Pendulum-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: -900
+        timesteps_total: 100000
+    config:
+        use_huber: True
+        clip_rewards: False
+        exploration_fraction: 0.1

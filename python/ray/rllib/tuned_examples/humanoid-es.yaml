@@ -1,0 +1,7 @@
+humanoid-es:
+    env: Humanoid-v1
+    run: ES
+    stop:
+        episode_reward_mean: 6000
+    config:
+        num_workers: 100

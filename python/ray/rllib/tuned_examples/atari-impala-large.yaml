@@ -1,0 +1,22 @@
+# Runs on a g3.16xl node with 5 m5.24xl workers
+# Takes roughly 10 minutes.
+atari-impala:
+    env:
+        grid_search:
+            - BreakoutNoFrameskip-v4
+            - BeamRiderNoFrameskip-v4
+            - QbertNoFrameskip-v4
+            - SpaceInvadersNoFrameskip-v4
+    run: IMPALA
+    stop:
+        timesteps_total: 3000000
+    config:
+        sample_batch_size: 50
+        train_batch_size: 500
+        num_workers: 128
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]
