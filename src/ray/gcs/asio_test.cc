@@ -23,7 +23,6 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   redisReply *reply = reinterpret_cast<redisReply *>(r);
   ASSERT_TRUE(reply != nullptr);
   ASSERT_TRUE(std::string(reinterpret_cast<char *>(reply->str)) == "test");
-  redisAsyncDisconnect(c);
   io_service.stop();
 }
 

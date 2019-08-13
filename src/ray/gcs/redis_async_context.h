@@ -25,7 +25,10 @@ class RedisAsyncContext {
     RAY_CHECK(redis_async_context_ != nullptr);
   }
 
-  ~RedisAsyncContext() {}
+  ~RedisAsyncContext() {
+    redisAsyncFree(redis_async_context_);
+    redis_async_context_ = nullptr;
+  }
 
   /// Get mutable context.
   redisAsyncContext *GetRawRedisAsyncContext() {
@@ -55,7 +58,6 @@ class RedisAsyncContext {
 
  private:
   std::mutex mutex_;
-  /// Will be freed by hiredis at exit.
   redisAsyncContext *redis_async_context_{nullptr};
 };
 
