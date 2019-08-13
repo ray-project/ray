@@ -29,14 +29,14 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "ray/gcs/redis_async_context_wrapper.h"
+#include "ray/gcs/redis_async_context.h"
 #include "ray/thirdparty/hiredis/async.h"
 #include "ray/thirdparty/hiredis/hiredis.h"
 
 class RedisAsioClient {
  public:
   RedisAsioClient(boost::asio::io_service &io_service,
-                  ray::gcs::RedisAsyncContextWrapper &async_context_wrapper);
+                  ray::gcs::RedisAsyncContext &async_context_wrapper);
 
   void operate();
 
@@ -49,7 +49,7 @@ class RedisAsioClient {
   void cleanup();
 
  private:
-  ray::gcs::RedisAsyncContextWrapper &async_context_wrapper_;
+  ray::gcs::RedisAsyncContext &redis_async_context_;
 
   boost::asio::ip::tcp::socket socket_;
   // Hiredis wanted to add a read operation to the event loop

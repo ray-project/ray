@@ -10,7 +10,7 @@
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
-#include "ray/gcs/redis_async_context_wrapper.h"
+#include "ray/gcs/redis_async_context.h"
 #include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -156,16 +156,14 @@ class RedisContext {
 
   redisContext *sync_context() { return context_; }
 
-  RedisAsyncContextWrapper &async_context() { return *async_context_wrapper_; }
+  RedisAsyncContext &async_context() { return *redis_async_context_; }
 
-  RedisAsyncContextWrapper &subscribe_context() {
-    return *async_subscribe_context_wrapper_;
-  }
+  RedisAsyncContext &subscribe_context() { return *async_redis_subscribe_context_; }
 
  private:
   redisContext *context_;
-  std::unique_ptr<RedisAsyncContextWrapper> async_context_wrapper_;
-  std::unique_ptr<RedisAsyncContextWrapper> async_subscribe_context_wrapper_;
+  std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
 };
 
 template <typename ID>
@@ -178,13 +176,13 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
-      status = async_context_wrapper_->RedisAsyncCommand(
+      status = redis_async_context_->RedisAsyncCommand(
           reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
           pubsub_channel, id.Data(), id.Size(), data, length, log_length);
     } else {
       std::string redis_command = command + " %d %d %b %b";
-      status = async_context_wrapper_->RedisAsyncCommand(
+      status = redis_async_context_->RedisAsyncCommand(
           reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
           reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
           pubsub_channel, id.Data(), id.Size(), data, length);
@@ -192,7 +190,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
   } else {
     RAY_CHECK(log_length == -1);
     std::string redis_command = command + " %d %d %b";
-    status = async_context_wrapper_->RedisAsyncCommand(
+    status = redis_async_context_->RedisAsyncCommand(
         reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
         pubsub_channel, id.Data(), id.Size());

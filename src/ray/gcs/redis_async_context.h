@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_REDIS_ASYNC_CONTEXT_WRAPPER_H
-#define RAY_GCS_REDIS_ASYNC_CONTEXT_WRAPPER_H
+#ifndef RAY_GCS_REDIS_ASYNC_CONTEXT_H
+#define RAY_GCS_REDIS_ASYNC_CONTEXT_H
 
 #include <stdarg.h>
 #include <mutex>
@@ -14,30 +14,21 @@ namespace ray {
 
 namespace gcs {
 
-/// \class RedisAsyncContextWrapper
-/// RedisAsyncContextWrapper class make async execution of redis commands thread-safe by
+/// \class RedisAsyncContext
+/// RedisAsyncContext class is a C++ wrapper of hiredis asyncRedisContext.
+/// The purpose of this class is to make redis async commands thread-safe by
 /// locking.
-class RedisAsyncContextWrapper {
+class RedisAsyncContext {
  public:
-  explicit RedisAsyncContextWrapper(redisAsyncContext *redis_async_context)
+  explicit RedisAsyncContext(redisAsyncContext *redis_async_context)
       : redis_async_context_(redis_async_context) {
     RAY_CHECK(redis_async_context_ != nullptr);
   }
 
-  ~RedisAsyncContextWrapper() {}
-
-  /// Free 'redisAsyncContext' which hold by this wrapper.
-  /// If already setted disconnect callback when connect,
-  /// 'redisAsyncContext' will be free by hiredis, then no need to call this function.
-  void RedisAsyncFree() {
-    if (redis_async_context_ != nullptr) {
-      redisAsyncFree(redis_async_context_);
-      redis_async_context_ = nullptr;
-    }
-  }
+  ~RedisAsyncContext() {}
 
   /// Get mutable context.
-  redisAsyncContext *MutableContext() {
+  redisAsyncContext *GetRawRedisAsyncContext() {
     RAY_CHECK(redis_async_context_ != nullptr);
     return redis_async_context_;
   }
@@ -64,6 +55,7 @@ class RedisAsyncContextWrapper {
 
  private:
   std::mutex mutex_;
+  /// Will be freed by hiredis at exit.
   redisAsyncContext *redis_async_context_{nullptr};
 };
 
@@ -71,4 +63,4 @@ class RedisAsyncContextWrapper {
 
 }  // namespace ray
 
-#endif  // RAY_GCS_REDIS_ASYNC_CONTEXT_WRAPPER_H
+#endif  // RAY_GCS_REDIS_ASYNC_CONTEXT_H

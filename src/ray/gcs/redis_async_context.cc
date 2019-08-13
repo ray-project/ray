@@ -1,4 +1,4 @@
-#include "ray/gcs/redis_async_context_wrapper.h"
+#include "ray/gcs/redis_async_context.h"
 
 extern "C" {
 #include "ray/thirdparty/hiredis/async.h"
@@ -9,8 +9,8 @@ namespace ray {
 
 namespace gcs {
 
-Status RedisAsyncContextWrapper::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
-                                                   const char *format, ...) {
+Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
+                                            const char *format, ...) {
   va_list ap;
   va_start(ap, format);
 
@@ -29,10 +29,9 @@ Status RedisAsyncContextWrapper::RedisAsyncCommand(redisCallbackFn *fn, void *pr
   return Status::OK();
 }
 
-Status RedisAsyncContextWrapper::RedisAsyncCommandArgv(redisCallbackFn *fn,
-                                                       void *privdata, int argc,
-                                                       const char **argv,
-                                                       const size_t *argvlen) {
+Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privdata,
+                                                int argc, const char **argv,
+                                                const size_t *argvlen) {
   int ret_code = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
