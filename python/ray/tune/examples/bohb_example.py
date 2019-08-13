@@ -65,7 +65,7 @@ if __name__ == "__main__":
     config_space.add_hyperparameter(
         CS.UniformFloatHyperparameter("width", lower=0, upper=100))
 
-    experiment_metrics = dict(metric="episode_reward_mean", mode="min")
+    experiment_metrics = dict(metric="episode_reward_mean", mode="max")
     bohb_hyperband = HyperBandForBOHB(
         time_attr="training_iteration",
         max_t=100,
