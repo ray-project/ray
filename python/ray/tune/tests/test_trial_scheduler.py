@@ -368,7 +368,7 @@ class HyperbandSuite(unittest.TestCase):
             self.assertEqual(action, TrialScheduler.CONTINUE)
             new_length = len(big_bracket.current_trials())
             self.assertEqual(new_length, self.downscale(current_length, sched))
-            cur_units += int(cur_units * sched._eta)
+            cur_units = int(cur_units * sched._eta)
         self.assertEqual(len(big_bracket.current_trials()), 1)
 
     def testHalvingStop(self):
