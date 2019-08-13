@@ -265,7 +265,11 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
-    def reset_trial(self, trial, new_config, new_experiment_tag):
+    def reset_trial(self,
+                    trial,
+                    new_config,
+                    new_experiment_tag,
+                    reset_logger=False):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
 
         Args:
@@ -280,6 +284,10 @@ class RayTrialExecutor(TrialExecutor):
         """
         trial.experiment_tag = new_experiment_tag
         trial.config = new_config
+        if reset_logger is True:
+            trial.reset_logger()
+            new_config['logdir'] = trial.logdir
+
         trainable = trial.runner
         with warn_if_slow("reset_config"):
             reset_val = ray.get(trainable.reset_config.remote(new_config))

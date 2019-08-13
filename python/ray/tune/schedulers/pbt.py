@@ -28,6 +28,7 @@ class PBTTrialState(object):
         self.orig_tag = trial.experiment_tag
         self.last_score = None
         self.last_checkpoint = None
+        self.last_result = None
         self.last_perturbation_time = 0
 
     def __repr__(self):
@@ -236,9 +237,11 @@ class PopulationBasedTraining(FIFOScheduler):
         if trial in upper_quantile:
             state.last_checkpoint = trial_runner.trial_executor.save(
                 trial, Checkpoint.MEMORY)
+            state.last_result = trial.last_result
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
+            state.last_result = None
 
         if trial in lower_quantile:
             trial_to_clone = random.choice(upper_quantile)
@@ -312,8 +315,10 @@ class PopulationBasedTraining(FIFOScheduler):
 
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
-        reset_successful = trial_executor.reset_trial(trial, new_config,
-                                                      new_tag)
+        trial.reset_logger()
+        new_config["new_logdir"] = trial.logdir
+        reset_successful = trial_executor.reset_trial(
+            trial, new_config, new_tag, reset_logger=True)
         if reset_successful:
             trial_executor.restore(
                 trial, Checkpoint.from_object(new_state.last_checkpoint))

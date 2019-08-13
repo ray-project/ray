@@ -261,6 +261,13 @@ class Trial(object):
         if self.result_logger:
             self.result_logger.sync_results_to_new_location(worker_ip)
 
+    def reset_logger(self):
+        """Reset logger"""
+
+        self.close_logger()
+        self.logdir = None
+        self.init_logger()
+
     def close_logger(self):
         """Close logger."""
 
@@ -387,7 +394,6 @@ class Trial(object):
             self.last_debug = time.time()
         self.last_result = result
         self.last_update_time = time.time()
-        self.result_logger.on_result(self.last_result)
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.

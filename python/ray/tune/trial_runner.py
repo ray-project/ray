@@ -516,6 +516,9 @@ class TrialRunner(object):
 
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
+            if not is_duplicate:
+                trial.result_logger.on_result(result)
+
             flat_result = flatten_dict(result)
             if trial.should_stop(flat_result):
                 # Hook into scheduler
