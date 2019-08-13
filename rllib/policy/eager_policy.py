@@ -2,18 +2,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import numpy as np
 
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.debug import log_once
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -83,8 +86,13 @@ class TFEagerPolicy(Policy):
         else:
             grads_and_vars = zip(tape.gradient(loss, variables), variables)
 
+        if log_once("grad_vars"):
+            grads_and_vars = list(grads_and_vars)
+            for _, v in grads_and_vars:
+                logger.info("Optimizing variable {}".format(v.name))
+
         self.optimizer.apply_gradients(grads_and_vars)
-        return stats
+        return {LEARNER_STATS_KEY: stats}
 
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
@@ -105,7 +113,9 @@ class TFEagerPolicy(Policy):
             loss=lambda: self.loss(postprocessed_batch), ))
         grads = tf.nest.map_structure(lambda grad: grad.numpy(), grads)
 
-        return grads, {}
+        return grads, {
+            LEARNER_STATS_KEY: self.stats(self, postprocessed_batch)
+        }
 
     @DeveloperAPI
     def apply_gradients(self, gradients):
@@ -160,6 +170,9 @@ class TFEagerPolicy(Policy):
         #  facilitate this
         return NotImplemented
 
+    def get_session(self):
+        return None
+
 
 def build_tf_policy(name,
                     loss_fn,
@@ -182,6 +195,10 @@ def build_tf_policy(name,
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
+
+            if before_init:
+                before_init(self, observation_space, action_space, config)
+
             self.config = config
 
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -200,9 +217,6 @@ def build_tf_policy(name,
                                          config)
             else:
                 optimizer = tf.train.AdamOptimizer(config["lr"])
-
-            if before_init:
-                before_init(self, observation_space, action_space, config)
 
             model({
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
@@ -272,7 +286,10 @@ def build_tf_policy(name,
             assert tf.executing_eagerly()
             if stats_fn is None:
                 return {}
-            return stats_fn(outputs, samples)
+            return {
+                k: v.numpy()
+                for k, v in stats_fn(outputs, samples).items()
+            }
 
     policy_cls.__name__ = name
     return policy_cls
