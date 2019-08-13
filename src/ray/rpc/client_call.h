@@ -152,8 +152,12 @@ class ClientCallManager {
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback) {
+      const Request &request, const ClientCallback<Reply> &callback,
+      const std::unordered_map<std::string, std::string> &meta = {}) {
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
+    for (const auto &meta_entry : meta) {
+      call->context_.AddMetadata(meta_entry.first, meta_entry.second);
+    }
     // Send request.
     call->response_reader_ =
         (stub.*prepare_async_function)(&call->context_, request, &cq_);

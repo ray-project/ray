@@ -7,6 +7,7 @@
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
@@ -15,7 +16,7 @@ namespace ray {
 namespace rpc {
 
 /// Client used for communicating with a direct actor server.
-class DirectActorClient {
+class DirectActorClient : public GetRpcClient<DirectActorService> {
  public:
   /// Constructor.
   ///
@@ -24,7 +25,7 @@ class DirectActorClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   DirectActorClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
+      : GrpcClient(true), client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
     stub_ = DirectActorService::NewStub(channel);
@@ -40,14 +41,11 @@ class DirectActorClient {
     auto call = client_call_manager_
                     .CreateCall<DirectActorService, PushTaskRequest, PushTaskReply>(
                         *stub_, &DirectActorService::Stub::PrepareAsyncPushTask, request,
-                        callback);
+                        callback, GetMetaForNextRequest());
     return call->GetStatus();
   }
 
  private:
-  /// The gRPC-generated stub.
-  std::unique_ptr<DirectActorService::Stub> stub_;
-
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
 };
