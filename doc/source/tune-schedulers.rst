@@ -131,12 +131,27 @@ On the other hand, holding ``R`` constant at ``R = 300`` and varying ``eta`` als
 
 The implementation takes the same configuration as the example given in the paper and exposes ``max_t``, which is not a parameter in the paper.
 
-2. The example in the `post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
+2. The example in the `post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
 
 .. image:: images/hyperband_allocation.png
 
 
 3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. This implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.
+
+HyperBand (BOHB)
+----------------
+
+.. tip:: This implementation is still experimental. Please report issues on https://github.com/ray-project/ray/issues/. Thanks!
+
+This class is a variant of HyperBand that enables the BOHB Algorithm. This implementation is true to the original HyperBand implementation and does not implement pipelining nor straggler mitigation.
+
+This is to be used in conjunction with the Tune BOHB search algorithm. See `TuneBOHB <tune-searchalg.html#BOHB>`_ for package requirements, examples, and details.
+
+An example of this in use can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_.
+
+.. autoclass:: ray.tune.schedulers.HyperBandForBOHB
+    :noindex:
+
 
 Median Stopping Rule
 --------------------
