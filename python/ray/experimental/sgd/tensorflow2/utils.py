@@ -6,9 +6,7 @@ from contextlib import closing
 import numpy as np
 import socket
 import time
-import torch
-import torch.nn as nn
-
+import tensorflow as tf
 
 def train(train_dataset, model):
     """Runs 1 training epoch"""
@@ -67,10 +65,10 @@ def train(train_dataset, model):
 
     # need keras callback functions to be defined to get all the timing info I need
 
-    history = model.fit(train_dataset,epochs=1, verbose=0)
+    history = model.fit(train_dataset, epochs=1, verbose=0)
 
     stats = {
-        "train_loss" = history.history['loss'][-1]
+        "train_loss" : history.history['loss'][-1]
     }
 
     # stats.update({k: t.mean for k, t in timers.items()})
@@ -108,8 +106,7 @@ def validate(test_dataset, model):
     # stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
 
 
-
-    results = model.evaluate(test_dataset)
+    results = model.evaluate(test_dataset, verbose=0)
 
     stats = {"validation_loss":results[0]}
 
@@ -235,15 +232,15 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def sgd_mse_optimizer(model, config):
-    """Returns the mean squared error criterion and SGD optimizer.
+# def sgd_mse_optimizer(model, config):
+#     """Returns the mean squared error criterion and SGD optimizer.
 
-    Args:
-        model (torch.nn.Module): the model to optimize.
-        config (dict): configuration for the optimizer.
-            lr (float): the learning rate. defaults to 0.01.
-    """
-    learning_rate = config.get("lr", 0.01)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    return criterion, optimizer
+#     Args:
+#         model (torch.nn.Module): the model to optimize.
+#         config (dict): configuration for the optimizer.
+#             lr (float): the learning rate. defaults to 0.01.
+#     """
+#     learning_rate = config.get("lr", 0.01)
+#     criterion = nn.MSELoss()
+#     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+#     return criterion, optimizer

@@ -4,18 +4,15 @@ from __future__ import print_function
 
 import numpy as np
 import os
-import torch
-import torch.distributed as dist
 import logging
 
 import ray
 
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.experimental.sgd.pytorch.pytorch_runner import TensorFlow2Runner
-from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
-    DistributedTensorFlow2Runner)
-from ray.experimental.sgd.pytorch import utils
+from ray.experimental.sgd.tensorflow2.tensorflow2_runner import TensorFlow2Runner
+from ray.experimental.sgd.tensorflow2.distributed_tensorflow2_runner import DistributedTensorFlow2Runner
+from ray.experimental.sgd.tensorflow2 import utils
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +27,7 @@ class TensorFlow2Trainer(object):
     def __init__(self,
                  model_creator,
                  data_creator,
-                 optimizer_creator=utils.sgd_mse_optimizer,
+                 optimizer_creator,
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
@@ -64,7 +61,7 @@ class TensorFlow2Trainer(object):
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=1, num_gpus=int(use_gpu))(Tensorflow2Runner)
+                num_cpus=1, num_gpus=int(use_gpu))(TensorFlow2Runner)
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, optimizer_creator,
@@ -75,7 +72,7 @@ class TensorFlow2Trainer(object):
         else:
             # Geneate actor class
             Runner = ray.remote(
-                num_cpus=1, num_gpus=int(use_gpu))(DistributedTensorflow2Runner)
+                num_cpus=1, num_gpus=int(use_gpu))(DistributedTensorFlow2Runner)
             # Compute batch size per replica
             batch_size_per_replica = batch_size // num_replicas
             if batch_size % num_replicas > 0:
@@ -87,19 +84,32 @@ class TensorFlow2Trainer(object):
                          old_batch_size=batch_size,
                          new_batch_size=new_batch_size,
                          num_replicas=num_replicas))
+
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size_per_replica, backend)
+                              self.config, batch_size_per_replica)
                 for i in range(num_replicas)
             ]
+
             # Compute URL for initializing distributed TensorFlow2
-            ip = ray.get(self.workers[0].get_node_ip.remote())
-            port = ray.get(self.workers[0].find_free_port.remote())
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+            ips = ray.get([
+                worker.get_node_ip.remote()
+                for worker in self.workers
+            ])
+            ports = ray.get([
+                worker.find_free_port.remote()
+                for worker in self.workers
+            ])
+
+            addresses = [
+                "{ip}:{port}".format(ip=ips[i], port=ports[i])
+                for i in range(len(self.workers))
+            ]
+
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers))
+                worker.setup.remote(addresses, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
 
@@ -126,14 +136,17 @@ class TensorFlow2Trainer(object):
         ## pytorch has model with model params.
         ## used for save and loading
 
-        # model = self.model_creator(self.config)
-        # state = ray.get(self.workers[0].get_state.remote())
-        # model.load_state_dict(state["model"])
-        # return model
+        model = ray.get(self.workers[0].get_model.remote())
+        return model
 
-        #TODO
 
-        pass
+    def get_stats(self):
+        """Returns the learned model."""
+        ## pytorch has model with model params.
+        ## used for save and loading
+
+        stats = ray.get(self.workers[0].get_stats.remote())
+        return stats
 
     def save(self, checkpoint):
         """Saves the model at the provided checkpoint.
@@ -142,8 +155,12 @@ class TensorFlow2Trainer(object):
             checkpoint (str): Path to target checkpoint file.
 
         """
-        state = ray.get(self.workers[0].get_state.remote())
-        torch.save(state, checkpoint)
+        model = self.get_model()
+        stats = self.get_stats()
+        model.save(checkpoint)
+        with open(checkpoint + '_stats.json', 'w') as outfile:
+            json.dump(data, outfile)
+
         return checkpoint
 
     def restore(self, checkpoint):
@@ -153,9 +170,15 @@ class TensorFlow2Trainer(object):
             checkpoint (str): Path to target checkpoint file.
 
         """
-        state = torch.load(checkpoint)
-        state_id = ray.put(state)
-        ray.get([worker.set_state.remote(state_id) for worker in self.workers])
+        with open(checkpoint + '_stats.json') as file:
+            stats = json.load(file)
+
+        model = keras.models.load_model(checkpoint)
+
+        model_id = ray.put(model)
+        stats_id = ray.put(stats)
+
+        ray.get([worker.set_state.remote(model_id, stats_id) for worker in self.workers])
 
     def shutdown(self):
         """Shuts down workers and releases resources."""
@@ -164,41 +187,41 @@ class TensorFlow2Trainer(object):
             worker.__ray_terminate__.remote()
 
 
-class TensorFlow2Trainable(Trainable):
-    @classmethod
-    def default_resource_request(cls, config):
-        return Resources(
-            cpu=0,
-            gpu=0,
-            extra_cpu=config["num_replicas"],
-            extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
+# class TensorFlow2Trainable(Trainable):
+#     @classmethod
+#     def default_resource_request(cls, config):
+#         return Resources(
+#             cpu=0,
+#             gpu=0,
+#             extra_cpu=config["num_replicas"],
+#             extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
-    def _setup(self, config):
-        self._trainer = TensorFlow2Trainer(
-            model_creator=config["model_creator"],
-            data_creator=config["data_creator"],
-            optimizer_creator=config["optimizer_creator"],
-            config=config,
-            num_replicas=config["num_replicas"],
-            use_gpu=config["use_gpu"],
-            batch_size=config["batch_size"],
-            backend=config["backend"])
+#     def _setup(self, config):
+#         self._trainer = TensorFlow2Trainer(
+#             model_creator=config["model_creator"],
+#             data_creator=config["data_creator"],
+#             optimizer_creator=config["optimizer_creator"],
+#             config=config,
+#             num_replicas=config["num_replicas"],
+#             use_gpu=config["use_gpu"],
+#             batch_size=config["batch_size"],
+#             backend=config["backend"])
 
-    def _train(self):
+#     def _train(self):
 
-        train_stats = self._trainer.train()
-        validation_stats = self._trainer.validate()
+#         train_stats = self._trainer.train()
+#         validation_stats = self._trainer.validate()
 
-        train_stats.update(validation_stats)
+#         train_stats.update(validation_stats)
 
-        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
-        return train_stats
+#         # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
+#         return train_stats
 
-    def _save(self, checkpoint_dir):
-        return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))
+#     def _save(self, checkpoint_dir):
+#         return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))
 
-    def _restore(self, checkpoint_path):
-        return self._trainer.restore(checkpoint_path)
+#     def _restore(self, checkpoint_path):
+#         return self._trainer.restore(checkpoint_path)
 
-    def _stop(self):
-        self._trainer.shutdown()
+#     def _stop(self):
+#         self._trainer.shutdown()

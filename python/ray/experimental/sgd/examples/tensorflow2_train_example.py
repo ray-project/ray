@@ -4,13 +4,13 @@ from __future__ import print_function
 
 import argparse
 from ray import tune
-from tensorflow2_trainer import TensorFlow2Trainer, TensorFlow2Trainable
+from ray.experimental.sgd.tensorflow2.tensorflow2_trainer import TensorFlow2Trainer
 
-from ray.experimental.sgd.tests.pytorch_utils import (
+from ray.experimental.sgd.tests.tensorflow2_utils import (
     model_creator, optimizer_creator, data_creator)
 
-
 def train_example(num_replicas=1, use_gpu=False):
+
     trainer1 = TensorFlow2Trainer(
         model_creator,
         data_creator,
@@ -18,29 +18,36 @@ def train_example(num_replicas=1, use_gpu=False):
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         batch_size=512)
-    trainer1.train()
+    train_stats1 = trainer1.train()
+    # print(train_stats)
+
+    train_stats2 = trainer1.train()
+    # print(train_stats)
+
+    assert train_stats1["train_loss"] > train_stats2["train_loss"]
+
     trainer1.shutdown()
     print("success!")
 
 
-def tune_example(num_replicas=1, use_gpu=False):
-    config = {
-        "model_creator": tune.function(model_creator),
-        "data_creator": tune.function(data_creator),
-        "optimizer_creator": tune.function(optimizer_creator),
-        "num_replicas": num_replicas,
-        "use_gpu": use_gpu,
-        "batch_size": 512,
-    }
+# def tune_example(num_replicas=1, use_gpu=False):
+#     config = {
+#         "model_creator": tune.function(model_creator),
+#         "data_creator": tune.function(data_creator),
+#         "optimizer_creator": tune.function(optimizer_creator),
+#         "num_replicas": num_replicas,
+#         "use_gpu": use_gpu,
+#         "batch_size": 512,
+#     }
 
-    analysis = tune.run(
-        TensorFlow2Trainable,
-        num_samples=2,
-        config=config,
-        stop={"training_iteration": 2},
-        verbose=1)
+#     analysis = tune.run(
+#         TensorFlow2Trainable,
+#         num_samples=2,
+#         config=config,
+#         stop={"training_iteration": 2},
+#         verbose=1)
 
-    return analysis.get_best_config(metric="validation_loss", mode="min")
+#     return analysis.get_best_config(metric="validation_loss", mode="min")
 
 
 if __name__ == "__main__":

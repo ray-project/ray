@@ -3,11 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import torch
-import torch.utils.data
 
 import ray
-from ray.experimental.sgd.pytorch import utils
+
+from ray.experimental.sgd.tensorflow2 import utils
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ class TensorFlow2Runner(object):
                            metrics=self.metrics)
 
         logger.debug("Creating dataset")
-        train_dataset, test_dataset = self.data_creator(self.config)
+        self.train_dataset, self.test_dataset = self.data_creator(self.config, self.batch_size)
 
         # set batch here
 
@@ -121,28 +120,26 @@ class TensorFlow2Runner(object):
 
         #### Done until here ########
 
-    def get_state(self):
-        """Returns the state of the runner."""
-        return {
-            "epoch": self.epoch,
-            "model": self.model, # compiled model includes optimizer
-            "stats": self.stats()
-        }
+    def get_model(self):
+        return self.model
 
-    def set_state(self, state):
-        """Sets the state of the model."""
-        # TODO: restore timer stats
-        self.model.load_state_dict(state["model"])
-        self.optimizer.load_state_dict(state["optimizer"])
-        self.epoch = state["stats"]["epoch"]
+    def get_stats(self):
+        """Returns the stats of the runner."""
+        return self.stats()
+
+    def load_model_stats(self, model ,stats):
+        self.epoch = stats["epoch"]
+        self.model = model
 
     def shutdown(self):
         """Attempts to shut down the worker."""
-        del self.validation_loader
-        del self.validation_set
-        del self.train_loader
-        del self.training_set
-        del self.criterion
-        del self.optimizer
-        del self.model
+        # TODO
+        # del self.validation_loader
+        # del self.validation_set
+        # del self.train_loader
+        # del self.training_set
+        # del self.criterion
+        # del self.optimizer
+        # del self.model
+        pass
 

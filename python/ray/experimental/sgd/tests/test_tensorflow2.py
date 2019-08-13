@@ -5,8 +5,6 @@ from __future__ import print_function
 import os
 import pytest
 import tempfile
-import torch
-import torch.distributed as dist
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
