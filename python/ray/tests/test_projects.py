@@ -7,7 +7,11 @@ import os
 import pytest
 import subprocess
 import yaml
+from click.testing import CliRunner
+from unittest.mock import patch, DEFAULT
+from contextlib import contextmanager
 
+from ray.projects.scripts import start
 import ray
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -65,3 +69,51 @@ def test_project_no_validation():
     path = os.path.join(TEST_DIR, "project_files")
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_call(["ray", "project", "validate"], cwd=path)
+
+
+@contextmanager
+def _chdir_and_back(d):
+    old_dir = os.getcwd()
+    try:
+        os.chdir(d)
+        yield
+    finally:
+        os.chdir(old_dir)
+
+
+def test_session_start_default_project():
+    test_dir = os.path.join(TEST_DIR,
+                            "project_files/session-tests/project-pass")
+
+    with _chdir_and_back(test_dir):
+        runner = CliRunner()
+        with patch.multiple(
+                "ray.projects.scripts",
+                create_or_update_cluster=DEFAULT,
+                rsync=DEFAULT,
+                exec_cluster=DEFAULT,
+        ) as mock_calls:
+            result = runner.invoke(start, [])
+            assert result.exit_code == 0
+
+    create_or_update_cluster_call = mock_calls["create_or_update_cluster"]
+    exec_cluster_call = mock_calls["exec_cluster"]
+
+    loaded_project = ray.projects.load_project(test_dir)
+
+    assert create_or_update_cluster_call.call_count == 1
+    _, kwargs = create_or_update_cluster_call.call_args
+    assert kwargs["config_file"] == loaded_project["cluster"]
+
+    commands_executed = []
+    for _, kwargs in exec_cluster_call.call_args_list:
+        commands_executed.append(kwargs["cmd"].replace(
+            "cd {}; ".format(loaded_project["name"]), ""))
+
+    commands_need_to_be_executed = loaded_project["environment"]["shell"]
+    commands_need_to_be_executed += [
+        command["command"] for command in loaded_project["commands"]
+    ]
+
+    for cmd in commands_need_to_be_executed:
+        assert cmd in commands_executed
