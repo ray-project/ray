@@ -33,6 +33,8 @@ Then, you can try out training in the following equivalent ways:
   from ray.rllib.agents.ppo import PPOTrainer
   tune.run(PPOTrainer, config={"env": "CartPole-v0"})
 
+Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
+
 Policies
 ~~~~~~~~
 
@@ -77,7 +79,11 @@ In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__, sample ba
 Training
 ~~~~~~~~
 
-Policies each define a ``learn_on_batch()`` method that improves the policy given a sample batch of input. For TF and Torch policies, this is implemented using a `loss function` that takes as input sample batch tensors and outputs a scalar loss.
+Policies each define a ``learn_on_batch()`` method that improves the policy given a sample batch of input. For TF and Torch policies, this is implemented using a `loss function` that takes as input sample batch tensors and outputs a scalar loss. Here are a few example loss functions:
+
+- Simple `policy gradient loss <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__
+- Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
+- Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_policy.py>`__
 
 RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizers <rllib-concepts.html#policy-optimization>`__ that implement the desired computation pattern (i.e., synchronous or asynchronous sampling, distributed replay, etc):
 
