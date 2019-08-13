@@ -1,5 +1,3 @@
-""" Trainable using FCNet Benchmark from Tabular Benchmarks for Hyperparameter
-    Optimization and Neural Architecture Search """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -7,7 +5,8 @@ from __future__ import print_function
 import os
 
 import ray
-from ray.tune import Trainable
+from ray.tune import Trainable, run, Experiment
+from ray.tune.schedulers import HyperBandScheduler
 import tarfile
 import urllib
 import time
@@ -18,6 +17,9 @@ from nas_benchmarks.tabular_benchmarks import FCNetProteinStructureBenchmark, \
 
 
 class FCNetTrainable(Trainable):
+    """ Trainable using FCNet Benchmark from Tabular Benchmarks for Hyperparameter
+        Optimization and Neural Architecture Search """
+
     def _setup(self, config):
 
         # download dataset
@@ -56,6 +58,9 @@ class FCNetTrainable(Trainable):
         with open(checkpoint_path) as f:
             self.iteration = json.loads(f.read())["iteration"]
 
+    def get_configuration_space(self):
+        return self.net.get_configuration_space().get_dictionary()
+
 
 class FCNetProteinStructureTrainable(FCNetTrainable):
     def __init__(self, config=None, logger_creator=None):
@@ -87,3 +92,22 @@ class FCNetParkinsonsTelemonitoringTrainable(FCNetTrainable):
             data_dir="./fcnet_tabular_benchmarks/")
         super(FCNetParkinsonsTelemonitoringTrainable, self).__init__(
             config, logger_creator)
+
+
+if __name__ == "__main__":
+    """Example with FCNetProteinStructure and Hyperband."""
+
+    hyperband = HyperBandScheduler(
+        time_attr="training_iteration",
+        metric="episode_reward_mean",
+        mode="max",
+        max_t=100)
+
+    exp = Experiment(
+        name="hyperband_fcnet_protein_test",
+        run=FCNetProteinStructureTrainable,
+        num_samples=20,
+        stop={"training_iteration": 1},
+        config=FCNetProteinStructureTrainable().get_configuration_space())
+
+    run(exp, scheduler=hyperband)

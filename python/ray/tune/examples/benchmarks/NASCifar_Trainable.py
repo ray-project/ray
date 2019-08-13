@@ -1,5 +1,3 @@
-""" Trainable using NASCifar Benchmark from Tabular Benchmarks for
-    Hyperparameter Optimization and Neural Architecture Search """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -7,7 +5,8 @@ from __future__ import print_function
 import os
 
 import ray
-from ray.tune import Trainable
+from ray.tune import Trainable, run, Experiment
+from ray.tune.schedulers import HyperBandScheduler
 import urllib
 import time
 import json
@@ -17,7 +16,10 @@ import urllib.request
 
 
 class NASCifar10Trainable(Trainable):
-    def _setup(self, config=None, logger_creator=None):
+    """ Trainable using NASCifar Benchmark from Tabular Benchmarks for
+        Hyperparameter Optimization and Neural Architecture Search """
+
+    def _setup(self, config=None, data_dir=None, logger_creator=None):
         # download dataset
         urllib.urlretrieve(
             "https://storage.googleapis.com/nasbench" +
@@ -46,6 +48,9 @@ class NASCifar10Trainable(Trainable):
         with open(checkpoint_path) as f:
             self.iteration = json.loads(f.read())["iteration"]
 
+    def get_configuration_space(self):
+        return self.net.get_configuration_space().get_dictionary()
+
 
 class NASCifar10ATrainable(NASCifar10Trainable):
     def __init__(self, config=None, logger_creator=None):
@@ -63,3 +68,23 @@ class NASCifar10CTrainable(NASCifar10Trainable):
     def __init__(self, config=None, logger_creator=None):
         self.net = NASCifar10C("./nasbench")
         super(NASCifar10CTrainable, self).__init__(config, logger_creator)
+
+
+if __name__ == "__main__":
+    """Example with NASCifar10A."""
+    cs = NASCifar10A().get_configuration_space().get_dictionary()
+
+    hyperband = HyperBandScheduler(
+        time_attr="training_iteration",
+        metric="episode_reward_mean",
+        mode="max",
+        max_t=100)
+
+    exp = Experiment(
+        name="hyperband_nas10a_test",
+        run=NASCifar10ATrainable,
+        num_samples=20,
+        stop={"training_iteration": 1},
+        config=NASCifar10ATrainable().get_configuration_space())
+
+    run(exp, scheduler=hyperband)
