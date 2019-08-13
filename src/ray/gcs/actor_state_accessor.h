@@ -66,6 +66,7 @@ class ActorStateAccessor {
   /// \param actor_id The ID of actor to be subscribed to.
   /// \param subscribe Callback that will be called each time when the actor is updated.
   /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
   Status AsyncSubscribe(const ActorID &actor_id,
                         const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
@@ -74,6 +75,7 @@ class ActorStateAccessor {
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
   /// \param done Callback that will be called when unsubscribe is complete.
+  /// \return Status
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done);
 
  private:
