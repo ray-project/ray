@@ -182,7 +182,7 @@ Status CoreWorkerObjectInterface::Get(
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  // TODO(zhijunfu): right now only wait for plasma objects are supported. 
+  // TODO(zhijunfu): right now only wait for plasma objects are supported.
   // It would be quite complicated to make all the scenarios correct
   // to supporting wait for objects from multiple store providers.
   // This can be added later when this is really necessary.
@@ -215,8 +215,8 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
     bool is_plasma = (store_provider_type == StoreProviderType::PLASMA);
 
     std::vector<ObjectID> ids(entry.second.begin(), entry.second.end());
-    RAY_RETURN_NOT_OK(store_provider_layer_.Delete(store_provider_type, ids,
-        is_plasma ? local_only : false,
+    RAY_RETURN_NOT_OK(store_provider_layer_.Delete(
+        store_provider_type, ids, is_plasma ? local_only : false,
         is_plasma ? delete_creating_tasks : false));
   }
 
