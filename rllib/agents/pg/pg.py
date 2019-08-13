@@ -21,10 +21,6 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config["use_pytorch"] and config["use_eager"]:
-        raise ValueError(
-            "Can't run in TF eager mode and PyTorch mode simultaneously")
-
     if config["use_pytorch"]:
         from ray.rllib.agents.pg.torch_pg_policy import PGTorchPolicy
         return PGTorchPolicy

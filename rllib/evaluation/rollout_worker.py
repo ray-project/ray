@@ -738,7 +738,7 @@ class RolloutWorker(EvaluatorInterface):
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            if tf and not policy_config.get("use_eager"):
+            if tf and not tf.executing_eagerly():
                 with tf.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
             else:

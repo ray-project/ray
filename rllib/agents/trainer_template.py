@@ -8,6 +8,9 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -97,7 +100,7 @@ def build_trainer(name,
                 policy = default_policy
             else:
                 policy = get_policy_class(config)
-            if config["use_eager"]:
+            if tf and tf.executing_eagerly():
                 policy = policy.as_eager()
             if before_init:
                 before_init(self)

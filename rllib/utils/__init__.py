@@ -71,8 +71,8 @@ def try_import_tf():
         tf.logging.set_verbosity(tf.logging.ERROR)
         tf.disable_v2_behavior()
 
-        # XXX
-        tf.enable_eager_execution()
+        if "TF_EAGER" in os.environ:
+            tf.enable_eager_execution()
 
         return tf
     except ImportError:

@@ -37,8 +37,7 @@ class TFEagerPolicy(Policy):
 
     @DeveloperAPI
     def stats(self, outputs, samples):
-        del outputs, samples
-        return {}
+        raise NotImplementedError
 
     @DeveloperAPI
     def learn_on_batch(self, samples):
@@ -92,7 +91,7 @@ class TFEagerPolicy(Policy):
                 logger.info("Optimizing variable {}".format(v.name))
 
         self.optimizer.apply_gradients(grads_and_vars)
-        return {LEARNER_STATS_KEY: stats}
+        return stats
 
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
@@ -113,9 +112,7 @@ class TFEagerPolicy(Policy):
             loss=lambda: self.loss(postprocessed_batch), ))
         grads = tf.nest.map_structure(lambda grad: grad.numpy(), grads)
 
-        return grads, {
-            LEARNER_STATS_KEY: self.stats(self, postprocessed_batch)
-        }
+        return grads, self.stats(self, postprocessed_batch)
 
     @DeveloperAPI
     def apply_gradients(self, gradients):
@@ -174,18 +171,24 @@ class TFEagerPolicy(Policy):
         return None
 
 
-def build_tf_policy(name,
-                    loss_fn,
-                    get_default_config=None,
-                    postprocess_fn=None,
-                    stats_fn=None,
-                    optimizer_fn=None,
-                    gradients_fn=None,
-                    extra_action_fetches_fn=None,
-                    before_init=None,
-                    before_loss_init=None,
-                    mixins=None,
-                    obs_include_prev_action_reward=True):
+def build_tf_policy(
+        name,
+        loss_fn,
+        get_default_config=None,
+        postprocess_fn=None,
+        stats_fn=None,
+        optimizer_fn=None,
+        gradients_fn=None,
+        extra_learn_fetches_fn=None,
+        extra_action_feed_fn=None,
+        extra_action_fetches_fn=None,  # TODO
+        before_init=None,
+        before_loss_init=None,
+        after_init=None,
+        make_model=None,
+        action_sampler_fn=None,
+        mixins=None,
+        obs_include_prev_action_reward=True):
 
     base = add_mixins(TFEagerPolicy, mixins)
 
@@ -201,16 +204,27 @@ def build_tf_policy(name,
 
             self.config = config
 
-            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                action_space, config["model"])
+            if action_sampler_fn:
+                if not make_model:
+                    raise ValueError(
+                        "make_model is required if action_sampler_fn is given")
+                self.dist_class = None
+            else:
+                self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+                    action_space, self.config["model"])
+                self.logit_dim = logit_dim
 
-            model = ModelCatalog.get_model_v2(
-                observation_space,
-                action_space,
-                logit_dim,
-                config["model"],
-                framework="tf",
-            )
+            if make_model:
+                model = make_model(self, observation_space, action_space,
+                                   config)
+            else:
+                model = ModelCatalog.get_model_v2(
+                    observation_space,
+                    action_space,
+                    logit_dim,
+                    config["model"],
+                    framework="tf",
+                )
 
             if optimizer_fn:
                 optimizer = optimizer_fn(self, observation_space, action_space,
@@ -231,6 +245,9 @@ def build_tf_policy(name,
                                    action_space, gradients_fn)
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
+
+            if after_init:
+                after_init(self, observation_space, action_space, config)
 
         def postprocess_trajectory(self,
                                    samples,
@@ -284,12 +301,17 @@ def build_tf_policy(name,
 
         def stats(self, outputs, samples):
             assert tf.executing_eagerly()
-            if stats_fn is None:
-                return {}
-            return {
-                k: v.numpy()
-                for k, v in stats_fn(outputs, samples).items()
-            }
+            fetches = {}
+            if stats_fn:
+                fetches[LEARNER_STATS_KEY] = {
+                    k: v.numpy()
+                    for k, v in stats_fn(outputs, samples).items()
+                }
+            else:
+                fetches[LEARNER_STATS_KEY] = {}
+            if extra_learn_fetches_fn:
+                fetches.update(extra_learn_fetches_fn(self))
+            return fetches
 
     policy_cls.__name__ = name
     return policy_cls

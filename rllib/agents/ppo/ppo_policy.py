@@ -12,6 +12,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.tf_ops import tf_function
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -232,7 +233,7 @@ class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
 
-            @tf.function
+            @tf_function(self.get_session())
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
@@ -246,9 +247,9 @@ class ValueNetworkMixin(object):
 
         else:
 
-            @tf.function
+            @tf_function(self.get_session())
             def value(ob, prev_action, prev_reward, *state):
-                return 0.0
+                return tf.constant(0.0)
 
         self._value = value
 

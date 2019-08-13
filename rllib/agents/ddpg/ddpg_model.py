@@ -126,12 +126,6 @@ class DDPGModel(TFModelV2):
         else:
             self.twin_q_net = None
 
-    def forward(self, input_dict, state, seq_lens):
-        """This generates the model_out tensor input.
-
-        You must implement this as documented in modelv2.py."""
-        raise NotImplementedError
-
     def get_policy_output(self, model_out):
         """Return the (unscaled) output of the policy network.
 

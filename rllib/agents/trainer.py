@@ -70,8 +70,6 @@ COMMON_CONFIG = {
     "ignore_worker_failures": False,
     # Log system resource metrics to results.
     "log_sys_usage": True,
-    # Run policy using TF eager if possible
-    "use_eager": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -441,7 +439,7 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         def get_scope():
-            if tf and not self.config.get("use_eager"):
+            if tf and not tf.executing_eagerly():
                 return tf.Graph().as_default()
             else:
                 return open("/dev/null")  # fake a no-op scope
