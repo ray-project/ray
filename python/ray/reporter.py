@@ -57,7 +57,6 @@ def running_worker(s):
 
     return True
 
-class DetermineIPAddressError(RuntimeError): pass
 
 def determine_ip_address():
     """Return the first IP address for an ethernet interface on the system."""
@@ -68,14 +67,7 @@ def determine_ip_address():
         ]
         return addrs[0]
     except IndexError: # no interface starting with "e"
-        addrs_kind = "ipogif0"
-        addrs = [
-            x.address for k, v in psutil.net_if_addrs().items() if k == addrs_kind
-                      for x in v if x.family == socket.AddressFamily.AF_INET
-        ]
-        return addrs[0]
-    except IndexError:
-        raise DetermineIPAddressError('Can\'t find any ip address starting by "e" or of kind "ipogif0"...')
+        return socket.gethostbyname(socket.gethostname())
 
 
 def to_posix_time(dt):
