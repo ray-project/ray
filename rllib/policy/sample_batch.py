@@ -15,77 +15,6 @@ DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
-class MultiAgentBatch(object):
-    """A batch of experiences from multiple policies in the environment.
-
-    Attributes:
-        policy_batches (dict): Mapping from policy id to a normal SampleBatch
-            of experiences. Note that these batches may be of different length.
-        count (int): The number of timesteps in the environment this batch
-            contains. This will be less than the number of transitions this
-            batch contains across all policies in total.
-    """
-
-    @PublicAPI
-    def __init__(self, policy_batches, count):
-        self.policy_batches = policy_batches
-        self.count = count
-
-    @staticmethod
-    @PublicAPI
-    def wrap_as_needed(batches, count):
-        if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
-            return batches[DEFAULT_POLICY_ID]
-        return MultiAgentBatch(batches, count)
-
-    @staticmethod
-    @PublicAPI
-    def concat_samples(samples):
-        policy_batches = collections.defaultdict(list)
-        total_count = 0
-        for s in samples:
-            assert isinstance(s, MultiAgentBatch)
-            for policy_id, batch in s.policy_batches.items():
-                policy_batches[policy_id].append(batch)
-            total_count += s.count
-        out = {}
-        for policy_id, batches in policy_batches.items():
-            out[policy_id] = SampleBatch.concat_samples(batches)
-        return MultiAgentBatch(out, total_count)
-
-    @PublicAPI
-    def copy(self):
-        return MultiAgentBatch(
-            {k: v.copy()
-             for (k, v) in self.policy_batches.items()}, self.count)
-
-    @PublicAPI
-    def total(self):
-        ct = 0
-        for batch in self.policy_batches.values():
-            ct += batch.count
-        return ct
-
-    @DeveloperAPI
-    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
-        for batch in self.policy_batches.values():
-            batch.compress(bulk=bulk, columns=columns)
-
-    @DeveloperAPI
-    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
-        for batch in self.policy_batches.values():
-            batch.decompress_if_needed(columns)
-
-    def __str__(self):
-        return "MultiAgentBatch({}, count={})".format(
-            str(self.policy_batches), self.count)
-
-    def __repr__(self):
-        return "MultiAgentBatch({}, count={})".format(
-            str(self.policy_batches), self.count)
-
-
-@PublicAPI
 class SampleBatch(object):
     """Wrapper around a dictionary with string keys and array-like values.
 
@@ -294,3 +223,74 @@ class SampleBatch(object):
 
     def __contains__(self, x):
         return x in self.data
+
+
+@PublicAPI
+class MultiAgentBatch(object):
+    """A batch of experiences from multiple policies in the environment.
+
+    Attributes:
+        policy_batches (dict): Mapping from policy id to a normal SampleBatch
+            of experiences. Note that these batches may be of different length.
+        count (int): The number of timesteps in the environment this batch
+            contains. This will be less than the number of transitions this
+            batch contains across all policies in total.
+    """
+
+    @PublicAPI
+    def __init__(self, policy_batches, count):
+        self.policy_batches = policy_batches
+        self.count = count
+
+    @staticmethod
+    @PublicAPI
+    def wrap_as_needed(batches, count):
+        if len(batches) == 1 and DEFAULT_POLICY_ID in batches:
+            return batches[DEFAULT_POLICY_ID]
+        return MultiAgentBatch(batches, count)
+
+    @staticmethod
+    @PublicAPI
+    def concat_samples(samples):
+        policy_batches = collections.defaultdict(list)
+        total_count = 0
+        for s in samples:
+            assert isinstance(s, MultiAgentBatch)
+            for policy_id, batch in s.policy_batches.items():
+                policy_batches[policy_id].append(batch)
+            total_count += s.count
+        out = {}
+        for policy_id, batches in policy_batches.items():
+            out[policy_id] = SampleBatch.concat_samples(batches)
+        return MultiAgentBatch(out, total_count)
+
+    @PublicAPI
+    def copy(self):
+        return MultiAgentBatch(
+            {k: v.copy()
+             for (k, v) in self.policy_batches.items()}, self.count)
+
+    @PublicAPI
+    def total(self):
+        ct = 0
+        for batch in self.policy_batches.values():
+            ct += batch.count
+        return ct
+
+    @DeveloperAPI
+    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+        for batch in self.policy_batches.values():
+            batch.compress(bulk=bulk, columns=columns)
+
+    @DeveloperAPI
+    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+        for batch in self.policy_batches.values():
+            batch.decompress_if_needed(columns)
+
+    def __str__(self):
+        return "MultiAgentBatch({}, count={})".format(
+            str(self.policy_batches), self.count)
+
+    def __repr__(self):
+        return "MultiAgentBatch({}, count={})".format(
+            str(self.policy_batches), self.count)
