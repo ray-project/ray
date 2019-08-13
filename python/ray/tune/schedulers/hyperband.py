@@ -8,6 +8,7 @@ import logging
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
+from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,8 @@ class HyperBandScheduler(FIFOScheduler):
             The scheduler will terminate trials after this time has passed.
             Note that this is different from the semantics of `max_t` as
             mentioned in the original HyperBand paper.
+        reduction_factor (float): Same as `eta`. Determines how sharp
+            the difference is between bracket space-time allocation ratios.
     """
 
     def __init__(self,
@@ -79,7 +82,8 @@ class HyperBandScheduler(FIFOScheduler):
                  reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
-                 max_t=81):
+                 max_t=81,
+                 reduction_factor=3):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
@@ -92,8 +96,9 @@ class HyperBandScheduler(FIFOScheduler):
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
-        self._eta = 3
-        self._s_max_1 = 5
+        self._eta = reduction_factor
+        self._s_max_1 = int(
+            np.round(np.log(max_t) / np.log(reduction_factor))) + 1
         self._max_t_attr = max_t
         # bracket max trials
         self._get_n0 = lambda s: int(
@@ -173,10 +178,10 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
-        action = self._process_bracket(trial_runner, bracket, trial)
+        action = self._process_bracket(trial_runner, bracket)
         return action
 
-    def _process_bracket(self, trial_runner, bracket, trial):
+    def _process_bracket(self, trial_runner, bracket):
         """This is called whenever a trial makes progress.
 
         When all live trials in the bracket have no more iterations left,
@@ -202,15 +207,15 @@ class HyperBandScheduler(FIFOScheduler):
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
-                    raise Exception("Trial with unexpected status encountered")
+                    raise TuneError("Trial with unexpected status encountered")
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
                 if t.status not in [Trial.PAUSED, Trial.RUNNING]:
-                    raise Exception("Trial with unexpected status encountered")
+                    raise TuneError("Trial with unexpected status encountered")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
-                        trial_runner.trial_executor.unpause_trial(t)
+                        self._unpause_trial(trial_runner, t)
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
@@ -223,7 +228,7 @@ class HyperBandScheduler(FIFOScheduler):
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
         if not bracket.finished():
-            self._process_bracket(trial_runner, bracket, trial)
+            self._process_bracket(trial_runner, bracket)
 
     def on_trial_complete(self, trial_runner, trial, result):
         """Cleans up trial info from bracket if trial completed early."""
@@ -278,6 +283,15 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in band:
                 out += "\n  {}".format(bracket)
         return out
+
+    def state(self):
+        return {
+            "num_brackets": sum(len(band) for band in self._hyperbands),
+            "num_stopped": self._num_stopped
+        }
+
+    def _unpause_trial(self, trial_runner, trial):
+        trial_runner.trial_executor.unpause_trial(trial)
 
 
 class Bracket():
@@ -349,7 +363,7 @@ class Bracket():
 
         self._r *= self._eta
         self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
-        self._cumul_r += self._r
+        self._cumul_r = self._r
         sorted_trials = sorted(
             self._live_trials,
             key=lambda t: metric_op * self._live_trials[t][metric])
