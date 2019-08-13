@@ -152,6 +152,7 @@ ray::Status RayletConnection::ReadProtobufMessage(ray::rpc::MessageType type,
   if (closed) goto disconnected;
   closed = read_bytes(conn_, (uint8_t *)&length, sizeof(length));
   if (closed) goto disconnected;
+  message_data.resize(length);
   closed = read_bytes(conn_, message_data.data(), length);
   message_data.resize(static_cast<size_t>(length));
   if (closed) {
