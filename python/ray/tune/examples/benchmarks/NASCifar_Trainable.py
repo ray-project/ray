@@ -49,7 +49,8 @@ class NASCifar10Trainable(Trainable):
             self.iteration = json.loads(f.read())["iteration"]
 
     def get_configuration_space(self):
-        return self.net.get_configuration_space().get_dictionary()
+        cs = self.net.get_configuration_space()
+        return cs.sample_configuration().get_dictionary()
 
 
 class NASCifar10ATrainable(NASCifar10Trainable):
