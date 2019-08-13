@@ -1,6 +1,7 @@
-import ray
 import numpy as np
 import unittest
+
+import ray
 from ray import tune
 from ray.rllib import _register_all
 

@@ -10,7 +10,10 @@ import ray
 
 class TestUnreconstructableErrors(unittest.TestCase):
     def setUp(self):
-        ray.init(object_store_memory=10000000, redis_max_memory=10000000)
+        ray.init(
+            num_cpus=1,
+            object_store_memory=150 * 1024 * 1024,
+            redis_max_memory=10000000)
 
     def tearDown(self):
         ray.shutdown()
@@ -18,8 +21,8 @@ class TestUnreconstructableErrors(unittest.TestCase):
     def testDriverPutEvictedCannotReconstruct(self):
         x_id = ray.put(np.zeros(1 * 1024 * 1024))
         ray.get(x_id)
-        for _ in range(10):
-            ray.put(np.zeros(1 * 1024 * 1024))
+        for _ in range(20):
+            ray.put(np.zeros(10 * 1024 * 1024))
         self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))
 
