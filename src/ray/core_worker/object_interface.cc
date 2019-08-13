@@ -182,16 +182,45 @@ Status CoreWorkerObjectInterface::Get(
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  // TODO: if this is plasma, call the raylet client's wait.
-  // otherwise, use a loop to invoke
+  // TODO(zhijunfu): right now only wait for plasma objects are supported. 
+  // It would be quite complicated to make all the scenarios correct
+  // to supporting wait for objects from multiple store providers.
+  // This can be added later when this is really necessary.
+  EnumUnorderedMap<TaskTransportType, std::unordered_set<ObjectID>>
+      object_ids_per_transport;
+  GetObjectIdsPerTransport(object_ids, &object_ids_per_transport);
+
+  if (object_ids_per_transport.size() > 1 ||
+      object_ids_per_transport.count(TaskTransportType::RAYLET) == 0) {
+    return Status::NotImplemented("Currently only waiting plasma objects are supported");
+  }
+
   return store_provider_layer_.Wait(StoreProviderType::PLASMA, object_ids, num_objects,
                                     timeout_ms, results);
 }
 
 Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids,
                                          bool local_only, bool delete_creating_tasks) {
-  return store_provider_layer_.Delete(StoreProviderType::PLASMA, object_ids, local_only,
-                                      delete_creating_tasks);
+  // There can be a few cases here:
+  // - for task return objects, find the store provider type for an object from
+  //   its transport;
+  // - for other objects, use `PLASMA` provider.
+  EnumUnorderedMap<TaskTransportType, std::unordered_set<ObjectID>>
+      object_ids_per_transport;
+  GetObjectIdsPerTransport(object_ids, &object_ids_per_transport);
+
+  for (const auto &entry : object_ids_per_transport) {
+    auto store_provider_type =
+        task_submitter_layer_.GetStoreProviderTypeForReturnObject(entry.first);
+    bool is_plasma = (store_provider_type == StoreProviderType::PLASMA);
+
+    std::vector<ObjectID> ids(entry.second.begin(), entry.second.end());
+    RAY_RETURN_NOT_OK(store_provider_layer_.Delete(store_provider_type, ids,
+        is_plasma ? local_only : false,
+        is_plasma ? delete_creating_tasks : false));
+  }
+
+  return Status::OK();
 }
 
 }  // namespace ray
