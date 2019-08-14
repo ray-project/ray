@@ -44,9 +44,7 @@ class GrpcServer {
   }
 
   /// Destruct this gRPC server.
-  ~GrpcServer() {
-    Shutdown();
-  }
+  ~GrpcServer() { Shutdown(); }
 
   /// Initialize and run this server.
   void Run();
@@ -78,6 +76,7 @@ class GrpcServer {
   /// via the `ServerCall` objects.
   void PollEventsFromCompletionQueue();
 
+  /// Handle a new received request.
   void HandleReceivedRequest(ServerCall *server_call);
 
   /// Name of this server, used for logging and debugging purpose.
@@ -101,11 +100,14 @@ class GrpcServer {
   /// The polling thread used to check the completion queue.
   std::thread polling_thread_;
 
-  ///
+  /// Buffered out-of-order requests.
   struct PendingRequests {
+    /// Next expected request index.
     uint64_t next_request_index_to_handle = 0;
+    /// Mapping from the index to the buffered request.
     std::unordered_map<uint64_t, ServerCall *> buffer;
   };
+  /// Buffer out-of-order requests per client.
   std::unordered_map<std::string, PendingRequests> pending_requests_by_client_id_;
 };
 

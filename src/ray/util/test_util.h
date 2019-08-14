@@ -12,7 +12,7 @@ namespace ray {
 /// \param[in] condition The condition to wait for.
 /// \param[in] timeout_ms Timeout in milliseconds to wait for for.
 /// \return Whether the condition is met.
-bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
+bool WaitForCondition(const std::function<bool()>& condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {
     if (condition()) {

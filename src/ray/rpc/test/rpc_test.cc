@@ -111,10 +111,10 @@ class TestServer : public TestServiceHandler {
     const auto &client = request.who();
     reply->set_message("Hello, " + client);
 
+    Status status = Status::OK();
     if (strict_request_order_) {
       auto index = request.index();
-      ASSERT_TRUE(index == last_received_request_index[client] + 1);
-      last_received_request_index[client] += 1;
+      ASSERT_TRUE(index == next_expected_request_index_[client]++);
     }
 
     auto success_callback = [] { RAY_LOG(DEBUG) << "Reply sent to the client."; };
@@ -131,8 +131,8 @@ class TestServer : public TestServiceHandler {
   GrpcServer test_server_;
   TestGrpcService test_grpc_service_;
   bool strict_request_order_;
-  // Index of the last received request per client.
-  std::unordered_map<std::string, int64_t> last_received_request_index;
+  // Index of the next expected request.
+  std::unordered_map<std::string, int64_t> next_expected_request_index_;
 };
 
 class RpcTest : public ::testing::Test {
@@ -236,7 +236,8 @@ void TestUnaryRequests(RpcTest &rpc_test, int num_servers, int num_clients,
     }
   }
   // Wait until all replies are received.
-  WaitForCondition([&pending_replies]() { return pending_replies == 0; }, 5000);
+  ASSERT_TRUE(WaitForCondition([&pending_replies]() { return pending_replies == 0; }, 5000));
+  RAY_LOG(INFO) << "End";
 }
 
 // Test sending unary requests from one client to one server.
@@ -249,7 +250,7 @@ TEST_F(RpcTest, TestUnaryRequestsWithManyClientsAndServers) {
 
 // Test the `strict_request_order` option in `GrpcClient`.
 TEST_F(RpcTest, TestStrictRequestOrder) {
-  TestUnaryRequests(*this, 1, 10, 100, true);
+  TestUnaryRequests(*this, 1, 2, 10, true);
 }
 
 }  // namespace rpc

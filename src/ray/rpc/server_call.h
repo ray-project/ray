@@ -69,6 +69,7 @@ class ServerCall {
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
 
+  // Get metadata sent by the client for the given key.
   virtual std::string GetClientMeta(const std::string &key) = 0;
 
   /// Virtual destruct function to make sure subclass would destruct properly.

@@ -1,6 +1,8 @@
 
-#include "src/ray/rpc/grpc_server.h"
-#include <grpcpp/impl/service_type.h>
+#include <grpcpp/grpcpp.h>
+
+#include "ray/rpc/constants.h"
+#include "ray/rpc/grpc_server.h"
 
 namespace ray {
 namespace rpc {
@@ -95,30 +97,35 @@ void GrpcServer::PollEventsFromCompletionQueue() {
 }
 
 void GrpcServer::HandleReceivedRequest(ServerCall *server_call) {
-  auto request_index_str = server_call->GetClientMeta("request_index");
+  auto request_index_str = server_call->GetClientMeta(REQUEST_INDEX_META_KEY);
   if (request_index_str.empty()) {
-    // If this request doesn't have `request_index`, it means that we don't need to guarantee
-    // request order. So we can immediately handle this request.
+    // If this request doesn't have `request_index`, it means that `strict_request_order`
+    // isn't enabled. So we can immediately handle this request.
     server_call->HandleRequest();
   } else {
-    auto client_id = server_call->GetClientMeta("client_id");
+    auto client_id = server_call->GetClientMeta(CLIENT_ID_META_KEY);
     RAY_CHECK(!client_id.empty());
     auto request_index = std::stoull(request_index_str);
     auto &pending_requests = pending_requests_by_client_id_[client_id];
+    RAY_LOG(INFO) << "Received " << request_index << " from " << client_id;
     if (request_index == pending_requests.next_request_index_to_handle) {
-      // If this request is the next expected request, keep handling all available requests in the buffer.
+      // If this request is the next expected request, handle it immediately and also
+      // handle following requests in the buffer.
+      RAY_LOG(INFO) << "Handling " << pending_requests.next_request_index_to_handle << " from " << client_id;
+      server_call->HandleRequest();
       while (true) {
+        pending_requests.next_request_index_to_handle++;
         auto it =
             pending_requests.buffer.find(pending_requests.next_request_index_to_handle);
         if (it == pending_requests.buffer.end()) {
           break;
         }
+        RAY_LOG(INFO) << "Handling " << pending_requests.next_request_index_to_handle << " from " << client_id;
         it->second->HandleRequest();
         pending_requests.buffer.erase(it);
-        pending_requests.next_request_index_to_handle++;
       }
     } else {
-      // Buffer this request, if it's received earlier than the next expected request.
+      // Buffer this request, if it's not the next expected request.
       pending_requests.buffer.emplace(request_index, server_call);
     }
   }
