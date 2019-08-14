@@ -21,8 +21,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
-      store_provider_(
-          object_interface.CreateStoreProvider(StoreProviderType::MEMORY)) {
+      store_provider_(object_interface.CreateStoreProvider(StoreProviderType::MEMORY)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 

@@ -10,7 +10,8 @@ namespace ray {
 /// A class that represents a `Get` request.
 class GetRequest {
  public:
-  GetRequest(std::unordered_set<ObjectID> object_ids, int num_objects, bool remove_after_get);
+  GetRequest(std::unordered_set<ObjectID> object_ids, int num_objects,
+             bool remove_after_get);
 
   const std::unordered_set<ObjectID> &ObjectIds() const;
 
@@ -46,7 +47,8 @@ class GetRequest {
   std::condition_variable cv_;
 };
 
-GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, int num_objects, bool remove_after_get)
+GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, int num_objects,
+                       bool remove_after_get)
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
       remove_after_get_(remove_after_get),
@@ -134,8 +136,9 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids, int num_objects,
-                                  int64_t timeout_ms, bool remove_after_get,
+Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
+                                  int num_objects, int64_t timeout_ms,
+                                  bool remove_after_get,
                                   std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(object_ids.size(), nullptr);
 
@@ -179,8 +182,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids, int n
     int required_objects = num_objects - (object_ids.size() - remaining_ids.size());
 
     // Otherwise, create a GetRequest to track remaining objects.
-    get_request =
-        std::make_shared<GetRequest>(std::move(remaining_ids), required_objects, remove_after_get);
+    get_request = std::make_shared<GetRequest>(std::move(remaining_ids), required_objects,
+                                               remove_after_get);
     for (const auto &object_id : get_request->ObjectIds()) {
       object_get_requests_[object_id].push_back(get_request);
     }

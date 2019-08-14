@@ -89,8 +89,7 @@ class CoreWorkerObjectInterface {
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
   Status Wait(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
-             int num_objects, int64_t timeout_ms,
-             std::unordered_set<ObjectID> *results);
+              int num_objects, int64_t timeout_ms, std::unordered_set<ObjectID> *results);
 
   /// Create a new store provider for the specified type on demand.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(

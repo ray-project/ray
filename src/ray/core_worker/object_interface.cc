@@ -3,8 +3,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
-#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/plasma_store_provider.h"
 
 namespace ray {
 
@@ -68,8 +68,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   for (const auto &entry : object_ids_per_store_provider) {
     auto start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(Get(entry.first, entry.second,
-                          current_timeout_ms, &objects));
+    RAY_RETURN_NOT_OK(Get(entry.first, entry.second, current_timeout_ms, &objects));
     int64_t duration = current_time_ms() - start_time;
     current_timeout_ms =
         (current_timeout_ms == -1)
@@ -104,9 +103,8 @@ Status CoreWorkerObjectInterface::Get(
   return Status::OK();
 }
 
-Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids,
-                                       int num_objects, int64_t timeout_ms,
-                                       std::vector<bool> *results) {
+Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num_objects,
+                                       int64_t timeout_ms, std::vector<bool> *results) {
   (*results).resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > ids.size()) {
@@ -130,14 +128,14 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids,
       iter->second++;
     }
   }
-  
+
   auto current_timeout_ms = timeout_ms;
 
   for (const auto &entry : object_ids_per_store_provider) {
     std::unordered_set<ObjectID> objects;
     auto start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(Wait(entry.first, entry.second, num_objects,
-                          current_timeout_ms, &objects));
+    RAY_RETURN_NOT_OK(
+        Wait(entry.first, entry.second, num_objects, current_timeout_ms, &objects));
     int64_t duration = current_time_ms() - start_time;
     current_timeout_ms =
         (current_timeout_ms == -1)
@@ -154,15 +152,13 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-
-
   return Status::OK();
 }
 
 Status CoreWorkerObjectInterface::Wait(StoreProviderType type,
-            const std::unordered_set<ObjectID> &object_ids,
-            int num_objects, int64_t timeout_ms,
-            std::unordered_set<ObjectID> *results) {
+                                       const std::unordered_set<ObjectID> &object_ids,
+                                       int num_objects, int64_t timeout_ms,
+                                       std::unordered_set<ObjectID> *results) {
   std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());
   if (!ids.empty()) {
     std::vector<bool> objects;
@@ -195,8 +191,7 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
 
     std::vector<ObjectID> ids(entry.second.begin(), entry.second.end());
     RAY_RETURN_NOT_OK(store_providers_[type]->Delete(
-        ids, is_plasma ? local_only : false,
-        is_plasma ? delete_creating_tasks : false));
+        ids, is_plasma ? local_only : false, is_plasma ? delete_creating_tasks : false));
   }
 
   return Status::OK();
