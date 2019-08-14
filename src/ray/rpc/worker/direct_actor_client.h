@@ -16,7 +16,7 @@ namespace ray {
 namespace rpc {
 
 /// Client used for communicating with a direct actor server.
-class DirectActorClient : public GetRpcClient<DirectActorService> {
+class DirectActorClient : public GrpcClient<DirectActorService> {
  public:
   /// Constructor.
   ///

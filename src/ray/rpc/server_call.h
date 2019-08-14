@@ -69,6 +69,8 @@ class ServerCall {
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
 
+  virtual std::string GetClientMeta(const std::string &key) = 0;
+
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
@@ -171,6 +173,15 @@ class ServerCallImpl : public ServerCall {
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); });
+    }
+  }
+
+  std::string GetClientMeta(const std::string &key) override {
+    auto it = context_.client_metadata().find(key);
+    if (it == context_.client_metadata().end()) {
+      return "";
+    } else {
+      return std::string(it->second.data(), it->second.size());
     }
   }
 

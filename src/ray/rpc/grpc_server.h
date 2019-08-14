@@ -76,6 +76,8 @@ class GrpcServer {
   /// via the `ServerCall` objects.
   void PollEventsFromCompletionQueue();
 
+  void HandleReceivedRequest(ServerCall *server_call);
+
   /// Name of this server, used for logging and debugging purpose.
   const std::string name_;
   /// Port of this server.
@@ -96,6 +98,13 @@ class GrpcServer {
   std::unique_ptr<grpc::Server> server_;
   /// The polling thread used to check the completion queue.
   std::thread polling_thread_;
+
+  ///
+  struct PendingRequests {
+    uint64_t next_request_index_to_handle = 0;
+    std::unordered_map<uint64_t, ServerCall *> buffer;
+  };
+  std::unordered_map<std::string, PendingRequests> pending_requests_by_client_id_;
 };
 
 /// Base class that represents an abstract gRPC service.

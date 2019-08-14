@@ -66,7 +66,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
         // We've received a new incoming request. Now this call object is used to
         // track this request.
         server_call->SetState(ServerCallState::PROCESSING);
-        server_call->HandleRequest();
+        HandleReceivedRequest(server_call);
         break;
       case ServerCallState::SENDING_REPLY:
         // GRPC has sent reply successfully, invoking the callback.
@@ -90,6 +90,36 @@ void GrpcServer::PollEventsFromCompletionQueue() {
     }
     if (delete_call) {
       delete server_call;
+    }
+  }
+}
+
+void GrpcServer::HandleReceivedRequest(ServerCall *server_call) {
+  auto request_index_str = server_call->GetClientMeta("REQUEST_INDEX");
+  if (request_index_str.empty()) {
+    // If this request doesn't have `request_index`, it means that we don't need to guarantee
+    // request order. So we can immediately handle this request.
+    server_call->HandleRequest();
+  } else {
+    auto client_id = server_call->GetClientMeta("CLIENT_ID");
+    RAY_CHECK(!client_id.empty());
+    auto request_index = std::stoull(request_index_str);
+    auto &pending_requests = pending_requests_by_client_id_[client_id];
+    if (request_index == pending_requests.next_request_index_to_handle) {
+      // If this request is the next expected request, keep handling all available requests in the buffer.
+      while (true) {
+        auto it =
+            pending_requests.buffer.find(pending_requests.next_request_index_to_handle);
+        if (it == pending_requests.buffer.end()) {
+          break;
+        }
+        it->second->HandleRequest();
+        pending_requests.buffer.erase(it);
+        pending_requests.next_request_index_to_handle++;
+      }
+    } else {
+      // Buffer this request, if it's received earlier than the next expected request.
+      pending_requests.buffer.emplace(request_index, server_call);
     }
   }
 }
