@@ -45,7 +45,6 @@ class Worker {
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
-  /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;

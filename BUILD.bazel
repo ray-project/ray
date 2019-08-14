@@ -102,7 +102,7 @@ cc_proto_library(
 
 # === Begin of rpc definitions ===
 
-# gRPC common lib.
+# GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
     srcs = glob([
@@ -221,7 +221,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
-        ":node_manager_fbs", # TODO
+        ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -320,7 +320,7 @@ cc_library(
     deps = [
         ":common_cc_proto",
         ":gcs",
-        ":node_manager_fbs", # TODO
+        ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
         ":ray_common",
@@ -420,7 +420,7 @@ cc_test(
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
     deps = [
-        ":node_manager_fbs", # TODO
+        ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -431,7 +431,7 @@ cc_test(
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
     copts = COPTS,
     deps = [
-        ":node_manager_fbs", # TODO
+        ":node_manager_fbs",
         ":object_manager",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -631,7 +631,7 @@ cc_library(
     deps = [
         ":gcs_cc_proto",
         ":hiredis",
-        ":node_manager_fbs", # TODO
+        ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
@@ -688,7 +688,7 @@ flatbuffer_cc_library(
 )
 
 flatbuffer_cc_library(
-    name = "node_manager_fbs", # TODO
+    name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/raylet/format/",

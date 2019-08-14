@@ -71,7 +71,7 @@ class GrpcServer {
   const std::string name_;
   /// Port of this server.
   int port_;
-  /// Flag indicates whether this server has closed.
+  /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;

@@ -22,7 +22,7 @@ class NodeManager;
 
 class Raylet {
  public:
-  /// Create a node manager server and listen for new clients.
+  /// Create a raylet server and listen for local clients.
   ///
   /// \param main_service The event loop to run the server on.
   /// \param object_manager_service The asio io_service tied to the object manager.

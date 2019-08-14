@@ -407,7 +407,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param intentional_disconnect Wether the client was intentionally disconnected.
+  /// \param intentional_disconnect Whether the client was intentionally disconnected.
   /// \return Void.
   void ProcessDisconnectClientMessage(
       const std::shared_ptr<LocalClientConnection> &client,
@@ -548,7 +548,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
-  /// The RPC service.
+  /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
