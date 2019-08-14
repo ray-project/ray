@@ -67,7 +67,7 @@ def determine_ip_address():
             for x in v if x.family == AddressFamily.AF_INET
         ]
         return addrs[0]
-    except IndexError: # no interface starting with "e"
+    except IndexError:  # no interface starting with "e"
         logger.warning('IndexError from determine_ip_address: no IP address name starting with "e", \
             using socket.gethostbyname(socket.gethostname()) instead!')
         return socket.gethostbyname(socket.gethostname())
