@@ -126,7 +126,8 @@ class ClientCallManager {
   explicit ClientCallManager(boost::asio::io_service &main_service)
       : main_service_(main_service) {
     // Start the polling thread.
-    polling_thread_ = std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
+    polling_thread_ =
+        std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
   }
 
   ~ClientCallManager() {
