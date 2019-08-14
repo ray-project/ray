@@ -32,6 +32,22 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(JNIEnv *, jclass, jlong);
 
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeSetup
+ * Signature: (Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv *, jclass,
+                                                                         jstring);
+
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeShutdownHook
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
+                                                                                jclass);
+
 #ifdef __cplusplus
 }
 #endif

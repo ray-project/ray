@@ -106,6 +106,29 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWo
   delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }
 
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeSetup
+ * Signature: (Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv *env,
+                                                                         jclass,
+                                                                         jstring logDir) {
+  std::string log_dir = JavaStringToNativeString(env, logDir);
+  ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
+  // ray::RayLog::InstallFailureSignalHandler();
+}
+
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeShutdownHook
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
+                                                                                jclass) {
+  ray::RayLog::ShutDownRayLog();
+}
+
 #ifdef __cplusplus
 }
 #endif

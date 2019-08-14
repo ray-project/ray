@@ -59,6 +59,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } catch (IOException e) {
       throw new RuntimeException("Couldn't load native libraries.", e);
     }
+    nativeSetup(RayConfig.create().logDir);
+    Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
   public RayNativeRuntime(RayConfig rayConfig) {
@@ -174,4 +176,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       TaskExecutor taskExecutor);
 
   private static native void nativeDestroyCoreWorker(long nativeCoreWorkerPointer);
+
+  private static native void nativeSetup(String logDir);
+
+  private static native void nativeShutdownHook();
 }

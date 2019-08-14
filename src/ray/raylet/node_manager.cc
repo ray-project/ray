@@ -797,11 +797,12 @@ void NodeManager::HandleRegisterClientRequest(
                  << ". Is worker: " << is_worker << ". Worker pid "
                  << request.worker_pid();
 
+  Status status;
   if (is_worker) {
     // Register the new worker.
     bool use_push_task = worker->UsePush();
-    worker_pool_.RegisterWorker(worker_id, std::move(worker));
-    if (use_push_task) {
+    status = worker_pool_.RegisterWorker(worker_id, std::move(worker));
+    if (status.ok() && use_push_task) {
       // only call `HandleWorkerAvailable` when push mode is used.
       HandleWorkerAvailable(worker_id);
     }
@@ -811,13 +812,15 @@ void NodeManager::HandleRegisterClientRequest(
     auto job_id = JobID::FromBinary(request.job_id());
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    worker_pool_.RegisterDriver(worker_id, std::move(worker));
-    local_queues_.AddDriverTaskId(driver_task_id);
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        job_id, /*is_dead=*/false, std::time(nullptr),
-        initial_config_.node_manager_address, request.worker_pid()));
+    status = worker_pool_.RegisterDriver(worker_id, std::move(worker));
+    if (status.ok()) {
+      local_queues_.AddDriverTaskId(driver_task_id);
+      RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
+          job_id, /*is_dead=*/false, std::time(nullptr),
+          initial_config_.node_manager_address, request.worker_pid()));
+    }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,

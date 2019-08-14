@@ -36,6 +36,8 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     const TaskSpecification &task_spec,
     std::vector<std::shared_ptr<RayObject>> *results) {
+  RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
+
   worker_context_.SetCurrentTask(task_spec);
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
