@@ -5,7 +5,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
 import yaml
 
 import ray
@@ -74,8 +73,6 @@ def create_parser(parser_creator=None):
         type=str,
         help="Name of the subdirectory under `local_dir` to put results in.")
     parser.add_argument(
-        "--eager", action="store_true", help="Enable eager TF execution.")
-    parser.add_argument(
         "--local-dir",
         default=DEFAULT_RESULTS_DIR,
         type=str,
@@ -110,9 +107,6 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    if args.eager:
-        os.environ["TF_EAGER"] = "1"
-
     if args.config_file:
         with open(args.config_file) as f:
             experiments = yaml.safe_load(f)

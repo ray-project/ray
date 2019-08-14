@@ -229,6 +229,10 @@ class RolloutWorker(EvaluatorInterface):
         global _global_worker
         _global_worker = self
 
+        policy_config = policy_config or {}
+        if tf and policy_config.get("use_eager"):
+            tf.enable_eager_execution()
+
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
@@ -238,7 +242,6 @@ class RolloutWorker(EvaluatorInterface):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
-        policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
         self.worker_index = worker_index

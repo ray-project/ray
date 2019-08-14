@@ -19,6 +19,13 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+def _disallow_var_creation(next_creator, **kw):
+    v = next_creator(**kw)
+    raise ValueError("Detected a variable being created during an eager "
+                     "forward pass. Variables should only be created during "
+                     "model initialization: {}".format(v.name))
+
+
 # TODO(ekl) decide what stuff goes in this class vs the builder below
 class TFEagerPolicy(Policy):
     def __init__(self, model, observation_space, action_space, gradients_fn):
@@ -37,13 +44,15 @@ class TFEagerPolicy(Policy):
 
     @override(Policy)
     def learn_on_batch(self, samples):
-        grads_and_vars, stats = self._compute_gradients(samples)
+        with tf.variable_creator_scope(_disallow_var_creation):
+            grads_and_vars, stats = self._compute_gradients(samples)
         self.optimizer.apply_gradients(grads_and_vars)
         return stats
 
     @override(Policy)
     def compute_gradients(self, samples):
-        grads_and_vars, stats = self._compute_gradients(samples)
+        with tf.variable_creator_scope(_disallow_var_creation):
+            grads_and_vars, stats = self._compute_gradients(samples)
         grads = [g for g, v in grads_and_vars]
         grads = [(g.numpy() if g is not None else None) for g in grads]
         return grads, stats
@@ -311,8 +320,9 @@ def build_tf_policy(name,
                         prev_reward_batch),
                 })
             self.state_in = state_batches
-            self.model_out, self.state_out = self.model(
-                self.input_dict, state_batches, self.seq_lens)
+            with tf.variable_creator_scope(_disallow_var_creation):
+                self.model_out, self.state_out = self.model(
+                    self.input_dict, state_batches, self.seq_lens)
 
             if self.dist_class:
                 self.action_dist = self.dist_class(self.model_out)

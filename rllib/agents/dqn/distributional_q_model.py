@@ -152,20 +152,26 @@ class DistributionalQModel(TFModelV2):
             return state_score
 
         if tf.executing_eagerly():
-            # have to use a variable store to reuse variables in eager mode
+            # Have to use a variable store to reuse variables in eager mode
             import tensorflow.contrib as tfc
             store = tfc.eager.EagerVariableStore()
 
+            # Save the scope objects, since in eager we will execute this
+            # path repeatedly and there is no guarantee it will always be run
+            # in the same original scope.
+            with tf.variable_scope(name + "/action_value") as action_scope:
+                pass
+            with tf.variable_scope(name + "/state_value") as state_scope:
+                pass
+
             def build_action_value_in_scope(model_out):
                 with store.as_default():
-                    with tf.variable_scope(
-                            name + "/action_value", reuse=tf.AUTO_REUSE):
+                    with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
                         return build_action_value(model_out)
 
             def build_state_score_in_scope(model_out):
                 with store.as_default():
-                    with tf.variable_scope(
-                            name + "/state_value", reuse=tf.AUTO_REUSE):
+                    with tf.variable_scope(state_scope, reuse=tf.AUTO_REUSE):
                         return build_state_score(model_out)
         else:
 
@@ -179,6 +185,7 @@ class DistributionalQModel(TFModelV2):
                         name + "/state_value", reuse=tf.AUTO_REUSE):
                     return build_state_score(model_out)
 
+        # TODO(ekl) we shouldn't need to use lambda layers here
         q_out = tf.keras.layers.Lambda(build_action_value_in_scope)(
             self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
