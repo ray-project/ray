@@ -319,7 +319,7 @@ def test_nested_functions(ray_start_regular):
 
     assert ray.get(f.remote()) == (1, 2)
 
-    # Test a recursive remote function.
+    # Test a remote function that recursively calls itself.
 
     @ray.remote
     def factorial(n):
