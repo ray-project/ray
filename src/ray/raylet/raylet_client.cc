@@ -201,10 +201,10 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
                            int port)
-    : client_id_(client_id),
+    : worker_id_(worker_id),
       is_worker_(is_worker),
       job_id_(job_id),
       language_(language) {
@@ -213,7 +213,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
+      fbb, is_worker, to_flatbuf(fbb, worker_id), getpid(), to_flatbuf(fbb, job_id),
       language, port);
   fbb.Finish(message);
   // Register the process ID with the raylet.

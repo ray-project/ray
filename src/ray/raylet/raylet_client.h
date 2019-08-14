@@ -16,7 +16,7 @@ using ray::ClientID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
-using ray::UniqueID;
+using ray::WorkerID;
 
 using ray::Language;
 using ray::rpc::ProfileTableData;
@@ -72,7 +72,7 @@ class RayletClient {
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+  RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                int port = -1);
 
@@ -178,7 +178,7 @@ class RayletClient {
 
   Language GetLanguage() const { return language_; }
 
-  ClientID GetClientID() const { return client_id_; }
+  WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
 
@@ -187,7 +187,7 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const ClientID client_id_;
+  const WorkerID worker_id_;
   const bool is_worker_;
   const JobID job_id_;
   const Language language_;

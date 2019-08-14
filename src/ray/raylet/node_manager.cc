@@ -1250,7 +1250,7 @@ void NodeManager::ProcessSetResourceRequest(
     return;
   }
 
-  // Submit to the client table. This calls the ResourceCreateUpdated or ResourceDeleted
+  // Submit to the resource table. This calls the ResourceCreateUpdated or ResourceDeleted
   // callback, which updates cluster_resource_map_.
   if (is_deletion) {
     RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(JobID::Nil(), client_id,
