@@ -499,7 +499,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait().
+  // Test Wait() with duplicate object ids.
   std::vector<ObjectID> ids_with_duplicate;
   ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
   // add the same ids again to test `Get` with duplicate object ids.
@@ -511,6 +511,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::vector<bool> wait_results;
   RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 5);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+
+  // Test Wait() with duplicate object ids, and the required `num_objects`
+  // is less than size of `wait_ids`.
+  wait_results.clear();
+  RAY_CHECK_OK(provider.Wait(wait_ids, 4, 100, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 

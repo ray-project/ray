@@ -15,6 +15,7 @@ using rpc::RayletClient;
 
 class CoreWorker;
 class CoreWorkerStoreProvider;
+class CoreWorkerMemoryStore;
 
 /// The interface that contains all `CoreWorker` methods that are related to object store.
 class CoreWorkerObjectInterface {
@@ -49,7 +50,7 @@ class CoreWorkerObjectInterface {
   /// Wait for a list of objects to appear in the object store.
   ///
   /// \param[in] IDs of the objects to wait for.
-  /// \param[in] num_returns Number of objects that should appear.
+  /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
@@ -79,6 +80,18 @@ class CoreWorkerObjectInterface {
              int64_t timeout_ms,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
+  /// Helper function to wait a list of objects from a specific store provider.
+  ///
+  /// \param[in] type The type of store provider to use.
+  /// \param[in] object_ids IDs of the objects to wait for.
+  /// \param[in] num_objects Number of objects that should appear.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results A bitset that indicates each object has appeared or not.
+  /// \return Status.
+  Status Wait(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+             int num_objects, int64_t timeout_ms,
+             std::unordered_set<ObjectID> *results);
+
   /// Create a new store provider for the specified type on demand.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
       StoreProviderType type) const;
@@ -93,6 +106,9 @@ class CoreWorkerObjectInterface {
 
   /// Store socket name.
   std::string store_socket_;
+
+  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>

@@ -4,17 +4,37 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
 
 namespace ray {
+
+void GetObjectIdsPerStoreProvider(
+    const std::vector<ObjectID> &object_ids,
+    EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results) {
+  for (const auto &object_id : object_ids) {
+    // By default use `PLASMA` store provider.
+    auto type = StoreProviderType::PLASMA;
+    if (object_id.IsReturnObject() &&
+        object_id.GetTransportType() ==
+            static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
+      // Direct actor call uses `MEMORY` store provider.
+      type = StoreProviderType::MEMORY;
+    }
+
+    (*results)[type].insert(object_id);
+  }
+}
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     const std::string &store_socket)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
-      store_socket_(store_socket) {
+      store_socket_(store_socket),
+      memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
   AddStoreProvider(StoreProviderType::LOCAL_PLASMA);
   AddStoreProvider(StoreProviderType::PLASMA);
+  AddStoreProvider(StoreProviderType::MEMORY);
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
@@ -35,32 +55,27 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
-  // Divide the object ids into two groups: direct call return objects and the rest,
-  // and de-duplicate for each group.
-  std::unordered_set<ObjectID> direct_call_return_ids;
-  std::unordered_set<ObjectID> other_ids;
-  for (const auto &object_id : ids) {
-    if (object_id.IsReturnObject() &&
-        object_id.GetTransportType() ==
-            static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
-      direct_call_return_ids.insert(object_id);
-    } else {
-      other_ids.insert(object_id);
-    }
-  }
+  // There can be a few cases here:
+  // - for task return objects, find the store provider type for an object from
+  //   its transport, and then try to get from the corresponding store provider;
+  // - for other objects, try to get from plasma store.
+  EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
+      object_ids_per_store_provider;
+  GetObjectIdsPerStoreProvider(ids, &object_ids_per_store_provider);
 
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;
-  auto start_time = current_time_ms();
-  // Fetch non-direct-call objects using `PLASMA` store provider.
-  RAY_RETURN_NOT_OK(Get(StoreProviderType::PLASMA, other_ids, timeout_ms, &objects));
-  int64_t duration = current_time_ms() - start_time;
-  int64_t left_timeout_ms =
-      (timeout_ms == -1) ? timeout_ms
-                         : std::max(static_cast<int64_t>(0), timeout_ms - duration);
+  auto current_timeout_ms = timeout_ms;
 
-  // Fetch direct call return objects using `LOCAL_PLASMA` store provider.
-  RAY_RETURN_NOT_OK(Get(StoreProviderType::LOCAL_PLASMA, direct_call_return_ids,
-                        left_timeout_ms, &objects));
+  for (const auto &entry : object_ids_per_store_provider) {
+    auto start_time = current_time_ms();
+    RAY_RETURN_NOT_OK(Get(entry.first, entry.second,
+                          current_timeout_ms, &objects));
+    int64_t duration = current_time_ms() - start_time;
+    current_timeout_ms =
+        (current_timeout_ms == -1)
+            ? current_timeout_ms
+            : std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+  }
 
   for (size_t i = 0; i < ids.size(); i++) {
     (*results)[i] = objects[ids[i]];
@@ -80,24 +95,111 @@ Status CoreWorkerObjectInterface::Get(
         ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
     RAY_CHECK(ids.size() == objects.size());
     for (size_t i = 0; i < objects.size(); i++) {
-      (*results).emplace(ids[i], objects[i]);
+      if (objects[i] != nullptr) {
+        (*results).emplace(ids[i], objects[i]);
+      }
     }
   }
 
   return Status::OK();
 }
 
-Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::vector<bool> *results) {
-  return store_providers_[StoreProviderType::PLASMA]->Wait(
-      object_ids, num_objects, timeout_ms, worker_context_.GetCurrentTaskID(), results);
+  (*results).resize(ids.size(), false);
+
+  if (num_objects <= 0 || num_objects > ids.size()) {
+    return Status::Invalid("num_objects value is not valid");
+  }
+
+  // There can be a few cases here:
+  // - for task return objects, find the store provider type for an object from
+  //   its transport, and then try to get from the corresponding store provider;
+  // - for other objects, try to get from plasma store.
+  EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
+      object_ids_per_store_provider;
+  GetObjectIdsPerStoreProvider(ids, &object_ids_per_store_provider);
+
+  std::unordered_map<ObjectID, int> object_counts;
+  for (const auto &entry : ids) {
+    auto iter = object_counts.find(entry);
+    if (iter == object_counts.end()) {
+      object_counts.emplace(entry, 1);
+    } else {
+      iter->second++;
+    }
+  }
+  
+  auto current_timeout_ms = timeout_ms;
+
+  for (const auto &entry : object_ids_per_store_provider) {
+    std::unordered_set<ObjectID> objects;
+    auto start_time = current_time_ms();
+    RAY_RETURN_NOT_OK(Wait(entry.first, entry.second, num_objects,
+                          current_timeout_ms, &objects));
+    int64_t duration = current_time_ms() - start_time;
+    current_timeout_ms =
+        (current_timeout_ms == -1)
+            ? current_timeout_ms
+            : std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+    for (const auto &entry : objects) {
+      num_objects -= object_counts[entry];
+    }
+
+    for (size_t i = 0; i < ids.size(); i++) {
+      if (objects.count(ids[i]) > 0) {
+        (*results)[i] = true;
+      }
+    }
+  }
+
+
+
+  return Status::OK();
+}
+
+Status CoreWorkerObjectInterface::Wait(StoreProviderType type,
+            const std::unordered_set<ObjectID> &object_ids,
+            int num_objects, int64_t timeout_ms,
+            std::unordered_set<ObjectID> *results) {
+  std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());
+  if (!ids.empty()) {
+    std::vector<bool> objects;
+    RAY_RETURN_NOT_OK(store_providers_[type]->Wait(
+        ids, num_objects, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
+    RAY_CHECK(ids.size() == objects.size());
+    for (size_t i = 0; i < objects.size(); i++) {
+      if (objects[i]) {
+        (*results).insert(ids[i]);
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids,
                                          bool local_only, bool delete_creating_tasks) {
-  return store_providers_[StoreProviderType::PLASMA]->Delete(object_ids, local_only,
-                                                             delete_creating_tasks);
+  // There can be a few cases here:
+  // - for task return objects, find the store provider type for an object from
+  //   its transport, and then try to get from the corresponding store provider;
+  // - for other objects, try to get from plasma store.
+  EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
+      object_ids_per_store_provider;
+  GetObjectIdsPerStoreProvider(object_ids, &object_ids_per_store_provider);
+
+  for (const auto &entry : object_ids_per_store_provider) {
+    auto type = entry.first;
+    bool is_plasma = (type == StoreProviderType::PLASMA);
+
+    std::vector<ObjectID> ids(entry.second.begin(), entry.second.end());
+    RAY_RETURN_NOT_OK(store_providers_[type]->Delete(
+        ids, is_plasma ? local_only : false,
+        is_plasma ? delete_creating_tasks : false));
+  }
+
+  return Status::OK();
 }
 
 void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {
@@ -113,6 +215,10 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
+  case StoreProviderType::MEMORY:
+    return std::unique_ptr<CoreWorkerStoreProvider>(
+        new CoreWorkerMemoryStoreProvider(memory_store_));
+    break;
   default:
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);
     return nullptr;

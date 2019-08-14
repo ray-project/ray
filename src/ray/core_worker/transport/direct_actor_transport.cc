@@ -22,7 +22,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_(
-          object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
+          object_interface.CreateStoreProvider(StoreProviderType::MEMORY)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
