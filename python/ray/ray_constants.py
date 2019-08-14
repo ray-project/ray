@@ -28,7 +28,8 @@ DEFAULT_PUT_OBJECT_RETRIES = 5
 # DEFAULT_PUT_OBJECT_RETRIES times.
 DEFAULT_PUT_OBJECT_DELAY = 1
 # The smallest cap on the memory used by the object store that we allow.
-OBJECT_STORE_MINIMUM_MEMORY_BYTES = 10**7
+# This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 150 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
