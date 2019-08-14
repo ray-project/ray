@@ -319,6 +319,21 @@ def test_nested_functions(ray_start_regular):
 
     assert ray.get(f.remote()) == (1, 2)
 
+    # Test a recursive remote function.
+
+    @ray.remote
+    def factorial(n):
+        if n == 0:
+            return 1
+        return n * ray.get(factorial.remote(n - 1))
+
+    assert ray.get(factorial.remote(0)) == 1
+    assert ray.get(factorial.remote(1)) == 1
+    assert ray.get(factorial.remote(2)) == 2
+    assert ray.get(factorial.remote(3)) == 6
+    assert ray.get(factorial.remote(4)) == 24
+    assert ray.get(factorial.remote(5)) == 120
+
     # Test remote functions that both call each other.
 
     @ray.remote
