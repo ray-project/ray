@@ -15,12 +15,11 @@ namespace ray {
 namespace gcs {
 
 /// \class RedisAsyncContext
-/// RedisAsyncContext class is a C++ wrapper of hiredis asyncRedisContext.
-/// The purpose of this class is to make redis async commands thread-safe by
-/// locking.
-/// Sending a redis request is a low frequency operation,
-/// so even in the case of multithreading, the lock conflict should be low frequency.
-/// Raylet has only one thread, so there won't be lock competition.
+/// RedisAsyncContext class is a wrapper of hiredis `asyncRedisContext`, providing
+/// C++ style and thread-safe API.
+/// NOTE(micafan): We use a lock to make the `asyncRedisContext` commands thread-safe.
+/// All these commands only manipulate memory data and don't actually do any IO
+/// operations. So the perf impact of adding the lock should be minimum.
 class RedisAsyncContext {
  public:
   explicit RedisAsyncContext(redisAsyncContext *redis_async_context)
@@ -41,14 +40,14 @@ class RedisAsyncContext {
 
   /// Perform command 'redisAsyncHandleRead'. Thread-safe.
   void RedisAsyncHandleRead() {
-    // redisAsyncContext redisReader's read operations are always performed
-    // in the socket thread, so no lock here.
+    // `redisAsyncHandleRead` is already thread-safe, so no lock here.
     redisAsyncHandleRead(redis_async_context_);
   }
 
   /// Perform command 'redisAsyncHandleWrite'. Thread-safe.
   void RedisAsyncHandleWrite() {
-    // Lock the obuf of redisContext for reading and writing.
+    // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
+    // it.
     std::lock_guard<std::mutex> lock(mutex_);
     redisAsyncHandleWrite(redis_async_context_);
   }

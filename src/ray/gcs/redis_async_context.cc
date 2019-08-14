@@ -16,7 +16,7 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
 
   int ret_code = 0;
   {
-    // Lock the obuf of redisContext for writing.
+    // `redisvAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
     ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
   }
@@ -35,7 +35,8 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privd
                                                 const size_t *argvlen) {
   int ret_code = 0;
   {
-    // Lock the obuf of redisContext for writing.
+    // `redisAsyncCommandArgv` will mutate `redis_async_context_`, use a lock to protect
+    // it.
     std::lock_guard<std::mutex> lock(mutex_);
     ret_code =
         redisAsyncCommandArgv(redis_async_context_, fn, privdata, argc, argv, argvlen);
