@@ -334,7 +334,7 @@ def test_nested_functions(ray_start_regular):
     assert ray.get(factorial.remote(4)) == 24
     assert ray.get(factorial.remote(5)) == 120
 
-    # Test remote functions that both call each other.
+    # Test remote functions that recursively call each other.
 
     @ray.remote
     def factorial_even(n):
