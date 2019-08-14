@@ -95,13 +95,13 @@ void GrpcServer::PollEventsFromCompletionQueue() {
 }
 
 void GrpcServer::HandleReceivedRequest(ServerCall *server_call) {
-  auto request_index_str = server_call->GetClientMeta("REQUEST_INDEX");
+  auto request_index_str = server_call->GetClientMeta("request_index");
   if (request_index_str.empty()) {
     // If this request doesn't have `request_index`, it means that we don't need to guarantee
     // request order. So we can immediately handle this request.
     server_call->HandleRequest();
   } else {
-    auto client_id = server_call->GetClientMeta("CLIENT_ID");
+    auto client_id = server_call->GetClientMeta("client_id");
     RAY_CHECK(!client_id.empty());
     auto request_index = std::stoull(request_index_str);
     auto &pending_requests = pending_requests_by_client_id_[client_id];

@@ -44,7 +44,11 @@ class GrpcServer {
   }
 
   /// Destruct this gRPC server.
-  ~GrpcServer() { Shutdown(); }
+  ~GrpcServer() {
+    RAY_LOG(INFO) << "Shutting down";
+    Shutdown();
+    RAY_LOG(INFO) << "Shutdown";
+  }
 
   /// Initialize and run this server.
   void Run();

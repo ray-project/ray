@@ -1,7 +1,10 @@
 #ifndef RAY_RPC_GRPC_CLIENT_H
 #define RAY_RPC_GRPC_CLIENT_H
 
+#include <map>
 #include <grpcpp/grpcpp.h>
+
+#include "ray/common/id.h"
 
 namespace ray {
 namespace rpc {
@@ -9,16 +12,16 @@ namespace rpc {
 template <typename GrpcService>
 class GrpcClient {
  protected:
-  GrpcClient(bool keep_request_order)
+  explicit GrpcClient(bool keep_request_order)
       : keep_request_order_(keep_request_order),
-        client_id_(UniqueID::FromRandom().Binary()),
+        client_id_(UniqueID::FromRandom().Hex()),
         current_request_index_(0) {}
 
   std::unordered_map<std::string, std::string> GetMetaForNextRequest() {
     std::unordered_map<std::string, std::string> ret;
-    ret["CLIENT_ID"] = client_id_;
+    ret["client_id"] = client_id_;
     if (keep_request_order_) {
-      ret["REQUEST_INDEX"] = current_request_index_++;
+      ret["request_index"] = current_request_index_++;
     }
     return ret;
   }

@@ -1,5 +1,5 @@
-# Bazel build
-# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+#Bazel build
+#C / C++ documentation : https:  // docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
@@ -9,7 +9,19 @@ load("@//bazel:cython_library.bzl", "pyx_library")
 
 COPTS = ["-DRAY_USE_GLOG"]
 
-# === Begin of protobuf definitions ===
+#== = Begin of protobuf definitions == =
+
+#A protobuf file used only for testing.
+proto_library(
+    name = "test_proto",
+    srcs = ["src/ray/protobuf/test.proto"],
+)
+
+cc_proto_library(
+    name = "test_cc_proto",
+    deps = [":test_proto"],
+    testonly=True,
+)
 
 proto_library(
     name = "common_proto",
@@ -112,11 +124,35 @@ cc_proto_library(
     deps = ["direct_actor_proto"],
 )
 
-# === End of protobuf definitions ===
+#== = End of protobuf definitions == =
 
-# === Begin of rpc definitions ===
+#== = Begin of rpc definitions == =
 
-# GRPC common lib.
+cc_grpc_library(
+    name = "test_cc_grpc",
+    srcs = [":test_proto"],
+    grpc_only = True,
+    deps = [":test_cc_proto"],
+    testonly=True,
+)
+
+cc_test(
+    name = "rpc_test",
+    srcs = [
+        "src/ray/rpc/test/rpc_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":test_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+#GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
     srcs = glob([
@@ -134,7 +170,7 @@ cc_library(
     ],
 )
 
-# Node manager gRPC lib.
+#Node manager gRPC lib.
 cc_grpc_library(
     name = "node_manager_cc_grpc",
     srcs = [":node_manager_proto"],
@@ -142,7 +178,7 @@ cc_grpc_library(
     deps = [":node_manager_cc_proto"],
 )
 
-# Node manager server and client.
+#Node manager server and client.
 cc_library(
     name = "node_manager_rpc",
     hdrs = glob([
@@ -158,7 +194,7 @@ cc_library(
     ],
 )
 
-# Object manager gRPC lib.
+#Object manager gRPC lib.
 cc_grpc_library(
     name = "object_manager_cc_grpc",
     srcs = [":object_manager_proto"],
@@ -166,7 +202,7 @@ cc_grpc_library(
     deps = [":object_manager_cc_proto"],
 )
 
-# Object manager rpc server and client.
+#Object manager rpc server and client.
 cc_library(
     name = "object_manager_rpc",
     hdrs = glob([
@@ -182,7 +218,7 @@ cc_library(
     ],
 )
 
-# Raylet gRPC lib.
+#Raylet gRPC lib.
 cc_grpc_library(
     name = "raylet_cc_grpc",
     srcs = [":raylet_proto"],
@@ -190,7 +226,7 @@ cc_grpc_library(
     deps = [":raylet_cc_proto"],
 )
 
-# Raylet rpc server and client.
+#Raylet rpc server and client.
 cc_library(
     name = "raylet_rpc",
     srcs = glob([
@@ -210,7 +246,7 @@ cc_library(
     ],
 )
 
-# Worker gRPC lib.
+#Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
     srcs = [":worker_proto"],
@@ -218,7 +254,7 @@ cc_grpc_library(
     deps = [":worker_cc_proto"],
 )
 
-# direct actor gRPC lib.
+#direct actor gRPC lib.
 cc_grpc_library(
     name = "direct_actor_cc_grpc",
     srcs = [":direct_actor_proto"],
@@ -226,7 +262,7 @@ cc_grpc_library(
     deps = [":direct_actor_cc_proto"],
 )
 
-# worker server and client.
+#worker server and client.
 cc_library(
     name = "worker_rpc",
     hdrs = glob([
@@ -243,7 +279,7 @@ cc_library(
     ],
 )
 
-# === End of rpc definitions ===
+#== = End of rpc definitions == =
 
 cc_library(
     name = "ray_common",
@@ -406,8 +442,8 @@ cc_library(
         ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
-        # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
-        # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
+#TODO(hchen) : After `raylet_client` is migrated to gRPC, `core_worker_lib`
+#should only depend on `raylet_client`, instead of the whole `raylet_lib`.
         ":raylet_lib",
         ":worker_rpc",
         ":gcs",
@@ -887,8 +923,8 @@ genrule(
         for f in $(locations //:all_py_proto); do
             cp -f $$f $$WORK_DIR/python/ray/core/generated/;
         done &&
-        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
-        # command to change the import path in the generated file.
+#NOTE(hchen) : Protobuf doesn't allow specifying Python package name. So we use this `sed`
+#command to change the import path in the generated file.
         sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/gcs_pb2.py &&
         echo $$WORK_DIR > $@
     """,
