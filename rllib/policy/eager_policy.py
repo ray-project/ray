@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 
 # TODO(ekl) decide what stuff goes in this class vs the builder below
 class TFEagerPolicy(Policy):
-    def __init__(self, optimizer, model, observation_space, action_space,
-                 gradients_fn):
-        self.optimizer = optimizer
+    def __init__(self, model, observation_space, action_space, gradients_fn):
         self.model = model
         self.observation_space = observation_space
         self.action_space = action_space
@@ -39,13 +37,14 @@ class TFEagerPolicy(Policy):
 
     @override(Policy)
     def learn_on_batch(self, samples):
-        grads, stats = self._compute_gradients(samples)
-        self.optimizer.apply_gradients(grads)
+        grads_and_vars, stats = self._compute_gradients(samples)
+        self.optimizer.apply_gradients(grads_and_vars)
         return stats
 
     @override(Policy)
     def compute_gradients(self, samples):
-        grads, stats = self._compute_gradients(samples)
+        grads_and_vars, stats = self._compute_gradients(samples)
+        grads = [g for g, v in grads_and_vars]
         grads = [(g.numpy() if g is not None else None) for g in grads]
         return grads, stats
 
@@ -78,21 +77,22 @@ class TFEagerPolicy(Policy):
                     self.tape = tape
 
                 def compute_gradients(self, loss, var_list):
-                    return zip(self.tape.gradient(loss, var_list), var_list)
+                    return list(
+                        zip(self.tape.gradient(loss, var_list), var_list))
 
             grads_and_vars = self._gradients_fn(self, OptimizerWrapper(tape),
                                                 loss)
         else:
-            grads_and_vars = zip(tape.gradient(loss, variables), variables)
+            grads_and_vars = list(
+                zip(tape.gradient(loss, variables), variables))
 
         if log_once("grad_vars"):
-            grads_and_vars = list(grads_and_vars)
             for _, v in grads_and_vars:
                 logger.info("Optimizing variable {}".format(v.name))
 
         grads = [g for g, v in grads_and_vars]
-        stats = self._stats(self, samples, [g for g, v in grads_and_vars])
-        return grads, stats
+        stats = self._stats(self, samples, grads)
+        return grads_and_vars, stats
 
     @override(Policy)
     def apply_gradients(self, gradients):
@@ -102,49 +102,24 @@ class TFEagerPolicy(Policy):
 
     @override(Policy)
     def get_weights(self):
-        """Returns model weights.
-
-        Returns:
-            weights (obj): Serializable copy or view of model weights
-        """
-        # TODO(gehring): refactor `tf.nest` to `tf.contrib.framework.nest` if
-        #  not `tf.nest` is not supported
         return tf.nest.map_structure(lambda var: var.numpy(),
                                      self.model.variables())
 
     @override(Policy)
     def set_weights(self, weights):
-        """Sets model weights.
-
-        Arguments:
-            weights (obj): Serializable copy or view of model weights
-        """
         tf.nest.map_structure(lambda var, value: var.assign(value),
                               self.model.variables(), weights)
 
     @override(Policy)
     def export_model(self, export_dir):
-        """Export Policy to local directory for serving.
-
-        Arguments:
-            export_dir (str): Local writable directory.
-        """
-        # TODO(gehring): find the best way to export eager/TF2.0
-        return NotImplemented
+        return NotImplementedError
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
-        """Export Policy checkpoint to local directory.
-
-        Argument:
-            export_dir (str): Local writable directory.
-        """
-        # TODO(gehring): look into making ModelV2 trackable/checkpointable to
-        #  facilitate this
-        return NotImplemented
+        return NotImplementedError
 
     def get_session(self):
-        return None
+        return None  # None implies eager
 
     def _get_is_training_placeholder(self):
         return tf.convert_to_tensor(self.is_training)
@@ -167,7 +142,8 @@ def build_tf_policy(name,
                     make_model=None,
                     action_sampler_fn=None,
                     mixins=None,
-                    obs_include_prev_action_reward=True):
+                    obs_include_prev_action_reward=True,
+                    get_batch_divisibility_req=None):
 
     base = add_mixins(TFEagerPolicy, mixins)
 
@@ -206,11 +182,6 @@ def build_tf_policy(name,
                     framework="tf",
                 )
 
-            if optimizer_fn:
-                optimizer = optimizer_fn(self, config)
-            else:
-                optimizer = tf.train.AdamOptimizer(config["lr"])
-
             model({
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
@@ -220,12 +191,17 @@ def build_tf_policy(name,
             }, [tf.convert_to_tensor([s]) for s in model.get_initial_state()],
                   tf.convert_to_tensor([1]))
 
-            TFEagerPolicy.__init__(self, optimizer, model, observation_space,
+            TFEagerPolicy.__init__(self, model, observation_space,
                                    action_space, gradients_fn)
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
             self._do_loss_init()
+
+            if optimizer_fn:
+                self.optimizer = optimizer_fn(self, config)
+            else:
+                self.optimizer = tf.train.AdamOptimizer(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
