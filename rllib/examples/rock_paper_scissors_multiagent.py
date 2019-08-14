@@ -7,7 +7,7 @@ This demonstrates running the following policies in competition:
     (1) heuristic policy of repeating the same move
     (2) heuristic policy of beating the last opponent move
     (3) LSTM/feedforward PG policies
-    (4) LSTM policy with custom safety loss
+    (4) LSTM policy with custom entropy loss
 """
 
 import random
