@@ -262,6 +262,11 @@ def build_tf_policy(name,
             postprocessed_batch = self.postprocess_trajectory(
                 SampleBatch(dummy_batch))
 
+            # model forward pass for the loss (needed after postprocess to
+            # overwrite any tensor state from that call)
+            self.model(dummy_batch, state_batches,
+                       tf.ones(len(dummy_batch[SampleBatch.CUR_OBS])))
+
             postprocessed_batch = {
                 k: tf.convert_to_tensor(v)
                 for k, v in postprocessed_batch.items()
@@ -293,13 +298,13 @@ def build_tf_policy(name,
             assert tf.executing_eagerly()
             self.is_training = False
 
-            seq_len = tf.ones(len(obs_batch))
-            input_dict = {
+            self.seq_lens = tf.ones(len(obs_batch))
+            self.input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.convert_to_tensor(False),
             }
             if obs_include_prev_action_reward:
-                input_dict.update({
+                self.input_dict.update({
                     SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
                         prev_action_batch),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
@@ -307,7 +312,7 @@ def build_tf_policy(name,
                 })
             self.state_in = state_batches
             self.model_out, self.state_out = self.model(
-                input_dict, state_batches, seq_len)
+                self.input_dict, state_batches, self.seq_lens)
 
             if self.dist_class:
                 self.action_dist = self.dist_class(self.model_out)
@@ -315,7 +320,7 @@ def build_tf_policy(name,
                 logp = self.action_dist.sampled_action_logp()
             else:
                 action, logp = action_sampler_fn(
-                    self, self.model, input_dict, self.observation_space,
+                    self, self.model, self.input_dict, self.observation_space,
                     self.action_space, self.config)
                 action = action.numpy()
 

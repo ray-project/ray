@@ -70,10 +70,7 @@ class TargetNetworkMixin(object):
                 logger.debug("Update target op {}".format(var_target))
             return tf.group(*update_target_expr)
 
-        self.update_target_expr = do_update
-
-    def update_target(self):
-        self.update_target_expr()
+        self.update_target = do_update
 
 
 def build_q_models(policy, obs_space, action_space, config):

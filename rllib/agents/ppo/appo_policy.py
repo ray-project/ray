@@ -20,9 +20,10 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
-from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin
+from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.tf_ops import make_tf_callable
 
 tf = try_import_tf()
 
@@ -256,7 +257,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
     old_policy_action_dist = policy.dist_class(old_policy_behaviour_logits,
                                                policy.model)
     prev_action_dist = policy.dist_class(behaviour_logits, policy.model)
-    values = policy.value_function
+    values = policy.model.value_function()
 
     policy.model_vars = policy.model.variables()
     policy.target_model_vars = policy.target_model.variables()
@@ -269,7 +270,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
         mask = tf.ones_like(rewards)
 
     if policy.config["vtrace"]:
-        logger.info("Using V-Trace surrogate loss (vtrace=True)")
+        logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
         # Prepare actions for loss
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
@@ -313,7 +314,7 @@ def build_appo_surrogate_loss(policy, batch_tensors):
             cur_kl_coeff=policy.kl_coeff,
             use_kl_loss=policy.config["use_kl_loss"])
     else:
-        logger.info("Using PPO surrogate loss (vtrace=False)")
+        logger.debug("Using PPO surrogate loss (vtrace=False)")
 
         # Prepare KL for Loss
         mean_kl = make_time_major(prev_action_dist.multi_kl(action_dist))
@@ -341,13 +342,15 @@ def build_appo_surrogate_loss(policy, batch_tensors):
 
 def stats(policy, batch_tensors):
     values_batched = _make_time_major(
-        policy, policy.value_function, drop_last=policy.config["vtrace"])
+        policy,
+        policy.model.value_function(),
+        drop_last=policy.config["vtrace"])
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(policy.var_list),
+        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
@@ -378,7 +381,10 @@ def postprocess_trajectory(policy,
             next_state = []
             for i in range(len(policy.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = policy.value(sample_batch["new_obs"][-1], *next_state)
+            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
         batch = compute_advantages(
             sample_batch,
             last_r,
@@ -394,7 +400,7 @@ def postprocess_trajectory(policy,
 def add_values_and_logits(policy):
     out = {BEHAVIOUR_LOGITS: policy.model_out}
     if not policy.config["vtrace"]:
-        out[SampleBatch.VF_PREDS] = policy.value_function
+        out[SampleBatch.VF_PREDS] = policy.model.value_function()
     return out
 
 
@@ -405,38 +411,23 @@ class TargetNetworkMixin(object):
         are importance sampled w.r. to the target network to ensure
         a more stable pi_old in PPO.
         """
-        assign_ops = []
-        assert len(self.model_vars) == len(self.target_model_vars)
-        for var, var_target in zip(self.model_vars, self.target_model_vars):
-            assign_ops.append(var_target.assign(var))
-        self.update_target_network = tf.group(*assign_ops)
 
-    def update_target(self):
-        return self.get_session().run(self.update_target_network)
+        @make_tf_callable(self.get_session())
+        def do_update():
+            assign_ops = []
+            assert len(self.model_vars) == len(self.target_model_vars)
+            for var, var_target in zip(self.model_vars,
+                                       self.target_model_vars):
+                assign_ops.append(var_target.assign(var))
+            return tf.group(*assign_ops)
 
-
-class ValueNetworkMixin(object):
-    def __init__(self):
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
-
-    def value(self, ob, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.seq_lens: [1]
-        }
-        assert len(args) == len(self.state_in), \
-            (args, self.state_in)
-        for k, v in zip(self.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.model.value_function(), feed_dict)
-        return vf[0]
+        self.update_target = do_update
 
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
-    ValueNetworkMixin.__init__(policy)
+    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
