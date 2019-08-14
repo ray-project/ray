@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import yaml
-import distutils.version
 import numbers
 
 import numpy as np
@@ -23,7 +22,6 @@ from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
 logger = logging.getLogger(__name__)
 
 tf = None
-use_tf150_api = True
 
 
 class Logger(object):
@@ -108,10 +106,7 @@ class JsonLogger(Logger):
 
 
 def to_tf_values(result, path):
-    if use_tf150_api:
-        type_list = [int, float, np.float32, np.float64, np.int32]
-    else:
-        type_list = [int, float]
+    type_list = [int, float, np.float32, np.float64, np.int32]
     flat_result = flatten_dict(result, delimiter="/")
     values = [
         tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value)
@@ -123,19 +118,18 @@ def to_tf_values(result, path):
 class TFLogger(Logger):
     def _init(self):
         try:
-            global tf, use_tf150_api
+            global tf
             if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
                 logger.warning("Not importing TensorFlow for test purposes")
                 tf = None
             else:
                 import tensorflow
                 tf = tensorflow
-                use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                                 distutils.version.LooseVersion("1.5.0"))
         except ImportError:
             logger.warning("Couldn't import TensorFlow - "
                            "disabling TensorBoard logging.")
-        self._file_writer = tf.summary.FileWriter(self.logdir)
+        self._file_writer = tf.contrib.summary.create_file_writer(self.logdir)
+        self._file_writer.set_as_default()
 
     def on_result(self, result):
         tmp = result.copy()
@@ -145,14 +139,14 @@ class TFLogger(Logger):
             if k in tmp:
                 del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
-        train_stats = tf.Summary(value=values)
-        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
-        self._file_writer.add_summary(train_stats, t)
         iteration_value = to_tf_values({
-            TRAINING_ITERATION: result[TRAINING_ITERATION]
+            "training_iteration": result[TRAINING_ITERATION]
         }, ["ray", "tune"])
-        iteration_stats = tf.Summary(value=iteration_value)
-        self._file_writer.add_summary(iteration_stats, t)
+        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        with tf.contrib.summary.always_record_summaries():
+            for value in values + iteration_value:
+                tf.contrib.summary.scalar(
+                    value.tag, value.simple_value, step=t)
         self._file_writer.flush()
 
     def flush(self):
