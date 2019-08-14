@@ -13,6 +13,7 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDiagGaussian)
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.tf_action_dist import (
     Categorical, MultiCategorical, Deterministic, DiagGaussian,
     MultiActionDistribution, Dirichlet)
@@ -176,25 +177,22 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space):
-        """Returns an action placeholder that is consistent with the action space
+    def get_action_shape(action_space):
+        """Returns action tensor dtype and shape for the action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
         Returns:
-            action_placeholder (Tensor): A placeholder for the actions
+            (dtype, shape): Dtype and shape of the actions tensor.
         """
 
         if isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None, ), name="action")
+            return (tf.int64, (None, ))
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
-            return tf.placeholder(
-                tf.float32, shape=(None, ) + action_space.shape, name="action")
+            return (tf.float32, (None, ))
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            return tf.placeholder(
-                tf.as_dtype(action_space.dtype),
-                shape=(None, ) + action_space.shape,
-                name="action")
+            return (tf.as_dtype(action_space.dtype),
+                    (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -204,13 +202,25 @@ class ModelCatalog(object):
                 else:
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
-            return tf.placeholder(
-                tf.int64 if all_discrete else tf.float32,
-                shape=(None, size),
-                name="action")
+            return (tf.int64 if all_discrete else tf.float32, (None, size))
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
+
+    @staticmethod
+    @DeveloperAPI
+    def get_action_placeholder(action_space):
+        """Returns an action placeholder consistent with the action space
+
+        Args:
+            action_space (Space): Action space of the target gym env.
+        Returns:
+            action_placeholder (Tensor): A placeholder for the actions
+        """
+
+        dtype, shape = ModelCatalog.get_action_shape(action_space)
+
+        return tf.placeholder(dtype, shape=shape, name="action")
 
     @staticmethod
     @DeveloperAPI
@@ -284,13 +294,10 @@ class ModelCatalog(object):
                 return instance
 
         if framework == "tf":
-
             # XXX
-            from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
             return ModelCatalog._wrap_if_needed(
-                FullyConnectedNetwork,
-                model_interface)(obs_space, action_space, num_outputs,
-                                 model_config, name, **model_kwargs)
+                FCNetV2, model_interface)(obs_space, action_space, num_outputs,
+                                          model_config, name, **model_kwargs)
 
             legacy_model_cls = default_model or ModelCatalog.get_model
             wrapper = ModelCatalog._wrap_if_needed(
@@ -396,7 +403,7 @@ class ModelCatalog(object):
 
     @staticmethod
     def _wrap_if_needed(model_cls, model_interface):
-        assert issubclass(model_cls, TFModelV2)
+        assert issubclass(model_cls, TFModelV2), model_cls
 
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls

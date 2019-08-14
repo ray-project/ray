@@ -28,6 +28,7 @@ class TFEagerPolicy(Policy):
         self.model = model
         self.observation_space = observation_space
         self.action_space = action_space
+        self.is_training = False
         self._gradients_fn = gradients_fn
         self._sess = None
 
@@ -54,6 +55,8 @@ class TFEagerPolicy(Policy):
             >>> ev.learn_on_batch(samples)
         """
 
+        self.is_training = True
+
         samples = {
             k: tf.convert_to_tensor(v)
             for k, v in samples.items() if v.dtype != np.object
@@ -65,7 +68,8 @@ class TFEagerPolicy(Policy):
             self.state_in = []
             self.model_out, self.state_out = self.model(
                 samples, self.state_in, self.seq_lens)
-            self.action_dist = self.dist_class(self.model_out)
+            if self.dist_class:
+                self.action_dist = self.dist_class(self.model_out)
             loss = self.loss(self, samples)
             stats = self.stats(self, samples)
 
@@ -103,6 +107,8 @@ class TFEagerPolicy(Policy):
             grads (list): List of gradient output values
             info (dict): Extra policy-specific values
         """
+
+        self.is_training = True
 
         # Gradients for all trainable variables used when computing the loss
         # will be computed. Ideally, we would use variables returned by the
@@ -170,25 +176,27 @@ class TFEagerPolicy(Policy):
     def get_session(self):
         return None
 
+    def _get_is_training_placeholder(self):
+        return tf.convert_to_tensor(self.is_training)
 
-def build_tf_policy(
-        name,
-        loss_fn,
-        get_default_config=None,
-        postprocess_fn=None,
-        stats_fn=None,
-        optimizer_fn=None,
-        gradients_fn=None,
-        extra_learn_fetches_fn=None,
-        extra_action_feed_fn=None,
-        extra_action_fetches_fn=None,  # TODO
-        before_init=None,
-        before_loss_init=None,
-        after_init=None,
-        make_model=None,
-        action_sampler_fn=None,
-        mixins=None,
-        obs_include_prev_action_reward=True):
+
+def build_tf_policy(name,
+                    loss_fn,
+                    get_default_config=None,
+                    postprocess_fn=None,
+                    stats_fn=None,
+                    optimizer_fn=None,
+                    gradients_fn=None,
+                    extra_learn_fetches_fn=None,
+                    extra_action_feed_fn=None,
+                    extra_action_fetches_fn=None,
+                    before_init=None,
+                    before_loss_init=None,
+                    after_init=None,
+                    make_model=None,
+                    action_sampler_fn=None,
+                    mixins=None,
+                    obs_include_prev_action_reward=True):
 
     base = add_mixins(TFEagerPolicy, mixins)
 
@@ -203,6 +211,7 @@ def build_tf_policy(
                 before_init(self, observation_space, action_space, config)
 
             self.config = config
+            self.extra_action_fetches_fn = extra_action_fetches_fn
 
             if action_sampler_fn:
                 if not make_model:
@@ -246,15 +255,74 @@ def build_tf_policy(
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
+            self._do_loss_init()
+
             if after_init:
                 after_init(self, observation_space, action_space, config)
+
+        def _do_loss_init(self):
+            # Dummy forward pass to initialize any policy attributes, etc.
+            action_dtype, action_shape = ModelCatalog.get_action_shape(
+                self.action_space)
+            dummy_batch = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(
+                    np.array([self.observation_space.sample()])),
+                SampleBatch.NEXT_OBS: tf.convert_to_tensor(
+                    np.array([self.observation_space.sample()])),
+                SampleBatch.DONES: tf.convert_to_tensor(
+                    np.array([False], dtype=np.bool)),
+                SampleBatch.ACTIONS: tf.convert_to_tensor(
+                    np.zeros_like(
+                        action_shape, dtype=action_dtype.as_numpy_dtype())),
+                SampleBatch.REWARDS: tf.convert_to_tensor(
+                    np.array([0], dtype=np.float32)),
+            }
+            if obs_include_prev_action_reward:
+                dummy_batch.update({
+                    SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
+                    SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
+                })
+            state_init = self.get_initial_state()
+            state_batches = []
+            for i, h in enumerate(state_init):
+                dummy_batch["state_in_{}".format(i)] = tf.convert_to_tensor(
+                    np.expand_dims(h, 0))
+                dummy_batch["state_out_{}".format(i)] = tf.convert_to_tensor(
+                    np.expand_dims(h, 0))
+                state_batches.append(
+                    tf.convert_to_tensor(np.expand_dims(h, 0)))
+            if state_init:
+                dummy_batch["seq_lens"] = tf.convert_to_tensor(
+                    np.array([1], dtype=np.int32))
+
+            # Execute a forward pass to get self.action_dist etc initialized,
+            # and also obtain the extra action fetches
+            _, _, fetches = self.compute_actions(
+                dummy_batch[SampleBatch.CUR_OBS], state_batches,
+                dummy_batch.get(SampleBatch.PREV_ACTIONS),
+                dummy_batch.get(SampleBatch.PREV_REWARDS))
+            dummy_batch.update(fetches)
+
+            postprocessed_batch = self.postprocess_trajectory(
+                SampleBatch(dummy_batch))
+            postprocessed_batch = {
+                k: tf.convert_to_tensor(v)
+                for k, v in postprocessed_batch.items()
+            }
+
+            loss_fn(self, postprocessed_batch)
+            if stats_fn:
+                stats_fn(self, postprocessed_batch)
 
         def postprocess_trajectory(self,
                                    samples,
                                    other_agent_batches=None,
                                    episode=None):
             assert tf.executing_eagerly()
-            return postprocess_fn(self, samples)
+            if postprocess_fn:
+                return postprocess_fn(self, samples)
+            else:
+                return samples
 
         def compute_actions(self,
                             obs_batch,
@@ -264,28 +332,37 @@ def build_tf_policy(
                             info_batch=None,
                             episodes=None,
                             **kwargs):
+
             assert tf.executing_eagerly()
+            self.is_training = False
+
             seq_len = tf.ones(len(obs_batch))
             input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                    obs_batch, dtype=tf.float32),
-                "is_training": tf.convert_to_tensor(True),
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                "is_training": tf.convert_to_tensor(False),
             }
             if obs_include_prev_action_reward:
                 input_dict.update({
                     SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch, dtype=tf.int32),
+                        prev_action_batch),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch, dtype=tf.float32),
+                        prev_reward_batch),
                 })
             self.state_in = state_batches
             self.model_out, self.state_out = self.model(
                 input_dict, state_batches, seq_len)
 
-            action_dist = self.dist_class(self.model_out)
+            if self.dist_class:
+                self.action_dist = self.dist_class(self.model_out)
+                action = self.action_dist.sample().numpy()
+                logp = self.action_dist.sampled_action_logp()
+            else:
+                action, logp = action_sampler_fn(
+                    self, self.model, input_dict, self.observation_space,
+                    self.action_space, self.config)
+                action = action.numpy()
+
             fetches = {}
-            action = action_dist.sample().numpy()
-            logp = action_dist.sampled_action_logp()
             if logp is not None:
                 fetches.update({
                     ACTION_PROB: tf.exp(logp).numpy(),
@@ -310,7 +387,10 @@ def build_tf_policy(
             else:
                 fetches[LEARNER_STATS_KEY] = {}
             if extra_learn_fetches_fn:
-                fetches.update(extra_learn_fetches_fn(self))
+                fetches.update({
+                    k: v.numpy()
+                    for k, v in extra_learn_fetches_fn(self).items()
+                })
             return fetches
 
     policy_cls.__name__ = name

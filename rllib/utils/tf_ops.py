@@ -34,12 +34,12 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
     return gradients
 
 
-def tf_function(session_or_none):
+def make_tf_callable(session_or_none):
     """Returns a function that can be executed in either graph or eager mode.
 
     The function must take only positional args of fixed shape.
 
-    If eager is enabled, this will act as just a tf.function. Otherwise, it
+    If eager is enabled, this will act as just a function. Otherwise, it
     will build a function that executes a session run with placeholders
     internally.
 
@@ -72,7 +72,7 @@ def tf_function(session_or_none):
 
             return call
         else:
-            return tf.function(fn)
+            return fn
 
     return make_wrapper
 

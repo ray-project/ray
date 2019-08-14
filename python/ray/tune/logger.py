@@ -222,9 +222,8 @@ class UnifiedLogger(Logger):
         for cls in self._logger_cls_list:
             try:
                 self._loggers.append(cls(self.config, self.logdir))
-            except Exception:
-                logger.warning("Could not instantiate {} - skipping.".format(
-                    str(cls)))
+            except Exception as e:
+                logger.warning("Failed to create logger: {}".format(str(e)))
         self._log_syncer = get_log_syncer(
             self.logdir,
             remote_dir=self.logdir,
