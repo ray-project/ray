@@ -100,8 +100,6 @@ def build_trainer(name,
                 policy = default_policy
             else:
                 policy = get_policy_class(config)
-            if tf and tf.executing_eagerly():
-                policy = policy.as_eager()
             if before_init:
                 before_init(self)
             if make_workers:

@@ -64,7 +64,8 @@ def make_tf_callable(session_or_none):
                         placeholders.append(
                             tf.placeholder(
                                 dtype=v.dtype,
-                                shape=((None, ) + v.shape[1:]) if len(v.shape) > 0 else (),
+                                shape=((None, ) + v.shape[1:])
+                                if len(v.shape) > 0 else (),
                                 name="arg_{}".format(i)))
                     symbolic_out = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))

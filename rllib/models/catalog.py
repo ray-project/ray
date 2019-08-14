@@ -294,14 +294,17 @@ class ModelCatalog(object):
                 return instance
 
         if framework == "tf":
-            # XXX
-            return ModelCatalog._wrap_if_needed(
-                FCNetV2, model_interface)(obs_space, action_space, num_outputs,
-                                          model_config, name, **model_kwargs)
-
-            legacy_model_cls = default_model or ModelCatalog.get_model
-            wrapper = ModelCatalog._wrap_if_needed(
-                make_v1_wrapper(legacy_model_cls), model_interface)
+            v2_class = default_model or ModelCatalog._get_v2_model(
+                obs_space, model_config)
+            if v2_class is None:
+                if tf.executing_eagerly():
+                    raise ValueError(
+                        "Eager execution requires a TFModelV2 model to be "
+                        "used, however there is no default V2 model for this "
+                        "observation space: {}, use_lstm={}".format(
+                            obs_space, model_config.get("use_lstm")))
+                v2_class = make_v1_wrapper(ModelCatalog.get_model)
+            wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
         elif framework == "torch":
@@ -498,6 +501,19 @@ class ModelCatalog(object):
 
         return FullyConnectedNetwork(input_dict, obs_space, action_space,
                                      num_outputs, options)
+
+    @staticmethod
+    def _get_v2_model(obs_space, options):
+        options = options or MODEL_DEFAULTS
+        obs_rank = len(obs_space.shape) - 1
+
+        if options.get("use_lstm"):
+            return None  # TODO: default LSTM v2 not implemented
+
+        if obs_rank > 1:
+            return None  # TODO: default vision net v2 is not implemented
+
+        return FCNetV2
 
     @staticmethod
     def get_torch_model(obs_space,

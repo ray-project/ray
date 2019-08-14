@@ -1,5 +1,4 @@
 import unittest
-import traceback
 
 import ray
 from ray import tune
@@ -45,7 +44,14 @@ class TestEagerSupport(unittest.TestCase):
         check_support("IMPALA", {"num_workers": 1, "num_gpus": 0})
 
     def testAPEX_DQN(self):
-        check_support("APEX", {"num_workers": 2, "learning_starts": 0, "num_gpus": 0, "min_iter_time_s": 1, "timesteps_per_iteration": 100})
+        check_support(
+            "APEX", {
+                "num_workers": 2,
+                "learning_starts": 0,
+                "num_gpus": 0,
+                "min_iter_time_s": 1,
+                "timesteps_per_iteration": 100
+            })
 
 #    def testDDPG(self):
 #        check_support("DDPG", {"num_workers": 0, "learning_starts": 0})
@@ -58,7 +64,6 @@ class TestEagerSupport(unittest.TestCase):
 #
 #    def testAPEX_DDPG(self):
 #        check_support("APEX_DDPG", {"num_workers": 2, "learning_starts": 0, "num_gpus": 0, "min_iter_time_s": 1, "timesteps_per_iteration": 100})
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
