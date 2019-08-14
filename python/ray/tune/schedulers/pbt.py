@@ -315,13 +315,13 @@ class PopulationBasedTraining(FIFOScheduler):
 
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
-        trial.reset_logger()
-        new_config["new_logdir"] = trial.logdir
+
         reset_successful = trial_executor.reset_trial(
             trial, new_config, new_tag, reset_logger=True)
         if reset_successful:
             trial_executor.restore(
                 trial, Checkpoint.from_object(new_state.last_checkpoint))
+            trial.result_logger.on_result(new_state.last_result)
         else:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
