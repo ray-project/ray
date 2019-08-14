@@ -2,16 +2,17 @@ syntax = "proto3";
 
 package ray.rpc;
 
-/// This file is only used for grpc test.
+/// This file is only used for rpc test.
 
-message EchoRequest {
-  string request_message = 1;
+message HelloRequest {
+  string who = 1;
+  uint64 index = 2;
 }
 
-message EchoReply {
-  string reply_message = 1;
+message HelloReply {
+  string message = 1;
 }
 
 service TestService {
-  rpc Echo(EchoRequest) returns (EchoReply);
+  rpc Hello(HelloRequest) returns (HelloReply);
 }

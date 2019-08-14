@@ -45,9 +45,7 @@ class GrpcServer {
 
   /// Destruct this gRPC server.
   ~GrpcServer() {
-    RAY_LOG(INFO) << "Shutting down";
     Shutdown();
-    RAY_LOG(INFO) << "Shutdown";
   }
 
   /// Initialize and run this server.
@@ -125,7 +123,7 @@ class GrpcService {
       : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
-  ~GrpcService() = default;
+  virtual ~GrpcService() = default;
 
  protected:
   /// Return the underlying grpc::Service object for this class.
