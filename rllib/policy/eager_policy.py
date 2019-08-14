@@ -11,7 +11,7 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once
 from ray.rllib.utils import try_import_tf
 
@@ -19,9 +19,8 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+# TODO(ekl) decide what stuff goes in this class vs the builder below
 class TFEagerPolicy(Policy):
-    @DeveloperAPI
     def __init__(self, optimizer, model, observation_space, action_space,
                  gradients_fn):
         self.optimizer = optimizer
@@ -32,28 +31,26 @@ class TFEagerPolicy(Policy):
         self._gradients_fn = gradients_fn
         self._sess = None
 
-    @DeveloperAPI
-    def loss(self, outputs, samples):
+    def _loss(self, outputs, samples):
         raise NotImplementedError
 
-    @DeveloperAPI
-    def stats(self, outputs, samples):
+    def _stats(self, outputs, samples):
         raise NotImplementedError
 
-    @DeveloperAPI
+    @override(Policy)
     def learn_on_batch(self, samples):
-        """Fused compute gradients and apply gradients call.
+        grads, stats = self._compute_gradients(samples)
+        self.optimizer.apply_gradients(grads)
+        return stats
 
-        Either this or the combination of compute/apply grads must be
-        implemented by subclasses.
+    @override(Policy)
+    def compute_gradients(self, samples):
+        grads, stats = self._compute_gradients(samples)
+        grads = [(g.numpy() if g is not None else None) for g in grads]
+        return grads, stats
 
-        Returns:
-            grad_info: dictionary of extra metadata from compute_gradients().
-
-        Examples:
-            >>> batch = ev.sample()
-            >>> ev.learn_on_batch(samples)
-        """
+    def _compute_gradients(self, samples):
+        """Computes and returns grads as eager tensors."""
 
         self.is_training = True
 
@@ -93,44 +90,17 @@ class TFEagerPolicy(Policy):
             for _, v in grads_and_vars:
                 logger.info("Optimizing variable {}".format(v.name))
 
+        grads = [g for g, v in grads_and_vars]
         stats = self._stats(self, samples, [g for g, v in grads_and_vars])
-        self.optimizer.apply_gradients(grads_and_vars)
-        return stats
+        return grads, stats
 
-    @DeveloperAPI
-    def compute_gradients(self, postprocessed_batch):
-        """Computes gradients against a batch of experiences.
-
-        Either this or learn_on_batch() must be implemented by subclasses.
-
-        Returns:
-            grads (list): List of gradient output values
-            info (dict): Extra policy-specific values
-        """
-
-        self.is_training = True
-
-        # Gradients for all trainable variables used when computing the loss
-        # will be computed. Ideally, we would use variables returned by the
-        # `self.model.trainable_variables()` but this might fail if variables
-        # are created during the first call.
-        grads, _ = zip(*self.optimizer.compute_gradients(
-            loss=lambda: self.loss(postprocessed_batch), ))
-        grads = tf.nest.map_structure(lambda grad: grad.numpy(), grads)
-
-        return grads, self.stats(self, postprocessed_batch, grads)
-
-    @DeveloperAPI
+    @override(Policy)
     def apply_gradients(self, gradients):
-        """Applies previously computed gradients.
+        self.optimizer.apply_gradients(
+            zip([(tf.convert_to_tensor(g) if g is not None else None)
+                 for g in gradients], self.model.trainable_variables()))
 
-        Either this or learn_on_batch() must be implemented by subclasses.
-        """
-        # TODO(gehring): figure out how to guarantee gradient values are
-        #  applied to the correct variables.
-        return NotImplemented
-
-    @DeveloperAPI
+    @override(Policy)
     def get_weights(self):
         """Returns model weights.
 
@@ -142,7 +112,7 @@ class TFEagerPolicy(Policy):
         return tf.nest.map_structure(lambda var: var.numpy(),
                                      self.model.variables())
 
-    @DeveloperAPI
+    @override(Policy)
     def set_weights(self, weights):
         """Sets model weights.
 
@@ -152,7 +122,7 @@ class TFEagerPolicy(Policy):
         tf.nest.map_structure(lambda var, value: var.assign(value),
                               self.model.variables(), weights)
 
-    @DeveloperAPI
+    @override(Policy)
     def export_model(self, export_dir):
         """Export Policy to local directory for serving.
 
@@ -162,7 +132,7 @@ class TFEagerPolicy(Policy):
         # TODO(gehring): find the best way to export eager/TF2.0
         return NotImplemented
 
-    @DeveloperAPI
+    @override(Policy)
     def export_checkpoint(self, export_dir):
         """Export Policy checkpoint to local directory.
 
