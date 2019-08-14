@@ -150,10 +150,5 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self._restore(exp_name, local_dir, local_dir)
 
 
-class ParallelTuneRelativeLocalDirTest(SerialTuneRelativeLocalDirTest):
-    local_mode = False
-    prefix = "Parallel"
-
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)
