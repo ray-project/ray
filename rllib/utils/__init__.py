@@ -72,8 +72,7 @@ def try_import_tf():
         tf.disable_v2_behavior()
 
         if "TF_EAGER" in os.environ:
-            if not tf.executing_eagerly():
-                tf.enable_eager_execution()
+            tf.enable_eager_execution()
 
         return tf
     except ImportError:

@@ -27,8 +27,10 @@ Q_TARGET_SCOPE = "target_q_func"
 
 class ExplorationStateMixin(object):
     def __init__(self, obs_space, action_space, config):
+        # Python value, should always be same as the TF variable
+        self.cur_epsilon_value = 1.0
         self.cur_epsilon = tf.get_variable(
-            initializer=tf.constant_initializer(1.0),
+            initializer=tf.constant_initializer(self.cur_epsilon_value),
             name="eps",
             shape=(),
             trainable=False,
@@ -39,11 +41,13 @@ class ExplorationStateMixin(object):
             self.sess.run(self.add_noise_op)
 
     def set_epsilon(self, epsilon):
-        self.cur_epsilon.load(epsilon, session=self.get_session())
+        self.cur_epsilon_value = epsilon
+        self.cur_epsilon.load(
+            self.cur_epsilon_value, session=self.get_session())
 
     @override(Policy)
     def get_state(self):
-        return [TFPolicy.get_state(self), self.cur_epsilon]
+        return [TFPolicy.get_state(self), self.cur_epsilon_value]
 
     @override(Policy)
     def set_state(self, state):

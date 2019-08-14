@@ -236,8 +236,7 @@ def build_tf_policy(name,
                 )
 
             if optimizer_fn:
-                optimizer = optimizer_fn(self, observation_space, action_space,
-                                         config)
+                optimizer = optimizer_fn(self, config)
             else:
                 optimizer = tf.train.AdamOptimizer(config["lr"])
 

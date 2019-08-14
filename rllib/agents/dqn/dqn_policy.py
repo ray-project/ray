@@ -106,7 +106,7 @@ class QLoss(object):
 
 
 class QValuePolicy(object):
-    def __init__(self, q_values, observations, num_actions, stochastic, eps,
+    def __init__(self, q_values, observations, num_actions, cur_epsilon,
                  softmax, softmax_temp, model_config):
         if softmax:
             action_dist = Categorical(q_values / softmax_temp)
@@ -126,11 +126,10 @@ class QValuePolicy(object):
             tf.multinomial(random_valid_action_logits, 1), axis=1)
 
         chose_random = tf.random_uniform(
-            tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
-        stochastic_actions = tf.where(chose_random, random_actions,
-                                      deterministic_actions)
-        self.action = tf.cond(stochastic, lambda: stochastic_actions,
-                              lambda: deterministic_actions)
+            tf.stack([batch_size]), minval=0, maxval=1,
+            dtype=tf.float32) < cur_epsilon
+        self.action = tf.where(chose_random, random_actions,
+                               deterministic_actions)
         self.action_prob = None
 
 
@@ -174,8 +173,8 @@ def postprocess_trajectory(policy,
             entropy(clean_action_distribution.T, noisy_action_distribution.T))
         policy.pi_distance = distance_in_action_space
         if (distance_in_action_space <
-                -np.log(1 - policy.cur_epsilon +
-                        policy.cur_epsilon / policy.num_actions)):
+                -np.log(1 - policy.cur_epsilon_value +
+                        policy.cur_epsilon_value / policy.num_actions)):
             policy.parameter_noise_sigma_val *= 1.01
         else:
             policy.parameter_noise_sigma_val /= 1.01
@@ -254,9 +253,8 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
 
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
-                       action_space.n, policy.stochastic, policy.eps,
-                       config["soft_q"], config["softmax_temp"],
-                       config["model"])
+                       action_space.n, policy.cur_epsilon, config["soft_q"],
+                       config["softmax_temp"], config["model"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
     actions = policy.output_actions
@@ -370,13 +368,6 @@ def clip_gradients(policy, optimizer, loss):
             loss, var_list=policy.q_func_vars)
     grads_and_vars = [(g, v) for (g, v) in grads_and_vars if g is not None]
     return grads_and_vars
-
-
-def exploration_setting_inputs(policy):
-    return {
-        policy.stochastic: True,
-        policy.eps: policy.cur_epsilon,
-    }
 
 
 def build_q_stats(policy, batch_tensors):
@@ -494,7 +485,6 @@ DQNTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_feed_fn=exploration_setting_inputs,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     before_init=setup_early_mixins,
