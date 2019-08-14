@@ -141,7 +141,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   if (log_dir_.empty()) {
     google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
     for (int i = static_cast<int>(severity_threshold_);
-        i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
+         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
       int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
       google::base::SetLogger(level, &stdout_logger_singleton);
     }

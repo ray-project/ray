@@ -188,7 +188,7 @@ Status WorkerPool::RegisterWorker(const WorkerID &worker_id,
 }
 
 Status WorkerPool::RegisterDriver(const WorkerID &driver_id,
-                                const std::shared_ptr<Worker> &driver) {
+                                  const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.emplace(driver_id, std::move(driver));

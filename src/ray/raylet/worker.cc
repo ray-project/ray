@@ -143,7 +143,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) 
         });
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
-                       << " to worker " << worker_id_;
+                     << " to worker " << worker_id_;
     } else {
       RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
                      << " to worker " << worker_id_;
