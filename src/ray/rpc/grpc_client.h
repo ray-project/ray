@@ -20,7 +20,7 @@ class GrpcClient {
   explicit GrpcClient(bool strict_request_order)
       : strict_request_order_(strict_request_order),
         client_id_(UniqueID::FromRandom().Hex()),
-        current_request_index_(0) {}
+        next_request_index_(0) {}
 
   /// Get metadata for the next request to send.
   std::unordered_map<std::string, std::string> GetMetaForNextRequest() {
@@ -28,7 +28,7 @@ class GrpcClient {
     ret[CLIENT_ID_META_KEY] = client_id_;
     if (strict_request_order_) {
       // Add request index to the meta if `strict_request_order` is enabled.
-      ret[REQUEST_INDEX_META_KEY] = std::to_string(current_request_index_++);
+      ret[REQUEST_INDEX_META_KEY] = std::to_string(next_request_index_++);
     }
     return ret;
   }
@@ -36,11 +36,15 @@ class GrpcClient {
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
 
+  /// Whether the server should handle requests from this
+  /// client in the same order as they were sent.
   bool strict_request_order_;
 
+  /// Id of this client.
   std::string client_id_;
 
-  uint64_t current_request_index_;
+  /// Index for the next request.
+  uint64_t next_request_index_;
 };
 
 }  // namespace rpc
