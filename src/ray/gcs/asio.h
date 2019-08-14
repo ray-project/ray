@@ -36,7 +36,7 @@
 class RedisAsioClient {
  public:
   RedisAsioClient(boost::asio::io_service &io_service,
-                  ray::gcs::RedisAsyncContext &async_context_wrapper);
+                  ray::gcs::RedisAsyncContext &redis_async_context);
 
   void operate();
 
