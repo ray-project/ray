@@ -11,6 +11,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -41,8 +42,9 @@ def actor_critic_loss(policy, batch_tensors):
     policy.loss = A3CLoss(
         policy.action_dist, batch_tensors[SampleBatch.ACTIONS],
         batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[Postprocessing.VALUE_TARGETS], policy.vf,
-        policy.config["vf_loss_coeff"], policy.config["entropy_coeff"])
+        batch_tensors[Postprocessing.VALUE_TARGETS],
+        policy.model.value_function(), policy.config["vf_loss_coeff"],
+        policy.config["entropy_coeff"])
     return policy.loss.total_loss
 
 
@@ -66,26 +68,22 @@ def postprocess_advantages(policy,
 
 
 def add_value_function_fetch(policy):
-    return {SampleBatch.VF_PREDS: policy.vf}
+    return {SampleBatch.VF_PREDS: policy.model.value_function()}
 
 
 class ValueNetworkMixin(object):
     def __init__(self):
-        self.vf = self.model.value_function()
+        @make_tf_callable(self.get_session())
+        def value(ob, prev_action, prev_reward, *state):
+            model_out, _ = self.model({
+                SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
+                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor([prev_action]),
+                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([prev_reward]),
+            }, [tf.convert_to_tensor(s) for s in state],
+                                      tf.convert_to_tensor([1]))
+            return self.model.value_function()[0]
 
-    def _value(self, ob, prev_action, prev_reward, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
-            self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
-            self.seq_lens: [1]
-        }
-        assert len(args) == len(self.state_in), \
-            (args, self.state_in)
-        for k, v in zip(self.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.vf, feed_dict)
-        return vf[0]
+        self._value = value
 
 
 def stats(policy, batch_tensors):
@@ -93,7 +91,8 @@ def stats(policy, batch_tensors):
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm([x for x in policy.var_list]),
+        "var_gnorm": tf.global_norm(
+            [x for x in policy.model.trainable_variables()]),
         "vf_loss": policy.loss.vf_loss,
     }
 
@@ -102,23 +101,23 @@ def grad_stats(policy, batch_tensors, grads):
     return {
         "grad_gnorm": tf.global_norm(grads),
         "vf_explained_var": explained_variance(
-            policy.get_placeholder(Postprocessing.VALUE_TARGETS), policy.vf),
+            batch_tensors[Postprocessing.VALUE_TARGETS],
+            policy.model.value_function()),
     }
 
 
 def clip_gradients(policy, optimizer, loss):
-    grads_and_vars = optimizer.compute_gradients(loss, policy.var_list)
+    grads_and_vars = optimizer.compute_gradients(
+        loss, policy.model.trainable_variables())
     grads = [g for (g, v) in grads_and_vars]
     grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
-    clipped_grads = list(zip(grads, policy.var_list))
+    clipped_grads = list(zip(grads, policy.model.trainable_variables()))
     return clipped_grads
 
 
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy)
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                        tf.get_variable_scope().name)
 
 
 A3CTFPolicy = build_tf_policy(

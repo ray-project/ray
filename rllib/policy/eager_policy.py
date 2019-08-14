@@ -70,8 +70,7 @@ class TFEagerPolicy(Policy):
                 samples, self.state_in, self.seq_lens)
             if self.dist_class:
                 self.action_dist = self.dist_class(self.model_out)
-            loss = self.loss(self, samples)
-            stats = self.stats(self, samples)
+            loss = self._loss(self, samples)
 
         variables = self.model.trainable_variables()
 
@@ -94,6 +93,7 @@ class TFEagerPolicy(Policy):
             for _, v in grads_and_vars:
                 logger.info("Optimizing variable {}".format(v.name))
 
+        stats = self._stats(self, samples, [g for g, v in grads_and_vars])
         self.optimizer.apply_gradients(grads_and_vars)
         return stats
 
@@ -118,7 +118,7 @@ class TFEagerPolicy(Policy):
             loss=lambda: self.loss(postprocessed_batch), ))
         grads = tf.nest.map_structure(lambda grad: grad.numpy(), grads)
 
-        return grads, self.stats(self, postprocessed_batch)
+        return grads, self.stats(self, postprocessed_batch, grads)
 
     @DeveloperAPI
     def apply_gradients(self, gradients):
@@ -187,6 +187,7 @@ def build_tf_policy(name,
                     stats_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
+                    grad_stats_fn=None,
                     extra_learn_fetches_fn=None,
                     extra_action_feed_fn=None,
                     extra_action_fetches_fn=None,
@@ -371,11 +372,11 @@ def build_tf_policy(name,
                 fetches.update(extra_action_fetches_fn(self))
             return action, self.state_out, fetches
 
-        def loss(self, outputs, samples):
+        def _loss(self, outputs, samples):
             assert tf.executing_eagerly()
             return loss_fn(outputs, samples)
 
-        def stats(self, outputs, samples):
+        def _stats(self, outputs, samples, grads):
             assert tf.executing_eagerly()
             fetches = {}
             if stats_fn:
@@ -389,6 +390,11 @@ def build_tf_policy(name,
                 fetches.update({
                     k: v.numpy()
                     for k, v in extra_learn_fetches_fn(self).items()
+                })
+            if grad_stats_fn:
+                fetches.update({
+                    k: v.numpy()
+                    for k, v in grad_stats_fn(self, samples, grads).items()
                 })
             return fetches
 
