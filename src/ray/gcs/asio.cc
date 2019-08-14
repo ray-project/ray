@@ -3,8 +3,8 @@
 #include "ray/util/logging.h"
 
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
-                                 ray::gcs::RedisAsyncContext &async_context_wrapper)
-    : redis_async_context_(async_context_wrapper),
+                                 ray::gcs::RedisAsyncContext &redis_async_context)
+    : redis_async_context_(redis_async_context),
       socket_(io_service),
       read_requested_(false),
       write_requested_(false),
