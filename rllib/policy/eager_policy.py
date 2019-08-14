@@ -112,11 +112,11 @@ class TFEagerPolicy(Policy):
 
     @override(Policy)
     def export_model(self, export_dir):
-        return NotImplementedError
+        raise NotImplementedError
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
-        return NotImplementedError
+        raise NotImplementedError
 
     def get_session(self):
         return None  # None implies eager
