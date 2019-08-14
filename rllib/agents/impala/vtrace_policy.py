@@ -174,7 +174,7 @@ def build_vtrace_loss(policy, batch_tensors):
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
     action_dist = policy.action_dist
-    values = policy.value_function
+    values = policy.model.value_function()
 
     if policy.state_in:
         max_seq_len = tf.reduce_max(policy.seq_lens) - 1
@@ -218,14 +218,16 @@ def build_vtrace_loss(policy, batch_tensors):
 
 def stats(policy, batch_tensors):
     values_batched = _make_time_major(
-        policy, policy.value_function, drop_last=policy.config["vtrace"])
+        policy,
+        policy.model.value_function(),
+        drop_last=policy.config["vtrace"])
 
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
-        "var_gnorm": tf.global_norm(policy.var_list),
+        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
@@ -267,37 +269,18 @@ def choose_optimizer(policy, config):
 
 
 def clip_gradients(policy, optimizer, loss):
-    grads_and_vars = optimizer.compute_gradients(loss, policy.var_list)
+    grads_and_vars = optimizer.compute_gradients(
+        loss, policy.model.trainable_variables())
     grads = [g for (g, v) in grads_and_vars]
     policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
-    clipped_grads = list(zip(policy.grads, policy.var_list))
+    clipped_grads = list(zip(policy.grads, policy.model.trainable_variables()))
     return clipped_grads
-
-
-class ValueNetworkMixin(object):
-    def __init__(self):
-        self.value_function = self.model.value_function()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
-
-    def value(self, ob, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.seq_lens: [1]
-        }
-        assert len(args) == len(self.state_in), \
-            (args, self.state_in)
-        for k, v in zip(self.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.value_function, feed_dict)
-        return vf[0]
 
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
-    ValueNetworkMixin.__init__(policy)
 
 
 VTraceTFPolicy = build_tf_policy(
@@ -312,5 +295,5 @@ VTraceTFPolicy = build_tf_policy(
     extra_action_fetches_fn=add_behaviour_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, EntropyCoeffSchedule, ValueNetworkMixin],
+    mixins=[LearningRateSchedule, EntropyCoeffSchedule],
     get_batch_divisibility_req=lambda p: p.config["sample_batch_size"])

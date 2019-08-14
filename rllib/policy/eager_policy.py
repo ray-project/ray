@@ -241,6 +241,16 @@ def build_tf_policy(name,
                 dummy_batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
 
+            # for IMPALA which expects a certain sample batch size
+            def tile_to(tensor, n):
+                return tf.tile(tensor,
+                               [n] + [1 for _ in tensor.shape.as_list()[1:]])
+
+            dummy_batch = {
+                k: tile_to(v, self.config["sample_batch_size"])
+                for k, v in dummy_batch.items()
+            }
+
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
@@ -251,6 +261,7 @@ def build_tf_policy(name,
 
             postprocessed_batch = self.postprocess_trajectory(
                 SampleBatch(dummy_batch))
+
             postprocessed_batch = {
                 k: tf.convert_to_tensor(v)
                 for k, v in postprocessed_batch.items()

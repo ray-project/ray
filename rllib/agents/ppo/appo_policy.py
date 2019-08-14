@@ -12,8 +12,7 @@ import gym
 
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
-        BEHAVIOUR_LOGITS, clip_gradients, \
-        validate_config, choose_optimizer, ValueNetworkMixin
+        BEHAVIOUR_LOGITS, clip_gradients, validate_config, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -414,6 +413,24 @@ class TargetNetworkMixin(object):
 
     def update_target(self):
         return self.get_session().run(self.update_target_network)
+
+
+class ValueNetworkMixin(object):
+    def __init__(self):
+        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                          tf.get_variable_scope().name)
+
+    def value(self, ob, *args):
+        feed_dict = {
+            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
+            self.seq_lens: [1]
+        }
+        assert len(args) == len(self.state_in), \
+            (args, self.state_in)
+        for k, v in zip(self.state_in, args):
+            feed_dict[k] = v
+        vf = self.get_session().run(self.model.value_function(), feed_dict)
+        return vf[0]
 
 
 def setup_mixins(policy, obs_space, action_space, config):

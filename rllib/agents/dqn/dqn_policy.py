@@ -96,7 +96,8 @@ class QLoss(object):
             self.td_error = (
                 q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
-                importance_weights * huber_loss(self.td_error))
+                tf.cast(importance_weights, tf.float32) * huber_loss(
+                    self.td_error))
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
                 "min_q": tf.reduce_min(q_t_selected),
