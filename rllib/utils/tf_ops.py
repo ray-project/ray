@@ -37,7 +37,7 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
 def make_tf_callable(session_or_none):
     """Returns a function that can be executed in either graph or eager mode.
 
-    The function must take only positional args of fixed shape.
+    The function must take only positional args.
 
     If eager is enabled, this will act as just a function. Otherwise, it
     will build a function that executes a session run with placeholders
@@ -64,7 +64,7 @@ def make_tf_callable(session_or_none):
                         placeholders.append(
                             tf.placeholder(
                                 dtype=v.dtype,
-                                shape=v.shape,
+                                shape=((None, ) + v.shape[1:]) if len(v.shape) > 0 else (),
                                 name="arg_{}".format(i)))
                     symbolic_out = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))

@@ -159,6 +159,7 @@ def build_tf_policy(name,
     class policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
+            self._loss_initialized = False
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
@@ -206,6 +207,7 @@ def build_tf_policy(name,
                 before_loss_init(self, observation_space, action_space, config)
 
             self._do_loss_init()
+            self._loss_initialized = True
 
             if optimizer_fn:
                 self.optimizer = optimizer_fn(self, config)
@@ -369,6 +371,9 @@ def build_tf_policy(name,
                     for k, v in grad_stats_fn(self, samples, grads).items()
                 })
             return fetches
+
+        def loss_initialized(self):
+            return self._loss_initialized
 
     policy_cls.__name__ = name
     return policy_cls

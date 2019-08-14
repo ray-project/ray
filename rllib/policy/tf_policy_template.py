@@ -26,7 +26,6 @@ def build_tf_policy(name,
                     extra_action_fetches_fn=None,
                     extra_action_feed_fn=None,
                     extra_learn_fetches_fn=None,
-                    extra_learn_feed_fn=None,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
@@ -78,8 +77,6 @@ def build_tf_policy(name,
             to also feed to TF when computing actions
         extra_learn_fetches_fn (func): optional function that returns a dict of
             extra values to fetch and return when learning on a batch
-        extra_learn_feed_fn (func): optional function that returns a feed dict
-            to also feed to TF when learning on a batch
         before_init (func): optional function to run at the beginning of
             policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
@@ -203,13 +200,6 @@ def build_tf_policy(name,
                 }, **extra_learn_fetches_fn(self))
             else:
                 return TFPolicy.extra_compute_grad_fetches(self)
-
-        @override(TFPolicy)
-        def extra_compute_grad_feed_dict(self):
-            if extra_learn_feed_fn:
-                return extra_learn_feed_fn(self)
-            else:
-                return TFPolicy.extra_compute_grad_feed_dict(self)
 
     @staticmethod
     def with_updates(**overrides):

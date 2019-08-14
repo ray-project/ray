@@ -71,7 +71,7 @@ COMMON_CONFIG = {
     # Log system resource metrics to results.
     "log_sys_usage": True,
     # Enable TF eager execution (TF policies only)
-    "use_eager": False,
+    "eager": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -308,7 +308,7 @@ class Trainer(Trainable):
 
         config = config or {}
 
-        if tf and config.get("use_eager"):
+        if tf and config.get("eager"):
             tf.enable_eager_execution()
 
         # Vars to synchronize to workers on each train call

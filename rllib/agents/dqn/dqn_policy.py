@@ -19,6 +19,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.tf_ops import make_tf_callable
 
 tf = try_import_tf()
 
@@ -135,26 +136,27 @@ class QValuePolicy(object):
 
 
 class ComputeTDErrorMixin(object):
-    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
-                         importance_weights):
-        if not self.loss_initialized():
-            return np.zeros_like(rew_t)
+    def __init__(self):
+        @make_tf_callable(self.get_session())
+        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
+                             importance_weights):
+            if not self.loss_initialized():
+                return tf.zeros_like(rew_t)
 
-        td_err = self.get_session().run(
-            self.q_loss.td_error,
-            feed_dict={
-                self.get_placeholder(SampleBatch.CUR_OBS): [
-                    np.array(ob) for ob in obs_t
-                ],
-                self.get_placeholder(SampleBatch.ACTIONS): act_t,
-                self.get_placeholder(SampleBatch.REWARDS): rew_t,
-                self.get_placeholder(SampleBatch.NEXT_OBS): [
-                    np.array(ob) for ob in obs_tp1
-                ],
-                self.get_placeholder(SampleBatch.DONES): done_mask,
-                self.get_placeholder(PRIO_WEIGHTS): importance_weights,
-            })
-        return td_err
+            # Do forward pass on loss to update td error attribute
+            build_q_losses(
+                self, {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),
+                    SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
+                    SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
+                    SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
+                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                })
+
+            return self.q_loss.td_error
+
+        self.compute_td_error = compute_td_error
 
 
 def postprocess_trajectory(policy,
@@ -382,6 +384,10 @@ def setup_early_mixins(policy, obs_space, action_space, config):
     ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
 
 
+def setup_mid_mixins(policy, obs_space, action_space, config):
+    ComputeTDErrorMixin.__init__(policy)
+
+
 def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
@@ -489,6 +495,7 @@ DQNTFPolicy = build_tf_policy(
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     before_init=setup_early_mixins,
+    before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[
