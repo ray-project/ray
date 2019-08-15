@@ -47,6 +47,13 @@ def build_eager_tf_policy(name,
                           get_batch_divisibility_req=None):
     """Build an eager TF policy.
 
+    An eager policy runs all operations in eager mode, which makes debugging
+    much simpler, but is lower performance.
+
+    You shouldn't need to call this directly. Rather, prefer to build a TF
+    graph policy and use set {"eager": true} in the trainer config to have
+    it automatically be converted to an eager policy.
+
     This has the same signature as build_tf_policy()."""
 
     base = add_mixins(Policy, mixins)
