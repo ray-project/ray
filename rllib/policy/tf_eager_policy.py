@@ -286,16 +286,7 @@ def build_tf_policy(name,
 
             # model forward pass for the loss (needed after postprocess to
             # overwrite any tensor state from that call)
-            self.model({
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                    np.array([self.observation_space.sample()])),
-                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [_flatten_action(self.action_space.sample())]),
-                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            }, [
-                tf.convert_to_tensor([s])
-                for s in self.model.get_initial_state()
-            ], tf.convert_to_tensor([1]))
+            self.model(dummy_batch, state_batches, dummy_batch.get("seq_lens"))
 
             postprocessed_batch = {
                 k: tf.convert_to_tensor(v)

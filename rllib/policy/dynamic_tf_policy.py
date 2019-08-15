@@ -293,15 +293,6 @@ class DynamicTFPolicy(TFPolicy):
         # postprocessing might depend on variable init, so run it first here
         self._sess.run(tf.global_variables_initializer())
 
-        # for IMPALA which expects a certain sample batch size
-        def tile_to(tensor, n):
-            return np.tile(tensor, [n] + [1 for _ in tensor.shape[1:]])
-
-        dummy_batch = {
-            k: tile_to(v, self.config["sample_batch_size"])
-            for k, v in dummy_batch.items()
-        }
-
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
 
