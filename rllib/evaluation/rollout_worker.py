@@ -603,7 +603,7 @@ class RolloutWorker(EvaluatorInterface):
             info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
                 samples)
         if log_once("learn_out"):
-            logger.info("Training output:\n\n{}\n".format(summarize(info_out)))
+            logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
     @DeveloperAPI

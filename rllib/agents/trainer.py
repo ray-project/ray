@@ -311,6 +311,10 @@ class Trainer(Trainable):
         if tf and config.get("eager"):
             tf.enable_eager_execution()
 
+        if tf and not tf.executing_eagerly():
+            logger.info("Tip: set 'eager': true or the --eager flag to enable "
+                        "TensorFlow eager execution")
+
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
 

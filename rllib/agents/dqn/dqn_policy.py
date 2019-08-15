@@ -137,7 +137,7 @@ class QValuePolicy(object):
 
 class ComputeTDErrorMixin(object):
     def __init__(self):
-        @make_tf_callable(self.get_session())
+        @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
             if not self.loss_initialized():

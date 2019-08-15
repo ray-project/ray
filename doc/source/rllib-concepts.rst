@@ -416,31 +416,11 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-While RLlib runs all TF operations in graph mode, you can still leverage TensorFlow eager using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. However, note that eager and non-eager tensors cannot be mixed within the ``py_function``. Here's an example of embedding eager execution within a policy loss function:
+Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
 
-.. code-block:: python
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it is slower than graph mode.
 
-    def eager_loss(policy, batch_tensors):
-        """Example of using embedded eager execution in a custom loss.
-
-        Here `compute_penalty` prints the actions and rewards for debugging, and
-        also computes a (dummy) penalty term to add to the loss.
-        """
-
-        def compute_penalty(actions, rewards):
-            penalty = tf.reduce_mean(tf.cast(actions, tf.float32))
-            if random.random() > 0.9:
-                print("The eagerly computed penalty is", penalty, actions, rewards)
-            return penalty
-
-        actions = batch_tensors[SampleBatch.ACTIONS]
-        rewards = batch_tensors[SampleBatch.REWARDS]
-        penalty = tf.py_function(
-            compute_penalty, [actions, rewards], Tout=tf.float32)
-
-        return penalty - tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
-
-You can find a runnable file for the above eager execution example `here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+You can also selectively leverage eager operations within graph mode execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager ops embedded `within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -10,6 +10,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.debug import log_once
 from ray.rllib.utils.tf_ops import scope_vars
 
 tf = try_import_tf()
@@ -130,12 +131,13 @@ def make_v1_wrapper(legacy_model_cls):
                 branch_model_config["free_log_std"] = False
                 if branch_model_config["use_lstm"]:
                     branch_model_config["use_lstm"] = False
-                    logger.warning(
-                        "It is not recommended to use a LSTM model with "
-                        "vf_share_layers=False (consider setting it to True). "
-                        "If you want to not share layers, you can implement "
-                        "a custom LSTM model that overrides the "
-                        "value_function() method.")
+                    if log_once("vf_warn"):
+                        logger.warning(
+                            "It is not recommended to use a LSTM model with "
+                            "vf_share_layers=False (consider setting it to "
+                            "True). If you want to not share layers, you "
+                            "can implement a custom LSTM model that "
+                            "overrides the value_function() method.")
                 branch_instance = self.legacy_model_cls(
                     self.cur_instance.input_dict,
                     self.obs_space,

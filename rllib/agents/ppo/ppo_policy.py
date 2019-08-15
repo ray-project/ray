@@ -241,7 +241,7 @@ class ValueNetworkMixin(object):
                         [prev_action]),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         [prev_reward]),
-                }, [tf.convert_to_tensor(s) for s in state],
+                }, [tf.convert_to_tensor([s]) for s in state],
                                           tf.convert_to_tensor([1]))
                 return self.model.value_function()[0]
 

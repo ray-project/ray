@@ -370,7 +370,9 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 TensorFlow Eager
 ~~~~~~~~~~~~~~~~
 
-While RLlib uses TF graph mode for all computations, you can still leverage TF eager to inspect the intermediate state of computations using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager mode in `a custom RLlib model and loss <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it is slower than graph mode.
 
 Episode Traces
 ~~~~~~~~~~~~~~
