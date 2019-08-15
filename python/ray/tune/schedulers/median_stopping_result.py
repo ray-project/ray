@@ -13,19 +13,6 @@ from ray.tune.trial import Trial, Checkpoint
 
 logger = logging.getLogger(__name__)
 
-
-<<<<<<< HEAD
-class MedianTrialState(object):
-    def __init__(self, trial):
-        self.orig_tag = trial.experiment_tag
-        self.last_eval_time = 0
-
-    def __repr__(self):
-        return str((self.last_eval_time, ))
-=======
->>>>>>> 24afecb3... update property names and types to reflect suggestions by ray developers, merged get_median_result and get_best_result into a single method to eliminate duplicate steps, added resource check on PAUSE condition, modified utility function to use updated properties
-
-
 class MedianStoppingResult(FIFOScheduler):
     """
     Args:
@@ -64,11 +51,7 @@ class MedianStoppingResult(FIFOScheduler):
                  min_samples_required=3,
                  hard_stop=True,
                  verbose=True,
-<<<<<<< HEAD
-                 tail_length=None):
-=======
                  running_window_size= None):
->>>>>>> 24afecb3... update property names and types to reflect suggestions by ray developers, merged get_median_result and get_best_result into a single method to eliminate duplicate steps, added resource check on PAUSE condition, modified utility function to use updated properties
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
@@ -118,24 +101,14 @@ class MedianStoppingResult(FIFOScheduler):
 
         result_time = result[self._time_attr]
         self._results[trial].append(result)
-<<<<<<< HEAD
-
-        if time - state.last_eval_time < self._eval_interval:
-=======
         
         if result_time - self._last_eval_times[trial] < self._eval_interval:
->>>>>>> 24afecb3... update property names and types to reflect suggestions by ray developers, merged get_median_result and get_best_result into a single method to eliminate duplicate steps, added resource check on PAUSE condition, modified utility function to use updated properties
             return TrialScheduler.CONTINUE  # avoid overhead
 
         self._last_eval_times[trial] = result_time
         median_result, best_result = self._get_trial_metrics(trial, result_time)
         if self._verbose:
             logger.info("Trial {} best res={} vs median res={} at t={}".format(
-<<<<<<< HEAD
-                trial, best_result, median_result, time))
-
-        if best_result < median_result and time > self._grace_period:
-=======
                 trial, best_result, median_result, result_time))
         
         if np.isnan(median_result):
@@ -146,7 +119,6 @@ class MedianStoppingResult(FIFOScheduler):
             comparison = best_result > median_result
 
         if comparison and result_time > self._grace_period:
->>>>>>> 24afecb3... update property names and types to reflect suggestions by ray developers, merged get_median_result and get_best_result into a single method to eliminate duplicate steps, added resource check on PAUSE condition, modified utility function to use updated properties
             if self._verbose:
                 logger.info("MedianStoppingResult: "
                             "early {} {} best res={} vs median res={} at t={}".format(
@@ -206,16 +178,6 @@ class MedianStoppingResult(FIFOScheduler):
         else:
             return np.nan, float("inf") if self._mode == "max" else float("-inf")
 
-<<<<<<< HEAD
-    def _best_result(self, trial):
-        results = self._results[trial]
-        if self._tail_length is not None:
-            results = results[-self._tail_length:]
-        return max(
-            [self._metric_op * flatten_dict(r)[self._metric] for r in results])
-=======
->>>>>>> 24afecb3... update property names and types to reflect suggestions by ray developers, merged get_median_result and get_best_result into a single method to eliminate duplicate steps, added resource check on PAUSE condition, modified utility function to use updated properties
-
     def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).
         This enables the scheduler to support a greater number of
@@ -228,10 +190,5 @@ class MedianStoppingResult(FIFOScheduler):
                     trial_runner.has_resources(trial.resources):
                 candidates.append(trial)
         candidates.sort(
-<<<<<<< HEAD
-            key=lambda trial: self._trial_state[trial].last_eval_time)
-        return candidates[0] if candidates else None
-=======
             key=lambda trial: self._last_eval_times[trial])
         return candidates[0] if candidates else None
->>>>>>> 24afecb3... update property names and types to reflect suggestions by ray developers, merged get_median_result and get_best_result into a single method to eliminate duplicate steps, added resource check on PAUSE condition, modified utility function to use updated properties
