@@ -392,10 +392,8 @@ def start(node_ip_address, redis_address, address, redis_port,
                     logger.error("\t{} died with exit code {}".format(
                         process_type, process.returncode))
                 logger.error("Killing remaining processes and exiting...")
-                node.kill_all_processes(
-                    check_alive=False, allow_graceful=True)
+                node.kill_all_processes(check_alive=False, allow_graceful=True)
                 return
-
 
 
 @cli.command()
