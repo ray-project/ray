@@ -60,7 +60,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
     def make_wrapper(fn):
         if session_or_none:
             placeholders = []
-            symbolic_out = None
+            symbolic_out = [None]
 
             def call(*args):
                 args_flat = []
@@ -70,7 +70,6 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                     else:
                         args_flat.append(a)
                 args = args_flat
-                nonlocal symbolic_out
                 if not placeholders:
                     with session_or_none.graph.as_default():
                         for i, v in enumerate(args):
@@ -86,9 +85,9 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="arg_{}".format(i)))
-                        symbolic_out = fn(*placeholders)
+                        symbolic_out[0] = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))
-                return session_or_none.run(symbolic_out, feed_dict)
+                return session_or_none.run(symbolic_out[0], feed_dict)
 
             return call
         else:
