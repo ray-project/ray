@@ -32,10 +32,10 @@ from ray.tests.utils import (
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(200)
+@pytest.mark.timeout(20)
 def test_zombie_actors(ray_start_cluster):
     cluster = ray_start_cluster
-    num_nodes = 5
+    num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
     ray.init(redis_address=cluster.redis_address)
@@ -45,7 +45,6 @@ def test_zombie_actors(ray_start_cluster):
         def __init__(self, sleep_time=0):
             self.child = None
             time.sleep(sleep_time)
-            pass
 
         def get_pid(self):
             return os.getpid()
@@ -54,19 +53,18 @@ def test_zombie_actors(ray_start_cluster):
             if depth == 1:
                 # Delay the child creation process by sleeping in the
                 # constructor.
-                self.child = Actor.remote(5)
+                self.child = Actor.remote(1)
             else:
                 self.child = Actor.remote()
-                ray.get(self.child.create_child.remote(depth - 1))
+                self.child.create_child.remote(depth - 1)
             return "OK"
 
     def kill_actor(actor):
         """A helper function that kills an actor process."""
         pid = ray.get(actor.get_pid.remote())
         os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
 
-    for i in range(10):
+    for i in range(3):
         # Root actor spawns child actors and dies immediately after.
         # The system should correctly kill the child actors if the parent
         # actor is dead, accounting for the corner case when the parent
