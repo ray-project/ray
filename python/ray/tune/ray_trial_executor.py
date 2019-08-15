@@ -395,8 +395,7 @@ class RayTrialExecutor(TrialExecutor):
                 # TODO(rliaw): Remove this when local mode is fixed.
                 # https://github.com/ray-project/ray/issues/4147
                 logger.debug("Using resources for local machine.")
-                resources = ResourceSpec.resolve(True).to_resource_dict(
-                    is_head=True)
+                resources = ResourceSpec().resolve(True).to_resource_dict()
             if not resources:
                 logger.warning(
                     "Cluster resources not detected or are 0. Retrying...")
