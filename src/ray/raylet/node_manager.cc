@@ -656,13 +656,13 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // Kill actor if local and parent actor is dead.
     auto node_manager_id = actor_registration.GetNodeManagerId();
     auto parent_actor_entry = actor_registry_.find(actor_registration.GetParentActorID());
-    if (node_manager_id == gcs_client_->client_table().GetLocalClientId() && 
+    if (node_manager_id == gcs_client_->client_table().GetLocalClientId() &&
         parent_actor_entry != actor_registry_.end() &&
         parent_actor_entry->second.GetState() == ActorTableData::DEAD) {
       RAY_LOG(INFO) << "Killing newly created actor " << actor_id << " as parent actor "
-                     << actor_registration.GetParentActorID() << " is dead.";
+                    << actor_registration.GetParentActorID() << " is dead.";
       auto worker = worker_pool_.GetActorWorker(actor_id);
-      RAY_CHECK(worker) << "Worker not found for local & alive actor "<< actor_id;
+      RAY_CHECK(worker) << "Worker not found for local & alive actor " << actor_id;
       ProcessDisconnectClientMessage(worker->GetWorkerId());
     } else {
       // The actor is now alive (created for the first time or reconstructed). We can
@@ -709,12 +709,13 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (const auto &actor_entry : actor_registry_) {
       auto node_manager_id = actor_entry.second.GetNodeManagerId();
       // Kill this actor if it is local and is a child of the dead actor.
-      if (node_manager_id == gcs_client_->client_table().GetLocalClientId() && 
+      if (node_manager_id == gcs_client_->client_table().GetLocalClientId() &&
           actor_entry.second.GetParentActorID() == actor_id) {
         auto worker = worker_pool_.GetActorWorker(actor_entry.first);
-        RAY_CHECK(worker) << "Worker not found for local & alive actor "<<actor_entry.first;
-        RAY_LOG(INFO) << "Killing child actor "<< actor_entry.first<<" as parent actor "
-          << actor_id << "is dead";
+        RAY_CHECK(worker) << "Worker not found for local & alive actor "
+                          << actor_entry.first;
+        RAY_LOG(INFO) << "Killing child actor " << actor_entry.first
+                      << " as parent actor " << actor_id << "is dead";
         ProcessDisconnectClientMessage(worker->GetWorkerId());
       }
     }

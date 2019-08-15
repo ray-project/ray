@@ -52,7 +52,8 @@ def test_zombie_actors(ray_start_cluster):
 
         def create_child(self, depth):
             if depth == 1:
-                # Delay the child creation process by sleeping in the constructor.
+                # Delay the child creation process by sleeping in the
+                # constructor.
                 self.child = Actor.remote(5)
             else:
                 self.child = Actor.remote()
