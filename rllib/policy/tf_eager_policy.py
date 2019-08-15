@@ -26,149 +26,38 @@ def _disallow_var_creation(next_creator, **kw):
                      "model initialization: {}".format(v.name))
 
 
-# TODO(ekl) decide what stuff goes in this class vs the builder below
-class TFEagerPolicy(Policy):
-    def __init__(self, model, observation_space, action_space, gradients_fn,
-                 apply_gradients_fn):
-        self.model = model
-        self.observation_space = observation_space
-        self.action_space = action_space
-        self.is_training = False
-        self._gradients_fn = gradients_fn
-        self._apply_gradients_fn = apply_gradients_fn
-        self._sess = None
+def build_eager_tf_policy(name,
+                          loss_fn,
+                          get_default_config=None,
+                          postprocess_fn=None,
+                          stats_fn=None,
+                          optimizer_fn=None,
+                          gradients_fn=None,
+                          apply_gradients_fn=None,
+                          grad_stats_fn=None,
+                          extra_learn_fetches_fn=None,
+                          extra_action_fetches_fn=None,
+                          before_init=None,
+                          before_loss_init=None,
+                          after_init=None,
+                          make_model=None,
+                          action_sampler_fn=None,
+                          mixins=None,
+                          obs_include_prev_action_reward=True,
+                          get_batch_divisibility_req=None):
+    """Build an eager TF policy.
 
-    def _loss(self, outputs, samples):
-        raise NotImplementedError
+    This has the same signature as build_tf_policy()."""
 
-    def _stats(self, outputs, samples):
-        raise NotImplementedError
+    base = add_mixins(Policy, mixins)
 
-    @override(Policy)
-    def learn_on_batch(self, samples):
-        with tf.variable_creator_scope(_disallow_var_creation):
-            grads_and_vars, stats = self._compute_gradients(samples)
-        self._apply_gradients(grads_and_vars)
-        return stats
-
-    @override(Policy)
-    def compute_gradients(self, samples):
-        with tf.variable_creator_scope(_disallow_var_creation):
-            grads_and_vars, stats = self._compute_gradients(samples)
-        grads = [g for g, v in grads_and_vars]
-        grads = [(g.numpy() if g is not None else None) for g in grads]
-        return grads, stats
-
-    def _apply_gradients(self, grads_and_vars):
-        if self._apply_gradients_fn:
-            self._apply_gradients_fn(self, self.optimizer, grads_and_vars)
-        else:
-            self.optimizer.apply_gradients(grads_and_vars)
-
-    def _compute_gradients(self, samples):
-        """Computes and returns grads as eager tensors."""
-
-        self.is_training = True
-
-        samples = {
-            k: tf.convert_to_tensor(v)
-            for k, v in samples.items() if v.dtype != np.object
-        }
-
-        with tf.GradientTape(
-                persistent=self._gradients_fn is not None) as tape:
-            # TODO: set seq len and state in properly
-            self.seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
-            self.state_in = []
-            self.model_out, self.state_out = self.model(
-                samples, self.state_in, self.seq_lens)
-            if self.dist_class:
-                self.action_dist = self.dist_class(self.model_out)
-            loss = self._loss(self, samples)
-
-        variables = self.model.trainable_variables()
-
-        if self._gradients_fn:
-
-            class OptimizerWrapper(object):
-                def __init__(self, tape):
-                    self.tape = tape
-
-                def compute_gradients(self, loss, var_list):
-                    return list(
-                        zip(self.tape.gradient(loss, var_list), var_list))
-
-            grads_and_vars = self._gradients_fn(self, OptimizerWrapper(tape),
-                                                loss)
-        else:
-            grads_and_vars = list(
-                zip(tape.gradient(loss, variables), variables))
-
-        if log_once("grad_vars"):
-            for _, v in grads_and_vars:
-                logger.info("Optimizing variable {}".format(v.name))
-
-        grads = [g for g, v in grads_and_vars]
-        stats = self._stats(self, samples, grads)
-        return grads_and_vars, stats
-
-    @override(Policy)
-    def apply_gradients(self, gradients):
-        self._apply_gradients(
-            zip([(tf.convert_to_tensor(g) if g is not None else None)
-                 for g in gradients], self.model.trainable_variables()))
-
-    @override(Policy)
-    def get_weights(self):
-        return tf.nest.map_structure(lambda var: var.numpy(),
-                                     self.model.variables())
-
-    @override(Policy)
-    def set_weights(self, weights):
-        tf.nest.map_structure(lambda var, value: var.assign(value),
-                              self.model.variables(), weights)
-
-    @override(Policy)
-    def export_model(self, export_dir):
-        raise NotImplementedError
-
-    @override(Policy)
-    def export_checkpoint(self, export_dir):
-        raise NotImplementedError
-
-    def get_session(self):
-        return None  # None implies eager
-
-    def _get_is_training_placeholder(self):
-        return tf.convert_to_tensor(self.is_training)
-
-
-def build_tf_policy(name,
-                    loss_fn,
-                    get_default_config=None,
-                    postprocess_fn=None,
-                    stats_fn=None,
-                    optimizer_fn=None,
-                    gradients_fn=None,
-                    apply_gradients_fn=None,
-                    grad_stats_fn=None,
-                    extra_learn_fetches_fn=None,
-                    extra_action_fetches_fn=None,
-                    before_init=None,
-                    before_loss_init=None,
-                    after_init=None,
-                    make_model=None,
-                    action_sampler_fn=None,
-                    mixins=None,
-                    obs_include_prev_action_reward=True,
-                    get_batch_divisibility_req=None):
-
-    base = add_mixins(TFEagerPolicy, mixins)
-
-    class policy_cls(base):
+    class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
+            Policy.__init__(self, observation_space, action_space, config)
+            self.is_training = False
             self._loss_initialized = False
+            self._sess = None
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
@@ -190,10 +79,10 @@ def build_tf_policy(name,
                 self.logit_dim = logit_dim
 
             if make_model:
-                model = make_model(self, observation_space, action_space,
-                                   config)
+                self.model = make_model(self, observation_space, action_space,
+                                        config)
             else:
-                model = ModelCatalog.get_model_v2(
+                self.model = ModelCatalog.get_model_v2(
                     observation_space,
                     action_space,
                     logit_dim,
@@ -201,18 +90,17 @@ def build_tf_policy(name,
                     framework="tf",
                 )
 
-            model({
+            self.model({
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
                 SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            }, [tf.convert_to_tensor([s]) for s in model.get_initial_state()],
-                  tf.convert_to_tensor([1]))
+            }, [
+                tf.convert_to_tensor([s])
+                for s in self.model.get_initial_state()
+            ], tf.convert_to_tensor([1]))
 
-            TFEagerPolicy.__init__(self, model, observation_space,
-                                   action_space, gradients_fn,
-                                   apply_gradients_fn)
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
@@ -226,6 +114,181 @@ def build_tf_policy(name,
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
+
+        @override(Policy)
+        def postprocess_trajectory(self,
+                                   samples,
+                                   other_agent_batches=None,
+                                   episode=None):
+            assert tf.executing_eagerly()
+            if postprocess_fn:
+                return postprocess_fn(self, samples)
+            else:
+                return samples
+
+        @override(Policy)
+        def learn_on_batch(self, samples):
+            with tf.variable_creator_scope(_disallow_var_creation):
+                grads_and_vars, stats = self._compute_gradients(samples)
+            self._apply_gradients(grads_and_vars)
+            return stats
+
+        @override(Policy)
+        def compute_gradients(self, samples):
+            with tf.variable_creator_scope(_disallow_var_creation):
+                grads_and_vars, stats = self._compute_gradients(samples)
+            grads = [g for g, v in grads_and_vars]
+            grads = [(g.numpy() if g is not None else None) for g in grads]
+            return grads, stats
+
+        @override(Policy)
+        def compute_actions(self,
+                            obs_batch,
+                            state_batches,
+                            prev_action_batch=None,
+                            prev_reward_batch=None,
+                            info_batch=None,
+                            episodes=None,
+                            **kwargs):
+
+            assert tf.executing_eagerly()
+            self.is_training = False
+
+            self.seq_lens = tf.ones(len(obs_batch))
+            self.input_dict = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                "is_training": tf.convert_to_tensor(False),
+            }
+            if obs_include_prev_action_reward:
+                self.input_dict.update({
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        prev_action_batch),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        prev_reward_batch),
+                })
+            self.state_in = state_batches
+            with tf.variable_creator_scope(_disallow_var_creation):
+                self.model_out, self.state_out = self.model(
+                    self.input_dict, state_batches, self.seq_lens)
+
+            if self.dist_class:
+                self.action_dist = self.dist_class(self.model_out)
+                action = self.action_dist.sample().numpy()
+                logp = self.action_dist.sampled_action_logp()
+            else:
+                action, logp = action_sampler_fn(
+                    self, self.model, self.input_dict, self.observation_space,
+                    self.action_space, self.config)
+                action = action.numpy()
+
+            fetches = {}
+            if logp is not None:
+                fetches.update({
+                    ACTION_PROB: tf.exp(logp).numpy(),
+                    ACTION_LOGP: logp.numpy(),
+                })
+            if extra_action_fetches_fn:
+                fetches.update(extra_action_fetches_fn(self))
+            return action, self.state_out, fetches
+
+        @override(Policy)
+        def apply_gradients(self, gradients):
+            self._apply_gradients(
+                zip([(tf.convert_to_tensor(g) if g is not None else None)
+                     for g in gradients], self.model.trainable_variables()))
+
+        @override(Policy)
+        def get_weights(self):
+            return tf.nest.map_structure(lambda var: var.numpy(),
+                                         self.model.variables())
+
+        @override(Policy)
+        def set_weights(self, weights):
+            tf.nest.map_structure(lambda var, value: var.assign(value),
+                                  self.model.variables(), weights)
+
+        def get_session(self):
+            return None  # None implies eager
+
+        def loss_initialized(self):
+            return self._loss_initialized
+
+        def _get_is_training_placeholder(self):
+            return tf.convert_to_tensor(self.is_training)
+
+        def _apply_gradients(self, grads_and_vars):
+            if apply_gradients_fn:
+                apply_gradients_fn(self, self.optimizer, grads_and_vars)
+            else:
+                self.optimizer.apply_gradients(grads_and_vars)
+
+        def _compute_gradients(self, samples):
+            """Computes and returns grads as eager tensors."""
+
+            self.is_training = True
+
+            samples = {
+                k: tf.convert_to_tensor(v)
+                for k, v in samples.items() if v.dtype != np.object
+            }
+
+            with tf.GradientTape(persistent=gradients_fn is not None) as tape:
+                # TODO: set seq len and state in properly
+                self.seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
+                self.state_in = []
+                self.model_out, self.state_out = self.model(
+                    samples, self.state_in, self.seq_lens)
+                if self.dist_class:
+                    self.action_dist = self.dist_class(self.model_out)
+                loss = loss_fn(self, samples)
+
+            variables = self.model.trainable_variables()
+
+            if gradients_fn:
+
+                class OptimizerWrapper(object):
+                    def __init__(self, tape):
+                        self.tape = tape
+
+                    def compute_gradients(self, loss, var_list):
+                        return list(
+                            zip(self.tape.gradient(loss, var_list), var_list))
+
+                grads_and_vars = gradients_fn(self, OptimizerWrapper(tape),
+                                              loss)
+            else:
+                grads_and_vars = list(
+                    zip(tape.gradient(loss, variables), variables))
+
+            if log_once("grad_vars"):
+                for _, v in grads_and_vars:
+                    logger.info("Optimizing variable {}".format(v.name))
+
+            grads = [g for g, v in grads_and_vars]
+            stats = self._stats(self, samples, grads)
+            return grads_and_vars, stats
+
+        def _stats(self, outputs, samples, grads):
+            assert tf.executing_eagerly()
+            fetches = {}
+            if stats_fn:
+                fetches[LEARNER_STATS_KEY] = {
+                    k: v.numpy()
+                    for k, v in stats_fn(outputs, samples).items()
+                }
+            else:
+                fetches[LEARNER_STATS_KEY] = {}
+            if extra_learn_fetches_fn:
+                fetches.update({
+                    k: v.numpy()
+                    for k, v in extra_learn_fetches_fn(self).items()
+                })
+            if grad_stats_fn:
+                fetches.update({
+                    k: v.numpy()
+                    for k, v in grad_stats_fn(self, samples, grads).items()
+                })
+            return fetches
 
         def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
@@ -297,93 +360,6 @@ def build_tf_policy(name,
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
 
-        def postprocess_trajectory(self,
-                                   samples,
-                                   other_agent_batches=None,
-                                   episode=None):
-            assert tf.executing_eagerly()
-            if postprocess_fn:
-                return postprocess_fn(self, samples)
-            else:
-                return samples
-
-        def compute_actions(self,
-                            obs_batch,
-                            state_batches,
-                            prev_action_batch=None,
-                            prev_reward_batch=None,
-                            info_batch=None,
-                            episodes=None,
-                            **kwargs):
-
-            assert tf.executing_eagerly()
-            self.is_training = False
-
-            self.seq_lens = tf.ones(len(obs_batch))
-            self.input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.convert_to_tensor(False),
-            }
-            if obs_include_prev_action_reward:
-                self.input_dict.update({
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch),
-                })
-            self.state_in = state_batches
-            with tf.variable_creator_scope(_disallow_var_creation):
-                self.model_out, self.state_out = self.model(
-                    self.input_dict, state_batches, self.seq_lens)
-
-            if self.dist_class:
-                self.action_dist = self.dist_class(self.model_out)
-                action = self.action_dist.sample().numpy()
-                logp = self.action_dist.sampled_action_logp()
-            else:
-                action, logp = action_sampler_fn(
-                    self, self.model, self.input_dict, self.observation_space,
-                    self.action_space, self.config)
-                action = action.numpy()
-
-            fetches = {}
-            if logp is not None:
-                fetches.update({
-                    ACTION_PROB: tf.exp(logp).numpy(),
-                    ACTION_LOGP: logp.numpy(),
-                })
-            if extra_action_fetches_fn:
-                fetches.update(extra_action_fetches_fn(self))
-            return action, self.state_out, fetches
-
-        def _loss(self, outputs, samples):
-            assert tf.executing_eagerly()
-            return loss_fn(outputs, samples)
-
-        def _stats(self, outputs, samples, grads):
-            assert tf.executing_eagerly()
-            fetches = {}
-            if stats_fn:
-                fetches[LEARNER_STATS_KEY] = {
-                    k: v.numpy()
-                    for k, v in stats_fn(outputs, samples).items()
-                }
-            else:
-                fetches[LEARNER_STATS_KEY] = {}
-            if extra_learn_fetches_fn:
-                fetches.update({
-                    k: v.numpy()
-                    for k, v in extra_learn_fetches_fn(self).items()
-                })
-            if grad_stats_fn:
-                fetches.update({
-                    k: v.numpy()
-                    for k, v in grad_stats_fn(self, samples, grads).items()
-                })
-            return fetches
-
-        def loss_initialized(self):
-            return self._loss_initialized
-
-    policy_cls.__name__ = name
-    return policy_cls
+    eager_policy_cls.__name__ = name + "_eager"
+    eager_policy_cls.__qualname__ = name + "_eager"
+    return eager_policy_cls

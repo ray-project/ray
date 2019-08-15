@@ -24,7 +24,6 @@ def build_tf_policy(name,
                     apply_gradients_fn=None,
                     grad_stats_fn=None,
                     extra_action_fetches_fn=None,
-                    extra_action_feed_fn=None,
                     extra_learn_fetches_fn=None,
                     before_init=None,
                     before_loss_init=None,
@@ -74,8 +73,6 @@ def build_tf_policy(name,
             TF fetches given the policy, batch input, and gradient tensors
         extra_action_fetches_fn (func): optional function that returns
             a dict of TF fetches given the policy object
-        extra_action_feed_fn (func): optional function that returns a feed dict
-            to also feed to TF when computing actions
         extra_learn_fetches_fn (func): optional function that returns a dict of
             extra values to fetch and return when learning on a batch
         before_init (func): optional function to run at the beginning of
@@ -186,13 +183,6 @@ def build_tf_policy(name,
                 **self._extra_action_fetches)
 
         @override(TFPolicy)
-        def extra_compute_action_feed_dict(self):
-            if extra_action_feed_fn:
-                return extra_action_feed_fn(self)
-            else:
-                return TFPolicy.extra_compute_action_feed_dict(self)
-
-        @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
                 # auto-add empty learner stats dict if needed
@@ -208,8 +198,7 @@ def build_tf_policy(name,
 
     @staticmethod
     def as_eager():
-        minimal = {k: v for k, v in original_kwargs.items() if v is not None}
-        return tf_eager_policy.build_tf_policy(**minimal)
+        return tf_eager_policy.build_eager_tf_policy(**original_kwargs)
 
     policy_cls.with_updates = with_updates
     policy_cls.as_eager = as_eager
