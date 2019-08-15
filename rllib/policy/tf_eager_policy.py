@@ -179,7 +179,7 @@ def build_eager_tf_policy(name,
                     self.input_dict, state_batches, self.seq_lens)
 
             if self.dist_class:
-                self.action_dist = self.dist_class(self.model_out)
+                self.action_dist = self.dist_class(self.model_out, self.model)
                 action = self.action_dist.sample().numpy()
                 logp = self.action_dist.sampled_action_logp()
             else:
@@ -246,7 +246,8 @@ def build_eager_tf_policy(name,
                 self.model_out, self.state_out = self.model(
                     samples, self.state_in, self.seq_lens)
                 if self.dist_class:
-                    self.action_dist = self.dist_class(self.model_out)
+                    self.action_dist = self.dist_class(self.model_out,
+                                                       self.model)
                 loss = loss_fn(self, samples)
 
             variables = self.model.trainable_variables()
