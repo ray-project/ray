@@ -568,10 +568,10 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   // wait for the objects to appear.
   wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(unready_ids, unready_ids.size(),  -1, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(
+      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
   // wait for the thread to finish.
   async_thread.join();
-  
 }
 
 class ZeroNodeTest : public CoreWorkerTest {

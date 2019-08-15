@@ -73,7 +73,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     RAY_RETURN_NOT_OK(Get(entry.first, entry.second, current_timeout_ms, &objects));
     if (current_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
-      current_timeout_ms = std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+      current_timeout_ms =
+          std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
     }
   }
 
@@ -126,19 +127,19 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     }
   }
 
-  auto wait_from_store_providers = [&ids, &object_ids_per_store_provider, &num_objects, &object_counts, results, this](
-      int64_t timeout) {
-
+  auto wait_from_store_providers = [&ids, &object_ids_per_store_provider, &num_objects,
+                                    &object_counts, results, this](int64_t timeout) {
     auto current_timeout_ms = timeout;
     for (const auto &entry : object_ids_per_store_provider) {
       std::unordered_set<ObjectID> objects;
       auto start_time = current_time_ms();
       int required_objects = std::min(static_cast<int>(entry.second.size()), num_objects);
-      RAY_RETURN_NOT_OK(
-          Wait(entry.first, entry.second, required_objects, current_timeout_ms, &objects));
+      RAY_RETURN_NOT_OK(Wait(entry.first, entry.second, required_objects,
+                             current_timeout_ms, &objects));
       if (current_timeout_ms > 0) {
         int64_t duration = current_time_ms() - start_time;
-        current_timeout_ms = std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+        current_timeout_ms =
+            std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
       }
       for (const auto &entry : objects) {
         num_objects -= object_counts[entry];
@@ -159,8 +160,8 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   };
 
   // Wait from all the store providers with timeout set to 0. This is to avoid the case
-  // where we might use up the entire timeout on trying to get objects from one store provider
-  // before even trying another (which might have all of the objects available). 
+  // where we might use up the entire timeout on trying to get objects from one store
+  // provider before even trying another (which might have all of the objects available).
   RAY_RETURN_NOT_OK(wait_from_store_providers(0));
 
   if (num_objects > 0) {
@@ -168,7 +169,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     // if the required number of objects haven't been ready yet.
     RAY_RETURN_NOT_OK(wait_from_store_providers(timeout_ms));
   }
-  
+
   return Status::OK();
 }
 
