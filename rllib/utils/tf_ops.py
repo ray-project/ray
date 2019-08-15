@@ -60,14 +60,15 @@ def make_tf_callable(session_or_none):
             def call(*args):
                 nonlocal symbolic_out
                 if not placeholders:
-                    for i, v in enumerate(args):
-                        placeholders.append(
-                            tf.placeholder(
-                                dtype=v.dtype,
-                                shape=((None, ) + v.shape[1:])
-                                if len(v.shape) > 0 else (),
-                                name="arg_{}".format(i)))
-                    symbolic_out = fn(*placeholders)
+                    with session_or_none.graph.as_default():
+                        for i, v in enumerate(args):
+                            placeholders.append(
+                                tf.placeholder(
+                                    dtype=v.dtype,
+                                    shape=((None, ) + v.shape[1:])
+                                    if len(v.shape) > 0 else (),
+                                    name="arg_{}".format(i)))
+                        symbolic_out = fn(*placeholders)
                 feed_dict = dict(zip(placeholders, args))
                 return session_or_none.run(symbolic_out, feed_dict)
 

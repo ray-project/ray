@@ -189,7 +189,7 @@ class ModelCatalog(object):
         if isinstance(action_space, gym.spaces.Discrete):
             return (tf.int64, (None, ))
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
-            return (tf.float32, (None, ))
+            return (tf.float32, (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             return (tf.as_dtype(action_space.dtype),
                     (None, ) + action_space.shape)

@@ -10,9 +10,7 @@ tf = try_import_tf()
 
 
 class FullyConnectedNetwork(TFModelV2):
-    """Generic fully connected network implemented in ModelV2 API.
-
-    TODO(ekl): should make this the default fcnet in the future."""
+    """Generic fully connected network implemented in ModelV2 API."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):

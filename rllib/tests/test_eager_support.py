@@ -7,7 +7,10 @@ from ray.rllib.agents.registry import get_agent_class
 
 def check_support(alg, config):
     config["eager"] = True
-    config["env"] = "CartPole-v0"
+    if alg in ["APEX_DDPG", "TD3", "DDPG", "SAC"]:
+        config["env"] = "Pendulum-v0"
+    else:
+        config["env"] = "CartPole-v0"
     a = get_agent_class(alg)
     tune.run(a, config=config, stop={"training_iteration": 0})
 
@@ -53,17 +56,37 @@ class TestEagerSupport(unittest.TestCase):
                 "timesteps_per_iteration": 100
             })
 
-#    def testDDPG(self):
-#        check_support("DDPG", {"num_workers": 0, "learning_starts": 0})
-#
-#    def testTD3(self):
-#        check_support("TD3", {"num_workers": 0, "learning_starts": 0})
-#
-#    def testSAC(self):
-#        check_support("SAC", {"num_workers": 0, "learning_starts": 0})
-#
-#    def testAPEX_DDPG(self):
-#        check_support("APEX_DDPG", {"num_workers": 2, "learning_starts": 0, "num_gpus": 0, "min_iter_time_s": 1, "timesteps_per_iteration": 100})
+    def testDDPG(self):
+        check_support("DDPG", {
+            "num_workers": 0,
+            "learning_starts": 0,
+            "timesteps_per_iteration": 10
+        })
+
+    def testTD3(self):
+        check_support("TD3", {
+            "num_workers": 0,
+            "learning_starts": 0,
+            "timesteps_per_iteration": 10
+        })
+
+    def testAPEX_DDPG(self):
+        check_support(
+            "APEX_DDPG", {
+                "num_workers": 2,
+                "learning_starts": 0,
+                "num_gpus": 0,
+                "min_iter_time_s": 1,
+                "timesteps_per_iteration": 100
+            })
+
+    def testSAC(self):
+        check_support("SAC", {
+            "num_workers": 0,
+            "learning_starts": 0,
+            "timesteps_per_iteration": 100
+        })
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

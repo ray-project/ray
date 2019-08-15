@@ -62,6 +62,7 @@ class DDPGModel(TFModelV2):
             shape=(self.action_dim, ), name="actions")
 
         def build_action_net(action_out):
+            assert action_out.dtype == tf.float32
             activation = getattr(tf.nn, actor_hidden_activation)
             i = 0
             for hidden in actor_hiddens:
@@ -88,9 +89,27 @@ class DDPGModel(TFModelV2):
         action_scope = name + "/action_net"
 
         # TODO(ekl) use keras layers instead of variable scopes
-        def build_action_net_scope(model_out):
-            with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
-                return build_action_net(model_out)
+        if tf.executing_eagerly():
+            # Have to use a variable store to reuse variables in eager mode
+            import tensorflow.contrib as tfc
+            store = tfc.eager.EagerVariableStore()
+            # Save the scope object, since in eager we will execute this
+            # path repeatedly and there is no guarantee it will always be run
+            # in the same original scope.
+            with tf.variable_scope(
+                    action_scope, reuse=tf.AUTO_REUSE) as action_scope_handle:
+                pass
+
+            def build_action_net_scope(model_out):
+                with store.as_default():
+                    with tf.variable_scope(
+                            action_scope_handle, reuse=tf.AUTO_REUSE):
+                        return build_action_net(model_out)
+        else:
+
+            def build_action_net_scope(model_out):
+                with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
+                    return build_action_net(model_out)
 
         pi_out = tf.keras.layers.Lambda(build_action_net_scope)(self.model_out)
         self.action_net = tf.keras.Model(self.model_out, pi_out)
@@ -98,6 +117,7 @@ class DDPGModel(TFModelV2):
 
         # Noise vars for P network except for layer normalization vars
         if parameter_noise:
+            assert not tf.executing_eagerly(), "eager p noise not implemented"
             with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
                 self._build_parameter_noise([
                     var for var in self.action_net.variables

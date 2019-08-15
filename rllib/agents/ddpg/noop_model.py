@@ -16,4 +16,4 @@ class NoopModel(TFModelV2):
 
     @override(TFModelV2)
     def forward(self, input_dict, state, seq_lens):
-        return input_dict["obs_flat"], state
+        return tf.cast(input_dict["obs_flat"], tf.float32), state

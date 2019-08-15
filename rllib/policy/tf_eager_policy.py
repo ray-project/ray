@@ -28,12 +28,14 @@ def _disallow_var_creation(next_creator, **kw):
 
 # TODO(ekl) decide what stuff goes in this class vs the builder below
 class TFEagerPolicy(Policy):
-    def __init__(self, model, observation_space, action_space, gradients_fn):
+    def __init__(self, model, observation_space, action_space, gradients_fn,
+                 apply_gradients_fn):
         self.model = model
         self.observation_space = observation_space
         self.action_space = action_space
         self.is_training = False
         self._gradients_fn = gradients_fn
+        self._apply_gradients_fn = apply_gradients_fn
         self._sess = None
 
     def _loss(self, outputs, samples):
@@ -46,7 +48,7 @@ class TFEagerPolicy(Policy):
     def learn_on_batch(self, samples):
         with tf.variable_creator_scope(_disallow_var_creation):
             grads_and_vars, stats = self._compute_gradients(samples)
-        self.optimizer.apply_gradients(grads_and_vars)
+        self._apply_gradients(grads_and_vars)
         return stats
 
     @override(Policy)
@@ -56,6 +58,12 @@ class TFEagerPolicy(Policy):
         grads = [g for g, v in grads_and_vars]
         grads = [(g.numpy() if g is not None else None) for g in grads]
         return grads, stats
+
+    def _apply_gradients(self, grads_and_vars):
+        if self._apply_gradients_fn:
+            self._apply_gradients_fn(self, self.optimizer, grads_and_vars)
+        else:
+            self.optimizer.apply_gradients(grads_and_vars)
 
     def _compute_gradients(self, samples):
         """Computes and returns grads as eager tensors."""
@@ -67,7 +75,8 @@ class TFEagerPolicy(Policy):
             for k, v in samples.items() if v.dtype != np.object
         }
 
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(
+                persistent=self._gradients_fn is not None) as tape:
             # TODO: set seq len and state in properly
             self.seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
             self.state_in = []
@@ -105,7 +114,7 @@ class TFEagerPolicy(Policy):
 
     @override(Policy)
     def apply_gradients(self, gradients):
-        self.optimizer.apply_gradients(
+        self._apply_gradients(
             zip([(tf.convert_to_tensor(g) if g is not None else None)
                  for g in gradients], self.model.trainable_variables()))
 
@@ -141,9 +150,9 @@ def build_tf_policy(name,
                     stats_fn=None,
                     optimizer_fn=None,
                     gradients_fn=None,
+                    apply_gradients_fn=None,
                     grad_stats_fn=None,
                     extra_learn_fetches_fn=None,
-                    extra_action_feed_fn=None,
                     extra_action_fetches_fn=None,
                     before_init=None,
                     before_loss_init=None,
@@ -202,11 +211,12 @@ def build_tf_policy(name,
                   tf.convert_to_tensor([1]))
 
             TFEagerPolicy.__init__(self, model, observation_space,
-                                   action_space, gradients_fn)
+                                   action_space, gradients_fn,
+                                   apply_gradients_fn)
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._do_loss_init()
+            self._initialize_loss_with_dummy_batch()
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -217,7 +227,7 @@ def build_tf_policy(name,
             if after_init:
                 after_init(self, observation_space, action_space, config)
 
-        def _do_loss_init(self):
+        def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
             action_dtype, action_shape = ModelCatalog.get_action_shape(
                 self.action_space)
@@ -229,8 +239,9 @@ def build_tf_policy(name,
                 SampleBatch.DONES: tf.convert_to_tensor(
                     np.array([False], dtype=np.bool)),
                 SampleBatch.ACTIONS: tf.convert_to_tensor(
-                    np.zeros_like(
-                        action_shape, dtype=action_dtype.as_numpy_dtype())),
+                    np.zeros(
+                        (1, ) + action_shape[1:],
+                        dtype=action_dtype.as_numpy_dtype())),
                 SampleBatch.REWARDS: tf.convert_to_tensor(
                     np.array([0], dtype=np.float32)),
             }
@@ -275,8 +286,16 @@ def build_tf_policy(name,
 
             # model forward pass for the loss (needed after postprocess to
             # overwrite any tensor state from that call)
-            self.model(dummy_batch, state_batches,
-                       tf.ones(len(dummy_batch[SampleBatch.CUR_OBS])))
+            self.model({
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(
+                    np.array([self.observation_space.sample()])),
+                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                    [_flatten_action(self.action_space.sample())]),
+                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
+            }, [
+                tf.convert_to_tensor([s])
+                for s in self.model.get_initial_state()
+            ], tf.convert_to_tensor([1]))
 
             postprocessed_batch = {
                 k: tf.convert_to_tensor(v)

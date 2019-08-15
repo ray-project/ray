@@ -280,9 +280,11 @@ class DynamicTFPolicy(TFPolicy):
                 SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
             })
         state_init = self.get_initial_state()
+        state_batches = []
         for i, h in enumerate(state_init):
             dummy_batch["state_in_{}".format(i)] = np.expand_dims(h, 0)
             dummy_batch["state_out_{}".format(i)] = np.expand_dims(h, 0)
+            state_batches.append(np.expand_dims(h, 0))
         if state_init:
             dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
         for k, v in self.extra_compute_action_fetches().items():
@@ -290,8 +292,22 @@ class DynamicTFPolicy(TFPolicy):
 
         # postprocessing might depend on variable init, so run it first here
         self._sess.run(tf.global_variables_initializer())
+
+        # for IMPALA which expects a certain sample batch size
+        def tile_to(tensor, n):
+            return np.tile(tensor, [n] + [1 for _ in tensor.shape[1:]])
+
+        dummy_batch = {
+            k: tile_to(v, self.config["sample_batch_size"])
+            for k, v in dummy_batch.items()
+        }
+
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
+
+        # model forward pass for the loss (needed after postprocess to
+        # overwrite any tensor state from that call)
+        self.model(self.input_dict, self.state_in, self.seq_lens)
 
         if self._obs_include_prev_action_reward:
             batch_tensors = UsageTrackingDict({

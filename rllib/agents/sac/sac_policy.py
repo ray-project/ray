@@ -10,6 +10,8 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
+from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
+    TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -85,12 +87,6 @@ def postprocess_trajectory(policy,
                            other_agent_batches=None,
                            episode=None):
     return _postprocess_dqn(policy, sample_batch)
-
-
-def exploration_setting_inputs(policy):
-    return {
-        policy.stochastic: policy.config["exploration_enabled"],
-    }
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
@@ -220,27 +216,27 @@ def actor_critic_loss(policy, batch_tensors):
 def gradients(policy, optimizer, loss):
     if policy.config["grad_norm_clipping"] is not None:
         actor_grads_and_vars = minimize_and_clip(
-            policy._actor_optimizer,
+            optimizer,
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
             clip_val=policy.config["grad_norm_clipping"])
         critic_grads_and_vars = minimize_and_clip(
-            policy._critic_optimizer,
+            optimizer,
             policy.critic_loss,
             var_list=policy.model.q_variables(),
             clip_val=policy.config["grad_norm_clipping"])
         alpha_grads_and_vars = minimize_and_clip(
-            policy._alpha_optimizer,
+            optimizer,
             policy.alpha_loss,
-            var_list=policy.model.alpha,
+            var_list=[policy.model.log_alpha],
             clip_val=policy.config["grad_norm_clipping"])
     else:
-        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
+        actor_grads_and_vars = optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
-        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
+        critic_grads_and_vars = optimizer.compute_gradients(
             policy.critic_loss, var_list=policy.model.q_variables())
-        alpha_grads_and_vars = policy._critic_optimizer.compute_gradients(
-            policy.alpha_loss, var_list=policy.model.alpha)
+        alpha_grads_and_vars = optimizer.compute_gradients(
+            policy.alpha_loss, var_list=[policy.model.log_alpha])
     # save these for later use in build_apply_op
     policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
                                     if g is not None]
@@ -267,38 +263,15 @@ def stats(policy, batch_tensors):
 
 class ExplorationStateMixin(object):
     def __init__(self, obs_space, action_space, config):
-        self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
+        self.stochastic = tf.get_variable(
+            initializer=tf.constant_initializer(config["exploration_enabled"]),
+            name="stochastic",
+            shape=(),
+            trainable=False,
+            dtype=tf.bool)
 
     def set_epsilon(self, epsilon):
         pass
-
-
-class TargetNetworkMixin(object):
-    def __init__(self, config):
-        # update_target_fn will be called periodically to copy Q network to
-        # target Q network
-        self.tau_value = config.get("tau")
-        self.tau = tf.placeholder(tf.float32, (), name="tau")
-        update_target_expr = []
-        model_vars = self.model.trainable_variables()
-        target_model_vars = self.target_model.trainable_variables()
-        assert len(model_vars) == len(target_model_vars), \
-            (model_vars, target_model_vars)
-        for var, var_target in zip(model_vars, target_model_vars):
-            update_target_expr.append(
-                var_target.assign(self.tau * var +
-                                  (1.0 - self.tau) * var_target))
-            logger.debug("Update target op {}".format(var_target))
-        self.update_target_expr = tf.group(*update_target_expr)
-
-        # Hard initial update
-        self.update_target(tau=1.0)
-
-    # support both hard and soft sync
-    def update_target(self, tau=None):
-        tau = tau or self.tau_value
-        return self.get_session().run(
-            self.update_target_expr, feed_dict={self.tau: tau})
 
 
 class ActorCriticOptimizerMixin(object):
@@ -315,32 +288,13 @@ class ActorCriticOptimizerMixin(object):
             learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
-class ComputeTDErrorMixin(object):
-    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
-                         importance_weights):
-        if not self.loss_initialized():
-            return np.zeros_like(rew_t)
-
-        td_err = self.get_session().run(
-            self.td_error,
-            feed_dict={
-                self.get_placeholder(SampleBatch.CUR_OBS): [
-                    np.array(ob) for ob in obs_t
-                ],
-                self.get_placeholder(SampleBatch.ACTIONS): act_t,
-                self.get_placeholder(SampleBatch.REWARDS): rew_t,
-                self.get_placeholder(SampleBatch.NEXT_OBS): [
-                    np.array(ob) for ob in obs_tp1
-                ],
-                self.get_placeholder(SampleBatch.DONES): done_mask,
-                self.get_placeholder(PRIO_WEIGHTS): importance_weights
-            })
-        return td_err
-
-
 def setup_early_mixins(policy, obs_space, action_space, config):
     ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
     ActorCriticOptimizerMixin.__init__(policy, config)
+
+
+def setup_mid_mixins(policy, obs_space, action_space, config):
+    ComputeTDErrorMixin.__init__(policy)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
@@ -352,7 +306,6 @@ SACTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
-    extra_action_feed_fn=exploration_setting_inputs,
     action_sampler_fn=build_action_output,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
@@ -363,5 +316,6 @@ SACTFPolicy = build_tf_policy(
         ComputeTDErrorMixin
     ],
     before_init=setup_early_mixins,
+    before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False)

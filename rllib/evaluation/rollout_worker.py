@@ -316,7 +316,8 @@ class RolloutWorker(EvaluatorInterface):
                 torch.manual_seed(seed)
             except ImportError:
                 logger.info("Could not seed torch")
-        if _has_tensorflow_graph(policy_dict):
+        if _has_tensorflow_graph(policy_dict) and not (tf and
+                                                       tf.executing_eagerly()):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
                     and not ray.get_gpu_ids()):
@@ -744,10 +745,11 @@ class RolloutWorker(EvaluatorInterface):
             if tf and tf.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
+                elif not issubclass(cls, TFPolicy):
+                    pass  # could be some other type of policy
                 else:
-                    raise ValueError(
-                        "This policy does not support eager "
-                        "execution: {}".format(cls))
+                    raise ValueError("This policy does not support eager "
+                                     "execution: {}".format(cls))
             if tf:
                 with tf.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)

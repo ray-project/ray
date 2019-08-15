@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
-from ray.rllib.policy import eager_policy
+from ray.rllib.policy import tf_eager_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
@@ -45,8 +45,9 @@ def build_tf_policy(name,
     This means that you can e.g., depend on any policy attributes created in
     the running of `loss_fn` in later functions such as `stats_fn`.
 
-    In eager mode (to be implemented), the following functions will be run
-    repeatedly on each eager execution: loss_fn, stats_fn
+    In eager mode, the following functions will be run repeatedly on each
+    eager execution:
+        loss_fn, stats_fn, gradients_fn, apply_gradients_fn, grad_stats_fn.
 
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
@@ -208,7 +209,7 @@ def build_tf_policy(name,
     @staticmethod
     def as_eager():
         minimal = {k: v for k, v in original_kwargs.items() if v is not None}
-        return eager_policy.build_tf_policy(**minimal)
+        return tf_eager_policy.build_tf_policy(**minimal)
 
     policy_cls.with_updates = with_updates
     policy_cls.as_eager = as_eager
