@@ -29,7 +29,7 @@ DEFAULT_PUT_OBJECT_RETRIES = 5
 DEFAULT_PUT_OBJECT_DELAY = 1
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
-OBJECT_STORE_MINIMUM_MEMORY_BYTES = 150 * 1024 * 1024
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
@@ -57,7 +57,7 @@ PICKLE_OBJECT_WARNING_SIZE = 10**7
 MAX_RESOURCE_QUANTITY = 10000
 
 # Each memory "resource" counts as this many bytes of memory.
-MEMORY_RESOURCE_UNIT_BYTES = 100 * 1024 * 1024
+MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
 
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
