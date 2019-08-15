@@ -310,6 +310,7 @@ class Trainer(Trainable):
 
         if tf and config.get("eager"):
             tf.enable_eager_execution()
+            logger.info("Executing eagerly")
 
         if tf and not tf.executing_eagerly():
             logger.info("Tip: set 'eager': true or the --eager flag to enable "

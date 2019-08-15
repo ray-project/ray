@@ -292,10 +292,19 @@ class ModelCatalog(object):
                     instance = model_cls(obs_space, action_space, num_outputs,
                                          model_config, name, **model_kwargs)
                 return instance
+            elif tf.executing_eagerly():
+                raise ValueError(
+                    "Eager execution requires a TFModelV2 model to be "
+                    "used, however you specified a custom model {}".format(
+                        model_cls))
 
         if framework == "tf":
-            v2_class = default_model or ModelCatalog._get_v2_model(
-                obs_space, model_config)
+            v2_class = None
+            # try to get a default v2 model
+            if not model_config.get("custom_model"):
+                v2_class = default_model or ModelCatalog._get_v2_model(
+                    obs_space, model_config)
+            # fallback to a default v1 model
             if v2_class is None:
                 if tf.executing_eagerly():
                     raise ValueError(
@@ -304,6 +313,7 @@ class ModelCatalog(object):
                         "observation space: {}, use_lstm={}".format(
                             obs_space, model_config.get("use_lstm")))
                 v2_class = make_v1_wrapper(ModelCatalog.get_model)
+            # wrap in the requested interface
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
