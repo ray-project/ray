@@ -45,8 +45,8 @@ def build_tf_policy(name,
     the running of `loss_fn` in later functions such as `stats_fn`.
 
     In eager mode, the following functions will be run repeatedly on each
-    eager execution:
-        loss_fn, stats_fn, gradients_fn, apply_gradients_fn, grad_stats_fn.
+    eager execution: loss_fn, stats_fn, gradients_fn, apply_gradients_fn,
+    and grad_stats_fn.
 
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
