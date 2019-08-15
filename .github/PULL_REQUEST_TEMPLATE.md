@@ -6,7 +6,7 @@ Please review https://github.com/ray-project/ray/blob/master/CONTRIBUTING.rst be
 
 ## Why are these changes needed?
 
-<!-- Please give a short brief about the problem these changes address. -->
+<!-- Please give a short summary of the problem these changes address. -->
 
 ## What do these changes do?
 
