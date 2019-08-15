@@ -2,5 +2,10 @@
 build --compilation_mode=opt
 build --action_env=PATH
 build --action_env=PYTHON_BIN_PATH
+# Warnings should be errors
+build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc@-Werror
+# Ignore warnings for protobuf generated files and external projects.
+build --per_file_copt='\\.pb\\.cc$@-w'
+build --per_file_copt='external*@-w'
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"

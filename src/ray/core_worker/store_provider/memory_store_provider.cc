@@ -31,7 +31,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
-  if (num_objects != object_ids.size()) {
+  if (num_objects != static_cast<int>(object_ids.size())) {
     return Status::Invalid("num_objects should equal to number of items in object_ids");
   }
 
@@ -41,7 +41,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
   auto status = store_->Get(object_ids, timeout_ms, false, &result_objects);
   if (status.ok()) {
     RAY_CHECK(result_objects.size() == object_ids.size());
-    for (int i = 0; i < object_ids.size(); i++) {
+    for (size_t i = 0; i < object_ids.size(); i++) {
       (*results)[i] = (result_objects[i] != nullptr);
     }
   }

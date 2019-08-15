@@ -33,6 +33,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
+
         super(DistributedPyTorchRunner, self).__init__(
             model_creator, data_creator, optimizer_creator, config, batch_size)
         self.backend = backend

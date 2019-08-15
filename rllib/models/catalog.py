@@ -97,10 +97,10 @@ class ModelCatalog(object):
         >>> prep = ModelCatalog.get_preprocessor(env)
         >>> observation = prep.transform(raw_observation)
 
-        >>> dist_cls, dist_dim = ModelCatalog.get_action_dist(
+        >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
                 env.action_space, {})
         >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
-        >>> dist = dist_cls(model.outputs)
+        >>> dist = dist_class(model.outputs, model)
         >>> action = dist.sample()
     """
 

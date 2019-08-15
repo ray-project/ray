@@ -43,9 +43,10 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId()
                  << " finished execution. num_returns: " << num_returns;
   RAY_CHECK(results.size() == num_returns);
-  for (int i = 0; i < num_returns; i++) {
-    ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1,
-                                          /*transport_type=*/0);
+  for (size_t i = 0; i < num_returns; i++) {
+    ObjectID id = ObjectID::ForTaskReturn(
+        task_spec.TaskId(), /*index=*/i + 1,
+        /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
     Status status = object_interface_.Put(*results[i], id);
     if (!status.ok()) {
       // TODO (kfstorm): RAY_LOG(FATAL) except the error is about the object to put

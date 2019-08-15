@@ -99,7 +99,7 @@ inline uint8_t GetTransportType(ObjectIDFlagsType flags) {
 template <typename T>
 void FillNil(T *data) {
   RAY_CHECK(data != nullptr);
-  for (int i = 0; i < data->size(); i++) {
+  for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(0xFF);
   }
 }
@@ -129,7 +129,7 @@ plasma::UniqueID ObjectID::ToPlasmaId() const {
 }
 
 ObjectID::ObjectID(const plasma::UniqueID &from) {
-  RAY_CHECK(from.size() <= ObjectID::Size()) << "Out of size.";
+  RAY_CHECK(from.size() <= static_cast<int64_t>(ObjectID::Size())) << "Out of size.";
   std::memcpy(this->MutableData(), from.data(), ObjectID::Size());
 }
 

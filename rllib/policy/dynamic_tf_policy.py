@@ -66,7 +66,7 @@ class DynamicTFPolicy(TFPolicy):
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
             action_sampler_fn (func): optional function that returns a
-                tuple of action and action prob tensors given
+                tuple of action and action logp tensors given
                 (policy, model, input_dict, obs_space, action_space, config).
                 If not specified, a default action distribution will be used.
             existing_inputs (OrderedDict): when copying a policy, this
@@ -144,6 +144,7 @@ class DynamicTFPolicy(TFPolicy):
                 logit_dim,
                 self.config["model"],
                 framework="tf")
+
         if existing_inputs:
             self.state_in = [
                 v for k, v in existing_inputs.items()
@@ -162,14 +163,13 @@ class DynamicTFPolicy(TFPolicy):
         # Setup action sampler
         if action_sampler_fn:
             self.action_dist = None
-            action_sampler, action_prob = action_sampler_fn(
+            action_sampler, action_logp = action_sampler_fn(
                 self, self.model, self.input_dict, obs_space, action_space,
                 config)
         else:
-            self.action_dist = self.dist_class(
-                self.model_out, model_config=self.config["model"])
+            self.action_dist = self.dist_class(self.model_out, self.model)
             action_sampler = self.action_dist.sample()
-            action_prob = self.action_dist.sampled_action_prob()
+            action_logp = self.action_dist.sampled_action_logp()
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -184,7 +184,7 @@ class DynamicTFPolicy(TFPolicy):
             sess,
             obs_input=obs,
             action_sampler=action_sampler,
-            action_prob=action_prob,
+            action_logp=action_logp,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
@@ -242,6 +242,7 @@ class DynamicTFPolicy(TFPolicy):
             existing_inputs=input_dict,
             existing_model=self.model)
 
+        instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
         loss_inputs = [(k, existing_inputs[i])
                        for i, (k, _) in enumerate(self._loss_inputs)]
@@ -249,7 +250,7 @@ class DynamicTFPolicy(TFPolicy):
         TFPolicy._initialize_loss(instance, loss, loss_inputs)
         if instance._grad_stats_fn:
             instance._stats_fetches.update(
-                instance._grad_stats_fn(instance, instance._grads))
+                instance._grad_stats_fn(instance, input_dict, instance._grads))
         return instance
 
     @override(Policy)
@@ -326,13 +327,15 @@ class DynamicTFPolicy(TFPolicy):
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(batch_tensors)))
 
+        self._loss_input_dict = batch_tensors
         loss = self._do_loss_init(batch_tensors)
         for k in sorted(batch_tensors.accessed_keys):
             loss_inputs.append((k, batch_tensors[k]))
 
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
-            self._stats_fetches.update(self._grad_stats_fn(self, self._grads))
+            self._stats_fetches.update(
+                self._grad_stats_fn(self, batch_tensors, self._grads))
         self._sess.run(tf.global_variables_initializer())
 
     def _do_loss_init(self, batch_tensors):
