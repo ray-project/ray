@@ -4,9 +4,7 @@ from __future__ import print_function
 
 import base64
 import copy
-import fnmatch
 import logging
-import os
 import threading
 import time
 from collections import defaultdict
@@ -211,18 +209,6 @@ def _from_pinnable(obj):
     """Retrieve from _to_pinnable format."""
 
     return obj[0]
-
-
-def recursive_fnmatch(dirpath, pattern):
-    """Looks at a file directory subtree for a filename pattern.
-
-    Similar to glob.glob(..., recursive=True) but also supports 2.7
-    """
-    matches = []
-    for root, dirnames, filenames in os.walk(dirpath):
-        for filename in fnmatch.filter(filenames, pattern):
-            matches.append(os.path.join(root, filename))
-    return matches
 
 
 def validate_save_restore(trainable_cls, config=None, use_object_store=False):

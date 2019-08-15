@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import fnmatch
 import os
 import subprocess
 import sys
@@ -116,3 +117,15 @@ def wait_for_condition(condition_predictor,
         time_elapsed += retry_interval_ms
         time.sleep(retry_interval_ms / 1000.0)
     return False
+
+
+def recursive_fnmatch(dirpath, pattern):
+    """Looks at a file directory subtree for a filename pattern.
+
+    Similar to glob.glob(..., recursive=True) but also supports 2.7
+    """
+    matches = []
+    for root, dirnames, filenames in os.walk(dirpath):
+        for filename in fnmatch.filter(filenames, pattern):
+            matches.append(os.path.join(root, filename))
+    return matches

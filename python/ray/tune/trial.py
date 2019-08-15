@@ -321,7 +321,7 @@ class Trial(object):
                     location_string(
                         self.last_result.get(HOSTNAME),
                         self.last_result.get(PID))), "{} s".format(
-                            int(self.last_result.get(TIME_TOTAL_S)))
+                            int(self.last_result.get(TIME_TOTAL_S, 0)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
