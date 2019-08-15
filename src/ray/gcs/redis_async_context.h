@@ -22,44 +22,43 @@ namespace gcs {
 /// operations. So the perf impact of adding the lock should be minimum.
 class RedisAsyncContext {
  public:
-  explicit RedisAsyncContext(redisAsyncContext *redis_async_context)
-      : redis_async_context_(redis_async_context) {
-    RAY_CHECK(redis_async_context_ != nullptr);
-  }
+  explicit RedisAsyncContext(redisAsyncContext *redis_async_context);
 
-  ~RedisAsyncContext() {
-    redisAsyncFree(redis_async_context_);
-    redis_async_context_ = nullptr;
-  }
+  ~RedisAsyncContext();
 
   /// Get the raw 'redisAsyncContext' pointer.
-  redisAsyncContext *GetRawRedisAsyncContext() {
-    RAY_CHECK(redis_async_context_ != nullptr);
-    return redis_async_context_;
-  }
+  ///
+  /// \return redisAsyncContext *
+  redisAsyncContext *GetRawRedisAsyncContext();
 
   /// Perform command 'redisAsyncHandleRead'. Thread-safe.
-  void RedisAsyncHandleRead() {
-    // `redisAsyncHandleRead` is already thread-safe, so no lock here.
-    redisAsyncHandleRead(redis_async_context_);
-  }
+  void RedisAsyncHandleRead();
 
   /// Perform command 'redisAsyncHandleWrite'. Thread-safe.
-  void RedisAsyncHandleWrite() {
-    // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
-    // it.
-    std::lock_guard<std::mutex> lock(mutex_);
-    redisAsyncHandleWrite(redis_async_context_);
-  }
+  void RedisAsyncHandleWrite();
 
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
+  ///
+  /// \param fn Callback that will be called after the command finishes.
+  /// \param privdata User-defined pointer.
+  /// \param format Command format.
+  /// \param ... Command list.
+  /// \return Status
   Status RedisAsyncCommand(redisCallbackFn *fn, void *privdata, const char *format, ...);
 
   /// Perform command 'redisAsyncCommandArgv'. Thread-safe.
+  ///
+  /// \param fn Callback that will be called after the command finishes.
+  /// \param privdata User-defined pointer.
+  /// \param argc Number of arguments.
+  /// \param argv Array with arguments.
+  /// \param argvlen Array with each argument's length.
+  /// \return Status
   Status RedisAsyncCommandArgv(redisCallbackFn *fn, void *privdata, int argc,
                                const char **argv, const size_t *argvlen);
 
  private:
+  /// We use a lock to protect the `asyncRedisContext`.
   std::mutex mutex_;
   redisAsyncContext *redis_async_context_{nullptr};
 };

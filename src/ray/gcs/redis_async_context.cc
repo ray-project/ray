@@ -9,6 +9,33 @@ namespace ray {
 
 namespace gcs {
 
+RedisAsyncContext::RedisAsyncContext(redisAsyncContext *redis_async_context)
+    : redis_async_context_(redis_async_context) {
+  RAY_CHECK(redis_async_context_ != nullptr);
+}
+
+RedisAsyncContext::~RedisAsyncContext() {
+  redisAsyncFree(redis_async_context_);
+  redis_async_context_ = nullptr;
+}
+
+redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
+  RAY_CHECK(redis_async_context_ != nullptr);
+  return redis_async_context_;
+}
+
+void RedisAsyncContext::RedisAsyncHandleRead() {
+  // `redisAsyncHandleRead` is already thread-safe, so no lock here.
+  redisAsyncHandleRead(redis_async_context_);
+}
+
+void RedisAsyncContext::RedisAsyncHandleWrite() {
+  // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
+  // it.
+  std::lock_guard<std::mutex> lock(mutex_);
+  redisAsyncHandleWrite(redis_async_context_);
+}
+
 Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
                                             const char *format, ...) {
   va_list ap;
