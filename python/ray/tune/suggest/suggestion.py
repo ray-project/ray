@@ -7,10 +7,11 @@ import copy
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
+from ray.tune.util import merge_dicts
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
-from ray.tune.suggest.variant_generator import format_vars
+from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 
 
 class SuggestionAlgorithm(SearchAlgorithm):
@@ -33,12 +34,10 @@ class SuggestionAlgorithm(SearchAlgorithm):
 
     def __init__(self):
         """Constructs a generator given experiment specifications.
-
-        Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
         """
         self._parser = make_parser()
         self._trial_generator = []
+        self._counter = 0
         self._finished = False
 
     def add_configurations(self, experiments):
@@ -90,12 +89,16 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 else:
                     break
             spec = copy.deepcopy(experiment_spec)
-            spec["config"] = suggested_config
+            spec["config"] = merge_dicts(spec["config"], suggested_config)
+            flattened_config = resolve_nested_dict(spec["config"])
+            self._counter += 1
+            tag = "{0}_{1}".format(
+                str(self._counter), format_vars(flattened_config))
             yield create_trial_from_spec(
                 spec,
                 output_path,
                 self._parser,
-                experiment_tag=format_vars(spec["config"]),
+                experiment_tag=tag,
                 trial_id=trial_id)
 
     def is_finished(self):
@@ -131,6 +134,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
         self.stall = False
+        self.results = []
         super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
@@ -141,6 +145,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
 
     def on_trial_result(self, trial_id, result):
         self.counter["result"] += 1
+        self.results += [result]
 
     def on_trial_complete(self, trial_id, **kwargs):
         self.counter["complete"] += 1

@@ -1,0 +1,36 @@
+.outer-container {
+    display: -ms-flexbox;
+    display: flex;
+}
+.HomePage-experiment-list-container {
+    width: 10%;
+    min-width: 333px;
+}
+.experiment-view-container {
+    width: 80%;
+}
+.experiment-view-right {
+    width: 10%;
+}
+
+
+/* BEGIN css for when experiment list collapsed */
+.experiment-page-container {
+    width: 80%;
+    margin: 0 auto;
+}
+.collapsed-expander-container {
+    float: left;
+}
+
+.expander {
+    display: inline-block;
+    background-color: #082142d6;
+    color: #FFFFFF;
+    font-size: 16px;
+    line-height: 24px;
+    width: 24px;
+    height: 24px;
+    text-align: center;
+    vertical-align: bottom;
+}

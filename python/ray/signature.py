@@ -10,8 +10,8 @@ import logging
 from ray.utils import is_cython
 
 # Logger for this module. It should be configured at the entry point
-# into the program using Ray. Ray configures it by default automatically
-# using logging.basicConfig in its entry/init points.
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
 logger = logging.getLogger(__name__)
 
 FunctionSignature = namedtuple("FunctionSignature", [
@@ -105,7 +105,7 @@ def check_signature_supported(func, warn=False):
         message = ("The function {} has a **kwargs argument, which is "
                    "currently not supported.".format(function_name))
         if warn:
-            logger.warning(message)
+            logger.debug(message)
         else:
             raise Exception(message)
 
@@ -114,7 +114,7 @@ def check_signature_supported(func, warn=False):
                    "(defined after * or *args), which is currently "
                    "not supported.".format(function_name))
         if warn:
-            logger.warning(message)
+            logger.debug(message)
         else:
             raise Exception(message)
 

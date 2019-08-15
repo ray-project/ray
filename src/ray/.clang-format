@@ -1,5 +1,0 @@
-BasedOnStyle: Google
-ColumnLimit: 90
-DerivePointerAlignment: false
-IndentCaseLabels: false
-PointerAlignment: Right

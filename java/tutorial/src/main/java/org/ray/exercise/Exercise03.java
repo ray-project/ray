@@ -2,8 +2,7 @@ package org.ray.exercise;
 
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
-import org.ray.core.RayRuntime;
+import org.ray.api.annotation.RayRemote;
 
 /**
  * Call a remote function from within another remote function.
@@ -39,7 +38,7 @@ public class Exercise03 {
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {
-      RayRuntime.getInstance().cleanUp();
+      Ray.shutdown();
     }
   }
 }

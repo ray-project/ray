@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run_experiments, Experiment
+from ray.tune import Trainable, run, Experiment, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 
 
@@ -23,13 +23,13 @@ class MyTrainableClass(Trainable):
     maximum reward value reached.
     """
 
-    def _setup(self):
+    def _setup(self, config):
         self.timestep = 0
 
     def _train(self):
         self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
+        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
+        v *= self.config.get("height", 1)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
@@ -58,7 +58,8 @@ if __name__ == "__main__":
     # which is automatically filled by Tune.
     hyperband = HyperBandScheduler(
         time_attr="training_iteration",
-        reward_attr="episode_reward_mean",
+        metric="episode_reward_mean",
+        mode="max",
         max_t=100)
 
     exp = Experiment(
@@ -67,8 +68,8 @@ if __name__ == "__main__":
         num_samples=20,
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
-            "width": lambda spec: 10 + int(90 * random.random()),
-            "height": lambda spec: int(100 * random.random())
+            "width": sample_from(lambda spec: 10 + int(90 * random.random())),
+            "height": sample_from(lambda spec: int(100 * random.random()))
         })
 
-    run_experiments(exp, scheduler=hyperband)
+    run(exp, scheduler=hyperband)

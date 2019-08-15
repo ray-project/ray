@@ -87,14 +87,15 @@ setup_commands:
     # - sudo dpkg --configure -a
     # Install basics.
     - sudo apt-get update
-    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python
+    - sudo apt-get install -y build-essential curl unzip
     # Install Anaconda.
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
-    - pip install boto3==1.4.8 cython==0.27.3
+    - ray/ci/travis/install-bazel.sh
+    - pip install boto3==1.4.8 cython==0.29.0
     - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.

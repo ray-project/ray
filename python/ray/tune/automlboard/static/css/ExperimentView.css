@@ -1,0 +1,175 @@
+.ExperimentView input[type=checkbox] {
+    width: auto;
+}
+
+.ExperimentView th {
+    background-color: #fafafa;
+    color: #888888;
+    font-weight: 500;
+}
+
+.ExperimentView td, .ExperimentView th {
+    border-top: 1px solid #e2e2e2;
+    border-bottom: 1px solid #e2e2e2;
+}
+
+.ExperimentView th.top-row {
+    text-align: center;
+    border-bottom: none;
+    border-top: none;
+}
+
+.ExperimentView th.bottom-row {
+    text-align: left;
+    border-top: none;
+}
+
+.ExperimentView .left-border {
+    border-left: 1px solid #e2e2e2;
+}
+
+.ExperimentView-run-buttons .btn {
+    margin-left: 16px;
+}
+
+.ExperimentView-run-buttons .run-count {
+    font-size: 14px;
+    color: #888888;
+}
+
+.ExperimentView-evenRow {
+    background-color: #bbbbbb;
+}
+
+.ExperimentView-evenRow:hover {
+    background-color: #acacac;
+}
+
+.ExperimentView-oddRow:hover {
+    background-color: #e1e1e1;
+}
+
+.ExperimentView-downloadCsv {
+    float: right;
+}
+
+.ExperimentView-search-controls {
+    margin-top: 30px;
+}
+
+.ExperimentView-run-buttons{
+    margin-top: 30px;
+    margin-bottom: 30px;
+}
+
+.ExperimentView-paramKeyFilter, .ExperimentView-metricKeyFilter {
+    display: inline-block;
+    width: 100%;
+    min-width: 210px;
+    margin-top: 16px;
+}
+
+.ExperimentView-paramKeyFilter, .ExperimentView-metricKeyFilter, .ExperimentView-search {
+    padding-right: 16px;
+}
+
+.ExperimentView-search-buttons {
+    float: right;
+    width: 100px;
+}
+
+.ExperimentView-search-buttons .btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+.ExperimentView-search-inputs {
+    margin-right: 100px;
+}
+
+.ExperimentView-search-controls .filter-label {
+    width: 110px;
+    float: left;
+    margin-top: 6px;
+}
+
+.ExperimentView-search-controls .filter-wrapper {
+    margin-left: 110px;
+}
+
+.ExperimentView-search-controls input {
+    width: 100%;
+}
+
+.search-button {
+    margin-right: 30px;
+}
+
+div.error-message {
+    margin-left: 100px;
+    /*width: auto;*/
+}
+span.error-message {
+    color: red;
+}
+
+.metric-filler-bg {
+    position: relative;
+}
+
+.metric-filler-fg {
+    background-color: #def1ff;
+    position: absolute;
+    left: -3px;
+    top: -1px;
+    height: 22px;
+}
+
+.metric-text {
+    position: relative;
+}
+
+.fixed-table-container {
+    border: none;
+}
+
+.fixed-table-toolbar .btn-group .keep-open .btn-secondary {
+    color: #868e96;
+}
+
+.fixed-table-toolbar .btn-group .show .btn-secondary {
+    color: #fff;
+}
+
+.fixed-table-toolbar .btn-group .keep-open .btn-secondary:hover {
+    background-color: #9c948a;
+    color: #fff;
+}
+
+.fixed-table-container .fixed-table-body {
+    overflow-x: auto;
+    overflow-y: auto;
+    height: 50%;
+}
+
+.page-list .btn-group .btn-secondary {
+    color: #868e96;
+}
+
+.page-list .btn-group .btn-secondary:hover {
+    background-color: #9c948a;
+    color: #fff;
+}
+
+hr.divider {
+    -moz-border-bottom-colors: none;
+    -moz-border-image: none;
+    -moz-border-left-colors: none;
+    -moz-border-right-colors: none;
+    -moz-border-top-colors: none;
+    border-color: #EEEEEE -moz-use-text-color #FFFFFF;
+    border-style: solid none;
+    border-width: 1px 0;
+    margin: 18px 0;
+}

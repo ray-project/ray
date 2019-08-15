@@ -4,26 +4,23 @@ Using Ray with TensorFlow
 This document describes best practices for using Ray with TensorFlow.
 
 To see more involved examples using TensorFlow, take a look at
-`A3C`_, `ResNet`_, `Policy Gradients`_, and `LBFGS`_.
+`A3C`_, `ResNet`_, and `LBFGS`_.
 
 .. _`A3C`: http://ray.readthedocs.io/en/latest/example-a3c.html
 .. _`ResNet`: http://ray.readthedocs.io/en/latest/example-resnet.html
-.. _`Policy Gradients`: http://ray.readthedocs.io/en/latest/example-policy-gradient.html
 .. _`LBFGS`: http://ray.readthedocs.io/en/latest/example-lbfgs.html
 
 
 If you are training a deep network in the distributed setting, you may need to
-ship your deep network between processes (or machines). For example, you may
-update your model on one machine and then use that model to compute a gradient
-on another machine. However, shipping the model is not always straightforward.
+ship your deep network between processes (or machines). However, shipping the model is not always straightforward.
 
-For example, a straightforward attempt to pickle a TensorFlow graph gives mixed
+A straightforward attempt to pickle a TensorFlow graph gives mixed
 results. Some examples fail, and some succeed (but produce very large strings).
 The results are similar with other pickling libraries as well.
 
 Furthermore, creating a TensorFlow graph can take tens of seconds, and so
 serializing a graph and recreating it in another process will be inefficient.
-The better solution is to create the same TensorFlow graph on each worker once
+The better solution is to replicate the same TensorFlow graph on each worker once
 at the beginning and then to ship only the weights between the workers.
 
 Suppose we have a simple network definition (this one is modified from the
@@ -54,8 +51,8 @@ method.
 
 .. code-block:: python
 
-  import ray
-  variables = ray.experimental.TensorFlowVariables(loss, sess)
+  import ray.experimental.tf_utils
+  variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
 
 The ``TensorFlowVariables`` object provides methods for getting and setting the
 weights as well as collecting all of the variables in the model.
@@ -96,6 +93,7 @@ complex Python objects.
   import tensorflow as tf
   import numpy as np
   import ray
+  import ray.experimental.tf_utils
 
   ray.init()
 
@@ -123,7 +121,7 @@ complex Python objects.
           init = tf.global_variables_initializer()
           self.sess = tf.Session()
           # Additional code for setting and getting the weights
-          self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+          self.variables = ray.experimental.tf_utils.TensorFlowVariables(self.loss, self.sess)
           # Return all of the data needed to use the network.
           self.sess.run(init)
 
@@ -254,7 +252,7 @@ For reference, the full code is below:
           init = tf.global_variables_initializer()
           self.sess = tf.Session()
           # Additional code for setting and getting the weights
-          self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+          self.variables = ray.experimental.tf_utils.TensorFlowVariables(self.loss, self.sess)
           # Return all of the data needed to use the network.
           self.sess.run(init)
 
@@ -320,7 +318,7 @@ For reference, the full code is below:
       if iteration % 20 == 0:
           print("Iteration {}: weights are {}".format(iteration, weights))
 
-.. autoclass:: ray.experimental.TensorFlowVariables
+.. autoclass:: ray.experimental.tf_utils.TensorFlowVariables
    :members:
 
 Troubleshooting
@@ -346,7 +344,7 @@ class definiton ``Network`` with a ``TensorFlowVariables`` instance:
           sess = tf.Session()
           init = tf.global_variables_initializer()
           sess.run(init)
-          self.variables = ray.experimental.TensorFlowVariables(c, sess)
+          self.variables = ray.experimental.tf_utils.TensorFlowVariables(c, sess)
 
       def set_weights(self, weights):
           self.variables.set_weights(weights)

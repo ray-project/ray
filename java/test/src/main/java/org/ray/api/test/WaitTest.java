@@ -1,50 +1,78 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import java.util.ArrayList;
 import java.util.List;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
+import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
+import org.ray.api.annotation.RayRemote;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
-@RunWith(MyRunner.class)
-public class WaitTest {
+public class WaitTest extends BaseTest {
 
   @RayRemote
-  public static String hi() {
+  private static String hi() {
     return "hi";
   }
 
   @RayRemote
-  public static String delayHi() {
+  private static String delayedHi() {
     try {
       Thread.sleep(100 * 1000);
     } catch (Exception e) {
       e.printStackTrace();
     }
-
     return "hi";
   }
 
-  @Test
-  public void test() {
+  private static void testWait() {
+    // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
+    TestUtils.warmUpCluster();
+
     RayObject<String> obj1 = Ray.call(WaitTest::hi);
-    RayObject<String> obj2 = Ray.call(WaitTest::delayHi);
+    RayObject<String> obj2 = Ray.call(WaitTest::delayedHi);
 
-    List<RayObject<String>> waitfor = ImmutableList.of(obj1, obj2);
-    WaitResult<String> waitResult = Ray.wait(waitfor, 2, 2 * 1000);
-    List<RayObject<String>> readys = waitResult.getReadyOnes();
+    List<RayObject<String>> waitList = ImmutableList.of(obj1, obj2);
+    WaitResult<String> waitResult = Ray.wait(waitList, 2, 2 * 1000);
 
-    if (!readys.isEmpty()) {
-      Assert.assertEquals(1, waitResult.getReadyOnes().size());
-      Assert.assertEquals(1, waitResult.getRemainOnes().size());
-      Assert.assertEquals("hi", readys.get(0).get());
-    } else {
-      Assert.assertEquals(0, waitResult.getReadyOnes().size());
-      Assert.assertEquals(2, waitResult.getRemainOnes().size());
+    List<RayObject<String>> readyList = waitResult.getReady();
+
+    Assert.assertEquals(1, waitResult.getReady().size());
+    Assert.assertEquals(1, waitResult.getUnready().size());
+    Assert.assertEquals("hi", readyList.get(0).get());
+  }
+
+  @Test
+  public void testWaitInDriver() {
+    testWait();
+  }
+
+  @RayRemote
+  public static Object waitInWorker() {
+    testWait();
+    return null;
+  }
+
+  @Test
+  public void testWaitInWorker() {
+    RayObject<Object> res = Ray.call(WaitTest::waitInWorker);
+    res.get();
+  }
+
+  @Test
+  public void testWaitForEmpty() {
+    WaitResult<String> result = Ray.wait(new ArrayList<>());
+    Assert.assertTrue(result.getReady().isEmpty());
+    Assert.assertTrue(result.getUnready().isEmpty());
+
+    try {
+      Ray.wait(null);
+      Assert.fail();
+    } catch (NullPointerException e) {
+      Assert.assertTrue(true);
     }
   }
 

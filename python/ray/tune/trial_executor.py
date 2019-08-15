@@ -3,9 +3,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import traceback
+import logging
 
 from ray.tune.trial import Trial, Checkpoint
+
+logger = logging.getLogger(__name__)
 
 
 class TrialExecutor(object):
@@ -23,6 +25,41 @@ class TrialExecutor(object):
                 automatic scale-up.
         """
         self._queue_trials = queue_trials
+        self._cached_trial_state = {}
+
+    def set_status(self, trial, status):
+        """Sets status and checkpoints metadata if needed.
+
+        Only checkpoints metadata if trial status is a terminal condition.
+        PENDING, PAUSED, and RUNNING switches have checkpoints taken care of
+        in the TrialRunner.
+
+        Args:
+            trial (Trial): Trial to checkpoint.
+            status (Trial.status): Status to set trial to.
+        """
+        trial.status = status
+        if status in [Trial.TERMINATED, Trial.ERROR]:
+            self.try_checkpoint_metadata(trial)
+
+    def try_checkpoint_metadata(self, trial):
+        """Checkpoints metadata.
+
+        Args:
+            trial (Trial): Trial to checkpoint.
+        """
+        if trial._checkpoint.storage == Checkpoint.MEMORY:
+            logger.debug("Not saving data for trial w/ memory checkpoint.")
+            return
+        try:
+            logger.debug("Saving trial metadata.")
+            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
+        except Exception:
+            logger.exception("Error checkpointing trial metadata.")
+
+    def get_checkpoints(self):
+        """Returns a copy of mapping of the trial ID to pickled metadata."""
+        return self._cached_trial_state.copy()
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -30,12 +67,10 @@ class TrialExecutor(object):
                                   "has_resources() method")
 
     def start_trial(self, trial, checkpoint=None):
-        """Starts the trial restoring from checkpoint if checkpoint != None.
-
-        If an error is encountered when starting the trial, an exception will
-        be thrown.
+        """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
+            trial (Trial): Trial to be started.
             checkpoint(Checkpoint): A Python object or path storing the state
             of trial.
         """
@@ -57,25 +92,6 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
 
-    def restart_trial(self, trial, error_msg=None):
-        """Restarts the trial.
-
-        The state of the trial should restore from the last checkpoint.
-
-        Args:
-            error_msg (str): Optional error message.
-        """
-        try:
-            print("Attempting to recover trial state from last checkpoint")
-            self.stop_trial(
-                trial, error=True, error_msg=error_msg, stop_logger=False)
-            trial.result_logger.flush()
-            self.start_trial(trial)
-        except Exception:
-            error_msg = traceback.format_exc()
-            print("Error recovering trial from checkpoint, abort:", error_msg)
-            self.stop_trial(trial, error=True, error_msg=error_msg)
-
     def continue_training(self, trial):
         """Continues the training of this trial."""
         pass
@@ -90,21 +106,36 @@ class TrialExecutor(object):
         try:
             self.save(trial, Checkpoint.MEMORY)
             self.stop_trial(trial, stop_logger=False)
-            trial.status = Trial.PAUSED
+            self.set_status(trial, Trial.PAUSED)
         except Exception:
-            print("Error pausing runner:", traceback.format_exc())
-            trial.status = Trial.ERROR
+            logger.exception("Error pausing runner.")
+            self.set_status(trial, Trial.ERROR)
 
     def unpause_trial(self, trial):
         """Sets PAUSED trial to pending to allow scheduler to start."""
         assert trial.status == Trial.PAUSED, trial.status
-        trial.status = Trial.PENDING
+        self.set_status(trial, Trial.PENDING)
 
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
 
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
+
+    def reset_trial(self, trial, new_config, new_experiment_tag):
+        """Tries to invoke `Trainable.reset_config()` to reset trial.
+
+        Args:
+            trial (Trial): Trial to be reset.
+            new_config (dict): New configuration for Trial
+                trainable.
+            new_experiment_tag (str): New experiment name
+                for trial.
+
+        Returns:
+            True if `reset_config` is successful else False.
+        """
+        raise NotImplementedError
 
     def get_running_trials(self):
         """Returns all running trials."""
@@ -119,21 +150,31 @@ class TrialExecutor(object):
         """A hook called after running one step of the trial event loop."""
         pass
 
-    def fetch_one_result(self):
-        """Fetches one result from running trials.
+    def get_next_available_trial(self):
+        """Blocking call that waits until one result is ready.
 
-        It's a blocking call waits until one result is ready.
+        Returns:
+            Trial object that is ready for intermediate processing.
+        """
+        raise NotImplementedError
+
+    def fetch_result(self, trial):
+        """Fetches one result for the trial.
+
+        Assumes the trial is running.
 
         Return:
-            A tuple of (trial, result). If fetch result failed,
-            return (trial, None) other than raise Exception.
+            Result object for the trial.
         """
-        raise NotImplementedError("Subclasses of TrialExecutor must provide "
-                                  "fetch_one_result() method")
+        raise NotImplementedError
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
-        pass
+        raise NotImplementedError
+
+    def resource_string(self):
+        """Returns a string describing the total resources available."""
+        raise NotImplementedError
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.
@@ -164,3 +205,15 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "save() method")
+
+    def export_trial_if_needed(self, trial):
+        """Exports model of this trial based on trial.export_formats.
+
+        Args:
+            trial (Trial): The state of this trial to be saved.
+
+        Return:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        raise NotImplementedError("Subclasses of TrialExecutor must provide "
+                                  "export_trial_if_needed() method")

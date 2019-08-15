@@ -1,152 +1,120 @@
 package org.ray.api.test;
 
-import java.util.ArrayList;
-import java.util.List;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import com.google.common.collect.ImmutableList;
+import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
-import org.ray.api.UniqueID;
+import org.ray.api.TestUtils;
+import org.ray.api.annotation.RayRemote;
+import org.ray.api.exception.UnreconstructableException;
+import org.ray.api.id.UniqueId;
+import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayActorImpl;
+import org.ray.runtime.objectstore.NativeRayObject;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
-@RunWith(MyRunner.class)
-public class ActorTest {
+public class ActorTest extends BaseTest {
 
   @RayRemote
-  public static Integer sayWorld(Integer n, RayActor<ActorTest.Adder> adder) {
-    RayObject<Integer> result = Ray.call(ActorTest.Adder::add, adder, 1);
-    return result.get() + n;
+  public static class Counter {
+
+    private int value;
+
+    public Counter(int initValue) {
+      this.value = initValue;
+    }
+
+    public int getValue() {
+      return value;
+    }
+
+    public int increase(int delta) {
+      value += delta;
+      return value;
+    }
   }
 
   @Test
-  public void test() {
-
-    RayActor<ActorTest.Adder> adder = Ray.create(ActorTest.Adder.class);
-    Ray.call(Adder::set, adder, 10);
-    RayObject<Integer> result = Ray.call(Adder::add, adder, 1);
-    Assert.assertEquals(11, (int) result.get());
-
-    RayActor<Adder> secondAdder = Ray.create(Adder.class);
-    RayObject<Integer> result2 = Ray.call(Adder::add, secondAdder, 1);
-    Assert.assertEquals(1, (int) result2.get());
-
-    RayObject<Integer> result3 = Ray.call(Adder::add2, 1);
-    Assert.assertEquals(2, (int) result3.get());
-
-    RayObject<Integer> result4 = Ray.call(ActorTest::sayWorld, 2, adder);
-    Assert.assertEquals(14, (int) result4.get());
-
-    RayActor<Adder2> adder2 = Ray.create(Adder2.class);
-    Ray.call(Adder2::setAdder, adder2, adder);
-    RayObject<Integer> result5 = Ray.call(Adder2::increase, adder2);
-    Assert.assertEquals(1, (int) result5.get());
-
-    List list = new ArrayList<>();
-    list.add(adder);
-    Ray.call(Adder2::setAdderList, adder2, list);
-
-    RayObject<Integer> result7 = Ray.call(Adder2::testActorList, adder2);
-    Assert.assertEquals(14, (int) result7.get());
-
-    List tempList = new ArrayList<>();
-    tempList.add(result);
-    Ray.call(Adder::setObjectList, adder, tempList);
-    RayObject<Integer> result8 = Ray.call(Adder::testObjectList, adder);
-    Assert.assertEquals(11, (int) result8.get());
+  public void testCreateAndCallActor() {
+    // Test creating an actor from a constructor
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // Test calling an actor
+    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
+    Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());
   }
 
   @RayRemote
-  public static class Adder {
+  public static Counter factory(int initValue) {
+    return new Counter(initValue);
+  }
 
-    private List<RayObject<Integer>> objectList;
-    private Integer sum = 0;
-
-    public static Integer add2(Integer n) {
-      return n + 1;
-    }
-
-    public Integer set(Integer n) {
-      sum = n;
-      return sum;
-    }
-
-    public Integer increase() {
-      return (++sum);
-    }
-
-    public Integer add(Integer n) {
-      return (sum += n);
-    }
-
-    public Integer setObjectList(List<RayObject<Integer>> objectList) {
-      this.objectList = objectList;
-      return 1;
-    }
-
-    public Integer testObjectList() {
-      return ((RayObject<Integer>) objectList.get(0)).get();
-    }
+  @Test
+  public void testCreateActorFromFactory() {
+    // Test creating an actor from a factory method
+    RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
+    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // Test calling an actor
+    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
   }
 
   @RayRemote
-  public static class Adder2 {
+  public static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
+    RayObject<Integer> res = Ray.call(Counter::increase, actor, delta);
+    return res.get();
+  }
 
-    private RayActor<Adder> adder;
+  @RayRemote
+  public static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
+    RayObject<Integer> res = Ray.call(Counter::increase, actor, delta);
+    return res.get();
+  }
 
-    private List<RayActor<Adder>> adderList;
+  @Test
+  public void testPassActorAsParameter() {
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
+    Assert.assertEquals(Integer.valueOf(1),
+        Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());
+    Assert.assertEquals(Integer.valueOf(11),
+        Ray.call(ActorTest::testActorAsSecondParameter, 10, actor).get());
+  }
 
-    private UniqueID id;
-    private Integer sum = 0;
+  @Test
+  public void testForkingActorHandle() {
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
+    RayActor<Counter> counter2 = ((RayActorImpl<Counter>) counter).fork();
+    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
+  }
 
-    public static Integer add2(Adder a, Integer n) {
-      return n + 1;
+  @Test
+  public void testUnreconstructableActorObject() throws InterruptedException {
+    TestUtils.skipTestUnderSingleProcess();
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    // Call an actor method.
+    RayObject value = Ray.call(Counter::getValue, counter);
+    Assert.assertEquals(100, value.get());
+    // Delete the object from the object store.
+    Ray.internal().free(ImmutableList.of(value.getId()), false, false);
+    // Wait until the object is deleted, because the above free operation is async.
+    while (true) {
+      NativeRayObject result = ((AbstractRayRuntime)
+          Ray.internal()).getObjectStoreProxy().getObjectInterface()
+          .get(ImmutableList.of(value.getId()), 0).get(0);
+      if (result == null) {
+        break;
+      }
+      TimeUnit.MILLISECONDS.sleep(100);
     }
 
-    public Integer set(Integer n) {
-      sum = n;
-      return sum;
-    }
-
-    public Integer increase() {
-      RayObject<Integer> result = Ray.call(Adder::increase, adder);
-      Assert.assertEquals(13, (int) result.get());
-      return (++sum);
-    }
-
-    public Integer testActorList() {
-      RayActor<Adder> temp = adderList.get(0);
-      RayObject<Integer> result = Ray.call(Adder::increase, temp);
-      return result.get();
-    }
-
-    public Integer add(Integer n) {
-      return (sum += n);
-    }
-
-    public RayActor<Adder> getAdder() {
-      return adder;
-    }
-
-    public Integer setAdder(RayActor<Adder> adder) {
-      this.adder = adder;
-      return 0;
-    }
-
-    public UniqueID getId() {
-      return id;
-    }
-
-    public Integer setId(UniqueID id) {
-      this.id = id;
-      adder = new RayActor<>(id);
-      return 0;
-    }
-
-    public Integer setAdderList(List<RayActor<Adder>> adderList) {
-      this.adderList = adderList;
-      return 0;
+    try {
+      // Try getting the object again, this should throw an UnreconstructableException.
+      value.get();
+      Assert.fail("This line should not be reachable.");
+    } catch (UnreconstructableException e) {
+      Assert.assertEquals(value.getId(), e.objectId);
     }
   }
 }

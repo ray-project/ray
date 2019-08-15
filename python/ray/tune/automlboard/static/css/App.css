@@ -1,0 +1,158 @@
+body {
+    font-size: 14px;
+}
+
+input[type=text], textarea {
+    font-size: 14px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
+}
+
+::-webkit-input-placeholder {
+    opacity: 0.6;
+}
+
+:-ms-input-placeholder {
+    opacity: 0.6;
+}
+
+::-ms-input-placeholder {
+    opacity: 0.6;
+}
+
+::placeholder {
+    opacity: 0.6;
+}
+
+button, .btn {
+    font-size: 14px;
+    background-color: #f5f5f5;
+    border-color: #cccccc;
+}
+
+button:hover, .btn:hover {
+    border-color: #c0c0c0;
+}
+
+a {
+    color: #017fcb;
+}
+
+a:hover, a:focus {
+    color: #015693;
+}
+
+.btn-primary {
+    background-color: #0193e1;
+    border-color: #0193e1;
+}
+
+.btn-primary:hover {
+    background-color: #017fcb;
+    border-color: #017fcb;
+}
+
+.btn-primary[disabled], .btn-primary[disabled]:hover {
+    background-color: #0193e1;
+    border-color: #0193e1;
+    opacity: 0.4;
+}
+
+.App-header {
+    background-color: #082142;
+    height: 60px;
+    color: white;
+    display: block;
+}
+
+.App-header-text {
+    position: relative;
+    top: 40%;
+}
+
+.App-experiments {
+    width: 200px;
+}
+
+.App-content {
+    width: 80%;
+    margin-right: auto;
+    margin-left: auto;
+}
+
+div.mlflow-logo {
+    display: inline-block;
+}
+
+img.mlflow-logo {
+    height: 40px;
+    margin-left: 64px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+div.github {
+    display: inline-block;
+    padding-right: 24px;
+    color: #ffffff;
+}
+
+div.docs {
+    display: inline-block;
+    color: #ffffff;
+}
+
+div.header-links {
+    display: inline-block;
+    float: right;
+    padding-top: 21px;
+    padding-right: 10%;
+    font-size: 16px;
+}
+
+h1 {
+    margin-top: 32px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: normal;
+    color: #333;
+}
+
+label {
+    font-size: 14px;
+    font-weight: normal;
+    color: #333;
+    margin: 0;
+}
+
+div.metadata {
+    margin-top: 32px;
+}
+
+span.metadata {
+    font-size: 16px;
+    font-weight: normal;
+    white-space: nowrap;
+    margin-right: 100px;
+}
+
+span.metadata-header {
+    font-size: 16px;
+    font-weight: normal;
+    color: #888;
+    margin-right: 4px;
+}
+
+table th {
+    background-color: #fafafa;
+    color: #888888;
+    font-weight: 500;
+}

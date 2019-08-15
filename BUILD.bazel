@@ -1,0 +1,896 @@
+# Bazel build
+# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@//bazel:ray.bzl", "flatbuffer_py_library")
+load("@//bazel:cython_library.bzl", "pyx_library")
+
+COPTS = ["-DRAY_USE_GLOG"]
+
+# === Begin of protobuf definitions ===
+
+proto_library(
+    name = "common_proto",
+    srcs = ["src/ray/protobuf/common.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "common_cc_proto",
+    deps = [":common_proto"],
+)
+
+python_proto_compile(
+    name = "common_py_proto",
+    deps = [":common_proto"],
+)
+
+proto_library(
+    name = "gcs_proto",
+    srcs = ["src/ray/protobuf/gcs.proto"],
+    visibility = ["//java:__subpackages__"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "gcs_cc_proto",
+    deps = [":gcs_proto"],
+)
+
+python_proto_compile(
+    name = "gcs_py_proto",
+    deps = [":gcs_proto"],
+)
+
+proto_library(
+    name = "node_manager_proto",
+    srcs = ["src/ray/protobuf/node_manager.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "node_manager_cc_proto",
+    deps = [":node_manager_proto"],
+)
+
+proto_library(
+    name = "object_manager_proto",
+    srcs = ["src/ray/protobuf/object_manager.proto"],
+)
+
+cc_proto_library(
+    name = "object_manager_cc_proto",
+    deps = [":object_manager_proto"],
+)
+
+proto_library(
+    name = "raylet_proto",
+    srcs = ["src/ray/protobuf/raylet.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "raylet_cc_proto",
+    deps = [":raylet_proto"],
+)
+
+proto_library(
+    name = "worker_proto",
+    srcs = ["src/ray/protobuf/worker.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "worker_cc_proto",
+    deps = ["worker_proto"],
+)
+
+proto_library(
+    name = "core_worker_proto",
+    srcs = ["src/ray/protobuf/core_worker.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "core_worker_cc_proto",
+    deps = ["core_worker_proto"],
+)
+
+proto_library(
+    name = "direct_actor_proto",
+    srcs = ["src/ray/protobuf/direct_actor.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "direct_actor_cc_proto",
+    deps = ["direct_actor_proto"],
+)
+
+# === End of protobuf definitions ===
+
+# === Begin of rpc definitions ===
+
+# GRPC common lib.
+cc_library(
+    name = "grpc_common_lib",
+    srcs = glob([
+        "src/ray/rpc/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+# Node manager gRPC lib.
+cc_grpc_library(
+    name = "node_manager_cc_grpc",
+    srcs = [":node_manager_proto"],
+    grpc_only = True,
+    deps = [":node_manager_cc_proto"],
+)
+
+# Node manager server and client.
+cc_library(
+    name = "node_manager_rpc",
+    hdrs = glob([
+        "src/ray/rpc/node_manager/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":node_manager_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Object manager gRPC lib.
+cc_grpc_library(
+    name = "object_manager_cc_grpc",
+    srcs = [":object_manager_proto"],
+    grpc_only = True,
+    deps = [":object_manager_cc_proto"],
+)
+
+# Object manager rpc server and client.
+cc_library(
+    name = "object_manager_rpc",
+    hdrs = glob([
+        "src/ray/rpc/object_manager/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":object_manager_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Raylet gRPC lib.
+cc_grpc_library(
+    name = "raylet_cc_grpc",
+    srcs = [":raylet_proto"],
+    grpc_only = True,
+    deps = [":raylet_cc_proto"],
+)
+
+# Raylet rpc server and client.
+cc_library(
+    name = "raylet_rpc",
+    srcs = glob([
+        "src/ray/rpc/raylet/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/raylet/*.h",
+        "src/ray/raylet/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":raylet_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Worker gRPC lib.
+cc_grpc_library(
+    name = "worker_cc_grpc",
+    srcs = [":worker_proto"],
+    grpc_only = True,
+    deps = [":worker_cc_proto"],
+)
+
+# direct actor gRPC lib.
+cc_grpc_library(
+    name = "direct_actor_cc_grpc",
+    srcs = [":direct_actor_proto"],
+    grpc_only = True,
+    deps = [":direct_actor_cc_proto"],
+)
+
+# worker server and client.
+cc_library(
+    name = "worker_rpc",
+    hdrs = glob([
+        "src/ray/rpc/worker/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        "direct_actor_cc_grpc",
+        ":grpc_common_lib",
+        ":ray_common",
+        ":worker_cc_grpc",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# === End of rpc definitions ===
+
+cc_library(
+    name = "ray_common",
+    srcs = glob(
+        [
+            "src/ray/common/**/*.cc",
+        ],
+        exclude = [
+            "src/ray/common/**/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/common/**/*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":common_cc_proto",
+        ":ray_util",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+        "@plasma//:plasma_client",
+    ],
+)
+
+cc_test(
+    name = "common_test",
+    srcs = glob(["src/ray/common/**/*_test.cc"]),
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "raylet",
+    srcs = ["src/ray/raylet/main.cc"],
+    copts = COPTS,
+    visibility = ["//java:__subpackages__"],
+    deps = [
+        ":ray_util",
+        ":raylet_lib",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+)
+
+cc_binary(
+    name = "raylet_monitor",
+    srcs = [
+        "src/ray/raylet/monitor.cc",
+        "src/ray/raylet/monitor.h",
+        "src/ray/raylet/monitor_main.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":ray_util",
+    ],
+)
+
+cc_library(
+    name = "stats_lib",
+    srcs = glob(
+        [
+            "src/ray/stats/*.cc",
+        ],
+        exclude = [
+            "src/ray/stats/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/stats/*.h",
+        ],
+    ),
+    copts = COPTS,
+    includes = [
+        "src",
+    ],
+    linkopts = ["-pthread"],
+    deps = [
+        ":ray_util",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+cc_library(
+    name = "raylet_lib",
+    srcs = glob(
+        [
+            "src/ray/raylet/*.cc",
+        ],
+        exclude = [
+            "src/ray/raylet/mock_gcs_client.cc",
+            "src/ray/raylet/monitor_main.cc",
+            "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/main.cc",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/raylet/*.h",
+    ]),
+    copts = COPTS,
+    linkopts = ["-pthread"],
+    deps = [
+        ":common_cc_proto",
+        ":gcs",
+        ":node_manager_rpc",
+        ":object_manager",
+        ":ray_common",
+        ":ray_util",
+        ":raylet_rpc",
+        ":stats_lib",
+        ":worker_rpc",
+        "@boost//:asio",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+        "@plasma//:plasma_client",
+    ],
+)
+
+cc_library(
+    name = "core_worker_lib",
+    srcs = glob(
+        [
+            "src/ray/core_worker/*.cc",
+            "src/ray/core_worker/store_provider/*.cc",
+            "src/ray/core_worker/store_provider/memory_store/*.cc",
+            "src/ray/core_worker/transport/*.cc",
+        ],
+        exclude = [
+            "src/ray/core_worker/*_test.cc",
+            "src/ray/core_worker/mock_worker.cc",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/core_worker/*.h",
+        "src/ray/core_worker/store_provider/*.h",
+        "src/ray/core_worker/store_provider/memory_store/*.h",
+        "src/ray/core_worker/transport/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":core_worker_cc_proto",
+        ":ray_common",
+        ":ray_util",
+        # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
+        # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
+        ":raylet_lib",
+        ":worker_rpc",
+        ":gcs",
+    ],
+)
+
+cc_library(
+    name = "mock_worker_lib",
+    srcs = ["src/ray/core_worker/test/mock_worker.cc"],
+    hdrs = glob([
+        "src/ray/core_worker/test/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+    ],
+)
+
+cc_binary(
+    name = "mock_worker",
+    copts = COPTS,
+    deps = [
+        ":mock_worker_lib",
+    ],
+)
+
+cc_library(
+    name = "core_worker_test_lib",
+    srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
+    hdrs = glob([
+        "src/ray/core_worker/test/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "core_worker_test",
+    copts = COPTS,
+    deps = [
+        ":core_worker_test_lib",
+    ],
+)
+
+cc_test(
+    name = "lineage_cache_test",
+    srcs = ["src/ray/raylet/lineage_cache_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reconstruction_policy_test",
+    srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":object_manager",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "worker_pool_test",
+    srcs = ["src/ray/raylet/worker_pool_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "id_test",
+    srcs = ["src/ray/common/id_test.cc"],
+    copts = COPTS,
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "logging_test",
+    srcs = ["src/ray/util/logging_test.cc"],
+    args = ["--gtest_filter=PrintLogTest*"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_dependency_manager_test",
+    srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "client_connection_test",
+    srcs = ["src/ray/raylet/client_connection_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "signal_test",
+    srcs = ["src/ray/util/signal_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stats_test",
+    srcs = ["src/ray/stats/stats_test.cc"],
+    deps = [
+        ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "object_manager",
+    srcs = glob([
+        "src/ray/object_manager/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/object_manager/*.h",
+    ]),
+    copts = COPTS,
+    includes = [
+        "src",
+    ],
+    deps = [
+        ":gcs",
+        ":object_manager_fbs",
+        ":object_manager_rpc",
+        ":ray_common",
+        ":ray_util",
+        "@boost//:asio",
+        "@plasma//:plasma_client",
+    ],
+)
+
+cc_binary(
+    name = "object_manager_test",
+    testonly = 1,
+    srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "object_manager_stress_test",
+    testonly = 1,
+    srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "ray_util",
+    srcs = glob(
+        [
+            "src/ray/util/*.cc",
+        ],
+        exclude = [
+            "src/ray/util/*_test.cc",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/util/*.h",
+    ]),
+    copts = COPTS,
+    includes = [
+        "src",
+    ],
+    deps = [
+        ":sha256",
+        "@com_github_google_glog//:glog",
+        "@plasma//:plasma_client",
+    ],
+)
+
+cc_library(
+    name = "sha256",
+    srcs = [
+        "src/ray/thirdparty/sha256.c",
+    ],
+    hdrs = [
+        "src/ray/thirdparty/sha256.h",
+    ],
+    includes = ["src/ray/thirdparty"],
+)
+
+cc_library(
+    name = "hiredis",
+    srcs = glob(
+        [
+            "src/ray/thirdparty/ae/ae.c",
+            "src/ray/thirdparty/hiredis/*.c",
+        ],
+        exclude = [
+            "src/ray/thirdparty/hiredis/test.c",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/thirdparty/ae/*.h",
+        "src/ray/thirdparty/hiredis/*.h",
+        "src/ray/thirdparty/hiredis/adapters/*.h",
+        "src/ray/thirdparty/hiredis/dict.c",
+        "src/ray/thirdparty/ae/ae_kqueue.c",
+        "src/ray/thirdparty/ae/ae_epoll.c",
+    ]),
+    includes = [
+        "src/ray/thirdparty/ae",
+        "src/ray/thirdparty/hiredis",
+    ],
+)
+
+cc_library(
+    name = "gcs",
+    srcs = glob(
+        [
+            "src/ray/gcs/*.cc",
+        ],
+        exclude = [
+            "src/ray/gcs/*_test.cc",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/gcs/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":gcs_cc_proto",
+        ":hiredis",
+        ":node_manager_rpc",
+        ":ray_common",
+        ":ray_util",
+        ":stats_lib",
+        "@boost//:asio",
+    ],
+)
+
+cc_binary(
+    name = "redis_gcs_client_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/redis_gcs_client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "actor_state_accessor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "asio_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/asio_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
+
+flatbuffer_cc_library(
+    name = "common_fbs",
+    srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/ray/common/",
+)
+
+flatbuffer_cc_library(
+    name = "object_manager_fbs",
+    srcs = ["src/ray/object_manager/format/object_manager.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/ray/object_manager/format/",
+)
+
+pyx_library(
+    name = "_raylet",
+    srcs = glob([
+        "python/ray/__init__.py",
+        "python/ray/_raylet.pyx",
+        "python/ray/includes/*.pxd",
+        "python/ray/includes/*.pxi",
+    ]),
+    deps = ["//:raylet_lib"],
+)
+
+cc_binary(
+    name = "libcore_worker_library_java.so",
+    srcs = glob([
+        "src/ray/core_worker/lib/java/*.h",
+        "src/ray/core_worker/lib/java/*.cc",
+        "src/ray/raylet/lib/java/*.h",
+        "src/ray/raylet/lib/java/*.cc",
+    ]) + [
+        "@bazel_tools//tools/jdk:jni_header",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    includes = [
+        "src",
+        "external/bazel_tools/tools/jdk/include",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": ["external/bazel_tools/tools/jdk/include/windows"],
+        "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
+        "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        "//:core_worker_lib",
+    ],
+)
+
+genrule(
+    name = "core_worker-jni-darwin-compat",
+    srcs = [":libcore_worker_library_java.so"],
+    outs = ["libcore_worker_library_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "core_worker_library_java",
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":libcore_worker_library_java.dylib"],
+        "//conditions:default": [":libcore_worker_library_java.so"],
+    }),
+    visibility = ["//java:__subpackages__"],
+)
+
+filegroup(
+    name = "python_sources",
+    srcs = glob([
+        "python/ray/*.py",
+        "python/ray/autoscaler/*.py",
+        "python/ray/autoscaler/aws/example-full.yaml",
+        "python/ray/autoscaler/gcp/example-full.yaml",
+        "python/ray/autoscaler/local/example-full.yaml",
+        "python/ray/cloudpickle/*.py",
+        "python/ray/core/__init__.py",
+        "python/ray/core/generated/__init__.py",
+        "python/ray/core/generated/ray/__init__.py",
+        "python/ray/core/generated/ray/protocol/__init__.py",
+        "python/ray/dashboard/dashboard.py",
+        "python/ray/dashboard/index.html",
+        "python/ray/dashboard/res/main.css",
+        "python/ray/dashboard/res/main.js",
+        "python/ray/experimental/*.py",
+        "python/ray/internal/*.py",
+        "python/ray/projects/*.py",
+        "python/ray/projects/schema.json",
+        "python/ray/workers/default_worker.py",
+    ]),
+)
+
+genrule(
+    name = "redis",
+    outs = [
+        "redis-server",
+        "redis-cli",
+    ],
+    cmd = """
+        set -x &&
+        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
+        make &&
+        mv ./src/redis-server $(location redis-server) &&
+        chmod +x $(location redis-server) &&
+        mv ./src/redis-cli $(location redis-cli) &&
+        chmod +x $(location redis-cli)
+    """,
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_binary(
+    name = "libray_redis_module.so",
+    srcs = [
+        "src/ray/gcs/redis_module/ray_redis_module.cc",
+        "src/ray/gcs/redis_module/redis_string.h",
+        "src/ray/gcs/redis_module/redismodule.h",
+    ],
+    copts = COPTS,
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//java:__subpackages__"],
+    deps = [
+        ":gcs_cc_proto",
+        ":ray_common",
+    ],
+)
+
+filegroup(
+    name = "all_py_proto",
+    srcs = [
+        "common_py_proto",
+        "gcs_py_proto",
+    ],
+)
+
+genrule(
+    name = "ray_pkg",
+    srcs = [
+        "python/ray/_raylet.so",
+        "//:python_sources",
+        "//:all_py_proto",
+        "//:redis-server",
+        "//:redis-cli",
+        "//:libray_redis_module.so",
+        "//:raylet",
+        "//:raylet_monitor",
+        "@plasma//:plasma_store_server",
+    ],
+    outs = ["ray_pkg.out"],
+    cmd = """
+        set -x &&
+        WORK_DIR=$$(pwd) &&
+        cp -f $(location python/ray/_raylet.so) $$WORK_DIR/python/ray &&
+        mkdir -p $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
+        cp -f $(location //:redis-server) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
+        cp -f $(location //:redis-cli) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
+        mkdir -p $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
+        cp -f $(locations //:libray_redis_module.so) $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
+        cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
+        cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
+        cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
+        mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
+        for f in $(locations //:all_py_proto); do
+            cp -f $$f $$WORK_DIR/python/ray/core/generated/;
+        done &&
+        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
+        # command to change the import path in the generated file.
+        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/gcs_pb2.py &&
+        echo $$WORK_DIR > $@
+    """,
+    local = 1,
+)

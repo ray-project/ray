@@ -28,47 +28,6 @@ fi
 unamestr="$(uname)"
 
 ##############################################
-# boost
+# modin
 ##############################################
-bash "$TP_SCRIPT_DIR/build_boost.sh"
-
-##############################################
-# redis
-##############################################
-bash "$TP_SCRIPT_DIR/build_redis.sh"
-
-##############################################
-# credis
-##############################################
-bash "$TP_SCRIPT_DIR/build_credis.sh"
-
-##############################################
-# flatbuffers if necessary
-##############################################
-if [[ "$unamestr" == "Linux" ]]; then
-  echo "building flatbuffers"
-  bash "$TP_SCRIPT_DIR/build_flatbuffers.sh"
-fi
-
-##############################################
-# arrow
-##############################################
-RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
-RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
-bash "$TP_SCRIPT_DIR/build_arrow.sh" $PYTHON_EXECUTABLE
-
-##############################################
-# parquet (skipped as it is inlined in build_arrow.sh)
-##############################################
-# bash "$TP_SCRIPT_DIR/build_parquet.sh"
-
-##############################################
-# catapult
-##############################################
-# Clone catapult and build the static HTML needed for the UI.
-bash "$TP_SCRIPT_DIR/build_ui.sh"
-
-##############################################
-# rDSN (optional)
-##############################################
-# bash "$TP_SCRIPT_DIR/build_rdsn.sh"
+bash "$TP_SCRIPT_DIR/build_modin.sh" $PYTHON_EXECUTABLE

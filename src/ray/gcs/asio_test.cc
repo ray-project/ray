@@ -4,21 +4,12 @@
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 
+extern "C" {
+#include "ray/thirdparty/hiredis/async.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
+}
+
 boost::asio::io_service io_service;
-
-// For this test to work, you need to have a redis-server in your PATH
-
-class TestRedisAsioClient : public ::testing::Test {
- public:
-  TestRedisAsioClient() {
-    int r = system("redis-server > /dev/null & sleep 1");
-    RAY_LOG(INFO) << "TestRedisAsioClient: redis-server status code was " << r;
-  }
-  ~TestRedisAsioClient() {
-    int r = system("redis-cli -c shutdown");
-    RAY_LOG(INFO) << "TestRedisAsioClient: redis-cli status code was " << r;
-  }
-};
 
 void ConnectCallback(const redisAsyncContext *c, int status) {
   ASSERT_EQ(status, REDIS_OK);
@@ -36,7 +27,7 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   io_service.stop();
 }
 
-TEST_F(TestRedisAsioClient, TestRedisCommands) {
+TEST(RedisAsioTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", 6379);
   ASSERT_TRUE(ac->err == 0);
 

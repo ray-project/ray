@@ -1,0 +1,8 @@
+cartpole-pg:
+    env: CartPole-v0
+    run: PG
+    stop:
+        episode_reward_mean: 100
+        timesteps_total: 100000
+    config:
+        num_workers: 0

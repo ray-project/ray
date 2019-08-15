@@ -1,17 +1,15 @@
 package org.ray.api.test;
 
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.RayRemote;
+import org.ray.api.annotation.RayRemote;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 /**
  * Hello world.
  */
-@RunWith(MyRunner.class)
-public class HelloWorldTest {
+public class HelloWorldTest extends BaseTest {
 
   @RayRemote
   private static String hello() {
@@ -35,4 +33,5 @@ public class HelloWorldTest {
     String helloWorld = Ray.call(HelloWorldTest::merge, hello, world).get();
     Assert.assertEquals("hello,world!", helloWorld);
   }
+
 }

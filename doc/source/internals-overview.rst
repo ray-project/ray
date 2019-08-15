@@ -1,8 +1,7 @@
 An Overview of the Internals
 ============================
 
-In this document, we trace through in more detail what happens at the system
-level when certain API calls are made.
+In this document, we overview the internal architecture of Ray.
 
 Connecting to Ray
 -----------------
@@ -15,8 +14,8 @@ Running Ray standalone
 
 Ray can be used standalone by calling ``ray.init()`` within a script. When the
 call to ``ray.init()`` happens, all of the relevant processes are started.
-These include a local scheduler, a global scheduler, an object store and
-manager, a Redis server, and a number of worker processes.
+These include a raylet, an object store and manager, a Redis server,
+and a number of worker processes.
 
 When the script exits, these processes will be killed.
 
@@ -31,6 +30,28 @@ this case, no new processes will be started when ``ray.init`` is called, and
 similarly the processes will continue running when the script exits. In this
 case, all processes except workers that correspond to actors are shared between
 different driver processes.
+
+
+Ray Processes
+-------------
+
+When using Ray, several processes are involved.
+
+- Multiple **worker** processes execute tasks and store results in object
+  stores. Each worker is a separate process.
+- One **object store** per node stores immutable objects in shared memory and
+  allows workers to efficiently share objects on the same node with minimal
+  copying and deserialization.
+- One **raylet** per node assigns tasks to workers on the same node.
+- A **driver** is the Python process that the user controls. For example, if the
+  user is running a script or using a Python shell, then the driver is the Python
+  process that runs the script or the shell. A driver is similar to a worker in
+  that it can submit tasks to its raylet and get objects from the object
+  store, but it is different in that the raylet will not assign tasks to
+  the driver to be executed.
+- A **Redis server** maintains much of the system's state. For example, it keeps
+  track of which objects live on which machines and of the task specifications
+  (but not data). It can also be queried directly for debugging purposes.
 
 Defining a remote function
 --------------------------
@@ -54,43 +75,12 @@ Now, consider a remote function definition as below.
       return x + 1
 
 When the remote function is defined as above, the function is immediately
-pickled, assigned a unique ID, and stored in a Redis server. You can view the
-remote functions in the centralized control plane as below.
-
-.. code-block:: python
-
-  TODO: Fill this in.
+pickled, assigned a unique ID, and stored in a Redis server.
 
 Each worker process has a separate thread running in the background that
 listens for the addition of remote functions to the centralized control state.
 When a new remote function is added, the thread fetches the pickled remote
 function, unpickles it, and can then execute that function.
-
-Notes and limitations
-~~~~~~~~~~~~~~~~~~~~~
-
-- Because we export remote functions as soon as they are defined, that means
-  that remote functions can't close over variables that are defined after the
-  remote function is defined. For example, the following code gives an error.
-
-  .. code-block:: python
-
-    @ray.remote
-    def f(x):
-        return helper(x)
-
-    def helper(x):
-        return x + 1
-
-  If you call ``f.remote(0)``, it will give an error of the form.
-
-  .. code-block:: python
-
-    Traceback (most recent call last):
-        File "<ipython-input-3-12a5beeb2306>", line 3, in f
-    NameError: name 'helper' is not defined
-
-  On the other hand, if ``helper`` is defined before ``f``, then it will work.
 
 Calling a remote function
 -------------------------
@@ -109,42 +99,35 @@ When a driver or worker invokes a remote function, a number of things happen.
   - The ID of the task. This is generated uniquely from the above content.
   - The IDs for the return values of the task. These are generated uniquely
     from the above content.
-- The task object is then sent to the local scheduler on the same node as the
-  driver or worker.
-- The local scheduler makes a decision to either schedule the task locally or to
-  pass the task on to a global scheduler.
+- The task object is then sent to the raylet on the same node as the driver
+  or worker.
+- The raylet makes a decision to either schedule the task locally or to
+  pass the task on to another raylet.
 
   - If all of the task's object dependencies are present in the local object
     store and there are enough CPU and GPU resources available to execute the
-    task, then the local scheduler will assign the task to one of its
-    available workers.
-  - If those conditions are not met, the task will be passed on to a global
-    scheduler. This is done by adding the task to the **task table**, which is
-    part of the centralized control state.
+    task, then the raylet will assign the task to one of its available workers.
+  - If those conditions are not met, the task will be forwarded to another
+    raylet. This is done by peer-to-peer connection between raylets.
     The task table can be inspected as follows.
 
-    .. code-block:: python
+.. autofunction:: ray.tasks
+    :noindex:
 
-      TODO: Fill this in.
-
-    A global scheduler will be notified of the update and will assign the task
-    to a local scheduler by updating the task's state in the task table. The
-    local scheduler will be notified and pull the task object.
-- Once a task has been scheduled to a local scheduler, whether by itself or by
-  a global scheduler, the local scheduler queues the task for execution. A task
-  is assigned to a worker when enough resources become available and the object
-  dependencies are available locally, in first-in, first-out order.
+- Once a task has been scheduled to a raylet, the raylet queues
+  the task for execution. A task is assigned to a worker when enough resources
+  become available and the object dependencies are available locally,
+  in first-in, first-out order.
 - When the task has been assigned to a worker, the worker executes the task and
   puts the task's return values into the object store. The object store will
   then update the **object table**, which is part of the centralized control
   state, to reflect the fact that it contains the newly created objects. The
   object table can be viewed as follows.
 
-  .. code-block:: python
+.. autofunction:: ray.objects
+    :noindex:
 
-    TODO: Fill this in.
-
-  When the task's return values are placed into the object store, they are first
+- When the task's return values are placed into the object store, they are first
   serialized into a contiguous blob of bytes using the `Apache Arrow`_ data
   layout, which is helpful for efficiently sharing data between processes using
   shared memory.
@@ -157,10 +140,8 @@ Notes and limitations
 - When an object store on a particular node fills up, it will begin evicting
   objects in a least-recently-used manner. If an object that is needed later is
   evicted, then the call to ``ray.get`` for that object will initiate the
-  reconstruction of the object. The local scheduler will attempt to reconstruct
+  reconstruction of the object. The raylet will attempt to reconstruct
   the object by replaying its task lineage.
-
-TODO: Limitations on reconstruction.
 
 Getting an object ID
 --------------------
@@ -183,7 +164,7 @@ Several things happen when a driver or worker calls ``ray.get`` on an object ID.
     state will notify the requesting manager when the object is created. If the
     object doesn't exist anywhere because it has been evicted from all object
     stores, the worker will also request reconstruction of the object from the
-    local scheduler. These checks repeat periodically until the object is
+    raylet. These checks repeat periodically until the object is
     available in the local object store, whether through reconstruction or
     through object transfer.
 - Once the object is available in the local object store, the driver or worker

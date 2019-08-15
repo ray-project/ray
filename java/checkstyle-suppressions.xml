@@ -3,16 +3,13 @@
 "http://www.puppycrawl.com/dtds/suppressions_1_1.dtd">
 
 <suppressions>
-  <suppress checks="MethodNameCheck" files="DefaultLocalSchedulerClient.java"/>
+  <suppress checks="OperatorWrap" files=".*" />
+  <suppress checks="JavadocParagraph" files=".*" />
+  <suppress checks="SummaryJavadoc" files=".*" />
   <suppress checks="MemberNameCheck" files="PathConfig.java"/>
   <suppress checks="MemberNameCheck" files="RayParameters.java"/>
   <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>
-  <suppress checks="MethodNameCheck" files="ResourcePair.java"/>
-  <suppress checks="ParameterNameCheck" files="ResourcePair.java"/>
-  <suppress checks="MethodTypeParameterNameCheck" files="Rpc.java"/>
-  <suppress checks="AbbreviationAsWordInNameCheck" files="UniqueID.java"/>
-  <suppress checks=".*" files="Rpc.java"/>
+  <suppress checks=".*" files="RayCall.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
-  <!-- TODO(raulchen): move these files to a directory, so this rule can be simplier. -->
-  <suppress checks=".*" files="(Arg|ResourcePair|TaskLanguage|TaskInfo|ClientTableData).java" />
+  <suppress checks=".*" files="org[\\/]ray[\\/]runtime[\\/]generated[\\/]" />
 </suppressions>

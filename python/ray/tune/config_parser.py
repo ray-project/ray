@@ -10,39 +10,9 @@ import os
 from six import string_types
 
 from ray.tune import TuneError
-from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Resources, Trial
+from ray.tune.trial import Trial
+from ray.tune.resources import json_to_resources
 from ray.tune.logger import _SafeFallbackEncoder
-
-
-def json_to_resources(data):
-    if data is None or data == "null":
-        return None
-    if isinstance(data, string_types):
-        data = json.loads(data)
-    for k in data:
-        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
-            raise TuneError(
-                "The field `{}` is no longer supported. Use `extra_cpu` "
-                "or `extra_gpu` instead.".format(k))
-        if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
-                    k, Resources._fields))
-    return Resources(
-        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
-
-
-def resources_to_json(resources):
-    if resources is None:
-        return None
-    return {
-        "cpu": resources.cpu,
-        "gpu": resources.gpu,
-        "extra_cpu": resources.extra_cpu,
-        "extra_gpu": resources.extra_gpu,
-    }
 
 
 def make_parser(parser_creator=None, **kwargs):
@@ -83,7 +53,7 @@ def make_parser(parser_creator=None, **kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--trial-resources",
+        "--resources-per-trial",
         default=None,
         type=json_to_resources,
         help="Override the machine resources to allocate per trial, e.g. "
@@ -96,22 +66,36 @@ def make_parser(parser_creator=None, **kwargs):
         type=int,
         help="Number of times to repeat each trial.")
     parser.add_argument(
-        "--local-dir",
-        default=DEFAULT_RESULTS_DIR,
-        type=str,
-        help="Local dir to save training results to. Defaults to '{}'.".format(
-            DEFAULT_RESULTS_DIR))
-    parser.add_argument(
-        "--upload-dir",
-        default="",
-        type=str,
-        help="Optional URI to sync training results to (e.g. s3://bucket).")
-    parser.add_argument(
         "--checkpoint-freq",
         default=0,
         type=int,
         help="How many training iterations between checkpoints. "
         "A value of 0 (default) disables checkpointing.")
+    parser.add_argument(
+        "--checkpoint-at-end",
+        action="store_true",
+        help="Whether to checkpoint at the end of the experiment. "
+        "Default is False.")
+    parser.add_argument(
+        "--keep-checkpoints-num",
+        default=None,
+        type=int,
+        help="Number of last checkpoints to keep. Others get "
+        "deleted. Default (None) keeps all checkpoints.")
+    parser.add_argument(
+        "--checkpoint-score-attr",
+        default="training_iteration",
+        type=str,
+        help="Specifies by which attribute to rank the best checkpoint. "
+        "Default is increasing order. If attribute starts with min- it "
+        "will rank attribute in decreasing order. Example: "
+        "min-validation_loss")
+    parser.add_argument(
+        "--export-formats",
+        default=None,
+        help="List of formats that exported at the end of the experiment. "
+        "Default is None. For RLlib, 'checkpoint' and 'model' are "
+        "supported for TensorFlow policy graphs.")
     parser.add_argument(
         "--max-failures",
         default=3,
@@ -146,9 +130,14 @@ def to_argv(config):
     for k, v in config.items():
         if "-" in k:
             raise ValueError("Use '_' instead of '-' in `{}`".format(k))
-        argv.append("--{}".format(k.replace("_", "-")))
+        if v is None:
+            continue
+        if not isinstance(v, bool) or v:  # for argparse flags
+            argv.append("--{}".format(k.replace("_", "-")))
         if isinstance(v, string_types):
             argv.append(v)
+        elif isinstance(v, bool):
+            pass
         else:
             argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
     return argv
@@ -171,23 +160,31 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        args = parser.parse_args(to_argv(spec))
+        args, _ = parser.parse_known_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
-    if "trial_resources" in spec:
-        trial_kwargs["resources"] = json_to_resources(spec["trial_resources"])
+    if "resources_per_trial" in spec:
+        trial_kwargs["resources"] = json_to_resources(
+            spec["resources_per_trial"])
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
         trainable_name=spec["run"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
-        local_dir=os.path.join(args.local_dir, output_path),
+        local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
+        checkpoint_at_end=args.checkpoint_at_end,
+        keep_checkpoints_num=args.keep_checkpoints_num,
+        checkpoint_score_attr=args.checkpoint_score_attr,
+        export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
-        upload_dir=args.upload_dir,
+        trial_name_creator=spec.get("trial_name_creator"),
+        loggers=spec.get("loggers"),
+        # str(None) doesn't create None
+        sync_to_driver_fn=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)

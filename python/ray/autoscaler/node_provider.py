@@ -3,8 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import logging
 import os
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def import_aws():
@@ -109,7 +112,7 @@ def get_default_config(provider_config):
             provider_config["type"]))
     path_to_default = load_config()
     with open(path_to_default) as f:
-        defaults = yaml.load(f)
+        defaults = yaml.safe_load(f)
 
     return defaults
 
@@ -129,7 +132,7 @@ class NodeProvider(object):
         self.provider_config = provider_config
         self.cluster_name = cluster_name
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
         This list must not include terminated nodes. For performance reasons,
@@ -138,7 +141,7 @@ class NodeProvider(object):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
             ["node-1", "node-2"]
         """
         raise NotImplementedError
@@ -174,3 +177,14 @@ class NodeProvider(object):
     def terminate_node(self, node_id):
         """Terminates the specified node."""
         raise NotImplementedError
+
+    def terminate_nodes(self, node_ids):
+        """Terminates a set of nodes. May be overridden with a batch method."""
+        for node_id in node_ids:
+            logger.info("NodeProvider: "
+                        "{}: Terminating node".format(node_id))
+            self.terminate_node(node_id)
+
+    def cleanup(self):
+        """Clean-up when a Provider is no longer required."""
+        pass

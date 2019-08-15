@@ -1,0 +1,104 @@
+.experiment-list-outer-container {
+    padding-left: 64px;
+}
+
+.experiment-list-container {
+    overflow-y: scroll;
+    overflow-x: hidden;
+    width: 236px;
+    min-height: 100%;
+}
+
+.active-experiment-list-item {
+    background: rgba(67, 199, 234, 0.1);
+    font-weight: bold;
+}
+
+.experiment-list-item {
+    overflow:hidden;
+    -o-text-overflow: ellipsis;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+    height: 40px;
+    width: 220px;
+    line-height: 40px;
+    padding-left: 12px;
+}
+
+.experiments-header {
+    font-weight: normal;
+    display: inline-block;
+    padding-bottom: 6px;
+}
+
+.collapser-container {
+    display: inline-block;
+    position: relative;
+    top: -2px;
+}
+
+.collapser {
+    display: inline-block;
+    background-color: #082142d6;
+    color: #FFFFFF;
+    font-size: 16px;
+    line-height: 24px;
+    width: 24px;
+    height: 24px;
+    text-align: center;
+    margin-left: 68px;
+}
+
+.login-icon {
+    background-color: #E95420;
+}
+
+.login-icon:hover {
+    background-color: #AEA79F;
+}
+
+.fa, .fas {
+    font-weight: 900;
+    padding-top: 3px;
+}
+
+.collapsed {
+    display: none; /* hide it for small displays */
+}
+
+@media (min-width: 992px) {
+    .collapsed {
+        display: block;
+        margin-left: -18%; /* same width as sidebar */
+    }
+}
+
+#row-main {
+    overflow-x: hidden; /* necessary to hide collapsed sidebar */
+}
+
+#sidebar {
+    -webkit-transition: margin 0.3s ease;
+    -moz-transition: margin 0.3s ease;
+    -o-transition: margin 0.3s ease;
+    transition: margin 0.3s ease;
+}
+
+#content {
+    -webkit-transition: width 0.3s ease;
+    -moz-transition: width 0.3s ease;
+    -o-transition: width 0.3s ease;
+    transition: width 0.3s ease;
+}
+
+.experiment-list-container .nav .nav-item .nav-link:hover {
+    padding-left: 25px;
+    margin-right: 25px;
+    color: #0193e1;
+    background-color: #e9ecef;
+}
+
+.nav-item .nav-link {
+    color: #888888;
+}

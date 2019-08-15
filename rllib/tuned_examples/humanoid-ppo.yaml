@@ -1,0 +1,19 @@
+humanoid-ppo:
+    env: Humanoid-v1
+    run: PPO
+    stop:
+        episode_reward_mean: 6000
+    config:
+        gamma: 0.995
+        kl_coeff: 1.0
+        num_sgd_iter: 20
+        lr: .0001
+        sgd_minibatch_size: 32768
+        train_batch_size: 320000
+        model:
+            free_log_std: true
+        use_gae: false
+        num_workers: 64
+        num_gpus: 4
+        batch_mode: complete_episodes
+        observation_filter: MeanStdFilter
