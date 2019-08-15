@@ -84,7 +84,7 @@ class CoreWorkerObjectInterface {
   ///
   /// \param[in] type The type of store provider to use.
   /// \param[in] object_ids IDs of the objects to wait for.
-  /// \param[in] num_objects Number of objects that should appear.
+  /// \param[in] num_objects Number of objects that should appear before returning.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
