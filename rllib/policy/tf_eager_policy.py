@@ -338,10 +338,11 @@ def build_eager_tf_policy(name,
                 return tf.tile(tensor,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])
 
-            dummy_batch = {
-                k: tile_to(v, self.config["sample_batch_size"])
-                for k, v in dummy_batch.items()
-            }
+            if get_batch_divisibility_req:
+                dummy_batch = {
+                    k: tile_to(v, get_batch_divisibility_req(self))
+                    for k, v in dummy_batch.items()
+                }
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
