@@ -11,13 +11,17 @@ namespace ray {
 void GetObjectIdsPerStoreProvider(
     const std::vector<ObjectID> &object_ids,
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results) {
+  // There can be a few cases here:
+  // - for task return objects, determine the store provider type for an object
+  //   from its transport type;
+  // - for other objects, just use plasma store provider.
   for (const auto &object_id : object_ids) {
-    // By default use `PLASMA` store provider.
+    // By default use `PLASMA` store provider for all the objects.
     auto type = StoreProviderType::PLASMA;
+    // Use `MEMORY` store provider for task returns objects from direct actor call.
     if (object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
             static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
-      // Direct actor call uses `MEMORY` store provider.
       type = StoreProviderType::MEMORY;
     }
 
@@ -55,10 +59,6 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
-  // There can be a few cases here:
-  // - for task return objects, find the store provider type for an object from
-  //   its transport, and then try to get from the corresponding store provider;
-  // - for other objects, try to get from plasma store.
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
   GetObjectIdsPerStoreProvider(ids, &object_ids_per_store_provider);
@@ -66,14 +66,15 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;
   auto current_timeout_ms = timeout_ms;
 
+  // Note that if one store provider uses up the timeout, we will still try the others
+  // with a timeout of 0.
   for (const auto &entry : object_ids_per_store_provider) {
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(Get(entry.first, entry.second, current_timeout_ms, &objects));
-    int64_t duration = current_time_ms() - start_time;
-    current_timeout_ms =
-        (current_timeout_ms == -1)
-            ? current_timeout_ms
-            : std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+    if (current_timeout_ms > 0) {
+      int64_t duration = current_time_ms() - start_time;
+      current_timeout_ms = std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+    }
   }
 
   for (size_t i = 0; i < ids.size(); i++) {
@@ -111,10 +112,6 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     return Status::Invalid("num_objects value is not valid");
   }
 
-  // There can be a few cases here:
-  // - for task return objects, find the store provider type for an object from
-  //   its transport, and then try to get from the corresponding store provider;
-  // - for other objects, try to get from plasma store.
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
   GetObjectIdsPerStoreProvider(ids, &object_ids_per_store_provider);
@@ -129,29 +126,49 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     }
   }
 
-  auto current_timeout_ms = timeout_ms;
+  auto wait_from_store_providers = [&ids, &object_ids_per_store_provider, &num_objects, &object_counts, results, this](
+      int64_t timeout) {
 
-  for (const auto &entry : object_ids_per_store_provider) {
-    std::unordered_set<ObjectID> objects;
-    auto start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(
-        Wait(entry.first, entry.second, num_objects, current_timeout_ms, &objects));
-    int64_t duration = current_time_ms() - start_time;
-    current_timeout_ms =
-        (current_timeout_ms == -1)
-            ? current_timeout_ms
-            : std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
-    for (const auto &entry : objects) {
-      num_objects -= object_counts[entry];
-    }
+    auto current_timeout_ms = timeout;
+    for (const auto &entry : object_ids_per_store_provider) {
+      std::unordered_set<ObjectID> objects;
+      auto start_time = current_time_ms();
+      int required_objects = std::min(static_cast<int>(entry.second.size()), num_objects);
+      RAY_RETURN_NOT_OK(
+          Wait(entry.first, entry.second, required_objects, current_timeout_ms, &objects));
+      if (current_timeout_ms > 0) {
+        int64_t duration = current_time_ms() - start_time;
+        current_timeout_ms = std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
+      }
+      for (const auto &entry : objects) {
+        num_objects -= object_counts[entry];
+      }
 
-    for (size_t i = 0; i < ids.size(); i++) {
-      if (objects.count(ids[i]) > 0) {
-        (*results)[i] = true;
+      for (size_t i = 0; i < ids.size(); i++) {
+        if (objects.count(ids[i]) > 0) {
+          (*results)[i] = true;
+        }
+      }
+
+      if (num_objects <= 0) {
+        break;
       }
     }
-  }
 
+    return Status::OK();
+  };
+
+  // Wait from all the store providers with timeout set to 0. This is to avoid the case
+  // where we might use up the entire timeout on trying to get objects from one store provider
+  // before even trying another (which might have all of the objects available). 
+  RAY_RETURN_NOT_OK(wait_from_store_providers(0));
+
+  if (num_objects > 0) {
+    // Wait from all the store providers with the specified timeout
+    // if the required number of objects haven't been ready yet.
+    RAY_RETURN_NOT_OK(wait_from_store_providers(timeout_ms));
+  }
+  
   return Status::OK();
 }
 
@@ -177,10 +194,6 @@ Status CoreWorkerObjectInterface::Wait(StoreProviderType type,
 
 Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids,
                                          bool local_only, bool delete_creating_tasks) {
-  // There can be a few cases here:
-  // - for task return objects, find the store provider type for an object from
-  //   its transport, and then try to get from the corresponding store provider;
-  // - for other objects, try to get from plasma store.
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
   GetObjectIdsPerStoreProvider(object_ids, &object_ids_per_store_provider);

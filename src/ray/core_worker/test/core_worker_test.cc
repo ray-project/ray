@@ -517,7 +517,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   // Test Wait() with duplicate object ids, and the required `num_objects`
   // is less than size of `wait_ids`.
   wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(wait_ids, 4, 100, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
@@ -549,6 +549,29 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
+
+  // Test Wait with objects which become ready later.
+  std::vector<ObjectID> unready_ids(buffers.size());
+  for (size_t i = 0; i < unready_ids.size(); i++) {
+    unready_ids[i] = ObjectID::FromRandom();
+  }
+
+  auto thread_func = [&unready_ids, &provider, &buffers]() {
+    sleep(1);
+
+    for (size_t i = 0; i < unready_ids.size(); i++) {
+      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
+    }
+  };
+
+  std::thread async_thread(thread_func);
+
+  // wait for the objects to appear.
+  wait_results.clear();
+  RAY_CHECK_OK(provider.Wait(unready_ids, unready_ids.size(),  -1, RandomTaskId(), &wait_results));
+  // wait for the thread to finish.
+  async_thread.join();
+  
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
