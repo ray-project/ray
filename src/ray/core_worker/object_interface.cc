@@ -8,7 +8,7 @@
 
 namespace ray {
 
-void GetObjectIdsPerStoreProvider(
+void ObjectIdsByStoreProvider(
     const std::vector<ObjectID> &object_ids,
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results) {
   for (const auto &object_id : object_ids) {
