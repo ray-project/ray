@@ -10,7 +10,7 @@ Please review https://github.com/ray-project/ray/blob/master/CONTRIBUTING.rst be
 
 ## What do these changes do?
 
-<!-- Please give a short brief about these changes. -->
+<!-- Please give a short summary about these changes. -->
 
 ## Related issue number
 
