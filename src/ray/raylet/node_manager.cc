@@ -415,9 +415,11 @@ void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
   const ClientID client_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "[ClientRemoved] Received callback from client id " << client_id;
 
-  RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
-      << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
+  if(client_id != gcs_client_->client_table().GetLocalClientId()) {
+      RAY_LOG(ERROR) << "Exiting because this node manager has mistakenly been "
+        << "marked dead by the monitor.";
+      std::exit(1);
+  }
 
   // Below, when we remove client_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
