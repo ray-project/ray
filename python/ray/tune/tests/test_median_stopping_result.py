@@ -2,32 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import json
-import random
 import unittest
-import numpy as np
-import sys
-import tempfile
-import shutil
 import ray
-import pdb
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (MedianStoppingResult as MedianStoppingRule,
                                  TrialScheduler)
 
-from ray.tune.schedulers.pbt import explore
-from ray.tune.trial import Trial, Resources, Checkpoint
+from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 
 from ray.rllib import _register_all
 _register_all()
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 def result(t, rew):
@@ -44,17 +29,18 @@ class EarlyStoppingSuite(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def basicSetup(self, rule):
-        runner = _MockTrialRunner(rule)  
-        t1 = Trial("PPO")  
-        t2 = Trial("PPO")  
+        runner = _MockTrialRunner(rule)
+        t1 = Trial("PPO")
+        t2 = Trial("PPO")
         runner.add_trial(t1)
-        runner.add_trial(t2)              
+        runner.add_trial(t2)
 
         return t1, t2, runner
 
     def testMedianStoppingConstantPerf(self):
-        
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=1, eval_interval=1)
+
+        rule = MedianStoppingRule(
+            grace_period=0, min_samples_required=1, eval_interval=1)
         t1, t2, runner = self.basicSetup(rule)
         # t1 mean is 450, max 900, t_max=10
         # t2 mean is 450, max 450, t_max=5
@@ -66,16 +52,16 @@ class EarlyStoppingSuite(unittest.TestCase):
         for i in range(5):
             self.assertEqual(
                 rule.on_trial_result(runner, t2, result(i, 450)),
-                TrialScheduler.CONTINUE)               
-          
+                TrialScheduler.CONTINUE)
+
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(5, 450)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(10, 450)),
-            TrialScheduler.STOP)           
+            TrialScheduler.STOP)
 
-    # I don't believe this is relevant any more, as trials 
+    # I don't believe this is relevant any more, as trials
     # can stop prior to completion
 
     # def testMedianStoppingOnCompleteOnly(self):
@@ -90,7 +76,8 @@ class EarlyStoppingSuite(unittest.TestCase):
     #         TrialScheduler.STOP)
 
     def testMedianStoppingGracePeriod(self):
-        rule = MedianStoppingRule(grace_period=2.5, min_samples_required=1, eval_interval=1)
+        rule = MedianStoppingRule(
+            grace_period=2.5, min_samples_required=1, eval_interval=1)
         t1, t2, runner = self.basicSetup(rule)
         rule.on_trial_result(runner, t1, result(0, 1000))
         rule.on_trial_result(runner, t1, result(1, 1000))
@@ -104,23 +91,28 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(runner, t2, result(2, 10)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result(3, 10)), TrialScheduler.STOP)
+            rule.on_trial_result(runner, t2, result(3, 10)),
+            TrialScheduler.STOP)
 
     def testMedianStoppingMinSamples(self):
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=3, eval_interval=1)
-        t1, t2, runner = self.basicSetup(rule)    
+        rule = MedianStoppingRule(
+            grace_period=0, min_samples_required=3, eval_interval=1)
+        t1, t2, runner = self.basicSetup(rule)
         rule.on_trial_result(runner, t1, result(1, 1000))
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(1, 500)),
             TrialScheduler.CONTINUE)
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(1, 10)), TrialScheduler.STOP)
-
+            rule.on_trial_result(runner, t3, result(1, 10)),
+            TrialScheduler.STOP)
 
     def testMedianStoppingUsesRunningWindow(self):
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=1, 
-                                  eval_interval=1, running_window_size=1)
+        rule = MedianStoppingRule(
+            grace_period=0,
+            min_samples_required=1,
+            eval_interval=1,
+            running_window_size=1)
         t1, t2, runner = self.basicSetup(rule)
         rule.on_trial_result(runner, t1, result(1, 1000))
         rule.on_trial_result(runner, t2, result(1, 1000))
@@ -136,8 +128,11 @@ class EarlyStoppingSuite(unittest.TestCase):
 
     def testMedianStoppingSoftStop(self):
         rule = MedianStoppingRule(
-            grace_period=0, min_samples_required=1, hard_stop=False,
-            eval_interval=1, running_window_size=1)
+            grace_period=0,
+            min_samples_required=1,
+            hard_stop=False,
+            eval_interval=1,
+            running_window_size=1)
         t1, t2, runner = self.basicSetup(rule)
         rule.on_trial_result(runner, t1, result(1, 1000))
         rule.on_trial_result(runner, t2, result(1, 1000))
@@ -168,13 +163,13 @@ class EarlyStoppingSuite(unittest.TestCase):
             self.assertEqual(
                 rule.on_trial_result(runner, t2, result_func(i, 450)),
                 TrialScheduler.CONTINUE)
-                
+
         self.assertEqual(
             rule.on_trial_result(runner, t2, result_func(5, 450)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
             rule.on_trial_result(runner, t2, result_func(10, 450)),
-            TrialScheduler.STOP)      
+            TrialScheduler.STOP)
 
     def testAlternateMetrics(self):
         def result2(t, rew):
@@ -248,5 +243,6 @@ class _MockTrialRunner():
     def _launch_trial(self, trial):
         trial.status = Trial.RUNNING
 
+
 if __name__ == "__main__":
-    unittest.main(verbosity=2)        
+    unittest.main(verbosity=2)
