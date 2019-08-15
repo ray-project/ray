@@ -31,6 +31,7 @@ def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
+        "num_worker_heartbeats_timeout": 10,
     })
     return internal_config
 
@@ -101,10 +102,10 @@ def _ray_start_cluster(**kwargs):
     elif num_nodes > 0:
         do_init = True
     init_kwargs.update(kwargs)
-    cluster = Cluster()
+    cluster = Cluster(default_node_kwargs=init_kwargs)
     remote_nodes = []
     for _ in range(num_nodes):
-        remote_nodes.append(cluster.add_node(**init_kwargs))
+        remote_nodes.append(cluster.add_node())
     if do_init:
         ray.init(redis_address=cluster.redis_address)
     yield cluster
@@ -178,10 +179,9 @@ def two_node_cluster():
         "num_heartbeats_timeout": 10,
     })
     cluster = ray.tests.cluster_utils.Cluster(
-        head_node_args={"_internal_config": internal_config})
+        default_node_kwargs={"_internal_config": internal_config})
     for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
+        remote_node = cluster.add_node(num_cpus=1)
     ray.init(redis_address=cluster.redis_address)
     yield cluster, remote_node
 

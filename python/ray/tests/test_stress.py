@@ -41,14 +41,12 @@ def ray_start_combination(request):
     num_nodes = request.param[0]
     num_workers_per_scheduler = request.param[1]
     # Start the Ray processes.
-    cluster = Cluster(
-        initialize_head=True,
-        head_node_args={
-            "num_cpus": 10,
-            "redis_max_memory": 10**7
-        })
+    cluster = Cluster(default_node_kwargs={
+        "num_cpus": 10,
+    })
+    cluster.add_node(redis_max_memory=10**7)
     for i in range(num_nodes - 1):
-        cluster.add_node(num_cpus=10)
+        cluster.add_node()
     ray.init(redis_address=cluster.redis_address)
 
     yield num_nodes, num_workers_per_scheduler, cluster
@@ -203,22 +201,16 @@ def ray_start_reconstruction(request):
     plasma_store_memory = int(0.1 * 10**9)
 
     cluster = Cluster(
-        initialize_head=True,
-        head_node_args={
+        default_node_kwargs={
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
-            "redis_max_memory": 10**7,
             "_internal_config": json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             })
         })
+    cluster.add_node(redis_max_memory=10**7)
     for i in range(num_nodes - 1):
-        cluster.add_node(
-            num_cpus=1,
-            object_store_memory=plasma_store_memory // num_nodes,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200
-            }))
+        cluster.add_node()
     ray.init(redis_address=cluster.redis_address)
 
     yield plasma_store_memory, num_nodes, cluster

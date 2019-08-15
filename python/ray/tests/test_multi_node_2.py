@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def test_cluster():
     """Basic test for adding and removing nodes in cluster."""
-    g = Cluster(initialize_head=False)
+    g = Cluster()
     node = g.add_node()
     node2 = g.add_node()
     assert node.remaining_processes_alive()
@@ -28,7 +28,7 @@ def test_cluster():
 
 
 def test_shutdown():
-    g = Cluster(initialize_head=False)
+    g = Cluster()
     node = g.add_node()
     node2 = g.add_node()
     g.shutdown()

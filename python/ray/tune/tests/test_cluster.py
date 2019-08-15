@@ -23,14 +23,14 @@ from ray.tune.suggest import BasicVariantGenerator
 
 def _start_new_cluster():
     cluster = Cluster(
-        initialize_head=True,
-        connect=True,
-        head_node_args={
+        default_node_kwargs={
             "num_cpus": 1,
             "_internal_config": json.dumps({
                 "num_heartbeats_timeout": 10
             })
         })
+    cluster.add_node()
+    cluster.connect()
     # Pytest doesn't play nicely with imports
     _register_all()
     return cluster
@@ -51,14 +51,14 @@ def start_connected_emptyhead_cluster():
     """Starts head with no resources."""
 
     cluster = Cluster(
-        initialize_head=True,
-        connect=True,
-        head_node_args={
+        default_node_kwargs={
             "num_cpus": 0,
             "_internal_config": json.dumps({
                 "num_heartbeats_timeout": 10
             })
         })
+    cluster.add_node()
+    cluster.connect()
     # Pytest doesn't play nicely with imports
     _register_all()
     yield cluster

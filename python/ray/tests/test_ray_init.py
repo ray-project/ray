@@ -55,9 +55,10 @@ class TestRedisPassword(object):
             return 1
 
         node_args = {"redis_password": password}
-        cluster = Cluster(
-            initialize_head=True, connect=True, head_node_args=node_args)
-        cluster.add_node(**node_args)
+        cluster = Cluster(default_node_kwargs=node_args)
+        cluster.add_node()
+        cluster.connect()
+        cluster.add_node()
 
         object_id = f.remote()
         ray.get(object_id)

@@ -13,37 +13,21 @@ logger = logging.getLogger(__name__)
 
 
 class Cluster(object):
-    def __init__(self,
-                 initialize_head=False,
-                 connect=False,
-                 head_node_args=None,
-                 shutdown_at_exit=True):
+    def __init__(self, shutdown_at_exit=True, default_node_kwargs=None):
         """Initializes the cluster.
 
         Args:
-            initialize_head (bool): Automatically start a Ray cluster
-                by initializing the head node. Defaults to False.
-            connect (bool): If `initialize_head=True` and `connect=True`,
-                ray.init will be called with the redis address of this cluster
-                passed in.
-            head_node_args (dict): Arguments to be passed into
-                `start_ray_head` via `self.add_node`.
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
+            default_node_kwargs (dict): Default arguments to be passed into
+                `start_ray_head` and `start_ray_node` via `self.add_node`.
         """
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
         self.connected = False
         self._shutdown_at_exit = shutdown_at_exit
-        if not initialize_head and connect:
-            raise RuntimeError("Cannot connect to uninitialized cluster.")
-
-        if initialize_head:
-            head_node_args = head_node_args or {}
-            self.add_node(**head_node_args)
-            if connect:
-                self.connect()
+        self.default_node_kwargs = default_node_kwargs
 
     def connect(self):
         """Connect the driver to the cluster."""
@@ -71,13 +55,16 @@ class Cluster(object):
         Returns:
             Node object of the added Ray node.
         """
-        default_kwargs = {
-            "num_cpus": 1,
-            "num_gpus": 0,
-            "object_store_memory": 100 * (2**20),  # 100 MB
-        }
-        ray_params = ray.parameter.RayParams(**node_args)
-        ray_params.update_if_absent(**default_kwargs)
+        # Build the default parameters for this cluster.
+        default_node_kwargs = self.default_node_kwargs
+        if default_node_kwargs is None:
+            default_node_kwargs = {}
+        ray_params = ray.parameter.RayParams(**default_node_kwargs)
+        ray_params.update_if_absent(
+            num_cpus=1, num_gpus=0, object_store_memory=100 * (2**20))
+        # Overwrite any node-specific parameters.
+        ray_params.update(**node_args)
+
         if self.head_node is None:
             node = ray.node.Node(
                 ray_params, head=True, shutdown_at_exit=self._shutdown_at_exit)
@@ -85,7 +72,19 @@ class Cluster(object):
             self.redis_address = self.head_node.redis_address
             self.redis_password = node_args.get("redis_password")
             self.webui_url = self.head_node.webui_url
+            if self.default_node_kwargs is None:
+                self.default_node_kwargs = ray_params.__dict__
         else:
+            # Check that if the worker node provided an internal config, that
+            # it is the same as the default used for the other nodes so far.
+            default_internal_config = self.default_node_kwargs.get(
+                "_internal_config", None)
+            internal_config = node_args.get("_internal_config",
+                                            default_internal_config)
+            assert internal_config == default_internal_config, (
+                "Worker node's internal config does not match the rest of the "
+                "cluster")
+
             ray_params.update_if_absent(redis_address=self.redis_address)
             node = ray.node.Node(
                 ray_params,
