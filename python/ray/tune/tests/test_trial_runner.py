@@ -459,6 +459,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
+    def testReporterNoUsage(self):
+        def run_task(config, reporter):
+            print("hello")
+
+        experiment = Experiment(run=run_task, name="ray_crash_repro")
+        [trial] = ray.tune.run(experiment).trials
+        print(trial.last_result)
+        self.assertEqual(trial.last_result[DONE], True)
+
     def testErrorReturn(self):
         def train(config, reporter):
             raise Exception("uh oh")

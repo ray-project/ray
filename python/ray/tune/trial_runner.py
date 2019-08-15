@@ -506,7 +506,7 @@ class TrialRunner(object):
                 result = trial.last_result
                 result.update(done=True)
 
-            self._total_time += result[TIME_THIS_ITER_S]
+            self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
             if trial.should_stop(flat_result):

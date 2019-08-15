@@ -15,7 +15,7 @@ import ray
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
-                                 TrialScheduler)
+                                 TrialScheduler, HyperBandForBOHB)
 
 from ray.tune.schedulers.pbt import explore
 from ray.tune.trial import Trial, Checkpoint
@@ -236,7 +236,7 @@ class _MockTrialRunner():
 
 class HyperbandSuite(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
         ray.shutdown()
@@ -319,17 +319,19 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._n, 81)
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
-        sched = HyperBandScheduler(max_t=810)
+        reduction_factor = 10
+        sched = HyperBandScheduler(
+            max_t=1000, reduction_factor=reduction_factor)
         i = 0
         while not sched._cur_band_filled():
             t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
-        self.assertEqual(len(sched._hyperbands[0]), 5)
-        self.assertEqual(sched._hyperbands[0][0]._n, 5)
-        self.assertEqual(sched._hyperbands[0][0]._r, 810)
-        self.assertEqual(sched._hyperbands[0][-1]._n, 81)
-        self.assertEqual(sched._hyperbands[0][-1]._r, 10)
+        self.assertEqual(len(sched._hyperbands[0]), 4)
+        self.assertEqual(sched._hyperbands[0][0]._n, 4)
+        self.assertEqual(sched._hyperbands[0][0]._r, 1000)
+        self.assertEqual(sched._hyperbands[0][-1]._n, 1000)
+        self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
     def testConfigSameEtaSmall(self):
         sched = HyperBandScheduler(max_t=1)
@@ -338,8 +340,7 @@ class HyperbandSuite(unittest.TestCase):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
-        self.assertEqual(len(sched._hyperbands[0]), 5)
-        self.assertTrue(all(v is None for v in sched._hyperbands[0][1:]))
+        self.assertEqual(len(sched._hyperbands[0]), 1)
 
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=81)
@@ -367,7 +368,7 @@ class HyperbandSuite(unittest.TestCase):
             self.assertEqual(action, TrialScheduler.CONTINUE)
             new_length = len(big_bracket.current_trials())
             self.assertEqual(new_length, self.downscale(current_length, sched))
-            cur_units += int(cur_units * sched._eta)
+            cur_units = int(cur_units * sched._eta)
         self.assertEqual(len(big_bracket.current_trials()), 1)
 
     def testHalvingStop(self):
@@ -601,6 +602,76 @@ class HyperbandSuite(unittest.TestCase):
         # Make sure "choose_trial_to_run" still works
         trial = sched.choose_trial_to_run(runner)
         self.assertIsNotNone(trial)
+
+
+class BOHBSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init(object_store_memory=int(1e8))
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testLargestBracketFirst(self):
+        sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
+        runner = _MockTrialRunner(sched)
+        for i in range(3):
+            t = Trial("__fake")
+            sched.on_trial_add(runner, t)
+            runner._launch_trial(t)
+
+        self.assertEqual(sched.state()["num_brackets"], 1)
+        sched.on_trial_add(runner, Trial("__fake"))
+        self.assertEqual(sched.state()["num_brackets"], 2)
+
+    def testCheckTrialInfoUpdate(self):
+        def result(score, ts):
+            return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
+
+        sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
+        runner = _MockTrialRunner(sched)
+        runner._search_alg = MagicMock()
+        trials = [Trial("__fake") for i in range(3)]
+        for t in trials:
+            runner.add_trial(t)
+            runner._launch_trial(t)
+
+        for trial, trial_result in zip(trials, [result(1, 1), result(2, 1)]):
+            decision = sched.on_trial_result(runner, trial, trial_result)
+            self.assertEqual(decision, TrialScheduler.PAUSE)
+            runner._pause_trial(trial)
+        spy_result = result(0, 1)
+        decision = sched.on_trial_result(runner, trials[-1], spy_result)
+        self.assertEqual(decision, TrialScheduler.STOP)
+        sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
+        self.assertEqual(runner._search_alg.on_unpause.call_count, 1)
+        self.assertTrue("hyperband_info" in spy_result)
+        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+
+    def testCheckTrialInfoUpdateMin(self):
+        def result(score, ts):
+            return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
+
+        sched = HyperBandForBOHB(max_t=3, reduction_factor=3, mode="min")
+        runner = _MockTrialRunner(sched)
+        runner._search_alg = MagicMock()
+        trials = [Trial("__fake") for i in range(3)]
+        for t in trials:
+            runner.add_trial(t)
+            runner._launch_trial(t)
+
+        for trial, trial_result in zip(trials, [result(1, 1), result(2, 1)]):
+            decision = sched.on_trial_result(runner, trial, trial_result)
+            self.assertEqual(decision, TrialScheduler.PAUSE)
+            runner._pause_trial(trial)
+        spy_result = result(0, 1)
+        decision = sched.on_trial_result(runner, trials[-1], spy_result)
+        self.assertEqual(decision, TrialScheduler.CONTINUE)
+        sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.on_pause.call_count, 2)
+        self.assertTrue("hyperband_info" in spy_result)
+        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
 
 class _MockTrial(Trial):

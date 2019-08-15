@@ -97,7 +97,7 @@ class RayTrialExecutor(TrialExecutor):
             trial.runner = existing_runner
             if not self.reset_trial(trial, trial.config, trial.experiment_tag):
                 raise AbortTrialExecution(
-                    "Trial runner reuse requires reset_trial() to be "
+                    "Trainable runner reuse requires reset_config() to be "
                     "implemented and return True.")
             return existing_runner
 

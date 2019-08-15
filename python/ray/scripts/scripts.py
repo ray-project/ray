@@ -410,20 +410,6 @@ def stop():
                    "' | grep -v grep | " + "awk '{ print $2 }') 2> /dev/null")
         subprocess.call([command], shell=True)
 
-    # Find the PID of the jupyter process and kill it.
-    try:
-        from notebook.notebookapp import list_running_servers
-        pids = [
-            str(server["pid"]) for server in list_running_servers()
-            if "/tmp/ray" in server["notebook_dir"]
-        ]
-        subprocess.call(
-            ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
-    except ImportError:
-        pass
-    except Exception:
-        logger.exception("Error shutting down jupyter")
-
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)

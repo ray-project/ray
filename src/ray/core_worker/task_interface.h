@@ -178,6 +178,7 @@ class CoreWorkerTaskInterface {
   /// \param[in] required_resources Resources required by this task.
   /// \param[in] required_placement_resources Resources required by placing this task on a
   /// node.
+  /// \param[in] transport_type The transport used for this task.
   /// \param[out] return_ids Return IDs.
   /// \return Void.
   void BuildCommonTaskSpec(
@@ -185,7 +186,7 @@ class CoreWorkerTaskInterface {
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      std::vector<ObjectID> *return_ids);
+      TaskTransportType transport_type, std::vector<ObjectID> *return_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
