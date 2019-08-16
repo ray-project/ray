@@ -1,4 +1,4 @@
-package org.ray.runtime.objectstore;
+package org.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
@@ -8,22 +8,24 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.WorkerContext;
+import org.ray.runtime.context.WorkerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MockObjectInterface implements ObjectInterface {
+/**
+ * Object store methods for local mode.
+ */
+public class LocalModeObjectStore extends ObjectStore {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(MockObjectInterface.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
 
   private static final int GET_CHECK_INTERVAL_MS = 100;
 
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
-  private final WorkerContext workerContext;
 
-  public MockObjectInterface(WorkerContext workerContext) {
-    this.workerContext = workerContext;
+  public LocalModeObjectStore(WorkerContext workerContext) {
+    super(workerContext);
   }
 
   public void addObjectPutCallback(Consumer<ObjectId> callback) {
@@ -35,15 +37,14 @@ public class MockObjectInterface implements ObjectInterface {
   }
 
   @Override
-  public ObjectId put(NativeRayObject obj) {
-    ObjectId objectId = ObjectId.forPut(workerContext.getCurrentTaskId(),
-        workerContext.nextPutIndex());
-    put(obj, objectId);
+  public ObjectId putRaw(NativeRayObject obj) {
+    ObjectId objectId = ObjectId.fromRandom();
+    putRaw(obj, objectId);
     return objectId;
   }
 
   @Override
-  public void put(NativeRayObject obj, ObjectId objectId) {
+  public void putRaw(NativeRayObject obj, ObjectId objectId) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
     pool.putIfAbsent(objectId, obj);
@@ -53,7 +54,7 @@ public class MockObjectInterface implements ObjectInterface {
   }
 
   @Override
-  public List<NativeRayObject> get(List<ObjectId> objectIds, long timeoutMs) {
+  public List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs) {
     waitInternal(objectIds, objectIds.size(), timeoutMs);
     return objectIds.stream().map(pool::get).collect(Collectors.toList());
   }

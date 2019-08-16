@@ -166,30 +166,33 @@ pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_ar
   return 0;
 }
 
-void WorkerPool::RegisterWorker(const WorkerID &worker_id,
-                                const std::shared_ptr<Worker> &worker) {
+Status WorkerPool::RegisterWorker(const WorkerID &worker_id,
+                                  const std::shared_ptr<Worker> &worker) {
   const auto pid = worker->Pid();
   const auto port = worker->Port();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  state.registered_workers.emplace(worker_id, std::move(worker));
 
   auto it = state.starting_worker_processes.find(pid);
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
-    return;
+    return Status::Invalid("Unknown worker");
   }
   it->second--;
   if (it->second == 0) {
     state.starting_worker_processes.erase(it);
   }
+
+  state.registered_workers.emplace(worker_id, std::move(worker));
+  return Status::OK();
 }
 
-void WorkerPool::RegisterDriver(const WorkerID &driver_id,
-                                const std::shared_ptr<Worker> &driver) {
+Status WorkerPool::RegisterDriver(const WorkerID &driver_id,
+                                  const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.emplace(driver_id, std::move(driver));
+  return Status::OK();
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(const WorkerID &worker_id) const {

@@ -15,13 +15,19 @@ RedisAsyncContext::RedisAsyncContext(redisAsyncContext *redis_async_context)
 }
 
 RedisAsyncContext::~RedisAsyncContext() {
-  redisAsyncFree(redis_async_context_);
-  redis_async_context_ = nullptr;
+  if (redis_async_context_ != nullptr) {
+    redisAsyncFree(redis_async_context_);
+    redis_async_context_ = nullptr;
+  }
 }
 
 redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
-  RAY_CHECK(redis_async_context_ != nullptr);
   return redis_async_context_;
+}
+
+void RedisAsyncContext::ResetRawRedisAsyncContext() {
+  // Reset redis_async_context_ to nullptr because hiredis has released this context.
+  redis_async_context_ = nullptr;
 }
 
 void RedisAsyncContext::RedisAsyncHandleRead() {
