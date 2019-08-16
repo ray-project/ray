@@ -93,6 +93,38 @@ def include_java_from_redis(redis_client):
     return redis_client.get("INCLUDE_JAVA") == b"1"
 
 
+def find_redis_address_or_die():
+    try:
+        import psutil
+    except ImportError:
+        raise ImportError(
+            "Please install `psutil` to automatically detect the Ray cluster.")
+    pids = psutil.pids()
+    redis_addresses = set()
+    for pid in pids:
+        try:
+            proc = psutil.Process(pid)
+            for arglist in proc.cmdline():
+                for arg in arglist.split(" "):
+                    if arg.startswith("--redis-address="):
+                        addr = arg.split("=")[1]
+                        redis_addresses.add(addr)
+        except psutil.AccessDenied:
+            pass
+        except psutil.NoSuchProcess:
+            pass
+    if len(redis_addresses) > 1:
+        raise ConnectionError(
+            "Found multiple active Ray instances: {}. ".format(redis_addresses)
+            + "Please specify the one to connect to by setting `address`.")
+        sys.exit(1)
+    elif not redis_addresses:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting `address`.")
+    return redis_addresses.pop()
+
+
 def get_address_info_from_redis_helper(redis_address,
                                        node_ip_address,
                                        redis_password=None):
@@ -404,7 +436,7 @@ def wait_for_redis_to_start(redis_ip_address,
     while counter < num_retries:
         try:
             # Run some random command and see if it worked.
-            logger.info(
+            logger.debug(
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
@@ -805,7 +837,7 @@ def _start_redis_instance(executable,
         redis_client.config_set("maxmemory", str(redis_max_memory))
         redis_client.config_set("maxmemory-policy", "allkeys-lru")
         redis_client.config_set("maxmemory-samples", "10")
-        logger.info("Starting Redis shard with {} GB max memory.".format(
+        logger.debug("Starting Redis shard with {} GB max memory.".format(
             round(redis_max_memory / 1e9, 2)))
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
@@ -1470,9 +1502,9 @@ def start_plasma_store(stdout_file=None,
 
     # Print the object store memory using two decimal places.
     object_store_memory_str = (object_store_memory / 10**7) / 10**2
-    logger.info("Starting the Plasma object store with {} GB memory "
-                "using {}.".format(
-                    round(object_store_memory_str, 2), plasma_directory))
+    logger.debug("Starting the Plasma object store with {} GB memory "
+                 "using {}.".format(
+                     round(object_store_memory_str, 2), plasma_directory))
     # Start the Plasma store.
     process_info = _start_plasma_store(
         object_store_memory,

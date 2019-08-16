@@ -52,7 +52,7 @@ class Logger(object):
         raise NotImplementedError
 
     def update_config(self, config):
-        """Updates the config for all loggers."""
+        """Updates the config for logger."""
 
         pass
 
@@ -70,6 +70,34 @@ class Logger(object):
 class NoopLogger(Logger):
     def on_result(self, result):
         pass
+
+
+class MLFLowLogger(Logger):
+    """MLFlow logger.
+
+    Requires the experiment configuration to have a MLFlow Experiment ID
+    or manually set the proper environment variables.
+
+    """
+
+    def _init(self):
+        from mlflow.tracking import MlflowClient
+        client = MlflowClient()
+        run = client.create_run(self.config.get("mlflow_experiment_id"))
+        self._run_id = run.info.run_id
+        for key, value in self.config.items():
+            client.log_param(self._run_id, key, value)
+        self.client = client
+
+    def on_result(self, result):
+        for key, value in result.items():
+            if not isinstance(value, float):
+                continue
+            self.client.log_metric(
+                self._run_id, key, value, step=result.get(TRAINING_ITERATION))
+
+    def close(self):
+        self.client.set_terminated(self._run_id)
 
 
 class JsonLogger(Logger):

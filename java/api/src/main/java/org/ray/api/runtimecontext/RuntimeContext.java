@@ -1,8 +1,8 @@
 package org.ray.api.runtimecontext;
 
 import java.util.List;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
-import org.ray.api.id.UniqueId;
 
 /**
  * A class used for getting information of Ray runtime.
@@ -19,7 +19,7 @@ public interface RuntimeContext {
    *
    * Note, this can only be called in actors.
    */
-  UniqueId getCurrentActorId();
+  ActorId getCurrentActorId();
 
   /**
    * Returns true if the current actor was reconstructed, false if it's created for the first time.

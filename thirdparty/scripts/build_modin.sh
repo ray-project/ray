@@ -22,8 +22,8 @@ pushd $TP_DIR/../python/ray/
 rm -rf modin
 mkdir modin
 pushd modin
-curl -kL "$MODIN_WHEELS_URL$MODIN_WHEELS_FNAME" -o "$MODIN_WHEELS_FNAME"
-unzip "$MODIN_WHEELS_FNAME"
+curl -kL --silent "$MODIN_WHEELS_URL$MODIN_WHEELS_FNAME" -o "$MODIN_WHEELS_FNAME"
+unzip -qq "$MODIN_WHEELS_FNAME"
 rm "$MODIN_WHEELS_FNAME"
 popd
 popd

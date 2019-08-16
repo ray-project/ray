@@ -13,7 +13,8 @@ import traceback
 import ray
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
-from ray.tune.trial import Trial, Resources, Checkpoint
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.resources import Resources
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
 
@@ -60,7 +61,7 @@ class RayTrialExecutor(TrialExecutor):
             logger.info("Initializing Ray automatically."
                         "For cluster usage or custom Ray initialization, "
                         "call `ray.init(...)` before `tune.run`.")
-            ray.init()
+            ray.init(object_store_memory=int(1e8))
 
         if ray.is_initialized():
             self._update_avail_resources()
@@ -96,7 +97,7 @@ class RayTrialExecutor(TrialExecutor):
             trial.runner = existing_runner
             if not self.reset_trial(trial, trial.config, trial.experiment_tag):
                 raise AbortTrialExecution(
-                    "Trial runner reuse requires reset_trial() to be "
+                    "Trainable runner reuse requires reset_config() to be "
                     "implemented and return True.")
             return existing_runner
 

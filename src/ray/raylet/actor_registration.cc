@@ -17,7 +17,7 @@ ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
       execution_dependency_(
           ObjectID::FromBinary(checkpoint_data.execution_dependency())) {
   // Restore `frontier_`.
-  for (size_t i = 0; i < checkpoint_data.handle_ids_size(); i++) {
+  for (int64_t i = 0; i < checkpoint_data.handle_ids_size(); i++) {
     auto handle_id = ActorHandleID::FromBinary(checkpoint_data.handle_ids(i));
     auto &frontier_entry = frontier_[handle_id];
     frontier_entry.task_counter = checkpoint_data.task_counters(i);
@@ -25,7 +25,7 @@ ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
         ObjectID::FromBinary(checkpoint_data.frontier_dependencies(i));
   }
   // Restore `dummy_objects_`.
-  for (size_t i = 0; i < checkpoint_data.unreleased_dummy_objects_size(); i++) {
+  for (int64_t i = 0; i < checkpoint_data.unreleased_dummy_objects_size(); i++) {
     auto dummy = ObjectID::FromBinary(checkpoint_data.unreleased_dummy_objects(i));
     dummy_objects_[dummy] = checkpoint_data.num_dummy_object_dependencies(i);
   }
