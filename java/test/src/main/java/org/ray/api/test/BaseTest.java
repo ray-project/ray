@@ -24,7 +24,8 @@ public class BaseTest {
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(
         new File(Ray.getRuntimeContext().getRayletSocketName()),
-        new File(Ray.getRuntimeContext().getObjectStoreSocketName())
+        new File(Ray.getRuntimeContext().getObjectStoreSocketName()),
+	new File("/tmp/ray/test/raylet_socket")
     );
     // Make sure the files will be deleted even if the test doesn't exit gracefully.
     filesToDelete.forEach(File::deleteOnExit);

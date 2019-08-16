@@ -22,10 +22,6 @@ public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    boolean deleted = Files.deleteIfExists(Paths.get("/tmp/ray/sockets/raylet"));
-    if (deleted) {
-      System.out.print("Had to delete /tmp/ray/sockets/raylet");
-    }
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
   }
 
