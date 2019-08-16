@@ -111,17 +111,22 @@ class MedianStoppingResult(FIFOScheduler):
             _means, _best_results = self._get_trial_metrics(_active_trials,
                 lc_interval * self._eval_interval)
             _median = np.median(_means)
+            if self._verbose:
+                for idx, _trial in enumerate(_active_trials):
+                    logger.info("MedianStoppingResult: "
+                                "trial {} best res={} vs median res={} at t={}".format(
+                                    _trial, _best_results[idx], _median, lc_interval*self._eval_interval))
             if self._mode == "max":
                 _trials_to_stop = [best_result < _median for best_result in _best_results]
                 _trials_to_stop = np.array(_active_trials)[_trials_to_stop]
             else:
                 _trials_to_stop = [best_result > _median for best_result in _best_results]
                 _trials_to_stop = np.array(_active_trials)[_trials_to_stop]
-            for idx, _trial in enumerate(_trials_to_stop):
+            for _trial in _trials_to_stop:
                 if self._verbose:
                     logger.info("MedianStoppingResult: "
-                                "early stopping {} best res={} vs median res={} at t={}".format(
-                                    _trial, _best_results[idx], _median, lc_interval*self._eval_interval))
+                                "early stopping {} at t={}".format(_trial,
+                                    lc_interval*self._eval_interval))
                 self._stopped_trials.add(_trial)
                 if _trial == trial:
                     _return = TrialScheduler.STOP
