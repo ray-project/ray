@@ -304,7 +304,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
             rewards=make_time_major(rewards, drop_last=True),
             values=make_time_major(values, drop_last=True),
             bootstrap_value=make_time_major(values)[-1],
-            dist_class=Categorical if is_multidiscrete else policy.dist_class,
+            dist_class=Categorical if is_multidiscrete else dist_class,
             model=policy.model,
             valid_mask=make_time_major(mask, drop_last=True),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
