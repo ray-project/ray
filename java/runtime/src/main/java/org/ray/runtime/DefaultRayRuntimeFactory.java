@@ -4,6 +4,7 @@ import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.generated.Common.WorkerType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,14 +19,16 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
   public RayRuntime createRayRuntime() {
     RayConfig rayConfig = RayConfig.create();
     try {
-      AbstractRayRuntime runtime;
+      RayRuntime runtime;
       if (rayConfig.runMode == RunMode.SINGLE_PROCESS) {
         runtime = new RayDevRuntime(rayConfig);
       } else {
-        runtime = new RayNativeRuntime(rayConfig);
+        if (rayConfig.workerMode == WorkerType.DRIVER) {
+          runtime = new RayNativeRuntime(rayConfig);
+        } else {
+          runtime = new RayMultiThreadNativeRuntime(rayConfig);
+        }
       }
-
-      runtime.start();
       return runtime;
     } catch (Exception e) {
       LOGGER.error("Failed to initialize ray runtime", e);

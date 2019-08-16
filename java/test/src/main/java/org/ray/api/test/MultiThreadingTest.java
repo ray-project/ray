@@ -111,13 +111,13 @@ public class MultiThreadingTest extends BaseTest {
     try {
       List<Future<String>> futures = new ArrayList<>();
       for (int i = 0; i < NUM_THREADS; i++) {
-        Callable<String> task = () -> {
+        Callable<String> task = Ray.asyncClosure(() -> {
           for (int j = 0; j < numRepeats; j++) {
             TimeUnit.MILLISECONDS.sleep(1);
             testCase.run();
           }
           return "ok";
-        };
+        });
         futures.add(service.submit(task));
       }
       for (Future<String> future : futures) {

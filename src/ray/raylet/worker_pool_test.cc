@@ -19,8 +19,10 @@ class WorkerPoolMock : public WorkerPool {
                         {Language::JAVA, {"dummy_java_worker_command"}}}) {}
 
   explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, nullptr,
-                   worker_commands),
+      : WorkerPool(0,
+                   {{Language::PYTHON, NUM_WORKERS_PER_PROCESS},
+                    {Language::JAVA, NUM_WORKERS_PER_PROCESS}},
+                   MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
         last_worker_pid_(0) {}
 
   ~WorkerPoolMock() {

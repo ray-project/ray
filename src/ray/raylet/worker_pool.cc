@@ -17,22 +17,32 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with
-/// (num_worker_processes * num_workers_per_process) workers for each language.
-WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
+/// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each language.
+WorkerPool::WorkerPool(int num_worker_processes,
+                       const std::unordered_map<Language, int> &num_workers_per_process_by_lang,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
-    : num_workers_per_process_(num_workers_per_process),
+    : num_workers_per_process_by_lang_(num_workers_per_process_by_lang),
       multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       last_warning_multiple_(0),
       gcs_client_(std::move(gcs_client)) {
-  RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
+  for (auto &it : num_workers_per_process_by_lang) {
+    RAY_CHECK(it.second > 0) << "Number of workers per process of language "
+                             << Language_Name(it.first) << " must be positive.";
+  }
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
   for (const auto &entry : worker_commands) {
+    // If num workers per process was not expicitly set, use 1 as default.
+    auto it = num_workers_per_process_by_lang_.find(entry.first);
+    if (it == num_workers_per_process_by_lang_.end()) {
+      num_workers_per_process_by_lang_.emplace(entry.first, 1).first;
+    }
+
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
     // Set worker command for this language.
@@ -124,7 +134,7 @@ int WorkerPool::StartWorkerProcess(const Language &language,
     // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
     state.starting_worker_processes.emplace(
-        std::make_pair(pid, num_workers_per_process_));
+        std::make_pair(pid, num_workers_per_process_by_lang_[language]));
     return pid;
   }
   return -1;

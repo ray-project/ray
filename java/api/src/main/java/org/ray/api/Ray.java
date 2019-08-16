@@ -1,6 +1,7 @@
 package org.ray.api;
 
 import java.util.List;
+import java.util.concurrent.Callable;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
@@ -115,6 +116,24 @@ public final class Ray extends RayCall {
    */
   public static <T> WaitResult<T> wait(List<RayObject<T>> waitList) {
     return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
+  }
+
+  /**
+   * Wrap a {@link Runnable} with necessary context capture.
+   * @param runnable The runnable to wrap.
+   * @return The wrapped runnable.
+   */
+  public static Runnable asyncClosure(Runnable runnable) {
+    return runtime.asyncClosure(runnable);
+  }
+
+  /**
+   * Wrap a {@link Callable} with necessary context capture.
+   * @param callable The callable to wrap.
+   * @return The wrapped callable.
+   */
+  public static Callable asyncClosure(Callable callable) {
+    return runtime.asyncClosure(callable);
   }
 
   /**

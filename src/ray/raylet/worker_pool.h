@@ -33,13 +33,14 @@ class WorkerPool {
   /// and add them to the pool.
   ///
   /// \param num_worker_processes The number of worker processes to start, per language.
-  /// \param num_workers_per_process The number of workers per process.
+  /// \param num_workers_per_process_by_lang The number of workers per process per language.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_worker_processes, int num_workers_per_process,
+  WorkerPool(int num_worker_processes,
+             const std::unordered_map<Language, int> &num_workers_per_process_by_lang,
              int maximum_startup_concurrency,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
@@ -148,7 +149,7 @@ class WorkerPool {
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register num_workers_per_process_ workers, then add them to the pool.
+  /// register num_workers_per_process_by_lang_[language] workers, then add them to the pool.
   /// Failure to start the worker process is a fatal error. If too many workers
   /// are already being started, then this function will return without starting
   /// any workers.
@@ -195,8 +196,8 @@ class WorkerPool {
     std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
   };
 
-  /// The number of workers per process.
-  int num_workers_per_process_;
+  /// The number of workers per process per language.
+  std::unordered_map<Language, int> num_workers_per_process_by_lang_;
   /// Pool states per language.
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 

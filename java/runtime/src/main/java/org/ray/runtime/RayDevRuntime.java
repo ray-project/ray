@@ -13,12 +13,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   public RayDevRuntime(RayConfig rayConfig) {
     super(rayConfig);
-  }
-
-  private AtomicInteger jobCounter = new AtomicInteger(0);
-
-  @Override
-  public void start() {
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
@@ -31,6 +25,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
         objectId -> ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId));
     rayletClient = new LocalModeRayletClient();
   }
+
+  private AtomicInteger jobCounter = new AtomicInteger(0);
 
   @Override
   public void shutdown() {
