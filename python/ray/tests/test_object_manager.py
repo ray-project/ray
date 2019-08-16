@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
-import json
 import multiprocessing
 import numpy as np
 import pytest
@@ -12,6 +11,7 @@ import warnings
 
 import ray
 from ray.tests.cluster_utils import Cluster
+from ray.tests.conftest import generate_internal_config_map
 
 # TODO(yuhguo): This test file requires a lot of CPU/memory, and
 # better be put in Jenkins. However, it fails frequently in Jenkins, but
@@ -205,28 +205,31 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 
 # The purpose of this test is to make sure that an object that was already been
 # transferred to a node can be transferred again.
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        # Force the sending object manager to allow duplicate pushes again
+        # sooner. Also, force the receiving object manager to retry the Pull
+        # sooner. We make the chunk size smaller in order to make it easier to
+        # test objects with multiple chunks.
+        {
+            "object_store_memory": 10**8,
+            **generate_internal_config_map(
+                object_manager_repeated_push_delay_ms=4 * 1000,
+                object_manager_pull_timeout_ms=1000,
+                object_manager_default_chunk_size=1000),
+        },
+    ],
+    indirect=True)
 def test_object_transfer_retry(ray_start_cluster):
     cluster = ray_start_cluster
 
     repeated_push_delay = 4
 
-    # Force the sending object manager to allow duplicate pushes again sooner.
-    # Also, force the receiving object manager to retry the Pull sooner. We
-    # make the chunk size smaller in order to make it easier to test objects
-    # with multiple chunks.
-    config = json.dumps({
-        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
-        "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
-        "object_manager_default_chunk_size": 1000
-    })
-    object_store_memory = 10**8
-    cluster.add_node(
-        object_store_memory=object_store_memory, _internal_config=config)
-    cluster.add_node(
-        num_gpus=1,
-        object_store_memory=object_store_memory,
-        _internal_config=config)
+    cluster.add_node()
+    cluster.add_node(num_gpus=1)
     ray.init(redis_address=cluster.redis_address)
+    object_store_memory = cluster.default_node_kwargs["object_store_memory"]
 
     @ray.remote(num_gpus=1)
     def f(size):

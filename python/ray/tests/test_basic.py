@@ -28,6 +28,7 @@ import pytest
 
 import ray
 import ray.tests.cluster_utils
+from ray.tests.conftest import generate_internal_config_map
 import ray.tests.utils
 
 logger = logging.getLogger(__name__)
@@ -1484,6 +1485,10 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [generate_internal_config_map(object_manager_repeated_push_delay_ms=1000)],
+    indirect=True)
 def test_free_objects_multi_node(ray_start_cluster):
     # This test will do following:
     # 1. Create 3 raylets that each hold an actor.
@@ -1496,12 +1501,8 @@ def test_free_objects_multi_node(ray_start_cluster):
     # workers and the plasma client holding the deletion target
     # may not be flushed.
     cluster = ray_start_cluster
-    config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
     for i in range(3):
-        cluster.add_node(
-            num_cpus=1,
-            resources={"Custom{}".format(i): 1},
-            _internal_config=config)
+        cluster.add_node(num_cpus=1, resources={"Custom{}".format(i): 1})
     ray.init(redis_address=cluster.redis_address)
 
     class RawActor(object):

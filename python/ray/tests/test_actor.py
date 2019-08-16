@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import json
 import random
 import numpy as np
 import os
@@ -1081,17 +1080,17 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [generate_internal_config_map(num_heartbeats_timeout=1000)],
+    indirect=True)
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
     num_gpus_per_raylet = 5
     for i in range(num_nodes):
         cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet,
-            num_gpus=num_gpus_per_raylet,
-            _internal_config=json.dumps({
-                "num_heartbeats_timeout": 1000
-            }))
+            num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
     ray.init(redis_address=cluster.redis_address)
 
     @ray.remote
@@ -2233,13 +2232,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     # Use custom resource to make sure the actor is only created on worker
     # nodes, not on the head node.
     for _ in range(max_reconstructions + 2):
-        cluster.add_node(
-            resources={"a": 1},
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
-                "num_heartbeats_timeout": 10,
-            }),
-        )
+        cluster.add_node(resources={"a": 1})
 
     def kill_node(object_store_socket):
         node_to_remove = None
@@ -2304,14 +2297,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
     num_actors_at_a_time = 3
     num_function_calls_at_a_time = 10
 
-    worker_nodes = [
-        cluster.add_node(
-            num_cpus=3,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
-                "num_heartbeats_timeout": 10,
-            })) for _ in range(num_nodes)
-    ]
+    worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION)
     class SlowCounter(object):
