@@ -327,6 +327,53 @@ def test_calling_start_ray_head():
             ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
     subprocess.Popen(["ray", "stop"]).wait()
 
+    # Test --block. Killing any child process should cause the command to exit.
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked.poll()
+    assert blocked.returncode is None
+
+    for _ in range(10):
+        try:
+            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(1)
+    else:
+        assert False, "ray start didn't spawn child processes after 10s"
+
+    blocked.poll()
+    assert blocked.returncode is None
+
+    subprocess.check_output(["pkill", "-P", str(blocked.pid)])
+    for _ in range(10):
+        time.sleep(1)
+        blocked.poll()
+        if blocked.returncode is not None:
+            break
+    else:
+        assert False, "ray start didn't exit within 10s of child process dying"
+
+    assert blocked.returncode != 0
+
+    # Test --block. Killing the command should clean up all child processes.
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked.poll()
+    assert blocked.returncode is None
+
+    for _ in range(10):
+        try:
+            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(1)
+    else:
+        assert False, "ray start didn't spawn child processes after 10s"
+
+    blocked.terminate()
+
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(["pgrep", "-P", str(blocked.pid), "raylet"])
+
 
 @pytest.mark.parametrize(
     "call_ray_start", [

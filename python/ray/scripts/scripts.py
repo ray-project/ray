@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import click
 from datetime import datetime
 import json
@@ -393,7 +394,7 @@ def start(node_ip_address, redis_address, address, redis_port,
                         process_type, process.returncode))
                 logger.error("Killing remaining processes and exiting...")
                 node.kill_all_processes(check_alive=False, allow_graceful=True)
-                return
+                sys.exit(1)
 
 
 @cli.command()
