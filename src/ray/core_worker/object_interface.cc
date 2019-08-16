@@ -76,7 +76,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   // with a timeout of 0.
   for (const auto &entry : object_ids_per_store_provider) {
     auto start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(Get(entry.first, entry.second, current_timeout_ms, &objects));
+    RAY_RETURN_NOT_OK(GetFromStoreProvider(entry.first, entry.second, current_timeout_ms, &objects));
     if (current_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       current_timeout_ms =
@@ -91,7 +91,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
-Status CoreWorkerObjectInterface::Get(
+Status CoreWorkerObjectInterface::GetFromStoreProvider(
     StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
     int64_t timeout_ms,
     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
@@ -123,24 +123,42 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
       object_ids_per_store_provider;
   ObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
-  std::unordered_map<ObjectID, int> object_counts;
-  for (const auto &entry : ids) {
-    auto iter = object_counts.find(entry);
-    if (iter == object_counts.end()) {
-      object_counts.emplace(entry, 1);
-    } else {
-      iter->second++;
-    }
+  // Wait from all the store providers with timeout set to 0. This is to avoid the case
+  // where we might use up the entire timeout on trying to get objects from one store
+  // provider before even trying another (which might have all of the objects available).
+  RAY_RETURN_NOT_OK(Wait(ids, object_ids_per_store_provider,
+      /* timeout_ms= */0, &num_objects, results));
+
+  if (num_objects > 0) {
+    // Wait from all the store providers with the specified timeout
+    // if the required number of objects haven't been ready yet.
+    RAY_RETURN_NOT_OK(Wait(ids, object_ids_per_store_provider,
+        /* timeout_ms= */timeout_ms, &num_objects, results));
   }
 
-  auto wait_from_store_providers = [&ids, &object_ids_per_store_provider, &num_objects,
-                                    &object_counts, results, this](int64_t timeout) {
-    auto current_timeout_ms = timeout;
-    for (const auto &entry : object_ids_per_store_provider) {
+  return Status::OK();
+}
+
+Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, 
+    const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
+    int64_t timeout_ms, int *num_objects, std::vector<bool> *results) {
+
+    std::unordered_map<ObjectID, int> object_counts;
+    for (const auto &entry : ids) {
+      auto iter = object_counts.find(entry);
+      if (iter == object_counts.end()) {
+        object_counts.emplace(entry, 1);
+      } else {
+        iter->second++;
+      }
+    }
+
+    auto current_timeout_ms = timeout_ms;
+    for (const auto &entry : ids_per_provider) {
       std::unordered_set<ObjectID> objects;
       auto start_time = current_time_ms();
-      int required_objects = std::min(static_cast<int>(entry.second.size()), num_objects);
-      RAY_RETURN_NOT_OK(Wait(entry.first, entry.second, required_objects,
+      int required_objects = std::min(static_cast<int>(entry.second.size()), *num_objects);
+      RAY_RETURN_NOT_OK(WaitFromStoreProvider(entry.first, entry.second, required_objects,
                              current_timeout_ms, &objects));
       if (current_timeout_ms > 0) {
         int64_t duration = current_time_ms() - start_time;
@@ -148,7 +166,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
             std::max(static_cast<int64_t>(0), current_timeout_ms - duration);
       }
       for (const auto &entry : objects) {
-        num_objects -= object_counts[entry];
+        *num_objects -= object_counts[entry];
       }
 
       for (size_t i = 0; i < ids.size(); i++) {
@@ -157,7 +175,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
         }
       }
 
-      if (num_objects <= 0) {
+      if (*num_objects <= 0) {
         break;
       }
     }
@@ -165,21 +183,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     return Status::OK();
   };
 
-  // Wait from all the store providers with timeout set to 0. This is to avoid the case
-  // where we might use up the entire timeout on trying to get objects from one store
-  // provider before even trying another (which might have all of the objects available).
-  RAY_RETURN_NOT_OK(wait_from_store_providers(0));
-
-  if (num_objects > 0) {
-    // Wait from all the store providers with the specified timeout
-    // if the required number of objects haven't been ready yet.
-    RAY_RETURN_NOT_OK(wait_from_store_providers(timeout_ms));
-  }
-
-  return Status::OK();
-}
-
-Status CoreWorkerObjectInterface::Wait(StoreProviderType type,
+Status CoreWorkerObjectInterface::WaitFromStoreProvider(StoreProviderType type,
                                        const std::unordered_set<ObjectID> &object_ids,
                                        int num_objects, int64_t timeout_ms,
                                        std::unordered_set<ObjectID> *results) {

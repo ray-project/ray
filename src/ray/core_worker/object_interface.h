@@ -69,6 +69,19 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
+  /// Helper function to get a list of objects from a different store providers.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[in] ids_per_provider A map from store provider type to the set of
+  //             object ids for that store provider.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
+  /// \param[in/out] num_objects Number of objects that should appear before returning.
+  /// \param[out] results A bitset that indicates each object has appeared or not.
+  /// \return Status.
+  Status Wait(const std::vector<ObjectID> &object_ids, 
+    const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
+    int64_t timeout_ms, int *num_objects, std::vector<bool> *results);
+
   /// Helper function to get a list of objects from a specific store provider.
   ///
   /// \param[in] type The type of store provider to use.
@@ -76,7 +89,7 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+  Status GetFromStoreProvider(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
@@ -88,7 +101,7 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+  Status WaitFromStoreProvider(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
               int num_objects, int64_t timeout_ms, std::unordered_set<ObjectID> *results);
 
   /// Create a new store provider for the specified type on demand.
