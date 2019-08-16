@@ -120,8 +120,13 @@ def summarize_episodes(episodes, new_episodes):
     avg_reward = np.mean(episode_rewards)
     avg_length = np.mean(episode_lengths)
 
+    policy_reward_min = {}
+    policy_reward_mean = {}
+    policy_reward_max = {}
     for policy_id, rewards in policy_rewards.copy().items():
-        policy_rewards[policy_id] = np.mean(rewards)
+        policy_reward_min[policy_id] = np.min(rewards)
+        policy_reward_mean[policy_id] = np.mean(rewards)
+        policy_reward_max[policy_id] = np.max(rewards)
 
     for k, v_list in custom_metrics.copy().items():
         custom_metrics[k + "_mean"] = np.mean(v_list)
@@ -153,7 +158,9 @@ def summarize_episodes(episodes, new_episodes):
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episodes_this_iter=len(new_episodes),
-        policy_reward_mean=dict(policy_rewards),
+        policy_reward_min=policy_reward_min,
+        policy_reward_max=policy_reward_max,
+        policy_reward_mean=policy_reward_mean,
         custom_metrics=dict(custom_metrics),
         sampler_perf=dict(perf_stats),
         off_policy_estimator=dict(estimators))

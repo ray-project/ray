@@ -134,7 +134,17 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
           // and assigning new task will be done when raylet receives
           // `TaskDone` message.
         });
+<<<<<<< HEAD
     finish_assign_callback(status);
+=======
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
+                     << " to worker " << worker_id_;
+    } else {
+      RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
+                     << " to worker " << worker_id_;
+    }
+>>>>>>> master
   } else {
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.

@@ -1,4 +1,13 @@
-"""The two-step game from QMIX: https://arxiv.org/pdf/1803.11485.pdf"""
+"""The two-step game from QMIX: https://arxiv.org/pdf/1803.11485.pdf
+
+Configurations you can try:
+    - normal policy gradients (PG)
+    - contrib/MADDPG
+    - QMIX
+    - APEX_QMIX
+
+See also: centralized_critic.py for centralized critic PPO on this game.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

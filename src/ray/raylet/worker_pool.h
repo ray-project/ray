@@ -51,12 +51,14 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(const std::shared_ptr<Worker> &worker);
+  /// \return If the registration is successful.
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const std::shared_ptr<Worker> &worker);
+  /// \return If the registration is successful.
+  Status RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///

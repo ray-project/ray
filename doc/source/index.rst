@@ -47,7 +47,7 @@ To use Ray's actor model:
         def __init__(self):
             self.n = 0
 
-        def inc(self):
+        def increment(self):
             self.n += 1
 
         def read(self):
@@ -200,6 +200,7 @@ The following are good places to discuss Ray.
    :caption: RLlib
 
    rllib.rst
+   rllib-toc.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst

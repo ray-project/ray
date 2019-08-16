@@ -22,11 +22,14 @@ import setuptools.command.build_ext as _build_ext
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
-    "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py", "ray/dashboard/index.html",
-    "ray/dashboard/res/main.css", "ray/dashboard/res/main.js",
-    "ray/projects/schema.json"
+    "ray/core/src/plasma/plasma_store_server",
+    "ray/_raylet.so",
+    "ray/core/src/ray/raylet/raylet_monitor",
+    "ray/core/src/ray/raylet/raylet",
+    "ray/dashboard/dashboard.py",
+    "ray/dashboard/index.html",
+    "ray/dashboard/res/main.css",
+    "ray/dashboard/res/main.js",
 ]
 
 # These are the directories where automatically generated Python protobuf
@@ -43,6 +46,12 @@ ray_autoscaler_files = [
     "ray/autoscaler/local/example-full.yaml",
 ]
 
+ray_project_files = [
+    "ray/projects/schema.json", "ray/projects/template/cluster_template.yaml",
+    "ray/projects/template/project_template.yaml",
+    "ray/projects/template/requirements.txt"
+]
+
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
@@ -51,6 +60,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ]
 
 optional_ray_files += ray_autoscaler_files
+optional_ray_files += ray_project_files
 
 extras = {
     "rllib": [
