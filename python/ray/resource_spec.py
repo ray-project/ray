@@ -189,7 +189,7 @@ class ResourceSpec(
                     "usage, the amount of memory on this node available for "
                     "tasks and actors ({} GB) is less than {}% of total. "
                     "You can adjust these settings with "
-                    "ray.remote(memory=<bytes>, "
+                    "ray.init(memory=<bytes>, "
                     "object_store_memory=<bytes>).".format(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
