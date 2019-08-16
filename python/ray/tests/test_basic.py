@@ -2649,8 +2649,6 @@ def test_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     for i in range(200):
         assert str(i) in output_lines
-    error_lines = captured["err"]
-    assert len(error_lines) == 0
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -2671,8 +2669,6 @@ def test_not_logging_to_driver(shutdown_only):
 
     output_lines = captured["out"]
     assert len(output_lines) == 0
-    error_lines = captured["err"]
-    assert len(error_lines) == 0
 
 
 @pytest.mark.skipif(
