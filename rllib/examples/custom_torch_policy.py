@@ -14,13 +14,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--iters", type=int, default=200)
 
 
-def policy_gradient_loss(policy, batch_tensors):
-    logits, _ = policy.model({
-        SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-    })
+def policy_gradient_loss(policy, batch):
+    logits, _ = policy.model({SampleBatch.CUR_OBS: batch[SampleBatch.CUR_OBS]})
     action_dist = policy.dist_class(logits, policy.model)
-    log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
-    return -batch_tensors[SampleBatch.REWARDS].dot(log_probs)
+    log_probs = action_dist.logp(batch[SampleBatch.ACTIONS])
+    return -batch[SampleBatch.REWARDS].dot(log_probs)
 
 
 # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>

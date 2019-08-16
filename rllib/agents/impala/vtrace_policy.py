@@ -115,11 +115,12 @@ class VTraceLoss(object):
                            self.entropy * entropy_coeff)
 
 
-def _make_time_major(policy, tensor, drop_last=False):
+def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     """Swaps batch and trajectory axis.
 
     Arguments:
         policy: Policy reference
+        seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.
         drop_last: A bool indicating whether to drop the last
         trajectory item.
@@ -129,10 +130,12 @@ def _make_time_major(policy, tensor, drop_last=False):
         swapped axes.
     """
     if isinstance(tensor, list):
-        return [_make_time_major(policy, t, drop_last) for t in tensor]
+        return [
+            _make_time_major(policy, seq_lens, t, drop_last) for t in tensor
+        ]
 
-    if policy.state_in:
-        B = tf.shape(policy.seq_lens)[0]
+    if policy.is_recurrent():
+        B = tf.shape(seq_lens)[0]
         T = tf.shape(tensor)[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
@@ -150,7 +153,10 @@ def _make_time_major(policy, tensor, drop_last=False):
     return res
 
 
-def build_vtrace_loss(policy, batch_tensors):
+def build_vtrace_loss(policy, model, dist_class, batch):
+    model_out, _ = model.from_batch(batch)
+    action_dist = dist_class(model_out, model)
+
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
         output_hidden_shape = [policy.action_space.n]
@@ -163,22 +169,21 @@ def build_vtrace_loss(policy, batch_tensors):
         output_hidden_shape = 1
 
     def make_time_major(*args, **kw):
-        return _make_time_major(policy, *args, **kw)
+        return _make_time_major(policy, batch.get("seq_lens"), *args, **kw)
 
-    actions = batch_tensors[SampleBatch.ACTIONS]
-    dones = batch_tensors[SampleBatch.DONES]
-    rewards = batch_tensors[SampleBatch.REWARDS]
-    behaviour_action_logp = batch_tensors[ACTION_LOGP]
-    behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
+    actions = batch[SampleBatch.ACTIONS]
+    dones = batch[SampleBatch.DONES]
+    rewards = batch[SampleBatch.REWARDS]
+    behaviour_action_logp = batch[ACTION_LOGP]
+    behaviour_logits = batch[BEHAVIOUR_LOGITS]
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(policy.model_out, output_hidden_shape, axis=1)
-    action_dist = policy.action_dist
-    values = policy.model.value_function()
+    unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
+    values = model.value_function()
 
-    if policy.state_in:
-        max_seq_len = tf.reduce_max(policy.seq_lens) - 1
-        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
+    if policy.is_recurrent():
+        max_seq_len = tf.reduce_max(batch["seq_lens"]) - 1
+        mask = tf.sequence_mask(batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(rewards)
@@ -204,8 +209,8 @@ def build_vtrace_loss(policy, batch_tensors):
         rewards=make_time_major(rewards, drop_last=True),
         values=make_time_major(values, drop_last=True),
         bootstrap_value=make_time_major(values)[-1],
-        dist_class=Categorical if is_multidiscrete else policy.dist_class,
-        model=policy.model,
+        dist_class=Categorical if is_multidiscrete else dist_class,
+        model=model,
         valid_mask=make_time_major(mask, drop_last=True),
         config=policy.config,
         vf_loss_coeff=policy.config["vf_loss_coeff"],
@@ -216,9 +221,10 @@ def build_vtrace_loss(policy, batch_tensors):
     return policy.loss.total_loss
 
 
-def stats(policy, batch_tensors):
+def stats(policy, batch):
     values_batched = _make_time_major(
         policy,
+        batch.get("seq_lens"),
         policy.model.value_function(),
         drop_last=policy.config["vtrace"])
 
@@ -235,7 +241,7 @@ def stats(policy, batch_tensors):
     }
 
 
-def grad_stats(policy, batch_tensors, grads):
+def grad_stats(policy, batch, grads):
     return {
         "grad_gnorm": tf.global_norm(grads),
     }
@@ -251,7 +257,7 @@ def postprocess_trajectory(policy,
 
 
 def add_behaviour_logits(policy):
-    return {BEHAVIOUR_LOGITS: policy.model_out}
+    return {BEHAVIOUR_LOGITS: policy.model.last_output()}
 
 
 def validate_config(policy, obs_space, action_space, config):

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import numpy as np
 import gym
 
@@ -12,10 +13,11 @@ from ray.rllib.utils.annotations import DeveloperAPI
 LEARNER_STATS_KEY = "learner_stats"
 
 
-# Used to return tuple actions as a list of batches per tuple element
-class TupleActions(object):
-    def __init__(self, batches):
-        self.batches = batches
+class TupleActions(namedtuple("TupleActions", ["batches"])):
+    """Used to return tuple actions as a list of batches per tuple element."""
+
+    def __new__(cls, batches):
+        return super(TupleActions, cls).__new__(cls, batches)
 
     def numpy(self):
         return TupleActions([b.numpy() for b in self.batches])

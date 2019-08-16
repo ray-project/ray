@@ -78,6 +78,9 @@ class CentralizedCriticModel(TFModelV2):
                 [obs, opponent_obs,
                  tf.one_hot(opponent_actions, 2)]), [-1])
 
+    def value_function(self):
+        return self.model.value_function()  # not used
+
 
 class CentralizedValueMixin(object):
     """Add methods to evaluate the central value function from the model."""
@@ -136,23 +139,26 @@ def centralized_critic_postprocessing(policy,
 
 
 # Copied from PPO but optimizing the central value function
-def loss_with_central_critic(policy, batch_tensors):
+def loss_with_central_critic(policy, model, dist_class, batch):
     CentralizedValueMixin.__init__(policy)
+
+    logits, state = model.from_batch(batch)
+    action_dist = dist_class(logits, model)
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
-        policy.dist_class,
-        policy.model,
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[BEHAVIOUR_LOGITS],
-        batch_tensors[ACTION_LOGP],
-        batch_tensors[SampleBatch.VF_PREDS],
-        policy.action_dist,
+        dist_class,
+        model,
+        batch[Postprocessing.VALUE_TARGETS],
+        batch[Postprocessing.ADVANTAGES],
+        batch[SampleBatch.ACTIONS],
+        batch[BEHAVIOUR_LOGITS],
+        batch[ACTION_LOGP],
+        batch[SampleBatch.VF_PREDS],
+        action_dist,
         policy.central_value_function,
         policy.kl_coeff,
-        tf.ones_like(batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool),
+        tf.ones_like(batch[Postprocessing.ADVANTAGES], dtype=tf.bool),
         entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
@@ -174,11 +180,11 @@ def setup_mixins(policy, obs_space, action_space, config):
         tf.shape(policy.get_placeholder(SampleBatch.CUR_OBS))[0])
 
 
-def central_vf_stats(policy, batch_tensors, grads):
+def central_vf_stats(policy, batch, grads):
     # Report the explained variance of the central value function.
     return {
         "vf_explained_var": explained_variance(
-            batch_tensors[Postprocessing.VALUE_TARGETS],
+            batch[Postprocessing.VALUE_TARGETS],
             policy.central_value_function),
     }
 

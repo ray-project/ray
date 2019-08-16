@@ -38,12 +38,13 @@ class A3CLoss(object):
                            self.entropy * entropy_coeff)
 
 
-def actor_critic_loss(policy, batch_tensors):
+def actor_critic_loss(policy, model, dist_class, batch):
+    model_out, _ = model.from_batch(batch)
+    action_dist = dist_class(model_out, model)
     policy.loss = A3CLoss(
-        policy.action_dist, batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        policy.model.value_function(), policy.config["vf_loss_coeff"],
+        action_dist, batch[SampleBatch.ACTIONS],
+        batch[Postprocessing.ADVANTAGES], batch[Postprocessing.VALUE_TARGETS],
+        model.value_function(), policy.config["vf_loss_coeff"],
         policy.config["entropy_coeff"])
     return policy.loss.total_loss
 
@@ -57,7 +58,7 @@ def postprocess_advantages(policy,
         last_r = 0.0
     else:
         next_state = []
-        for i in range(len(policy.state_in)):
+        for i in range(policy.num_state_tensors()):
             next_state.append([sample_batch["state_out_{}".format(i)][-1]])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
@@ -87,7 +88,7 @@ class ValueNetworkMixin(object):
         self._value = value
 
 
-def stats(policy, batch_tensors):
+def stats(policy, batch):
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
@@ -98,11 +99,11 @@ def stats(policy, batch_tensors):
     }
 
 
-def grad_stats(policy, batch_tensors, grads):
+def grad_stats(policy, batch, grads):
     return {
         "grad_gnorm": tf.global_norm(grads),
         "vf_explained_var": explained_variance(
-            batch_tensors[Postprocessing.VALUE_TARGETS],
+            batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function()),
     }
 

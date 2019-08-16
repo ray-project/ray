@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
-from ray.rllib.policy import tf_eager_policy
+from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
@@ -198,7 +198,7 @@ def build_tf_policy(name,
 
     @staticmethod
     def as_eager():
-        return tf_eager_policy.build_eager_tf_policy(**original_kwargs)
+        return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
 
     policy_cls.with_updates = with_updates
     policy_cls.as_eager = as_eager

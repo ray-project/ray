@@ -62,7 +62,7 @@ def build_eager_tf_policy(name,
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
             Policy.__init__(self, observation_space, action_space, config)
-            self.is_training = False
+            self._is_training = False
             self._loss_initialized = False
             self._sess = None
 
@@ -73,17 +73,15 @@ def build_eager_tf_policy(name,
                 before_init(self, observation_space, action_space, config)
 
             self.config = config
-            self.extra_action_fetches_fn = extra_action_fetches_fn
 
             if action_sampler_fn:
                 if not make_model:
                     raise ValueError(
                         "make_model is required if action_sampler_fn is given")
-                self.dist_class = None
+                self._dist_class = None
             else:
-                self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+                self._dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"])
-                self.logit_dim = logit_dim
 
             if make_model:
                 self.model = make_model(self, observation_space, action_space,
@@ -159,9 +157,9 @@ def build_eager_tf_policy(name,
                             **kwargs):
 
             assert tf.executing_eagerly()
-            self.is_training = False
+            self._is_training = False
 
-            self.seq_lens = tf.ones(len(obs_batch))
+            self._seq_lens = tf.ones(len(obs_batch))
             self.input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.convert_to_tensor(False),
@@ -173,13 +171,13 @@ def build_eager_tf_policy(name,
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         prev_reward_batch),
                 })
-            self.state_in = state_batches
+            self._state_in = state_batches
             with tf.variable_creator_scope(_disallow_var_creation):
-                self.model_out, self.state_out = self.model(
-                    self.input_dict, state_batches, self.seq_lens)
+                model_out, state_out = self.model(
+                    self.input_dict, state_batches, self._seq_lens)
 
-            if self.dist_class:
-                self.action_dist = self.dist_class(self.model_out, self.model)
+            if self._dist_class:
+                self.action_dist = self._dist_class(model_out, self.model)
                 action = self.action_dist.sample().numpy()
                 logp = self.action_dist.sampled_action_logp()
             else:
@@ -196,7 +194,7 @@ def build_eager_tf_policy(name,
                 })
             if extra_action_fetches_fn:
                 fetches.update(extra_action_fetches_fn(self))
-            return action, self.state_out, fetches
+            return action, state_out, fetches
 
         @override(Policy)
         def apply_gradients(self, gradients):
@@ -214,6 +212,12 @@ def build_eager_tf_policy(name,
             tf.nest.map_structure(lambda var, value: var.assign(value),
                                   self.model.variables(), weights)
 
+        def is_recurrent(self):
+            return len(self._state_in) > 0
+
+        def num_state_tensors(self):
+            return len(self._state_in)
+
         def get_session(self):
             return None  # None implies eager
 
@@ -221,7 +225,7 @@ def build_eager_tf_policy(name,
             return self._loss_initialized
 
         def _get_is_training_placeholder(self):
-            return tf.convert_to_tensor(self.is_training)
+            return tf.convert_to_tensor(self._is_training)
 
         def _apply_gradients(self, grads_and_vars):
             if apply_gradients_fn:
@@ -232,7 +236,7 @@ def build_eager_tf_policy(name,
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            self.is_training = True
+            self._is_training = True
 
             samples = {
                 k: tf.convert_to_tensor(v)
@@ -241,14 +245,13 @@ def build_eager_tf_policy(name,
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 # TODO: set seq len and state in properly
-                self.seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
-                self.state_in = []
-                self.model_out, self.state_out = self.model(
-                    samples, self.state_in, self.seq_lens)
-                if self.dist_class:
-                    self.action_dist = self.dist_class(self.model_out,
-                                                       self.model)
-                loss = loss_fn(self, samples)
+                self._seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
+                self._state_in = []
+                model_out, _ = self.model(samples, self._state_in,
+                                          self._seq_lens)
+                if self._dist_class:
+                    self.action_dist = self._dist_class(model_out, self.model)
+                loss = loss_fn(self, self.model, self._dist_class, samples)
 
             variables = self.model.trainable_variables()
 
@@ -358,14 +361,14 @@ def build_eager_tf_policy(name,
 
             # model forward pass for the loss (needed after postprocess to
             # overwrite any tensor state from that call)
-            self.model(dummy_batch, state_batches, dummy_batch.get("seq_lens"))
+            self.model.from_batch(dummy_batch)
 
             postprocessed_batch = {
                 k: tf.convert_to_tensor(v)
                 for k, v in postprocessed_batch.items()
             }
 
-            loss_fn(self, postprocessed_batch)
+            loss_fn(self, self.model, self._dist_class, postprocessed_batch)
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
 

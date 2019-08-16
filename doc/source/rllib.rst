@@ -46,10 +46,11 @@ Policies can be implemented using `any framework <https://github.com/ray-project
 
 .. code-block:: python
 
-    def policy_gradient_loss(policy, batch_tensors):
-        actions = batch_tensors[SampleBatch.ACTIONS]
-        rewards = batch_tensors[SampleBatch.REWARDS]
-        return -tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
+  def policy_gradient_loss(policy, model, dist_class, batch):
+      logits, _ = model.from_batch(batch)
+      action_dist = dist_class(logits, model)
+      return -tf.reduce_mean(
+          action_dist.logp(batch["actions"]) * batch["rewards"])
 
     # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>
     MyTFPolicy = build_tf_policy(

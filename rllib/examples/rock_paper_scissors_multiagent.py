@@ -195,11 +195,11 @@ def run_with_custom_entropy_loss():
 
     This performs about the same as the default loss does."""
 
-    def entropy_policy_gradient_loss(policy, batch_tensors):
-        actions = batch_tensors["actions"]
-        advantages = batch_tensors["advantages"]
-        return (-0.1 * policy.action_dist.entropy() - tf.reduce_mean(
-            policy.action_dist.logp(actions) * advantages))
+    def entropy_policy_gradient_loss(policy, model, dist_class, batch):
+        logits, _ = model.from_batch(batch)
+        action_dist = dist_class(logits, model)
+        return (-0.1 * action_dist.entropy() - tf.reduce_mean(
+            action_dist.logp(batch["actions"]) * batch["advantages"]))
 
     EntropyPolicy = PGTFPolicy.with_updates(
         loss_fn=entropy_policy_gradient_loss)

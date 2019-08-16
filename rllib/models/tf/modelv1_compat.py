@@ -148,6 +148,10 @@ def make_v1_wrapper(legacy_model_cls):
                     seq_lens=None)
                 return tf.reshape(branch_instance.outputs, [-1])
 
+        @override(ModelV2)
+        def last_output(self):
+            return self.cur_instance.outputs
+
         def _branch_variable_scope(self, branch_type):
             if branch_type in self.branches_created:
                 reuse = True
