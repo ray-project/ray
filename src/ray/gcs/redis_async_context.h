@@ -17,9 +17,6 @@ namespace gcs {
 /// \class RedisAsyncContext
 /// RedisAsyncContext class is a wrapper of hiredis `asyncRedisContext`, providing
 /// C++ style and thread-safe API.
-/// NOTE(micafan): We use a lock to make the `asyncRedisContext` commands thread-safe.
-/// All these commands only manipulate memory data and don't actually do any IO
-/// operations. So the perf impact of adding the lock should be minimum.
 class RedisAsyncContext {
  public:
   explicit RedisAsyncContext(redisAsyncContext *redis_async_context);
@@ -58,7 +55,10 @@ class RedisAsyncContext {
                                const char **argv, const size_t *argvlen);
 
  private:
-  /// We use a lock to protect the `asyncRedisContext`.
+  /// This mutex is used to protect `redis_async_context`.
+  /// NOTE(micafan): All the `redisAsyncContext`-related functions only manipulate memory
+  /// data and don't actually do any IO operations. So the perf impact of adding the lock
+  /// should be minimum.
   std::mutex mutex_;
   redisAsyncContext *redis_async_context_{nullptr};
 };
