@@ -9,12 +9,12 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 
-def pg_torch_loss(policy, model, dist_class, batch):
-    logits, _ = model.from_batch(batch)
+def pg_torch_loss(policy, model, dist_class, train_batch):
+    logits, _ = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
-    log_probs = action_dist.logp(batch[SampleBatch.ACTIONS])
+    log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
     # save the error in the policy object
-    policy.pi_err = -batch[Postprocessing.ADVANTAGES].dot(
+    policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
         log_probs.reshape(-1))
     return policy.pi_err
 
@@ -27,7 +27,7 @@ def postprocess_advantages(policy,
         sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
 
-def pg_loss_stats(policy, batch):
+def pg_loss_stats(policy, train_batch):
     # the error is recorded when computing the loss
     return {"policy_loss": policy.pi_err.item()}
 

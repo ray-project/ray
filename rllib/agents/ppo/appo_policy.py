@@ -225,8 +225,8 @@ def build_appo_model(policy, obs_space, action_space, config):
     return policy.model
 
 
-def build_appo_surrogate_loss(policy, model, dist_class, batch):
-    model_out, _ = model.from_batch(batch)
+def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
+    model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -241,14 +241,15 @@ def build_appo_surrogate_loss(policy, model, dist_class, batch):
         output_hidden_shape = 1
 
     def make_time_major(*args, **kw):
-        return _make_time_major(policy, batch.get("seq_lens"), *args, **kw)
+        return _make_time_major(policy, train_batch.get("seq_lens"), *args,
+                                **kw)
 
-    actions = batch[SampleBatch.ACTIONS]
-    dones = batch[SampleBatch.DONES]
-    rewards = batch[SampleBatch.REWARDS]
-    behaviour_logits = batch[BEHAVIOUR_LOGITS]
+    actions = train_batch[SampleBatch.ACTIONS]
+    dones = train_batch[SampleBatch.DONES]
+    rewards = train_batch[SampleBatch.REWARDS]
+    behaviour_logits = train_batch[BEHAVIOUR_LOGITS]
 
-    target_model_out, _ = policy.target_model.from_batch(batch)
+    target_model_out, _ = policy.target_model.from_batch(train_batch)
     old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
 
     unpacked_behaviour_logits = tf.split(
@@ -264,8 +265,8 @@ def build_appo_surrogate_loss(policy, model, dist_class, batch):
     policy.target_model_vars = policy.target_model.variables()
 
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(batch["seq_lens"]) - 1
-        mask = tf.sequence_mask(batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch["seq_lens"]) - 1
+        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(rewards)
@@ -328,8 +329,9 @@ def build_appo_surrogate_loss(policy, model, dist_class, batch):
             actions_entropy=make_time_major(action_dist.multi_entropy()),
             values=make_time_major(values),
             valid_mask=make_time_major(mask),
-            advantages=make_time_major(batch[Postprocessing.ADVANTAGES]),
-            value_targets=make_time_major(batch[Postprocessing.VALUE_TARGETS]),
+            advantages=make_time_major(train_batch[Postprocessing.ADVANTAGES]),
+            value_targets=make_time_major(
+                train_batch[Postprocessing.VALUE_TARGETS]),
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             entropy_coeff=policy.config["entropy_coeff"],
             clip_param=policy.config["clip_param"],
@@ -339,10 +341,10 @@ def build_appo_surrogate_loss(policy, model, dist_class, batch):
     return policy.loss.total_loss
 
 
-def stats(policy, batch):
+def stats(policy, train_batch):
     values_batched = _make_time_major(
         policy,
-        batch.get("seq_lens"),
+        train_batch.get("seq_lens"),
         policy.model.value_function(),
         drop_last=policy.config["vtrace"])
 

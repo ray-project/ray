@@ -120,10 +120,10 @@ To start, you first have to define a loss function. In RLlib, loss functions are
     import tensorflow as tf
     from ray.rllib.policy.sample_batch import SampleBatch
 
-    def policy_gradient_loss(policy, model, dist_class, batch):
-        actions = batch[SampleBatch.ACTIONS]
-        rewards = batch[SampleBatch.REWARDS]
-        logits, _ = model.from_batch(batch)
+    def policy_gradient_loss(policy, model, dist_class, train_batch):
+        actions = train_batch[SampleBatch.ACTIONS]
+        rewards = train_batch[SampleBatch.REWARDS]
+        logits, _ = model.from_batch(train_batch)
         action_dist = dist_class(logits, model)
         return -tf.reduce_mean(action_dist.logp(actions) * rewards)
 
@@ -183,12 +183,12 @@ Let's modify our policy loss to include rewards summed over time. To enable this
         return compute_advantages(
             sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
-    def policy_gradient_loss(policy, model, dist_class, batch):
-        logits, _ = model.from_batch(batch)
+    def policy_gradient_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
         action_dist = dist_class(logits, model)
         return -tf.reduce_mean(
-            action_dist.logp(batch[SampleBatch.ACTIONS]) *
-            batch[Postprocessing.ADVANTAGES])
+            action_dist.logp(train_batch[SampleBatch.ACTIONS]) *
+            train_batch[Postprocessing.ADVANTAGES])
 
     MyTFPolicy = build_tf_policy(
         name="MyTFPolicy",
@@ -197,7 +197,7 @@ Let's modify our policy loss to include rewards summed over time. To enable this
 
 The ``postprocess_advantages()`` function above uses calls RLlib's ``compute_advantages`` function to compute advantages for each timestep. If you re-run the trainer with this improved policy, you'll find that it quickly achieves the max reward of 200.
 
-You might be wondering how RLlib makes the advantages placeholder automatically available as ``batch[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization. You can also access these placeholders via ``policy.get_placeholder(<name>)`` after loss initialization.
+You might be wondering how RLlib makes the advantages placeholder automatically available as ``train_batch[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization. You can also access these placeholders via ``policy.get_placeholder(<name>)`` after loss initialization.
 
 **Example 1: Proximal Policy Optimization**
 
@@ -294,9 +294,9 @@ The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://githu
 
 .. code-block:: python
 
-    def kl_and_loss_stats(policy, batch):
+    def kl_and_loss_stats(policy, train_batch):
         policy.explained_variance = explained_variance(
-            batch[Postprocessing.VALUE_TARGETS], policy.model.value_function())
+            train_batch[Postprocessing.VALUE_TARGETS], policy.model.value_function())
 
         stats_fetches = {
             "cur_kl_coeff": policy.kl_coeff,
@@ -434,11 +434,11 @@ Defining a policy in PyTorch is quite similar to that for TensorFlow (and the pr
     from ray.rllib.policy.sample_batch import SampleBatch
     from ray.rllib.policy.torch_policy_template import build_torch_policy
 
-    def policy_gradient_loss(policy, model, dist_class, batch):
-        logits, _ = model.from_batch(batch)
+    def policy_gradient_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
         action_dist = dist_class(logits)
-        log_probs = action_dist.logp(batch[SampleBatch.ACTIONS])
-        return -batch[SampleBatch.REWARDS].dot(log_probs)
+        log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        return -train_batch[SampleBatch.REWARDS].dot(log_probs)
 
     # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>
     MyTorchPolicy = build_torch_policy(
@@ -464,11 +464,11 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
 
 .. code-block:: python
 
-    def actor_critic_loss(policy, model, dist_class, batch):
-        logits, _ = model.from_batch(batch)
+    def actor_critic_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
         values = model.value_function()
         action_dist = dist_class(logits)
-        log_probs = action_dist.logp(batch[SampleBatch.ACTIONS])
+        log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
         policy.entropy = action_dist.entropy().mean()
         ...
         return overall_err
@@ -477,7 +477,7 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
 
 .. code-block:: python
 
-    def loss_and_entropy_stats(policy, batch):
+    def loss_and_entropy_stats(policy, train_batch):
         return {
             "policy_entropy": policy.entropy.item(),
             "policy_loss": policy.pi_err.item(),

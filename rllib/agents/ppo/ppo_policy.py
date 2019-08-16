@@ -112,27 +112,28 @@ class PPOLoss(object):
         self.loss = loss
 
 
-def ppo_surrogate_loss(policy, model, dist_class, batch):
-    logits, state = model.from_batch(batch)
+def ppo_surrogate_loss(policy, model, dist_class, train_batch):
+    logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
     if state:
-        max_seq_len = tf.reduce_max(batch["seq_lens"])
-        mask = tf.sequence_mask(batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
+        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
-        mask = tf.ones_like(batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
+        mask = tf.ones_like(
+            train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
         dist_class,
         model,
-        batch[Postprocessing.VALUE_TARGETS],
-        batch[Postprocessing.ADVANTAGES],
-        batch[SampleBatch.ACTIONS],
-        batch[BEHAVIOUR_LOGITS],
-        batch[ACTION_LOGP],
-        batch[SampleBatch.VF_PREDS],
+        train_batch[Postprocessing.VALUE_TARGETS],
+        train_batch[Postprocessing.ADVANTAGES],
+        train_batch[SampleBatch.ACTIONS],
+        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.VF_PREDS],
         action_dist,
         model.value_function(),
         policy.kl_coeff,
@@ -147,7 +148,7 @@ def ppo_surrogate_loss(policy, model, dist_class, batch):
     return policy.loss_obj.loss
 
 
-def kl_and_loss_stats(policy, batch):
+def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": tf.cast(policy.kl_coeff, tf.float64),
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
@@ -155,7 +156,7 @@ def kl_and_loss_stats(policy, batch):
         "policy_loss": policy.loss_obj.mean_policy_loss,
         "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
-            batch[Postprocessing.VALUE_TARGETS],
+            train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function()),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
@@ -164,7 +165,7 @@ def kl_and_loss_stats(policy, batch):
 
 
 def vf_preds_and_logits_fetches(policy):
-    """Adds value function and logits outputs to experience batches."""
+    """Adds value function and logits outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
         BEHAVIOUR_LOGITS: policy.model.last_output(),

@@ -54,8 +54,8 @@ def build_tf_policy(name,
 
     Arguments:
         name (str): name of the policy (e.g., "PPOTFPolicy")
-        loss_fn (func): function that returns a loss tensor the policy,
-            and dict of experience tensor placeholdes
+        loss_fn (func): function that returns a loss tensor as arguments
+            (policy, model, dist_class, train_batch)
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         postprocess_fn (func): optional experience postprocessing function

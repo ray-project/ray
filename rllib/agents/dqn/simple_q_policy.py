@@ -140,31 +140,33 @@ def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
     return stochastic_actions, action_logp
 
 
-def build_q_losses(policy, model, dist_class, batch):
+def build_q_losses(policy, model, dist_class, train_batch):
     # q network evaluation
-    q_t = _compute_q_values(policy, policy.q_model, batch[SampleBatch.CUR_OBS],
+    q_t = _compute_q_values(policy, policy.q_model,
+                            train_batch[SampleBatch.CUR_OBS],
                             policy.observation_space, policy.action_space)
 
     # target q network evalution
     q_tp1 = _compute_q_values(policy, policy.target_q_model,
-                              batch[SampleBatch.NEXT_OBS],
+                              train_batch[SampleBatch.NEXT_OBS],
                               policy.observation_space, policy.action_space)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
-        tf.cast(batch[SampleBatch.ACTIONS], tf.int32), policy.action_space.n)
+        tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32),
+        policy.action_space.n)
     q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
 
     # compute estimate of best possible value starting from state at t + 1
-    dones = tf.cast(batch[SampleBatch.DONES], tf.float32)
+    dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
     q_tp1_best_one_hot_selection = tf.one_hot(
         tf.argmax(q_tp1, 1), policy.action_space.n)
     q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
     q_tp1_best_masked = (1.0 - dones) * q_tp1_best
 
     # compute RHS of bellman equation
-    q_t_selected_target = (batch[SampleBatch.REWARDS] +
+    q_t_selected_target = (train_batch[SampleBatch.REWARDS] +
                            policy.config["gamma"] * q_tp1_best_masked)
 
     # compute the error (potentially clipped)

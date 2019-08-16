@@ -303,22 +303,23 @@ def _build_parameter_noise(policy, pnet_params):
     policy.pi_distance = None
 
 
-def build_q_losses(policy, model, _, batch):
+def build_q_losses(policy, model, _, train_batch):
     config = policy.config
     # q network evaluation
     q_t, q_logits_t, q_dist_t = _compute_q_values(
-        policy, policy.q_model, batch[SampleBatch.CUR_OBS],
+        policy, policy.q_model, train_batch[SampleBatch.CUR_OBS],
         policy.observation_space, policy.action_space)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
-        policy, policy.target_q_model, batch[SampleBatch.NEXT_OBS],
+        policy, policy.target_q_model, train_batch[SampleBatch.NEXT_OBS],
         policy.observation_space, policy.action_space)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
-        tf.cast(batch[SampleBatch.ACTIONS], tf.int32), policy.action_space.n)
+        tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32),
+        policy.action_space.n)
     q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
     q_logits_t_selected = tf.reduce_sum(
         q_logits_t * tf.expand_dims(one_hot_selection, -1), 1)
@@ -328,7 +329,7 @@ def build_q_losses(policy, model, _, batch):
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
             q_dist_tp1_using_online_net = _compute_q_values(
                 policy, policy.q_model,
-                batch[SampleBatch.NEXT_OBS],
+                train_batch[SampleBatch.NEXT_OBS],
                 policy.observation_space, policy.action_space)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
@@ -345,8 +346,8 @@ def build_q_losses(policy, model, _, batch):
 
     policy.q_loss = QLoss(
         q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
-        batch[PRIO_WEIGHTS], batch[SampleBatch.REWARDS],
-        tf.cast(batch[SampleBatch.DONES],
+        train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
+        tf.cast(train_batch[SampleBatch.DONES],
                 tf.float32), config["gamma"], config["n_step"],
         config["num_atoms"], config["v_min"], config["v_max"])
 

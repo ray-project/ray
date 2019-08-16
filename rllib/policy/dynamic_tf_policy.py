@@ -294,7 +294,7 @@ class DynamicTFPolicy(TFPolicy):
         self.model(self._input_dict, self._state_in, self._seq_lens)
 
         if self._obs_include_prev_action_reward:
-            batch_tensors = UsageTrackingDict({
+            train_batch = UsageTrackingDict({
                 SampleBatch.PREV_ACTIONS: self._prev_action_input,
                 SampleBatch.PREV_REWARDS: self._prev_reward_input,
                 SampleBatch.CUR_OBS: self._obs_input,
@@ -305,7 +305,7 @@ class DynamicTFPolicy(TFPolicy):
                 (SampleBatch.CUR_OBS, self._obs_input),
             ]
         else:
-            batch_tensors = UsageTrackingDict({
+            train_batch = UsageTrackingDict({
                 SampleBatch.CUR_OBS: self._obs_input,
             })
             loss_inputs = [
@@ -313,7 +313,7 @@ class DynamicTFPolicy(TFPolicy):
             ]
 
         for k, v in postprocessed_batch.items():
-            if k in batch_tensors:
+            if k in train_batch:
                 continue
             elif v.dtype == np.object:
                 continue  # can't handle arbitrary objects in TF
@@ -322,33 +322,33 @@ class DynamicTFPolicy(TFPolicy):
             shape = (None, ) + v.shape[1:]
             dtype = np.float32 if v.dtype == np.float64 else v.dtype
             placeholder = tf.placeholder(dtype, shape=shape, name=k)
-            batch_tensors[k] = placeholder
+            train_batch[k] = placeholder
 
         for i, si in enumerate(self._state_in):
-            batch_tensors["state_in_{}".format(i)] = si
-        batch_tensors["seq_lens"] = self._seq_lens
+            train_batch["state_in_{}".format(i)] = si
+        train_batch["seq_lens"] = self._seq_lens
 
         if log_once("loss_init"):
             logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
-                    summarize(batch_tensors)))
+                    summarize(train_batch)))
 
-        self._loss_input_dict = batch_tensors
-        loss = self._do_loss_init(batch_tensors)
-        for k in sorted(batch_tensors.accessed_keys):
+        self._loss_input_dict = train_batch
+        loss = self._do_loss_init(train_batch)
+        for k in sorted(train_batch.accessed_keys):
             if k != "seq_lens" and not k.startswith("state_in_"):
-                loss_inputs.append((k, batch_tensors[k]))
+                loss_inputs.append((k, train_batch[k]))
 
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
             self._stats_fetches.update(
-                self._grad_stats_fn(self, batch_tensors, self._grads))
+                self._grad_stats_fn(self, train_batch, self._grads))
         self._sess.run(tf.global_variables_initializer())
 
-    def _do_loss_init(self, batch_tensors):
-        loss = self._loss_fn(self, self.model, self._dist_class, batch_tensors)
+    def _do_loss_init(self, train_batch):
+        loss = self._loss_fn(self, self.model, self._dist_class, train_batch)
         if self._stats_fn:
-            self._stats_fetches.update(self._stats_fn(self, batch_tensors))
+            self._stats_fetches.update(self._stats_fn(self, train_batch))
         # override the update ops to be those of the model
         self._update_ops = self.model.update_ops()
         return loss

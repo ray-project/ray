@@ -13,16 +13,16 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 
-def actor_critic_loss(policy, model, dist_class, batch):
-    logits, _ = model.from_batch(batch)
+def actor_critic_loss(policy, model, dist_class, train_batch):
+    logits, _ = model.from_batch(train_batch)
     values = model.value_function()
     dist = dist_class(logits, model)
-    log_probs = dist.logp(batch[SampleBatch.ACTIONS])
+    log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().mean()
-    policy.pi_err = -batch[Postprocessing.ADVANTAGES].dot(
+    policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
         log_probs.reshape(-1))
     policy.value_err = F.mse_loss(
-        values.reshape(-1), batch[Postprocessing.VALUE_TARGETS])
+        values.reshape(-1), train_batch[Postprocessing.VALUE_TARGETS])
     overall_err = sum([
         policy.pi_err,
         policy.config["vf_loss_coeff"] * policy.value_err,
@@ -31,7 +31,7 @@ def actor_critic_loss(policy, model, dist_class, batch):
     return overall_err
 
 
-def loss_and_entropy_stats(policy, batch):
+def loss_and_entropy_stats(policy, train_batch):
     return {
         "policy_entropy": policy.entropy.item(),
         "policy_loss": policy.pi_err.item(),

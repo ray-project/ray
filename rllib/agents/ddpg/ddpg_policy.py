@@ -186,19 +186,19 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     return actions, None
 
 
-def actor_critic_loss(policy, model, _, batch):
+def actor_critic_loss(policy, model, _, train_batch):
     model_out_t, _ = model({
-        "obs": batch[SampleBatch.CUR_OBS],
+        "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
     model_out_tp1, _ = model({
-        "obs": batch[SampleBatch.NEXT_OBS],
+        "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
     target_model_out_tp1, _ = policy.target_model({
-        "obs": batch[SampleBatch.NEXT_OBS],
+        "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
@@ -219,10 +219,10 @@ def actor_critic_loss(policy, model, _, batch):
         policy_tp1_smoothed = policy_tp1
 
     # q network evaluation
-    q_t = model.get_q_values(model_out_t, batch[SampleBatch.ACTIONS])
+    q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
     if policy.config["twin_q"]:
         twin_q_t = model.get_twin_q_values(model_out_t,
-                                           batch[SampleBatch.ACTIONS])
+                                           train_batch[SampleBatch.ACTIONS])
 
     # Q-values for current policy (no noise) in given current state
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
@@ -241,11 +241,11 @@ def actor_critic_loss(policy, model, _, batch):
 
     q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
     q_tp1_best_masked = (
-        1.0 - tf.cast(batch[SampleBatch.DONES], tf.float32)) * q_tp1_best
+        1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)) * q_tp1_best
 
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
-        batch[SampleBatch.REWARDS] +
+        train_batch[SampleBatch.REWARDS] +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # compute the error (potentially clipped)
@@ -266,8 +266,9 @@ def actor_critic_loss(policy, model, _, batch):
             errors = 0.5 * tf.square(td_error)
 
     critic_loss = model.custom_loss(
-        tf.reduce_mean(tf.cast(batch[PRIO_WEIGHTS], tf.float32) * errors),
-        batch)
+        tf.reduce_mean(
+            tf.cast(train_batch[PRIO_WEIGHTS], tf.float32) * errors),
+        train_batch)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
     if policy.config["l2_reg"] is not None:
@@ -338,7 +339,7 @@ def apply_gradients(policy, optimizer, grads_and_vars):
         return tf.group(actor_op, critic_op)
 
 
-def stats(policy, batch):
+def stats(policy, train_batch):
     return {
         "td_error": tf.reduce_mean(policy.td_error),
         "actor_loss": tf.reduce_mean(policy.actor_loss),
