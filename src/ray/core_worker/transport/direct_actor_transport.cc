@@ -153,7 +153,10 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
               store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
-  return status;
+  if (!status.ok()) {
+    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
+  }
+  return Status::OK();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
