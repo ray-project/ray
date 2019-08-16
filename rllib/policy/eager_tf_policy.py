@@ -113,9 +113,9 @@ def build_eager_tf_policy(name,
             self._loss_initialized = True
 
             if optimizer_fn:
-                self.optimizer = optimizer_fn(self, config)
+                self._optimizer = optimizer_fn(self, config)
             else:
-                self.optimizer = tf.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf.train.AdamOptimizer(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
@@ -160,12 +160,12 @@ def build_eager_tf_policy(name,
             self._is_training = False
 
             self._seq_lens = tf.ones(len(obs_batch))
-            self.input_dict = {
+            self._input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.convert_to_tensor(False),
             }
             if obs_include_prev_action_reward:
-                self.input_dict.update({
+                self._input_dict.update({
                     SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
                         prev_action_batch),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
@@ -174,15 +174,15 @@ def build_eager_tf_policy(name,
             self._state_in = state_batches
             with tf.variable_creator_scope(_disallow_var_creation):
                 model_out, state_out = self.model(
-                    self.input_dict, state_batches, self._seq_lens)
+                    self._input_dict, state_batches, self._seq_lens)
 
             if self._dist_class:
-                self.action_dist = self._dist_class(model_out, self.model)
-                action = self.action_dist.sample().numpy()
-                logp = self.action_dist.sampled_action_logp()
+                action_dist = self._dist_class(model_out, self.model)
+                action = action_dist.sample().numpy()
+                logp = action_dist.sampled_action_logp()
             else:
                 action, logp = action_sampler_fn(
-                    self, self.model, self.input_dict, self.observation_space,
+                    self, self.model, self._input_dict, self.observation_space,
                     self.action_space, self.config)
                 action = action.numpy()
 
@@ -229,9 +229,9 @@ def build_eager_tf_policy(name,
 
         def _apply_gradients(self, grads_and_vars):
             if apply_gradients_fn:
-                apply_gradients_fn(self, self.optimizer, grads_and_vars)
+                apply_gradients_fn(self, self._optimizer, grads_and_vars)
             else:
-                self.optimizer.apply_gradients(grads_and_vars)
+                self._optimizer.apply_gradients(grads_and_vars)
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
@@ -249,8 +249,6 @@ def build_eager_tf_policy(name,
                 self._state_in = []
                 model_out, _ = self.model(samples, self._state_in,
                                           self._seq_lens)
-                if self._dist_class:
-                    self.action_dist = self._dist_class(model_out, self.model)
                 loss = loss_fn(self, self.model, self._dist_class, samples)
 
             variables = self.model.trainable_variables()
