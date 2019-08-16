@@ -154,12 +154,6 @@ class RedisContext {
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
 
-  /// Called when an instance of redisAsyncContext is disconnected.
-  ///
-  /// \param context the redisAsyncContext instances
-  /// \param status The status code of disconnection
-  void AsyncDisconnectCallback(const redisAsyncContext *context, int status);
-
   redisContext *sync_context() {
     RAY_CHECK(context_);
     return context_;

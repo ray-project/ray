@@ -188,13 +188,16 @@ Status AuthenticateRedis(redisAsyncContext *context, const std::string &password
 
 void RedisAsyncContextDisconnectCallback(const redisAsyncContext *context, int status) {
   RAY_LOG(WARNING) << "Redis async context disconnected. Status: " << status;
-  reinterpret_cast<RedisContext *>(context->data)
-      ->AsyncDisconnectCallback(context, status);
+  // Reset raw 'redisAsyncContext' to nullptr because hiredis will release this context.
+  reinterpret_cast<RedisAsyncContext *>(context->data)->ResetRawRedisAsyncContext();
 }
 
-void SetDisconnectCallback(RedisContext *redis_context, redisAsyncContext *context) {
-  context->data = redis_context;
-  redisAsyncSetDisconnectCallback(context, RedisAsyncContextDisconnectCallback);
+void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
+  redisAsyncContext *raw_redis_async_context =
+      redis_async_context->GetRawRedisAsyncContext();
+  raw_redis_async_context->data = redis_async_context;
+  redisAsyncSetDisconnectCallback(raw_redis_async_context,
+                                  RedisAsyncContextDisconnectCallback);
 }
 
 template <typename RedisContext, typename RedisConnectFunction>
@@ -240,16 +243,16 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
   // Connect to async context
   redisAsyncContext *async_context = nullptr;
   RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
-  SetDisconnectCallback(this, async_context);
   RAY_CHECK_OK(AuthenticateRedis(async_context, password));
   redis_async_context_.reset(new RedisAsyncContext(async_context));
+  SetDisconnectCallback(redis_async_context_.get());
 
   // Connect to subscribe context
   redisAsyncContext *subscribe_context = nullptr;
   RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context));
-  SetDisconnectCallback(this, subscribe_context);
   RAY_CHECK_OK(AuthenticateRedis(subscribe_context, password));
   async_redis_subscribe_context_.reset(new RedisAsyncContext(subscribe_context));
+  SetDisconnectCallback(async_redis_subscribe_context_.get());
 
   return Status::OK();
 }
@@ -297,17 +300,6 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
   }
 
   return status;
-}
-
-void RedisContext::AsyncDisconnectCallback(const redisAsyncContext *context, int status) {
-  if (context == redis_async_context_->GetRawRedisAsyncContext()) {
-    // Reset raw 'redisAsyncContext' to nullptr because hiredis has released this context.
-    redis_async_context_->ResetRawRedisAsyncContext();
-  }
-  if (context == async_redis_subscribe_context_->GetRawRedisAsyncContext()) {
-    // Reset raw 'redisAsyncContext' to nullptr because hiredis has released this context.
-    async_redis_subscribe_context_->ResetRawRedisAsyncContext();
-  }
 }
 
 }  // namespace gcs
