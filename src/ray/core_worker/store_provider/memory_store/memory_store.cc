@@ -10,7 +10,7 @@ namespace ray {
 /// A class that represents a `Get` request.
 class GetRequest {
  public:
-  GetRequest(std::unordered_set<ObjectID> object_ids, int num_objects,
+  GetRequest(std::unordered_set<ObjectID> object_ids, size_t num_objects,
              bool remove_after_get);
 
   const std::unordered_set<ObjectID> &ObjectIds() const;
@@ -36,7 +36,7 @@ class GetRequest {
   /// The object information for the objects in this request.
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
   /// Number of objects required.
-  const int num_objects_;
+  const size_t num_objects_;
 
   // Whether the requested objects should be removed from store
   // after `get` returns.
@@ -47,7 +47,7 @@ class GetRequest {
   std::condition_variable cv_;
 };
 
-GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, int num_objects,
+GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, size_t num_objects,
                        bool remove_after_get)
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
@@ -179,7 +179,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
       return Status::OK();
     }
 
-    int required_objects = num_objects - (object_ids.size() - remaining_ids.size());
+    size_t required_objects = num_objects - (object_ids.size() - remaining_ids.size());
 
     // Otherwise, create a GetRequest to track remaining objects.
     get_request = std::make_shared<GetRequest>(std::move(remaining_ids), required_objects,
