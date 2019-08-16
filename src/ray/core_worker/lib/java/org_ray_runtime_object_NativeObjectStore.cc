@@ -46,11 +46,6 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_ob
   RAY_CHECK(ray_object != nullptr);
   auto status =
       GetObjectInterfaceFromPointer(nativeCoreWorkerPointer).Put(*ray_object, object_id);
-  if (status.IsIOError() &&
-      status.message() == "object already exists in the plasma store") {
-    // Ignore duplicated put on the same object ID.
-    return;
-  }
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
