@@ -117,6 +117,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     auto status =
         PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
                  request.task_spec().num_returns());
+    RAY_CHECK_OK(status);
     requests.pop_front();
   }
 }
