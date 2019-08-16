@@ -11,14 +11,20 @@ namespace ray {
 void ObjectIdsByStoreProvider(
     const std::vector<ObjectID> &object_ids,
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results) {
-  // There can be a few cases here:
-  // - for task return objects, determine the store provider type for an object
-  //   from its transport type;
-  // - for other objects, just use plasma store provider.
+  // There are two cases:
+  // - for task return objects from direct actor call, use memory store provider;
+  // - all the others use plasma store provider.
   for (const auto &object_id : object_ids) {
-    // By default use `PLASMA` store provider for all the objects.
     auto type = StoreProviderType::PLASMA;
-    // Use `MEMORY` store provider for task returns objects from direct actor call.
+    // For raylet transport we always use plasma store provider, for direct actor call
+    // there are a few cases:
+    // - objects manually added to store by`ray.put`: for these objects they always use
+    //   plasma store provider;
+    // - task arguments: these objects are passed by value, and are not put into store;
+    // - task return objects: these are put into memory store of the task submitter
+    //   and are only used locally.
+    // Thus we need to check whether this object is a task return object in additional
+    // to whether it's from direct actor call before we can choose memory store provider.
     if (object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
             static_cast<int>(TaskTransportType::DIRECT_ACTOR)) {
@@ -61,7 +67,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
-  GetObjectIdsPerStoreProvider(ids, &object_ids_per_store_provider);
+  ObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;
   auto current_timeout_ms = timeout_ms;
@@ -109,13 +115,13 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                        int64_t timeout_ms, std::vector<bool> *results) {
   (*results).resize(ids.size(), false);
 
-  if (num_objects <= 0 || num_objects > ids.size()) {
+  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
     return Status::Invalid("num_objects value is not valid");
   }
 
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
-  GetObjectIdsPerStoreProvider(ids, &object_ids_per_store_provider);
+  ObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
   std::unordered_map<ObjectID, int> object_counts;
   for (const auto &entry : ids) {
@@ -197,7 +203,7 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
                                          bool local_only, bool delete_creating_tasks) {
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
-  GetObjectIdsPerStoreProvider(object_ids, &object_ids_per_store_provider);
+  ObjectIdsByStoreProvider(object_ids, &object_ids_per_store_provider);
 
   for (const auto &entry : object_ids_per_store_provider) {
     auto type = entry.first;
