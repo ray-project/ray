@@ -64,16 +64,6 @@ class TaskArg {
   const std::shared_ptr<Buffer> data_;
 };
 
-/// Information of a task
-struct TaskInfo {
-  /// The ID of task.
-  const TaskID task_id;
-  /// The job ID.
-  const JobID job_id;
-  /// The type of task.
-  const TaskType task_type;
-};
-
 enum class StoreProviderType { LOCAL_PLASMA, PLASMA, MEMORY };
 
 enum class TaskTransportType { RAYLET, DIRECT_ACTOR };

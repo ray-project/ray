@@ -748,8 +748,6 @@ cc_binary(
     srcs = glob([
         "src/ray/core_worker/lib/java/*.h",
         "src/ray/core_worker/lib/java/*.cc",
-        "src/ray/raylet/lib/java/*.h",
-        "src/ray/raylet/lib/java/*.cc",
     ]) + [
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({
