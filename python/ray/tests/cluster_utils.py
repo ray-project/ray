@@ -20,7 +20,9 @@ class Cluster(object):
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
             default_node_kwargs (dict): Default arguments to be passed into
-                `start_ray_head` and `start_ray_node` via `self.add_node`.
+                `start_ray_head` and `start_ray_node` via `self.add_node`. If
+                None is provided, then this will be set to the head node's
+                arguments once it is added.
         """
         self.head_node = None
         self.worker_nodes = set()
