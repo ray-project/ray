@@ -1,14 +1,14 @@
-package org.ray.runtime;
+package org.ray.runtime.context;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.api.runtimecontext.RuntimeContext;
+import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RunMode;
-import org.ray.runtime.task.TaskSpec;
+import org.ray.runtime.generated.Common.TaskType;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
@@ -25,16 +25,16 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public ActorId getCurrentActorId() {
-    Worker worker = runtime.getWorker();
-    Preconditions.checkState(worker != null && !worker.getCurrentActorId().isNil(),
+    ActorId actorId = runtime.getWorkerContext().getCurrentActorId();
+    Preconditions.checkState(actorId != null && !actorId.isNil(),
         "This method should only be called from an actor.");
-    return worker.getCurrentActorId();
+    return actorId;
   }
 
   @Override
   public boolean wasCurrentActorReconstructed() {
-    TaskSpec currentTask = runtime.getWorkerContext().getCurrentTask();
-    Preconditions.checkState(currentTask != null && currentTask.isActorCreationTask(),
+    TaskType currentTaskType = runtime.getWorkerContext().getCurrentTaskType();
+    Preconditions.checkState(currentTaskType == TaskType.ACTOR_CREATION_TASK,
         "This method can only be called from an actor creation task.");
     if (isSingleProcess()) {
       return false;

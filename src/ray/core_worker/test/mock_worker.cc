@@ -24,7 +24,7 @@ class MockWorker {
              const gcs::GcsClientOptions &gcs_options)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
                 JobID::FromInt(1), gcs_options,
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5)) {}
+                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {
     // Start executing tasks.
@@ -33,8 +33,7 @@ class MockWorker {
 
  private:
   Status ExecuteTask(const RayFunction &ray_function,
-                     const std::vector<std::shared_ptr<RayObject>> &args,
-                     const TaskInfo &task_info, int num_returns,
+                     const std::vector<std::shared_ptr<RayObject>> &args, int num_returns,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(num_returns >= 0);
