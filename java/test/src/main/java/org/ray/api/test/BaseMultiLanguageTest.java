@@ -37,8 +37,7 @@ public abstract class BaseMultiLanguageTest {
         processBuilder.environment().put(entry.getKey(), entry.getValue());
       }
       Process process = processBuilder.start();
-      while (!process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS)) {
-      }
+      process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       return process.exitValue() == 0;
     } catch (Exception e) {
       throw new RuntimeException("Error executing command " + String.join(" ", command), e);

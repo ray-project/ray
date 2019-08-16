@@ -29,7 +29,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Handle assigned task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, &results);
 

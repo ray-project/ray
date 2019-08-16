@@ -116,7 +116,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv 
                                                                          jstring logDir) {
   std::string log_dir = JavaStringToNativeString(env, logDir);
   ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
-  // ray::RayLog::InstallFailureSignalHandler();
+  // TODO (kfstorm): If we add InstallFailureSignalHandler here, Java test may crash.
 }
 
 /*
