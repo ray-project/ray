@@ -25,8 +25,8 @@ public class BaseTest {
     filesToDelete = ImmutableList.of(
         new File(Ray.getRuntimeContext().getRayletSocketName()),
         new File(Ray.getRuntimeContext().getObjectStoreSocketName()),
-        // TODO(pcm): This is a workaround for
-        // https://github.com/ray-project/ray/pull/5450
+        // TODO(pcm): This is a workaround for the issue described
+        // in the PR description of https://github.com/ray-project/ray/pull/5450
         // and should be fixed properly.
         new File("/tmp/ray/test/raylet_socket")
     );
