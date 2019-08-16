@@ -78,9 +78,10 @@ class CoreWorkerObjectInterface {
   /// \param[in/out] num_objects Number of objects that should appear before returning.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, 
-    const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
-    int64_t timeout_ms, int *num_objects, std::vector<bool> *results);
+  Status Wait(const std::vector<ObjectID> &object_ids,
+              const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
+                  &ids_per_provider,
+              int64_t timeout_ms, int *num_objects, std::vector<bool> *results);
 
   /// Helper function to get a list of objects from a specific store provider.
   ///
@@ -89,9 +90,10 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status GetFromStoreProvider(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+  Status GetFromStoreProvider(
+      StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+      int64_t timeout_ms,
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
   /// Helper function to wait a list of objects from a specific store provider.
   ///
@@ -101,8 +103,10 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status WaitFromStoreProvider(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
-              int num_objects, int64_t timeout_ms, std::unordered_set<ObjectID> *results);
+  Status WaitFromStoreProvider(StoreProviderType type,
+                               const std::unordered_set<ObjectID> &object_ids,
+                               int num_objects, int64_t timeout_ms,
+                               std::unordered_set<ObjectID> *results);
 
   /// Create a new store provider for the specified type on demand.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
