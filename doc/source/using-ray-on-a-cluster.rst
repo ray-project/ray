@@ -78,3 +78,62 @@ Stopping Ray
 ~~~~~~~~~~~~
 
 When you want to stop the Ray processes, run ``ray stop`` on each node.
+
+Deploying on Slurm
+~~~~~~~~~~~~~~~~~~
+
+Clusters managed by Slurm may require that Ray is initialized as a part of the submitted job. This can be done by using `srun` within the submitted script.
+
+To prevent slurm from automatically killing the background ray processes when srun completes, secondary scripts can be run which remain open until the experiment is complete. For example:
+
+.. code-block:: bash
+    
+    worker_num=4 # Must be one less that the total number of nodes
+
+    nodes=$(scontrol show hostnames $SLURM_JOB_NODELIST) # Getting the node names
+    nodes_array=( $nodes )
+
+    node1=${nodes_array[0]}
+
+    ip_prefix=$(srun --nodes=1 --ntasks=1 -w $node1 hostname --ip-address) # Making redis-address
+    suffix=':6379'
+    ip_head=$ip_prefix$suffix
+
+    export ip_head # For latter access (ex. ray.init(redis_address=os.environ["ip_head"]) )
+
+    srun --nodes=1 --ntasks=1 -w $node1 ~/scripts/start_head.sh & # Starting the head
+    sleep 5
+
+    for ((  i=1; i<=$worker_num; i++ )) # Starting the workers
+    do
+        node_i=${nodes_array[$i]}
+        srun --nodes=1 --ntasks=1 -w $node_i ~/scripts/start_worker.sh $ip_head $i &
+        sleep 5
+    done
+
+    python trainer.py
+
+    pkill -P $(<~/pid_storage/head.pid) sleep # Closing the head and workers
+    for ((  i=1; i<=$worker_num; i++ ))
+    do
+        pkill -P $(<~/pid_storage/worker${i}.pid) sleep
+    done
+
+
+start_head.sh
+
+.. code-block:: bash
+    
+    ray start --head --redis-port=6379
+
+    echo "$$" | tee ~/pid_storage/head.pid
+    sleep infinity
+
+start_worker.sh
+
+.. code-block:: bash
+    
+    ray start --redis-address=$1
+
+    echo "$$" | tee ~/pid_storage/worker${2}.pid
+    sleep infinity
