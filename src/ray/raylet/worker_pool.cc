@@ -19,7 +19,7 @@ namespace raylet {
 /// A constructor that initializes a worker pool with
 /// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each language.
 WorkerPool::WorkerPool(int num_worker_processes,
-                       const std::unordered_map<Language, int> &num_workers_per_process_by_lang,
+                       const std::unordered_map<Language, int, std::hash<int>> &num_workers_per_process_by_lang,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
@@ -40,7 +40,7 @@ WorkerPool::WorkerPool(int num_worker_processes,
     // If num workers per process was not expicitly set, use 1 as default.
     auto it = num_workers_per_process_by_lang_.find(entry.first);
     if (it == num_workers_per_process_by_lang_.end()) {
-      num_workers_per_process_by_lang_.emplace(entry.first, 1).first;
+      num_workers_per_process_by_lang_.emplace(entry.first, 1);
     }
 
     // Initialize the pool state for this language.

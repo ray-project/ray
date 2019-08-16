@@ -40,7 +40,7 @@ class WorkerPool {
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   WorkerPool(int num_worker_processes,
-             const std::unordered_map<Language, int> &num_workers_per_process_by_lang,
+             const std::unordered_map<Language, int, std::hash<int>> &num_workers_per_process_by_lang,
              int maximum_startup_concurrency,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
@@ -197,7 +197,7 @@ class WorkerPool {
   };
 
   /// The number of workers per process per language.
-  std::unordered_map<Language, int> num_workers_per_process_by_lang_;
+  std::unordered_map<Language, int, std::hash<int>> num_workers_per_process_by_lang_;
   /// Pool states per language.
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
