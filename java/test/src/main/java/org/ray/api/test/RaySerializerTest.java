@@ -1,23 +1,24 @@
 package org.ray.api.test;
 
+import org.ray.api.Ray;
 import org.ray.api.RayPyActor;
-import org.ray.api.id.ActorId;
-import org.ray.api.id.JobId;
-import org.ray.api.id.UniqueId;
-import org.ray.runtime.RayPyActorImpl;
-import org.ray.runtime.util.Serializer;
+import org.ray.api.id.ObjectId;
+import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.object.NativeRayObject;
+import org.ray.runtime.object.ObjectStore;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RaySerializerTest {
+public class RaySerializerTest extends BaseMultiLanguageTest {
 
   @Test
   public void testSerializePyActor() {
-    final ActorId pyActorId = ActorId.generateActorId(JobId.fromInt(1));
-    RayPyActor pyActor = new RayPyActorImpl(pyActorId, "test", "RaySerializerTest");
-    byte[] bytes = Serializer.encode(pyActor);
-    RayPyActor result = Serializer.decode(bytes);
-    Assert.assertEquals(result.getId(), pyActorId);
+    RayPyActor pyActor = Ray.createPyActor("test", "RaySerializerTest");
+    ObjectStore objectStore = ((AbstractRayRuntime) Ray.internal()).getObjectStore();
+    NativeRayObject nativeRayObject = objectStore.serialize(pyActor);
+    RayPyActor result = (RayPyActor) objectStore
+        .deserialize(nativeRayObject, ObjectId.fromRandom());
+    Assert.assertEquals(result.getId(), pyActor.getId());
     Assert.assertEquals(result.getModuleName(), "test");
     Assert.assertEquals(result.getClassName(), "RaySerializerTest");
   }

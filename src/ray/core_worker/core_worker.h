@@ -38,6 +38,10 @@ class CoreWorker {
   /// Language of this worker.
   Language GetLanguage() const { return language_; }
 
+  WorkerContext &GetWorkerContext() { return worker_context_; }
+
+  RayletClient &GetRayletClient() { return *raylet_client_; }
+
   /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
   /// submisson.
   CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
