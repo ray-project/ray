@@ -205,7 +205,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
     state.starting_worker_processes.erase(it);
   }
 
-  state.registered_workers.emplace(worker_id, std::move(worker));
+  state.registered_workers.emplace(std::move(worker));
   return Status::OK();
 }
 
