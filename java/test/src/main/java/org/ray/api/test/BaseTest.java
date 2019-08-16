@@ -25,7 +25,10 @@ public class BaseTest {
     filesToDelete = ImmutableList.of(
         new File(Ray.getRuntimeContext().getRayletSocketName()),
         new File(Ray.getRuntimeContext().getObjectStoreSocketName()),
-	new File("/tmp/ray/test/raylet_socket")
+        // TODO(pcm): This is a workaround for
+        // https://github.com/ray-project/ray/pull/5450
+        // and should be fixed properly.
+        new File("/tmp/ray/test/raylet_socket")
     );
     // Make sure the files will be deleted even if the test doesn't exit gracefully.
     filesToDelete.forEach(File::deleteOnExit);
