@@ -85,7 +85,7 @@ Deploying on Slurm
 
 Clusters managed by Slurm may require that Ray is initialized as a part of the submitted job. This can be done by using `srun` within the submitted script.
 
-To prevent slurm from automatically killing the background ray processes when srun completes, secondary scripts can be run which remain open until the experiment is complete. For example:
+To prevent Slurm from automatically killing the background ray processes when ``srun`` completes, secondary scripts can be run which remain open until the experiment is complete. For example:
 
 .. code-block:: bash
     
