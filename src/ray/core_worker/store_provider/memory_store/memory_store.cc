@@ -174,7 +174,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
       return Status::OK();
     }
 
-    if (object_ids.size() - remaining_ids.size() >= num_objects) {
+    if (object_ids.size() - remaining_ids.size() >= static_cast<size_t>(num_objects)) {
       // Already get enough objects.
       return Status::OK();
     }
