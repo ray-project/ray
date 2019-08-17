@@ -22,7 +22,6 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray.utils import (
     binary_to_hex,
-    is_cython,
     is_function_or_method,
     is_class_method,
     check_oversized_pickle,
@@ -355,23 +354,8 @@ class FunctionActorManager(object):
         """
         if self._worker.load_code_from_local:
             return
-        # Work around limitations of Python pickling.
         function = remote_function._function
-        function_name_global_valid = function.__name__ in function.__globals__
-        function_name_global_value = function.__globals__.get(
-            function.__name__)
-        # Allow the function to reference itself as a global variable
-        if not is_cython(function):
-            function.__globals__[function.__name__] = remote_function
-        try:
-            pickled_function = pickle.dumps(function)
-        finally:
-            # Undo our changes
-            if function_name_global_valid:
-                function.__globals__[function.__name__] = (
-                    function_name_global_value)
-            else:
-                del function.__globals__[function.__name__]
+        pickled_function = pickle.dumps(function)
 
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,

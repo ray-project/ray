@@ -51,35 +51,9 @@ public class UniqueIdTest {
   }
 
   @Test
-  public void testComputeReturnId() {
-    // Mock a taskId, and the lowest 4 bytes should be 0.
-    TaskId taskId = TaskId.fromHexString("123456789ABCDE123456789ABCDE");
-
-    ObjectId returnId = ObjectId.forReturn(taskId, 1);
-    Assert.assertEquals("123456789abcde123456789abcde00c001000000", returnId.toString());
-    Assert.assertEquals(returnId.getTaskId(), taskId);
-
-    returnId = ObjectId.forReturn(taskId, 0x01020304);
-    Assert.assertEquals("123456789abcde123456789abcde00c004030201", returnId.toString());
-  }
-
-  @Test
-  public void testComputePutId() {
-    // Mock a taskId, the lowest 4 bytes should be 0.
-    TaskId taskId = TaskId.fromHexString("123456789ABCDE123456789ABCDE");
-
-    ObjectId putId = ObjectId.forPut(taskId, 1);
-    Assert.assertEquals("123456789abcde123456789abcde008001000000".toLowerCase(), putId.toString());
-
-    putId = ObjectId.forPut(taskId, 0x01020304);
-    Assert.assertEquals("123456789abcde123456789abcde008004030201".toLowerCase(), putId.toString());
-  }
-
-  @Test
   void testMurmurHash() {
     UniqueId id = UniqueId.fromHexString("3131313131313131313132323232323232323232");
     long remainder = Long.remainderUnsigned(IdUtil.murmurHashCode(id), 1000000000);
     Assert.assertEquals(remainder, 787616861);
   }
-
 }

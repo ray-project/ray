@@ -123,7 +123,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), nullptr);
-    worker_pool_.RegisterWorker(worker_id, worker);
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker_id, worker));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), worker);
   }
