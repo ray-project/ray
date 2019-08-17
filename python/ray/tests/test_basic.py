@@ -2650,6 +2650,11 @@ def test_logging_to_driver(shutdown_only):
     for i in range(200):
         assert str(i) in output_lines
 
+    # TODO(rkn): Check that no additional logs appear beyond what we expect
+    # and that there are no duplicate logs. Once we address the issue
+    # described in https://github.com/ray-project/ray/pull/5462, we should
+    # also check that nothing is logged to stderr.
+
 
 def test_not_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=False)
@@ -2669,6 +2674,11 @@ def test_not_logging_to_driver(shutdown_only):
 
     output_lines = captured["out"]
     assert len(output_lines) == 0
+
+    # TODO(rkn): Check that no additional logs appear beyond what we expect
+    # and that there are no duplicate logs. Once we address the issue
+    # described in https://github.com/ray-project/ray/pull/5462, we should
+    # also check that nothing is logged to stderr.
 
 
 @pytest.mark.skipif(
