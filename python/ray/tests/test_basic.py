@@ -319,6 +319,38 @@ def test_nested_functions(ray_start_regular):
 
     assert ray.get(f.remote()) == (1, 2)
 
+    # Test a remote function that recursively calls itself.
+
+    @ray.remote
+    def factorial(n):
+        if n == 0:
+            return 1
+        return n * ray.get(factorial.remote(n - 1))
+
+    assert ray.get(factorial.remote(0)) == 1
+    assert ray.get(factorial.remote(1)) == 1
+    assert ray.get(factorial.remote(2)) == 2
+    assert ray.get(factorial.remote(3)) == 6
+    assert ray.get(factorial.remote(4)) == 24
+    assert ray.get(factorial.remote(5)) == 120
+
+    # Test remote functions that recursively call each other.
+
+    @ray.remote
+    def factorial_even(n):
+        assert n % 2 == 0
+        if n == 0:
+            return 1
+        return n * ray.get(factorial_odd.remote(n - 1))
+
+    @ray.remote
+    def factorial_odd(n):
+        assert n % 2 == 1
+        return n * ray.get(factorial_even.remote(n - 1))
+
+    assert ray.get(factorial_even.remote(4)) == 24
+    assert ray.get(factorial_odd.remote(5)) == 120
+
 
 def test_ray_recursive_objects(ray_start_regular):
     class ClassA(object):
