@@ -12,7 +12,6 @@ import sys
 # details.
 import ray._raylet
 
-
 if "pyarrow" in sys.modules:
     raise ImportError("Ray must be imported before pyarrow because Ray "
                       "requires a specific version of pyarrow (which is "
