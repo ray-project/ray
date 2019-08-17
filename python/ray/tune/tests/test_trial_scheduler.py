@@ -38,7 +38,7 @@ def result(t, rew):
 
 class EarlyStoppingSuite(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
         ray.shutdown()
