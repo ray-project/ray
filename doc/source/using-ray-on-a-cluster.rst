@@ -81,6 +81,7 @@ When you want to stop the Ray processes, run ``ray stop`` on each node.
 
 Deploying on Slurm
 ~~~~~~~~~~~~~~~~~~
+------------------
 
 Clusters managed by Slurm may require that Ray is initialized as a part of the submitted job. This can be done by using `srun` within the submitted script.
 
