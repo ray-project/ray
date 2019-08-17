@@ -15,8 +15,8 @@ class VisionNetwork(TFModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        super(VisionNetwork, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+        super(VisionNetwork, self).__init__(obs_space, action_space,
+                                            num_outputs, model_config, name)
 
         activation = get_activation_fn(model_config.get("conv_activation"))
         filters = model_config.get("conv_filters")
@@ -57,8 +57,7 @@ class VisionNetwork(TFModelV2):
                 padding="valid",
                 name="conv{}".format(i + 1))(last_layer)
             conv_out = tf.keras.layers.Conv2D(
-                num_outputs,
-                [1, 1],
+                num_outputs, [1, 1],
                 activation=None,
                 padding="same",
                 name="conv_out")(last_layer)
@@ -91,8 +90,7 @@ class VisionNetwork(TFModelV2):
                 padding="valid",
                 name="conv_value_{}".format(i + 1))(last_layer)
             last_layer = tf.keras.layers.Conv2D(
-                1,
-                [1, 1],
+                1, [1, 1],
                 activation=None,
                 padding="same",
                 name="conv_value_out")(last_layer)
@@ -102,7 +100,9 @@ class VisionNetwork(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        model_out, self._value_out = self.base_model(input_dict["obs"])
+        # explicit cast to float32 needed in eager
+        model_out, self._value_out = self.base_model(
+            tf.cast(input_dict["obs"], tf.float32))
         return tf.squeeze(model_out, axis=[1, 2]), state
 
     def value_function(self):
