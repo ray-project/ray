@@ -5,7 +5,6 @@ import json
 
 from tensorflow import keras
 
-
 NUM_TRAIN_SAMPLES = 60000
 
 def get_dataset(batch_size):
@@ -17,12 +16,14 @@ def get_dataset(batch_size):
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train,y_train))
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
+    tf.random.set_seed(22)
     train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(batch_size, drop_remainder=True)
     test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
 
     return train_dataset, test_dataset
 
-def get_model():
+def get_model(config=None):
+
     model = tf.keras.models.Sequential([
       tf.keras.layers.Flatten(input_shape=(28, 28)),
       tf.keras.layers.Dense(128, activation='relu'),
@@ -30,11 +31,10 @@ def get_model():
       tf.keras.layers.Dense(10, activation='softmax')
     ])
 
+    model.compile(optimizer='adam',
+          loss='sparse_categorical_crossentropy',
+          metrics=['accuracy'])
+
     return model
 
-def get_optimizer():
-    optimizer="adam"
-    loss="sparse_categorical_crossentropy"
-    metrics=['accuracy']
-    return optimizer, loss, metrics
 
