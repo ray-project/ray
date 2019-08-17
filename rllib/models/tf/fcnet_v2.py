@@ -63,7 +63,7 @@ class FullyConnectedNetwork(TFModelV2):
             for size in hiddens:
                 last_layer = tf.keras.layers.Dense(
                     size,
-                    name="value_fc_{}".format(i),
+                    name="fc_value_{}".format(i),
                     activation=activation,
                     kernel_initializer=normc_initializer(1.0))(last_layer)
                 i += 1

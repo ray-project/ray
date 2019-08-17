@@ -14,6 +14,7 @@ from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDiagGaussian)
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
+from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
 from ray.rllib.models.tf.tf_action_dist import (
     Categorical, MultiCategorical, Deterministic, DiagGaussian,
     MultiActionDistribution, Dirichlet)
@@ -521,7 +522,7 @@ class ModelCatalog(object):
             return None  # TODO: default LSTM v2 not implemented
 
         if obs_rank > 1:
-            return None  # TODO: default vision net v2 is not implemented
+            return VisionNetV2
 
         return FCNetV2
 
