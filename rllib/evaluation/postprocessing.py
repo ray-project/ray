@@ -28,7 +28,7 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
         last_r (float): Value estimation for last observation
         gamma (float): Discount factor.
         lambda_ (float): Parameter for GAE
-        use_gae (bool): Using Generalized Advantage Estamation
+        use_gae (bool): Using Generalized Advantage Estimation
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and

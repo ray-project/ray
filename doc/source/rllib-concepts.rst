@@ -407,7 +407,7 @@ The action sampler is straightforward, it just takes the q_model, runs a forward
                              config):
         # do max over Q values...
         ...
-        return action, action_prob
+        return action, action_logp
 
 The remainder of DQN is similar to other algorithms. Target updates are handled by a ``after_optimizer_step`` callback that periodically copies the weights of the Q network to the target.
 

@@ -7,7 +7,7 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.RayObjectImpl;
+import org.ray.runtime.object.RayObjectImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;

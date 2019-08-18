@@ -24,7 +24,7 @@ Then run the training script that matches the dataset you downloaded.
 .. code-block:: bash
 
   # Train Resnet on CIFAR-10.
-  python ray/examples/resnet/resnet_main.py \
+  python ray/doc/examples/resnet/resnet_main.py \
       --eval_dir=/tmp/resnet-model/eval \
       --train_data_path=cifar-10-batches-bin/data_batch* \
       --eval_data_path=cifar-10-batches-bin/test_batch.bin \
@@ -32,7 +32,7 @@ Then run the training script that matches the dataset you downloaded.
       --num_gpus=1
 
   # Train Resnet on CIFAR-100.
-  python ray/examples/resnet/resnet_main.py \
+  python ray/doc/examples/resnet/resnet_main.py \
       --eval_dir=/tmp/resnet-model/eval \
       --train_data_path=cifar-100-binary/train.bin \
       --eval_data_path=cifar-100-binary/test.bin \
@@ -101,4 +101,4 @@ object store.
 
 .. _`TensorFlow ResNet example`: https://github.com/tensorflow/models/tree/master/resnet
 .. _`TensorFlow`: https://www.tensorflow.org/install/
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/resnet
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/resnet

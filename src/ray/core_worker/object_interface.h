@@ -68,6 +68,17 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
+  /// Helper function to get a list of objects from a specific store provider.
+  ///
+  /// \param[in] type The type of store provider to use.
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
+  Status Get(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+             int64_t timeout_ms,
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
   /// Create a new store provider for the specified type on demand.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
       StoreProviderType type) const;

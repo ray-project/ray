@@ -3,13 +3,15 @@
 #include "ray/util/logging.h"
 
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
-                                 redisAsyncContext *async_context)
-    : async_context_(async_context),
+                                 ray::gcs::RedisAsyncContext &redis_async_context)
+    : redis_async_context_(redis_async_context),
       socket_(io_service),
       read_requested_(false),
       write_requested_(false),
       read_in_progress_(false),
       write_in_progress_(false) {
+  redisAsyncContext *async_context = redis_async_context_.GetRawRedisAsyncContext();
+
   // gives access to c->fd
   redisContext *c = &(async_context->c);
 
@@ -47,7 +49,7 @@ void RedisAsioClient::operate() {
 void RedisAsioClient::handle_read(boost::system::error_code error_code) {
   RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
   read_in_progress_ = false;
-  redisAsyncHandleRead(async_context_);
+  redis_async_context_.RedisAsyncHandleRead();
 
   if (error_code == boost::asio::error::would_block) {
     operate();
@@ -57,7 +59,7 @@ void RedisAsioClient::handle_read(boost::system::error_code error_code) {
 void RedisAsioClient::handle_write(boost::system::error_code error_code) {
   RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
   write_in_progress_ = false;
-  redisAsyncHandleWrite(async_context_);
+  redis_async_context_.RedisAsyncHandleWrite();
 
   if (error_code == boost::asio::error::would_block) {
     operate();
