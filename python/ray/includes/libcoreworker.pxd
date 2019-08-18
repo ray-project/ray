@@ -48,7 +48,7 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
         # CTaskExecutionInterface &Execution()
 
         # TODO(edoakes): remove this once the raylet client is no longer used directly
-        CRayletClient* GetRayletClient()
+        CRayletClient &GetRayletClient()
         # TODO(edoakes): remove this once the Python core worker uses task interfaces
         void SetCurrentJobId(const CJobID &job_id)
         void SetCurrentTaskId(const CTaskID &task_id)

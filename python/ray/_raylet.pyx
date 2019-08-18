@@ -235,7 +235,7 @@ cdef class RayletClient:
         # complete, so we don't want to change the unique_ptr in core worker
         # to a shared_ptr. This means the core worker *must* be
         # initialized before the raylet client.
-        self.client = core_worker.core_worker.get().GetRayletClient()
+        self.client = &core_worker.core_worker.get().GetRayletClient()
 
     def disconnect(self):
         check_status(self.client.Disconnect())

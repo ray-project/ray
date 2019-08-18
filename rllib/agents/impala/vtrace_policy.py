@@ -16,7 +16,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule
+    EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -33,6 +33,7 @@ class VTraceLoss(object):
                  actions_logp,
                  actions_entropy,
                  dones,
+                 behaviour_action_logp,
                  behaviour_logits,
                  target_logits,
                  discount,
@@ -40,6 +41,7 @@ class VTraceLoss(object):
                  values,
                  bootstrap_value,
                  dist_class,
+                 model,
                  valid_mask,
                  config,
                  vf_loss_coeff=0.5,
@@ -57,6 +59,7 @@ class VTraceLoss(object):
             actions_logp: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
+            behaviour_action_logp: Tensor of shape [T, B].
             behaviour_logits: A list with length of ACTION_SPACE of float32
                 tensors of shapes
                 [T, B, ACTION_SPACE[0]],
@@ -79,6 +82,7 @@ class VTraceLoss(object):
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
+                behaviour_action_log_probs=behaviour_action_logp,
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
@@ -87,10 +91,10 @@ class VTraceLoss(object):
                 values=values,
                 bootstrap_value=bootstrap_value,
                 dist_class=dist_class,
+                model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
                 clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32),
-                config=config)
+                                              tf.float32))
             self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss
@@ -164,6 +168,7 @@ def build_vtrace_loss(policy, batch_tensors):
     actions = batch_tensors[SampleBatch.ACTIONS]
     dones = batch_tensors[SampleBatch.DONES]
     rewards = batch_tensors[SampleBatch.REWARDS]
+    behaviour_action_logp = batch_tensors[ACTION_LOGP]
     behaviour_logits = batch_tensors[BEHAVIOUR_LOGITS]
     unpacked_behaviour_logits = tf.split(
         behaviour_logits, output_hidden_shape, axis=1)
@@ -190,6 +195,8 @@ def build_vtrace_loss(policy, batch_tensors):
         actions_entropy=make_time_major(
             action_dist.multi_entropy(), drop_last=True),
         dones=make_time_major(dones, drop_last=True),
+        behaviour_action_logp=make_time_major(
+            behaviour_action_logp, drop_last=True),
         behaviour_logits=make_time_major(
             unpacked_behaviour_logits, drop_last=True),
         target_logits=make_time_major(unpacked_outputs, drop_last=True),
@@ -198,6 +205,7 @@ def build_vtrace_loss(policy, batch_tensors):
         values=make_time_major(values, drop_last=True),
         bootstrap_value=make_time_major(values)[-1],
         dist_class=Categorical if is_multidiscrete else policy.dist_class,
+        model=policy.model,
         valid_mask=make_time_major(mask, drop_last=True),
         config=policy.config,
         vf_loss_coeff=policy.config["vf_loss_coeff"],
@@ -225,7 +233,7 @@ def stats(policy, batch_tensors):
     }
 
 
-def grad_stats(policy, grads):
+def grad_stats(policy, batch_tensors, grads):
     return {
         "grad_gnorm": tf.global_norm(grads),
     }

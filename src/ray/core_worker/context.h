@@ -30,6 +30,8 @@ class WorkerContext {
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
+  const ActorID &GetCurrentActorID() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
