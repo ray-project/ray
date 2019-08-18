@@ -327,6 +327,63 @@ def test_calling_start_ray_head():
             ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
     subprocess.Popen(["ray", "stop"]).wait()
 
+    # Test --block. Killing any child process should cause the command to exit.
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked.poll()
+
+    # Wait for up to 10s for the ray command to spawn a child process.
+    for _ in range(10):
+        try:
+            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(1)
+    else:
+        assert False, "ray start didn't spawn children within 10s of starting"
+
+    blocked.poll()
+    assert blocked.returncode is None
+
+    # Kill all child processes of the ray command and check that it exits.
+    subprocess.check_output(["pkill", "-P", str(blocked.pid)])
+    for _ in range(10):
+        time.sleep(1)
+        blocked.poll()
+        if blocked.returncode is not None:
+            break
+    else:
+        assert False, "ray start didn't exit within 10s of child process dying"
+
+    assert blocked.returncode != 0
+
+    # Test --block. Killing the command should clean up all child processes.
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked.poll()
+    assert blocked.returncode is None
+
+    # Wait for up to 10s for the ray command to spawn a child process.
+    for _ in range(10):
+        try:
+            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(1)
+    else:
+        assert False, "ray start didn't spawn children within 10s of starting"
+
+    blocked.terminate()
+
+    # Check that the child processes are cleaned up within 10s.
+    for _ in range(10):
+        try:
+            subprocess.check_output(
+                ["pgrep", "-P", str(blocked.pid), "raylet"])
+        except subprocess.CalledProcessError:
+            # pgrep didn't find anything, so the child processes are dead.
+            break
+    else:
+        assert False, "ray start didn't kill children within 10s of exiting."
+
 
 @pytest.mark.parametrize(
     "call_ray_start", [
