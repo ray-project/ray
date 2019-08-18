@@ -1,5 +1,5 @@
 Deploying on Slurm
-====================
+==================
 
 Clusters managed by Slurm may require that Ray is initialized as a part of the submitted job. This can be done by using ``srun`` within the submitted script. For example:
 
@@ -16,7 +16,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   worker_num=4 # Must be one less that the total number of nodes
 
   module load Langs/Python/3.6.4 # This will vary depending on your environment
-  source venv/bin/activate       #
+  source venv/bin/activate
 
   nodes=$(scontrol show hostnames $SLURM_JOB_NODELIST) # Getting the node names
   nodes_array=( $nodes )
