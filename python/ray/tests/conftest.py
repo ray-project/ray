@@ -9,7 +9,6 @@ import subprocess
 
 import ray
 from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import run_and_get_output
 
 
 @pytest.fixture
@@ -155,7 +154,8 @@ def ray_start_object_store_memory(request):
 def call_ray_start(request):
     parameter = getattr(request, "param", "ray start --head --num-cpus=1")
     command_args = parameter.split(" ")
-    out = run_and_get_output(command_args)
+    out = ray.utils.decode(
+        subprocess.check_output(command_args, stderr=subprocess.STDOUT))
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
     redis_address_location = (
@@ -168,7 +168,7 @@ def call_ray_start(request):
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "stop"])
 
 
 @pytest.fixture()
