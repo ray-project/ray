@@ -37,16 +37,6 @@ def wait_for_pid_to_exit(pid, timeout=20):
     raise Exception("Timed out while waiting for process to exit.")
 
 
-def run_and_get_output(command):
-    with tempfile.NamedTemporaryFile() as tmp:
-        p = subprocess.Popen(command, stdout=tmp, stderr=tmp)
-        if p.wait() != 0:
-            raise RuntimeError("ray start did not terminate properly")
-        with open(tmp.name, "r") as f:
-            result = f.readlines()
-            return "\n".join(result)
-
-
 def run_string_as_driver(driver_script):
     """Run a driver as a separate process.
 
@@ -61,7 +51,8 @@ def run_string_as_driver(driver_script):
         f.write(driver_script.encode("ascii"))
         f.flush()
         out = ray.utils.decode(
-            subprocess.check_output([sys.executable, f.name]))
+            subprocess.check_output(
+                [sys.executable, f.name], stderr=subprocess.STDOUT))
     return out
 
 

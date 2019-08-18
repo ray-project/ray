@@ -360,10 +360,6 @@ cdef class RayletClient:
                                 CClientID.FromBinary(client_id.binary()))
 
     @property
-    def client_id(self):
-        return ClientID(self.client.GetWorkerId().Binary())
-
-    @property
     def job_id(self):
         return JobID(self.client.GetJobID().Binary())
 
