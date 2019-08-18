@@ -101,7 +101,7 @@ class BinaryAutoregressiveOutput(ActionDistribution):
     def kl(self, other):
         a1_dist = self._a1_distribution()
         a1_terms = a1_dist.kl(other._a1_distribution())
-        
+
         a1 = a1_dist.sample()
         a2_terms = self._a2_distribution(a1).kl(other._a2_distribution(a1))
         return a1_terms + a2_terms
