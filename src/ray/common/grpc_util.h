@@ -82,17 +82,6 @@ inline std::vector<T> VectorFromProtobuf(
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
-template <typename Message>
-using AddFunction = void (Message::*)(const ::std::string &value);
-/// Add a vector of type ID to protobuf message.
-template <typename ID, typename Message>
-inline void IdVectorToProtobuf(const std::vector<ID> &ids, Message &message,
-                               AddFunction<Message> add_func) {
-  for (const auto &id : ids) {
-    (message.*add_func)(id.Binary());
-  }
-}
-
 /// Converts a Protobuf `RepeatedField` to a vector of IDs.
 template <class ID>
 inline std::vector<ID> IdVectorFromProtobuf(
