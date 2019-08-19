@@ -18,8 +18,12 @@ import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.Common.WorkerType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RayMultiThreadNativeRuntime implements RayRuntime {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(RayMultiThreadNativeRuntime.class);
 
   private final int threadCount;
   private final Thread[] threads;
@@ -29,11 +33,15 @@ public class RayMultiThreadNativeRuntime implements RayRuntime {
   private CountDownLatch shutdownCountDownLatch = new CountDownLatch(1);
 
   public RayMultiThreadNativeRuntime(RayConfig rayConfig) {
-    Preconditions.checkState(rayConfig.runMode == RunMode.CLUSTER && rayConfig.workerMode == WorkerType.WORKER);
-    Preconditions.checkState(rayConfig.numWorkersPerProcess > 0, "numWorkersPerProcess must be greater than 0.");
+    Preconditions.checkState(
+        rayConfig.runMode == RunMode.CLUSTER && rayConfig.workerMode == WorkerType.WORKER);
+    Preconditions.checkState(rayConfig.numWorkersPerProcess > 0,
+        "numWorkersPerProcess must be greater than 0.");
     threadCount = rayConfig.numWorkersPerProcess;
     runtimes = new RayNativeRuntime[threadCount];
     threads = new Thread[threadCount];
+
+    LOGGER.info("Starting {} workers.", threadCount);
 
     for (int i = 0; i < threadCount; i++) {
       int finalI = i;
@@ -124,7 +132,8 @@ public class RayMultiThreadNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options) {
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+      ActorCreationOptions options) {
     return getCurrentRuntime().createActor(actorFactoryFunc, args, options);
   }
 
@@ -134,7 +143,8 @@ public class RayMultiThreadNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callPy(String moduleName, String functionName, Object[] args, CallOptions options) {
+  public RayObject callPy(String moduleName, String functionName, Object[] args,
+      CallOptions options) {
     return getCurrentRuntime().callPy(moduleName, functionName, args, options);
   }
 
@@ -144,7 +154,8 @@ public class RayMultiThreadNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RayPyActor createPyActor(String moduleName, String className, Object[] args, ActorCreationOptions options) {
+  public RayPyActor createPyActor(String moduleName, String className, Object[] args,
+      ActorCreationOptions options) {
     return getCurrentRuntime().createPyActor(moduleName, className, args, options);
   }
 
