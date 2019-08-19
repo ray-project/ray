@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
-CONTROL_HASH_MAX_LENGTH = 10
+HASH_MAX_LENGTH = 10
 
 
 def get_default_ssh_options(private_key, connect_timeout, ssh_control_path):
@@ -59,8 +59,10 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
+        ssh_user_hash = hashlib.md5(getuser()).hexdigest()
         ssh_control_path = "/tmp/{}_ray_ssh/{}".format(
-            getuser(), ssh_control_hash[:CONTROL_HASH_MAX_LENGTH])
+            ssh_user_hash[:HASH_MAX_LENGTH],
+            ssh_control_hash[:HASH_MAX_LENGTH])
 
         self.daemon = True
         self.process_runner = process_runner
