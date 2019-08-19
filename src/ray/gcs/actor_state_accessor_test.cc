@@ -44,7 +44,7 @@ class ActorStateAccessorTest : public ::testing::Test {
   void GenTestData() { GenActorData(); }
 
   void GenActorData() {
-    for (size_t i = 0; i < 2; ++i) {
+    for (size_t i = 0; i < 100; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       actor->set_max_reconstructions(1);
       actor->set_remaining_reconstructions(1);
