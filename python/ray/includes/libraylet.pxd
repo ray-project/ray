@@ -23,14 +23,14 @@ from ray.includes.task cimport CTaskSpec
 
 
 cdef extern from "ray/protobuf/gcs.pb.h" nogil:
-    cdef cppclass GCSProfileEvent "ray::rpc::ProfileTableData::ProfileEvent":
+    cdef cppclass GCSProfileEvent "ProfileTableData::ProfileEvent":
         void set_event_type(const c_string &value)
         void set_start_time(double value)
         void set_end_time(double value)
         c_string set_extra_data(const c_string &value)
         GCSProfileEvent()
 
-    cdef cppclass GCSProfileTableData "ray::rpc::ProfileTableData":
+    cdef cppclass GCSProfileTableData "ProfileTableData":
         void set_component_type(const c_string &value)
         void set_component_id(const c_string &value)
         void set_node_ip_address(const c_string &value)
@@ -43,12 +43,13 @@ ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
 ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
-cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
-    cdef cppclass CRayletClient "ray::rpc::RayletClient":
+cdef extern from "ray/raylet/raylet_client.h" nogil:
+    cdef cppclass CRayletClient "RayletClient":
         CRayletClient(const c_string &raylet_socket,
                       const CWorkerID &worker_id,
                       c_bool is_worker, const CJobID &job_id,
                       const CLanguage &language)
+        CRayStatus Disconnect()
         CRayStatus SubmitTask(const CTaskSpec &task_spec)
         CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
         CRayStatus TaskDone()
@@ -72,8 +73,7 @@ cdef extern from "ray/rpc/raylet/raylet_client.h" namespace "ray::rpc" nogil:
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CRayStatus SetResource(const c_string &resource_name, const double capacity, const CClientID &client_Id)
         CLanguage GetLanguage() const
-        CWorkerID GetWorkerId() const
+        CWorkerID GetWorkerID() const
         CJobID GetJobID() const
         c_bool IsWorker() const
-        CRayStatus Disconnect()
         const ResourceMappingType &GetResourceIDs() const
