@@ -58,11 +58,11 @@ def project_cli():
 def validate(verbose):
     try:
         project = ray.projects.load_project(os.getcwd())
-        print("🍰 Project files validated!", file=sys.stderr)
+        print("Project files validated!", file=sys.stderr)
         if verbose:
             print(project)
     except (jsonschema.exceptions.ValidationError, ValueError) as e:
-        print("💔 Validation failed for the following reason", file=sys.stderr)
+        print("Validation failed for the following reason", file=sys.stderr)
         raise click.ClickException(e)
 
 
@@ -127,7 +127,7 @@ def load_project_or_throw():
         return ray.projects.load_project(os.getcwd())
     except (jsonschema.exceptions.ValidationError, ValueError):
         raise click.ClickException(
-            "💔 Project file validation failed. Please run "
+            "Project file validation failed. Please run "
             "`ray project validate` to inspect the error.")
 
 
