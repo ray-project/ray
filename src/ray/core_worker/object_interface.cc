@@ -77,7 +77,9 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
   // desirable if other store providers use up the timeout and leaves no time
   // for plasma provider to reconstruct the objects as necessary.
-  std::list<std::pair<StoreProviderType, std::reference_wrapper<std::unordered_set<ObjectID>>>> ids_per_provider;
+  std::list<
+      std::pair<StoreProviderType, std::reference_wrapper<std::unordered_set<ObjectID>>>>
+      ids_per_provider;
   for (auto &entry : object_ids_per_store_provider) {
     auto list_entry = std::make_pair(entry.first, std::ref(entry.second));
     if (entry.first == StoreProviderType::PLASMA) {
@@ -143,13 +145,15 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
   RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(ids, object_ids_per_store_provider,
-                         /* timeout_ms= */ 0, &num_objects, results));
+                                                   /* timeout_ms= */ 0, &num_objects,
+                                                   results));
 
   if (num_objects > 0) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
     RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(ids, object_ids_per_store_provider,
-                           /* timeout_ms= */ timeout_ms, &num_objects, results));
+                                                     /* timeout_ms= */ timeout_ms,
+                                                     &num_objects, results));
   }
 
   return Status::OK();

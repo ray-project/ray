@@ -78,10 +78,11 @@ class CoreWorkerObjectInterface {
   /// \param[in/out] num_objects Number of objects that should appear before returning.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status WaitFromMultipleStoreProviders(const std::vector<ObjectID> &object_ids,
-              const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
-                  &ids_per_provider,
-              int64_t timeout_ms, int *num_objects, std::vector<bool> *results);
+  Status WaitFromMultipleStoreProviders(
+      const std::vector<ObjectID> &object_ids,
+      const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
+          &ids_per_provider,
+      int64_t timeout_ms, int *num_objects, std::vector<bool> *results);
 
   /// Helper function to get a list of objects from a specific store provider.
   ///
