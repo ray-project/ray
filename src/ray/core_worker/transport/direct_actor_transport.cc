@@ -92,6 +92,19 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
     } else {
       // Remove rpc client if it's dead or being reconstructed.
       rpc_clients_.erase(actor_id);
+      // If this actor is permanantly dead and there're pending requests, treat
+      // the pending tasks as failed.
+      if (actor_data.state() == ActorTableData::DEAD &&
+          pending_requests_.count(actor_id) > 0) {
+        auto &requests = pending_requests_[actor_id];
+        while (!requests.empty()) {
+          const auto &request = *requests.front();
+          TreatTaskAsFailed(TaskID::FromBinary(request.task_spec().task_id()),
+                            request.task_spec().num_returns(),
+                            rpc::ErrorType::ACTOR_DIED);
+          requests.pop_front();
+        }
+      }
     }
 
     RAY_LOG(INFO) << "received notification on actor, state="
