@@ -8,16 +8,17 @@ import pytest
 import subprocess
 import yaml
 from click.testing import CliRunner
-# mock is included in stdlib unittest package after python3
 import sys
+
+from contextlib import contextmanager
+
+from ray.projects.scripts import start
+import ray
+
 if sys.version_info >= (3, 3):
     from unittest.mock import patch, DEFAULT
 else:
     from mock import patch, DEFAULT
-from contextlib import contextmanager  # noqa: E402
-
-from ray.projects.scripts import start  # noqa: E402
-import ray  # noqa: E402
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 
