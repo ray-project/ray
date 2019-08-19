@@ -71,9 +71,19 @@ class WorkerPoolTest : public ::testing::Test {
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
-    WorkerID worker_id = WorkerID::FromRandom();
-    return std::shared_ptr<Worker>(new Worker(
-        worker_id, pid, language, /* listening port */ -1, client_call_manager_));
+    std::function<void(LocalClientConnection &)> client_handler =
+        [this](LocalClientConnection &client) { HandleNewClient(client); };
+    std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
+        message_handler = [this](std::shared_ptr<LocalClientConnection> client,
+                                 int64_t message_type, const uint8_t *message) {
+          HandleMessage(client, message_type, message);
+        };
+    boost::asio::local::stream_protocol::socket socket(io_service_);
+    auto client =
+        LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
+                                      "worker", {}, error_message_type_);
+    return std::shared_ptr<Worker>(new Worker(WorkerID::FromRandom(), pid, language, -1,
+                                              client, client_call_manager_));
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
@@ -86,6 +96,10 @@ class WorkerPoolTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
+
+ private:
+  void HandleNewClient(LocalClientConnection &){};
+  void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
 };
 
 static inline TaskSpecification ExampleTaskSpec(
@@ -117,23 +131,21 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     workers.push_back(CreateWorker(pid));
   }
   for (const auto &worker : workers) {
-    WorkerID worker_id = worker->GetWorkerId();
     // Check that there's still a starting worker process
     // before all workers have been registered
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
-    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), nullptr);
-    worker_pool_.RegisterWorker(worker_id, worker);
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker));
     // Check that we can lookup the worker after it's registered.
-    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), worker);
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
   }
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
-    WorkerID worker_id = worker->GetWorkerId();
     worker_pool_.DisconnectWorker(worker);
     // Check that we cannot lookup the worker after it's disconnected.
-    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker_id), nullptr);
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
   }
 }
 

@@ -374,7 +374,7 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetWorkerId().Binary())
+        return ClientID(self.client.get().GetWorkerID().Binary())
 
     @property
     def job_id(self):

@@ -1,6 +1,9 @@
 package org.ray.runtime.functionmanager;
 
 import com.google.common.base.Objects;
+import com.google.common.collect.ImmutableList;
+import java.util.List;
+import org.ray.runtime.generated.Common.Language;
 
 /**
  * Represents metadata of Java function.
@@ -48,5 +51,15 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
   @Override
   public int hashCode() {
     return Objects.hashCode(className, name, typeDescriptor);
+  }
+
+  @Override
+  public List<String> toList() {
+    return ImmutableList.of(className, name, typeDescriptor);
+  }
+
+  @Override
+  public Language getLanguage() {
+    return Language.JAVA;
   }
 }

@@ -4,16 +4,12 @@
 
 #include "ray/common/id.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet/raylet_client.h"
 #include "ray/util/logging.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-using ray::ClientID;
-using ray::WorkerID;
-using ray::rpc::RayletClient;
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
