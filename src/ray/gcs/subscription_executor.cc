@@ -53,7 +53,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     }
   };
 
-  auto on_done = [this, done](RedisGcsClient *client) {
+  auto on_done = [done](RedisGcsClient *client) {
     if (done != nullptr) {
       done(Status::OK());
     }
