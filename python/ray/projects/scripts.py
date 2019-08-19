@@ -157,6 +157,16 @@ def stop():
 def start():
     project_definition = load_project_or_throw()
 
+    # Check for features we don't support right now
+    project_environment = project_definition["environment"]
+    need_docker = ("dockerfile" in project_environment
+                   or "dockerimage" in project_environment)
+    if need_docker:
+        raise click.ClickException(
+            "Docker support in session is currently not implemented. "
+            "Please file an feature request at"
+            "https://github.com/ray-project/ray/issues")
+
     cluster_yaml = project_definition["cluster"]
     working_directory = project_definition["name"]
 
@@ -210,25 +220,17 @@ def session_exec_cluster(cluster_yaml, cmd, cwd):
 
 def _setup_environment(cluster_yaml, project_environment, cwd):
 
-    need_docker = ("dockerfile" in project_environment
-                   or "dockerimage" in project_environment)
-    if need_docker:
-        raise NotImplementedError(
-            "Docker support in session is currently not implemented. "
-            "Please file an feature request at"
-            "https://github.com/ray-project/ray/issues")
-
     if "requirements" in project_environment:
         requirements_txt = project_environment["requirements"]
 
-        # Create a temporary requirements_txt in the head machine
+        # Create a temporary requirements_txt in the head node.
         remote_requirements_txt = (
             "/tmp/" + "ray_project_requirements_txt_{}".format(time.time()))
 
         rsync(
             cluster_yaml,
-            requirements_txt,
-            remote_requirements_txt,
+            source=requirements_txt,
+            target=remote_requirements_txt,
             override_cluster_name=None,
             down=False,
         )
