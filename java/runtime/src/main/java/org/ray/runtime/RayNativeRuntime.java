@@ -59,7 +59,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } catch (IOException e) {
       throw new RuntimeException("Couldn't load native libraries.", e);
     }
-    nativeSetup(RayConfig.create().logDir);
+
+    RayConfig globalRayConfig = RayConfig.create();
+    File logDirFile = new File(globalRayConfig.logDir);
+    if (!logDirFile.exists()) {
+      //noinspection ResultOfMethodCallIgnored
+      logDirFile.mkdirs();
+    }
+    nativeSetup(globalRayConfig.logDir);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
