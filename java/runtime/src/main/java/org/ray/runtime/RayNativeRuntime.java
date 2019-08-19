@@ -70,7 +70,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
-  protected void resetLibraryPath() {
+  /**
+   * The synchronized keyword is applied together with the static keyword. That ensures
+   * thread-safety thread-safety when creating multiple RayNativeRuntime instances concurrently.
+   * Anyway, the {@link RayConfig#libraryPath} field is unlikely to change between runtime
+   * instances.
+   */
+  private static synchronized void resetLibraryPath(RayConfig rayConfig) {
     if (rayConfig.libraryPath.isEmpty()) {
       return;
     }
@@ -101,7 +107,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
 
     // Reset library path at runtime.
-    resetLibraryPath();
+    resetLibraryPath(rayConfig);
 
     if (rayConfig.getRedisAddress() == null) {
       manager = new RunManager(rayConfig);
