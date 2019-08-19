@@ -635,7 +635,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                     << actor_registration.GetParentActorID() << " is dead.";
       auto worker = worker_pool_.GetActorWorker(actor_id);
       RAY_CHECK(worker) << "Worker not found for local & alive actor " << actor_id;
-      ProcessDisconnectClientMessage(worker->GetWorkerId());
+      ProcessDisconnectClientMessage(worker->Connection());
     } else {
       // The actor is now alive (created for the first time or reconstructed). We can
       // stop listening for the actor creation task. This is needed because we use
@@ -688,7 +688,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                           << actor_entry.first;
         RAY_LOG(INFO) << "Killing child actor " << actor_entry.first
                       << " as parent actor " << actor_id << "is dead";
-        ProcessDisconnectClientMessage(worker->GetWorkerId());
+        ProcessDisconnectClientMessage(worker->Connection());
       }
     }
   } else {
