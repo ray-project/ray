@@ -5,8 +5,7 @@ from __future__ import print_function
 import os
 import pytest
 import tempfile
-import torch
-import torch.distributed as dist
+import numpy as np
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
@@ -17,13 +16,12 @@ from ray.experimental.sgd.tests.tf_helper import (
 
 
 @pytest.mark.parametrize(  # noqa: F811
-    "num_replicas", [1, 2] if dist.is_available() else [1])
+    "num_replicas", [1, 2])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer = TensorFlowTrainer(
         model_creator=get_model,
         data_creator=get_dataset,
         num_replicas=num_replicas,
-        use_gpu=use_gpu,
         batch_size=512)
 
     train_stats1 = trainer.train()
@@ -42,14 +40,14 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 
 @pytest.mark.parametrize(  # noqa: F811
-    "num_replicas", [1, 2] if dist.is_available() else [1])
+    "num_replicas", [1, 2])
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {
         "model_creator": tune.function(get_model),
         "data_creator": tune.function(get_dataset),
         "num_replicas": num_replicas,
-        "use_gpu": use_gpu,
+        "use_gpu": False,
         "batch_size": 512
     }
 
@@ -72,7 +70,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 
 @pytest.mark.parametrize(  # noqa: F811
-    "num_replicas", [1, 2] if dist.is_available() else [1])
+    "num_replicas", [1, 2])
 def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1 = TensorFlowTrainer(
         model_creator=get_model,
@@ -88,8 +86,8 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1.shutdown()
 
     trainer2 = TensorFlowTrainer(
-        model_creator=mnist_helper.get_model,
-        data_creator=mnist_helper.get_dataset,
+        model_creator=get_model,
+        data_creator=get_dataset,
         num_replicas=num_replicas,
         batch_size=512)
     trainer2.restore(filename)
