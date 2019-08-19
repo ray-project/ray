@@ -276,7 +276,7 @@ public class RunManager {
         String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
         String.format("--static_resource_list=%s",
             ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
-        String.format("--config_list=%s", String.join(",",rayConfig.rayletConfigParameters)),
+        String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
         String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
         String.format("--java_worker_command=%s", buildWorkerCommandRaylet()),
         String.format("--redis_password=%s", redisPasswordOption)

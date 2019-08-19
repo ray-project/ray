@@ -11,6 +11,8 @@ import org.ray.runtime.task.TaskExecutor;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
+  private AtomicInteger jobCounter = new AtomicInteger(0);
+
   public RayDevRuntime(RayConfig rayConfig) {
     super(rayConfig);
     if (rayConfig.getJobId().isNil()) {
@@ -25,8 +27,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
         objectId -> ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId));
     rayletClient = new LocalModeRayletClient();
   }
-
-  private AtomicInteger jobCounter = new AtomicInteger(0);
 
   @Override
   public void shutdown() {

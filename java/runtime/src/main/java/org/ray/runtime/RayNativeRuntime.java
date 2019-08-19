@@ -63,6 +63,33 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
+  protected void resetLibraryPath() {
+    if (rayConfig.libraryPath.isEmpty()) {
+      return;
+    }
+
+    String path = System.getProperty("java.library.path");
+    if (Strings.isNullOrEmpty(path)) {
+      path = "";
+    } else {
+      path += ":";
+    }
+    path += String.join(":", rayConfig.libraryPath);
+
+    // This is a hack to reset library path at runtime,
+    // see https://stackoverflow.com/questions/15409223/.
+    System.setProperty("java.library.path", path);
+    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
+    final Field sysPathsField;
+    try {
+      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
+      sysPathsField.setAccessible(true);
+      sysPathsField.set(null, null);
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      LOGGER.error("Failed to set library path.", e);
+    }
+  }
+
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
 
@@ -97,33 +124,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
-  }
-
-  protected void resetLibraryPath() {
-    if (rayConfig.libraryPath.isEmpty()) {
-      return;
-    }
-
-    String path = System.getProperty("java.library.path");
-    if (Strings.isNullOrEmpty(path)) {
-      path = "";
-    } else {
-      path += ":";
-    }
-    path += String.join(":", rayConfig.libraryPath);
-
-    // This is a hack to reset library path at runtime,
-    // see https://stackoverflow.com/questions/15409223/.
-    System.setProperty("java.library.path", path);
-    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
-    final Field sysPathsField;
-    try {
-      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
-      sysPathsField.setAccessible(true);
-      sysPathsField.set(null, null);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      LOGGER.error("Failed to set library path.", e);
-    }
   }
 
   @Override
