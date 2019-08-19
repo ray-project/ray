@@ -59,7 +59,7 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
-        ssh_user_hash = hashlib.md5(getuser()).hexdigest()
+        ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
         ssh_control_path = "/tmp/{}_ray_ssh/{}".format(
             ssh_user_hash[:HASH_MAX_LENGTH],
             ssh_control_hash[:HASH_MAX_LENGTH])
