@@ -109,7 +109,8 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
   task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
                            std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
                                new CoreWorkerDirectActorTaskSubmitter(
-                                   io_service, gcs_client, object_interface)));
+                                   io_service, gcs_client,
+                                   object_interface.CreateStoreProvider(StoreProviderType::MEMORY))));
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
