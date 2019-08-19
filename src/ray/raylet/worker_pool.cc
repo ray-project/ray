@@ -17,11 +17,9 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with
-/// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each
-/// language.
+/// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each language.
 WorkerPool::WorkerPool(int num_worker_processes,
-                       const std::unordered_map<Language, int, std::hash<int>>
-                           &num_workers_per_process_by_lang,
+                       const std::unordered_map<Language, int, std::hash<int>> &num_workers_per_process_by_lang,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
@@ -118,14 +116,6 @@ int WorkerPool::StartWorkerProcess(const Language &language,
 
     if (token == option_placeholder) {
       if (!dynamic_options.empty()) {
-        if (num_workers_per_process_by_lang_[language] != 1) {
-          // TODO (kfstorm): It's better to start a dedicated worker process which
-          // contains only one worker.
-          RAY_LOG(WARNING) << Language_Name(language) << " worker is set to start "
-                           << num_workers_per_process_by_lang_[language]
-                           << " workers per process. Dynamic worker options is ignored.";
-          continue;
-        }
         RAY_CHECK(dynamic_option_index < dynamic_options.size());
         auto options = SplitStrByWhitespaces(dynamic_options[dynamic_option_index]);
         worker_command_args.insert(worker_command_args.end(), options.begin(),

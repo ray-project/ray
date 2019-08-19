@@ -6,7 +6,6 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
-import org.ray.runtime.AbstractRayRuntime;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -29,10 +28,6 @@ public class WorkerJvmOptionsTest extends BaseTest {
         .createActorCreationOptions();
     RayActor<Echo> actor = Ray.createActor(Echo::new, options);
     RayObject<String> obj = Ray.call(Echo::getOptions, actor);
-    if (((AbstractRayRuntime) Ray.internal()).getRayConfig().numWorkersPerProcess == 1) {
-      Assert.assertEquals(obj.get(), "suffix");
-    } else {
-      Assert.assertEquals(obj.get(), null);
-    }
+    Assert.assertEquals(obj.get(), "suffix");
   }
 }
