@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class DistributedTensorFlowRunner(TensorFlowRunner):
     """Manages a distributed TensorFlow model replica."""
+
     def setup(self, urls, world_rank, world_size):
         """Connects to the distributed PyTorch backend and initializes the model.
 
@@ -32,27 +33,26 @@ class DistributedTensorFlowRunner(TensorFlowRunner):
         }
         os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
-        self.strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        self.strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        )
 
         with self.strategy.scope():
             self.model = self.model_creator()
-            self.train_dataset, self.test_dataset = self.data_creator(self.batch_size)
+            self.train_dataset, self.test_dataset = self.data_creator(
+                self.batch_size)
 
         # for use in model.evaluate()
         self.local_model = self.model_creator()
 
     def step(self):
-
         """Runs a training epoch and updates the model parameters."""
         history = self.model.fit(self.train_dataset, verbose=0)
 
-        if history == None:
+        if history is None:
             # model.fit() returns None for MultiWorkerMirroredStrategy
             stats = {}
         else:
-            stats = {
-                "train_loss" : history.history['loss'][-1]
-            }
+            stats = {"train_loss": history.history["loss"][-1]}
 
         self.epoch += 1
 
@@ -65,8 +65,9 @@ class DistributedTensorFlowRunner(TensorFlowRunner):
 
         results = self.model.evaluate(self.test_dataset, verbose=0)
 
-        if results == None:
-            # Using local Model since model.evaluate() returns None for MultiWorkerMirroredStrategy
+        if results is None:
+            # Using local Model since model.evaluate() returns None
+            # for MultiWorkerMirroredStrategy
             self.local_model.set_weights(self.model.get_weights())
             results = self.local_model.evaluate(self.test_dataset, verbose=0)
             stats["validation_loss"] = results[0]
@@ -78,4 +79,3 @@ class DistributedTensorFlowRunner(TensorFlowRunner):
             stats["train_loss"] = results[0]
 
         return stats
-

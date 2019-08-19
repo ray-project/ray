@@ -6,8 +6,7 @@ from contextlib import closing
 import numpy as np
 import socket
 import time
-import torch
-import torch.nn as nn
+
 
 class TimerStat(object):
     """A running stat for conveniently logging the duration of a code block.
@@ -126,4 +125,3 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-

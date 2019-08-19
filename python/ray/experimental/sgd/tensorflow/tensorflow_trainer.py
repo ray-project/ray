@@ -22,20 +22,19 @@ logger = logging.getLogger(__name__)
 
 class TensorFlowTrainer(object):
     def __init__(self,
-        model_creator,
-        data_creator,
-        config=None,
-        num_replicas=1,
-        use_gpu=False,
-        batch_size=512
-        ):
+                 model_creator,
+                 data_creator,
+                 config=None,
+                 num_replicas=1,
+                 use_gpu=False,
+                 batch_size=512):
         """Sets up the TensorFlow trainer.
 
         Args:
             model_creator (dict -> Model): creates the model
                 using the config.
-            data_creator (dict -> BatchDataset, BatchDataset): creates the training
-                and validation data sets using the config.
+            data_creator (dict -> BatchDataset, BatchDataset): creates
+                the training and validation data sets using the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
             num_replicas (int): the number of workers used in distributed
@@ -53,7 +52,6 @@ class TensorFlowTrainer(object):
         self.num_replicas = num_replicas
         self.verbose = True
 
-
         # Generate actor class
         if num_replicas == 1:
             # Generate actor class
@@ -61,8 +59,8 @@ class TensorFlowTrainer(object):
                 num_cpus=1, num_gpus=int(use_gpu))(TensorFlowRunner)
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator,
-                              self.config, batch_size)
+                Runner.remote(model_creator, data_creator, self.config,
+                              batch_size)
             ]
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
@@ -73,20 +71,15 @@ class TensorFlowTrainer(object):
 
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator,
-                              self.config, batch_size)
-                for i in range(num_replicas)
+                Runner.remote(model_creator, data_creator, self.config,
+                              batch_size) for i in range(num_replicas)
             ]
 
             # Compute URL for initializing distributed setup
-            ips = ray.get([
-                worker.get_node_ip.remote()
-                for worker in self.workers
-            ])
-            ports = ray.get([
-                worker.find_free_port.remote()
-                for worker in self.workers
-            ])
+            ips = ray.get(
+                [worker.get_node_ip.remote() for worker in self.workers])
+            ports = ray.get(
+                [worker.find_free_port.remote() for worker in self.workers])
 
             urls = [
                 "{ip}:{port}".format(ip=ips[i], port=ports[i])
@@ -112,7 +105,8 @@ class TensorFlowTrainer(object):
 
     def get_state(self):
         # NOTE: at first I tried to implement get_model(),
-        # but was not possible since we cannot restore optimizer weights in the trainer.
+        # but was not possible since we cannot restore optimizer
+        # weights in the trainer.
         # see TensorFlowRunner.set_state()
         state = ray.get(self.workers[0].get_state.remote())
         return state
@@ -126,24 +120,27 @@ class TensorFlowTrainer(object):
         """
 
         state = self.get_state()
-        state["optimizer_weights"][0] = np.array(state["optimizer_weights"][0], dtype=np.int64)
-        # this fix is needed due to ray.get() changing scalar np.int64 to int, causing error at optimizer.set_weights()
+        state["optimizer_weights"][0] = np.array(
+            state["optimizer_weights"][0], dtype=np.int64)
+        # this fix is needed due to ray.get() changing scalar np.int64 to int,
+        # causing error at optimizer.set_weights()
 
         # NOTE: this is a HACK, help needed
-        # because newly created model does not have variables initialized, set_weights does not work
+        # because newly created model does not have variables initialized,
+        # set_weights does not work
         self.model = self.model_creator()
         _, self.test_dataset = self.data_creator(self.batch_size)
         self.model.fit(self.test_dataset)
         self.model.set_weights(state["weights"])
         self.model.optimizer.set_weights(state["optimizer_weights"])
 
-        self.model.save(checkpoint+'.h5')
+        self.model.save(checkpoint + ".h5")
 
         del state["weights"]
         del state["optimizer_weights"]
 
-        with open(checkpoint+'_state.json', 'w') as f:
-            state = json.dump(state,f)
+        with open(checkpoint + "_state.json", "w") as f:
+            state = json.dump(state, f)
 
         return checkpoint
 
@@ -154,8 +151,8 @@ class TensorFlowTrainer(object):
             checkpoint (str): Path to target checkpoint file.
 
         """
-        model = tf.keras.models.load_model(checkpoint+'.h5')
-        with open(checkpoint+'_state.json') as f:
+        model = tf.keras.models.load_model(checkpoint + '.h5')
+        with open(checkpoint + '_state.json') as f:
             state = json.load(f)
 
         state["weights"] = model.get_weights()
@@ -206,4 +203,3 @@ class TensorFlowTrainable(Trainable):
 
     def _stop(self):
         self._trainer.shutdown()
-

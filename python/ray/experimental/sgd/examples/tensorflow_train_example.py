@@ -4,11 +4,11 @@ from __future__ import print_function
 
 import argparse
 from ray import tune
-from ray.experimental.sgd.tensorflow.tensorflow_trainer import (TensorFlowTrainer,
-                                                          TensorFlowTrainable)
+from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
+    TensorFlowTrainer, TensorFlowTrainable)
 
-from ray.experimental.sgd.tests.tf_helper import (
-    get_model, get_dataset)
+from ray.experimental.sgd.tests.tf_helper import (get_model, get_dataset)
+
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer = TensorFlowTrainer(
@@ -50,6 +50,7 @@ def tune_example(num_replicas=1, use_gpu=False):
         verbose=1)
 
     return analysis.get_best_config(metric="validation_loss", mode="min")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

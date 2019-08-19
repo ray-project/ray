@@ -11,8 +11,7 @@ from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.tensorflow import TensorFlowTrainer, TensorFlowTrainable
 
-from ray.experimental.sgd.tests.tf_helper import (
-    get_model, get_dataset)
+from ray.experimental.sgd.tests.tf_helper import (get_model, get_dataset)
 
 
 @pytest.mark.parametrize(  # noqa: F811
@@ -33,7 +32,10 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     print(train_stats2)
 
     print(train_stats1["train_loss"], train_stats2["train_loss"])
-    print(train_stats1["validation_loss"], train_stats2["validation_loss"],)
+    print(
+        train_stats1["validation_loss"],
+        train_stats2["validation_loss"],
+    )
 
     assert train_stats1["train_loss"] > train_stats2["train_loss"]
     assert train_stats1["validation_loss"] > train_stats2["validation_loss"]
@@ -95,13 +97,13 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     state2 = trainer2.get_state()
     trainer2.shutdown()
 
-    os.remove(filename+'.h5')
-    os.remove(filename+'_state.json')
+    os.remove(filename + '.h5')
+    os.remove(filename + '_state.json')
 
     assert set(state1.keys()) == set(state2.keys())
     for k in state1:
-        if type(state1[k])==list:
+        if type(state1[k]) == list:
             for i in range(len(state1[k])):
-                assert np.array_equal(state1[k][i],state2[k][i])
+                assert np.array_equal(state1[k][i], state2[k][i])
         else:
             assert state1[k] == state2[k]
