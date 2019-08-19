@@ -127,6 +127,7 @@ public class FailureTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     List<RayFunc0<Integer>> badFunctions = Arrays.asList(FailureTest::badFunc,
         FailureTest::badFunc2);
+    TestUtils.warmUpCluster();
     for (RayFunc0<Integer> badFunc : badFunctions) {
       RayObject<Integer> obj1 = Ray.call(badFunc);
       RayObject<Integer> obj2 = Ray.call(FailureTest::slowFunc);
