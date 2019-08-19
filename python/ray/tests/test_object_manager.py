@@ -212,13 +212,11 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
         # sooner. Also, force the receiving object manager to retry the Pull
         # sooner. We make the chunk size smaller in order to make it easier to
         # test objects with multiple chunks.
-        {
-            "object_store_memory": 10**8,
-            **generate_internal_config_map(
+        dict([("object_store_memory", 10**8)] + list(
+            generate_internal_config_map(
                 object_manager_repeated_push_delay_ms=4 * 1000,
                 object_manager_pull_timeout_ms=1000,
-                object_manager_default_chunk_size=1000),
-        },
+                object_manager_default_chunk_size=1000).items())),
     ],
     indirect=True)
 def test_object_transfer_retry(ray_start_cluster):
