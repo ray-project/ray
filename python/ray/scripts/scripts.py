@@ -409,14 +409,14 @@ def stop():
         ["raylet", None],
         ["plasma_store_server", None],
         ["raylet_monitor", None],
-        ["monitor.py", None],
+        [None, "monitor.py"],
         ["redis-server", None],
-        ["default_worker.py", None],  # Python worker.
+        [None, "default_worker.py"],  # Python worker.
         [" ray_", None],  # Python worker.
         [None, "org.ray.runtime.runner.worker.DefaultWorker"],  # Java worker.
-        ["log_monitor.py", None],
-        ["reporter.py", None],
-        ["dashboard.py", None],
+        [None, "log_monitor.py"],
+        [None, "reporter.py"],
+        [None, "dashboard.py"],
     ]
 
     for process in processes_to_kill:
