@@ -4,7 +4,10 @@
 #include <boost/system/error_code.hpp>
 #include <chrono>
 #include <iterator>
+#include <mutex>
+#include <random>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 
 #include "ray/common/status.h"
@@ -100,8 +103,30 @@ struct EnumClassHash {
   }
 };
 
-/// unodered_map for enum class type.
+/// unordered_map for enum class type.
 template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
+
+/// A helper function to fill random bytes into the `data`.
+template <typename T>
+void FillRandom(T *data) {
+  RAY_CHECK(data != nullptr);
+  auto randomly_seeded_mersenne_twister = []() {
+    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::mt19937 seeded_engine(seed);
+    return seeded_engine;
+  };
+
+  // NOTE(pcm): The right way to do this is to have one std::mt19937 per
+  // thread (using the thread_local keyword), but that's not supported on
+  // older versions of macOS (see https://stackoverflow.com/a/29929949)
+  static std::mutex random_engine_mutex;
+  std::lock_guard<std::mutex> lock(random_engine_mutex);
+  static std::mt19937 generator = randomly_seeded_mersenne_twister();
+  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
+  for (int i = 0; i < data->size(); i++) {
+    (*data)[i] = static_cast<uint8_t>(dist(generator));
+  }
+}
 
 #endif  // RAY_UTIL_UTIL_H

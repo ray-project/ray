@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import click
 import os
 import pytest
 import subprocess
@@ -16,6 +17,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune import commands
+from ray.tune.result import CONFIG_PREFIX
 
 
 class Capturing():
@@ -33,7 +35,7 @@ class Capturing():
 
 @pytest.fixture
 def start_ray():
-    ray.init(log_to_driver=False)
+    ray.init(log_to_driver=False, local_mode=True)
     _register_all()
     yield
     ray.shutdown()
@@ -80,6 +82,7 @@ def test_ls(start_ray, tmpdir):
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=columns, limit=limit)
     lines = output.captured
+
     assert all(col in lines[1] for col in columns)
     assert lines[1].count("|") == len(columns) + 1
     assert len(lines) == 3 + limit + 1
@@ -92,6 +95,36 @@ def test_ls(start_ray, tmpdir):
             filter_op="training_iteration == 1")
     lines = output.captured
     assert len(lines) == 3 + num_samples + 1
+
+    with pytest.raises(click.ClickException):
+        commands.list_trials(
+            experiment_path,
+            sort=["trial_id"],
+            info_keys=("training_iteration", ))
+
+    with pytest.raises(click.ClickException):
+        commands.list_trials(experiment_path, info_keys=("asdf", ))
+
+
+def test_ls_with_cfg(start_ray, tmpdir):
+    experiment_name = "test_ls_with_cfg"
+    experiment_path = os.path.join(str(tmpdir), experiment_name)
+    tune.run(
+        "__fake",
+        name=experiment_name,
+        stop={"training_iteration": 1},
+        config={"test_variable": tune.grid_search(list(range(5)))},
+        local_dir=str(tmpdir),
+        global_checkpoint_period=0)
+
+    columns = [CONFIG_PREFIX + "test_variable", "trial_id"]
+    limit = 4
+    with Capturing() as output:
+        commands.list_trials(experiment_path, info_keys=columns, limit=limit)
+    lines = output.captured
+    assert all(col in lines[1] for col in columns)
+    assert lines[1].count("|") == len(columns) + 1
+    assert len(lines) == 3 + limit + 1
 
 
 def test_lsx(start_ray, tmpdir):

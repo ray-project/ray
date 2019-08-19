@@ -41,10 +41,6 @@ class StatsConfig final {
   bool is_stats_disabled_ = true;
 };
 
-/// The helper function for registering a view.
-static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
-                           const std::vector<opencensus::tags::TagKey> &keys);
-
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
  public:

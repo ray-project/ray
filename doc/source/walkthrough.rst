@@ -3,10 +3,9 @@ Walkthrough
 
 This walkthrough will overview the core concepts of Ray:
 
-   1. Using remote functions (tasks) [``ray.remote``]
-   2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
-   3. Using remote classes (actors) [``ray.remote``]
-
+1. Using remote functions (tasks) [``ray.remote``]
+2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
+3. Using remote classes (actors) [``ray.remote``]
 
 With Ray, your code will work on a single machine and can be easily scaled to a
 large cluster. To run this walkthrough, install Ray with ``pip install -U ray``.

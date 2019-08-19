@@ -128,9 +128,9 @@ def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
                                   deterministic_actions)
     action = tf.cond(policy.stochastic, lambda: stochastic_actions,
                      lambda: deterministic_actions)
-    action_prob = None
+    action_logp = None
 
-    return action, action_prob
+    return action, action_logp
 
 
 def build_q_losses(policy, batch_tensors):

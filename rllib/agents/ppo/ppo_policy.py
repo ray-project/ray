@@ -9,9 +9,8 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule
+    EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils import try_import_tf
 
@@ -26,10 +25,13 @@ BEHAVIOUR_LOGITS = "behaviour_logits"
 class PPOLoss(object):
     def __init__(self,
                  action_space,
+                 dist_class,
+                 model,
                  value_targets,
                  advantages,
                  actions,
-                 logits,
+                 prev_logits,
+                 prev_actions_logp,
                  vf_preds,
                  curr_action_dist,
                  value_fn,
@@ -39,18 +41,22 @@ class PPOLoss(object):
                  clip_param=0.1,
                  vf_clip_param=0.1,
                  vf_loss_coeff=1.0,
-                 use_gae=True):
+                 use_gae=True,
+                 model_config=None):
         """Constructs the loss for Proximal Policy Objective.
 
         Arguments:
             action_space: Environment observation space specification.
+            dist_class: action distribution class for logits.
             value_targets (Placeholder): Placeholder for target values; used
                 for GAE.
             actions (Placeholder): Placeholder for actions taken
                 from previous model evaluation.
             advantages (Placeholder): Placeholder for calculated advantages
                 from previous model evaluation.
-            logits (Placeholder): Placeholder for logits output from
+            prev_logits (Placeholder): Placeholder for logits output from
+                previous model evaluation.
+            prev_actions_logp (Placeholder): Placeholder for prob output from
                 previous model evaluation.
             vf_preds (Placeholder): Placeholder for value function output
                 from previous model evaluation.
@@ -65,16 +71,16 @@ class PPOLoss(object):
             vf_clip_param (float): Clip parameter for the value function
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
+            model_config (dict): (Optional) model config for use in specifying
+                action distributions.
         """
 
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
-        dist_cls, _ = ModelCatalog.get_action_dist(action_space, {})
-        prev_dist = dist_cls(logits)
+        prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
-        logp_ratio = tf.exp(
-            curr_action_dist.logp(actions) - prev_dist.logp(actions))
+        logp_ratio = tf.exp(curr_action_dist.logp(actions) - prev_actions_logp)
         action_kl = prev_dist.kl(curr_action_dist)
         self.mean_kl = reduce_mean_valid(action_kl)
 
@@ -116,10 +122,13 @@ def ppo_surrogate_loss(policy, batch_tensors):
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
+        policy.dist_class,
+        policy.model,
         batch_tensors[Postprocessing.VALUE_TARGETS],
         batch_tensors[Postprocessing.ADVANTAGES],
         batch_tensors[SampleBatch.ACTIONS],
         batch_tensors[BEHAVIOUR_LOGITS],
+        batch_tensors[ACTION_LOGP],
         batch_tensors[SampleBatch.VF_PREDS],
         policy.action_dist,
         policy.value_function,
@@ -129,7 +138,8 @@ def ppo_surrogate_loss(policy, batch_tensors):
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
-        use_gae=policy.config["use_gae"])
+        use_gae=policy.config["use_gae"],
+        model_config=policy.config["model"])
 
     return policy.loss_obj.loss
 
