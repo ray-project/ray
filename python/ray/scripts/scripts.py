@@ -392,22 +392,33 @@ def stop():
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
-        "raylet",
-        "plasma_store_server",
-        "raylet_monitor",
-        "monitor.py",
-        "redis-server",
-        "default_worker.py",  # Python worker.
-        " ray_",  # Python worker.
-        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
-        "log_monitor.py",
-        "reporter.py",
-        "dashboard.py",
+        # The first element is to filter ps results by command name (only the executable name).
+        # The second element is to filter ps results by command with all its arguments.
+        # See STANDARD FORMAT SPECIFIERS section of
+        # http://man7.org/linux/man-pages/man1/ps.1.html about comm and args.
+        # The two levels of filters can help avoid killing non-ray processes.
+        ["raylet", None],
+        ["plasma_store_server", None],
+        ["raylet_monitor", None],
+        ["monitor.py", None],
+        ["redis-server", None],
+        ["default_worker.py", None],  # Python worker.
+        [" ray_", None],  # Python worker.
+        [None, "org.ray.runtime.runner.worker.DefaultWorker"],  # Java worker.
+        ["log_monitor.py", None],
+        ["reporter.py", None],
+        ["dashboard.py", None],
     ]
 
     for process in processes_to_kill:
-        command = ("kill -9 $(ps aux | grep '" + process +
-                   "' | grep -v grep | " + "awk '{ print $2 }') 2> /dev/null")
+        if process[0]:
+            format = 'pid,comm'
+            filter = process[0]
+        else:
+            format = 'pid,args'
+            filter = process[1]
+        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
+                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
         subprocess.call([command], shell=True)
 
 
