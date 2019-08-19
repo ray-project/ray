@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The default Ray runtime factory. It produces an instance of AbstractRayRuntime.
+ * The default Ray runtime factory. It produces an instance of RayRuntime.
  */
 public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
@@ -26,7 +26,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
         if (rayConfig.workerMode == WorkerType.DRIVER || rayConfig.numWorkersPerProcess == 1) {
           runtime = new RayNativeRuntime(rayConfig);
         } else {
-          runtime = new RayMultiThreadNativeRuntime(rayConfig);
+          runtime = new RayMultiWorkerNativeRuntime(rayConfig);
         }
       }
       return runtime;
