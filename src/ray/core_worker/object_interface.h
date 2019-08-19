@@ -69,7 +69,7 @@ class CoreWorkerObjectInterface {
                 bool delete_creating_tasks);
 
  private:
-  /// Helper function to get a list of objects from a different store providers.
+  /// Helper function to get a list of objects from different store providers.
   ///
   /// \param[in] object_ids IDs of the objects to get.
   /// \param[in] ids_per_provider A map from store provider type to the set of

@@ -19,7 +19,7 @@ void GroupObjectIdsByStoreProvider(
     auto type = StoreProviderType::PLASMA;
     // For raylet transport we always use plasma store provider, for direct actor call
     // there are a few cases:
-    // - objects manually added to store by`ray.put`: for these objects they always use
+    // - objects manually added to store by `ray.put`: for these objects they always use
     //   plasma store provider;
     // - task arguments: these objects are passed by value, and are not put into store;
     // - task return objects: these are put into memory store of the task submitter
