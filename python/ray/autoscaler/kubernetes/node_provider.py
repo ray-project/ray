@@ -2,10 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import logging
 
-from kubernetes import config
+from kubernetes import client, config
 
 from ray.autoscaler.node_provider import NodeProvider
 # from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -21,7 +20,6 @@ class KubernetesNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         # config.load_kube_config()
         config.load_incluster_config()
-        from kubernetes import client
         self.core_api = client.CoreV1Api()
         self.pod_spec = default_pod_config
 
@@ -29,7 +27,10 @@ class KubernetesNodeProvider(NodeProvider):
         # Match pods that are in the 'Pending' or 'Running' phase.
         # Unfortunately there is no OR operator in field selectors, so we
         # have to match on NOT any of the other phases.
-        field_selector = "status.phase!=Succeeded,status.phase!=Failed,status.phase!=Unknown"
+        field_selector = ",".join([
+            "status.phase!=Failed", "status.phase!=Unknown",
+            "status.phase!=Succeeded"
+        ])
         label_selector = ""
         for k, v in tag_filters.items():
             if label_selector != "":

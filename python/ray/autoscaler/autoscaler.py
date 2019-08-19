@@ -806,7 +806,11 @@ def with_head_node_ip(cmds):
     head_ip = services.get_node_ip_address()
     out = []
     for cmd in cmds:
-        out.append("export RAY_HEAD_IP={}; export KUBERNETES_SERVICE_HOST={}; export KUBERNETES_SERVICE_PORT={} {}".format(head_ip, os.environ["KUBERNETES_SERVICE_HOST"], os.environ["KUBERNETES_SERVICE_PORT"], cmd))
+        out.append("export RAY_HEAD_IP={}; " +
+                   "export KUBERNETES_SERVICE_HOST={}; " +
+                   "export KUBERNETES_SERVICE_PORT={} {}".format(
+                       head_ip, os.environ["KUBERNETES_SERVICE_HOST"],
+                       os.environ["KUBERNETES_SERVICE_PORT"], cmd))
     return out
 
 
