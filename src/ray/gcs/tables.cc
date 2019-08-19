@@ -169,7 +169,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
 
   RedisCallback callback = nullptr;
   if (done != nullptr) {
-    callback = [this, id, done](const CallbackReply &reply) {
+    callback = [done](const CallbackReply &reply) {
       const auto status = reply.IsNil()
                               ? Status::OK()
                               : Status::RedisError("request notifications failed.");
@@ -191,7 +191,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 
   RedisCallback callback = nullptr;
   if (done != nullptr) {
-    callback = [this, id, done](const CallbackReply &reply) {
+    callback = [done](const CallbackReply &reply) {
       const auto status = reply.ReadAsStatus();
       done(status);
     };
