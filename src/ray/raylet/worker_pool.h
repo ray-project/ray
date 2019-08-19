@@ -149,7 +149,7 @@ class WorkerPool {
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register num_workers_per_process_by_lang_[language] workers, then add them to the pool.
+  /// register num_workers_per_process workers, then add them to the pool.
   /// Failure to start the worker process is a fatal error. If too many workers
   /// are already being started, then this function will return without starting
   /// any workers.
@@ -174,6 +174,8 @@ class WorkerPool {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
+    /// The number of workers per process.
+    int num_workers_per_process;
     /// The pool of dedicated workers for actor creation tasks
     /// with prefix or suffix worker command.
     std::unordered_map<TaskID, std::shared_ptr<Worker>> idle_dedicated_workers;
@@ -202,8 +204,6 @@ class WorkerPool {
     int64_t last_warning_multiple;
   };
 
-  /// The number of workers per process per language.
-  std::unordered_map<Language, int, std::hash<int>> num_workers_per_process_by_lang_;
   /// Pool states per language.
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 

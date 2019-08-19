@@ -17,35 +17,36 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with
-/// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each language.
+/// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each
+/// language.
 WorkerPool::WorkerPool(int num_worker_processes,
-                       const std::unordered_map<Language, int, std::hash<int>> &num_workers_per_process_by_lang,
+                       const std::unordered_map<Language, int, std::hash<int>>
+                           &num_workers_per_process_by_lang,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
-    : num_workers_per_process_by_lang_(num_workers_per_process_by_lang),
-      maximum_startup_concurrency_(maximum_startup_concurrency),
+    : maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
-  for (auto &it : num_workers_per_process_by_lang) {
-    RAY_CHECK(it.second > 0) << "Number of workers per process of language "
-                             << Language_Name(it.first) << " must be positive.";
-  }
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
   for (const auto &entry : worker_commands) {
-    // If num workers per process was not expicitly set, use 1 as default.
-    auto it = num_workers_per_process_by_lang_.find(entry.first);
-    if (it == num_workers_per_process_by_lang_.end()) {
-      num_workers_per_process_by_lang_.emplace(entry.first, 1);
-    }
-
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
+    // If num workers per process was not expicitly set, use 1 as default.
+    auto it = num_workers_per_process_by_lang.find(entry.first);
+    if (it == num_workers_per_process_by_lang.end()) {
+      state.num_workers_per_process = 1;
+    } else {
+      state.num_workers_per_process = it->second;
+    }
+    RAY_CHECK(state.num_workers_per_process > 0)
+        << "Number of workers per process of language " << Language_Name(entry.first)
+        << " must be positive.";
     state.multiple_for_warning =
         std::max(num_worker_processes, maximum_startup_concurrency) *
-        num_workers_per_process_by_lang_[entry.first];
+        state.num_workers_per_process;
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -123,7 +124,19 @@ int WorkerPool::StartWorkerProcess(const Language &language,
         ++dynamic_option_index;
       }
     } else {
-      worker_command_args.push_back(token);
+      size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
+      if (num_workers_index >= 0) {
+        std::string arg = token;
+        worker_command_args.push_back(
+            arg.replace(num_workers_index, strlen(kWorkerNumWorkersPlaceholder),
+                        std::to_string(state.num_workers_per_process)));
+      } else {
+        RAY_CHECK(state.num_workers_per_process == 1)
+            << "Expect to start " << state.num_workers_per_process << " workers per "
+            << Language_Name(language) << " worker process. But the "
+            << kWorkerNumWorkersPlaceholder << " is not found in worker command.";
+        worker_command_args.push_back(token);
+      }
     }
   }
 
@@ -134,8 +147,13 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   } else if (pid > 0) {
     // Parent process case.
     RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
-    state.starting_worker_processes.emplace(
-        std::make_pair(pid, num_workers_per_process_by_lang_[language]));
+    int starting_workers;
+    if (dynamic_options.empty()) {
+      starting_workers = state.num_workers_per_process;
+    } else {
+      starting_workers = 1;
+    }
+    state.starting_worker_processes.emplace(pid, starting_workers);
     return pid;
   }
   return -1;

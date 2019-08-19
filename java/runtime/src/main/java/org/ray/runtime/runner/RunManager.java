@@ -329,7 +329,7 @@ public class RunManager {
     }
 
     // Number of workers per Java worker process
-    cmd.add("-Dray.raylet.config.num_workers_per_process_java=" + rayConfig.numWorkersPerProcess);
+    cmd.add("-Dray.raylet.config.num_workers_per_process_java=RAY_WORKER_NUM_WORKERS");
 
     cmd.addAll(rayConfig.jvmParameters);
 

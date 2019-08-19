@@ -1294,9 +1294,8 @@ def build_java_worker_command(
     command += "-Dray.home={} ".format(RAY_HOME)
     command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
 
-    if java_num_workers_per_process:
-        command += ("-Dray.raylet.config.num_workers_per_process_java={} ".
-                    format(java_num_workers_per_process))
+    command += ("-Dray.raylet.config.num_workers_per_process_java="
+                + "RAY_WORKER_NUM_WORKERS ")
 
     if java_worker_options:
         # Put `java_worker_options` in the last, so it can overwrite the
