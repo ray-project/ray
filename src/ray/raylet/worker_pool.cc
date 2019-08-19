@@ -24,9 +24,7 @@ WorkerPool::WorkerPool(int num_worker_processes,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : num_workers_per_process_by_lang_(num_workers_per_process_by_lang),
-      multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
       maximum_startup_concurrency_(maximum_startup_concurrency),
-      last_warning_multiple_(0),
       gcs_client_(std::move(gcs_client)) {
   for (auto &it : num_workers_per_process_by_lang) {
     RAY_CHECK(it.second > 0) << "Number of workers per process of language "
@@ -45,6 +43,9 @@ WorkerPool::WorkerPool(int num_worker_processes,
 
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
+    state.multiple_for_warning =
+        std::max(num_worker_processes, maximum_startup_concurrency) *
+        num_workers_per_process_by_lang_[entry.first];
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -347,27 +348,30 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
 }
 
 void WorkerPool::WarnAboutSize() {
-  int64_t num_workers_started_or_registered = 0;
   for (const auto &entry : states_by_lang_) {
+    auto state = entry.second;
+    int64_t num_workers_started_or_registered = 0;
     num_workers_started_or_registered +=
-        static_cast<int64_t>(entry.second.registered_workers.size());
-    num_workers_started_or_registered +=
-        static_cast<int64_t>(entry.second.starting_worker_processes.size());
-  }
-  int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
-  std::stringstream warning_message;
-  if (multiple >= 3 && multiple > last_warning_multiple_) {
-    // Push an error message to the user if the worker pool tells us that it is
-    // getting too big.
-    last_warning_multiple_ = multiple;
-    warning_message << "WARNING: " << num_workers_started_or_registered
-                    << " workers have been started. This could be a result of using "
-                    << "a large number of actors, or it could be a consequence of "
-                    << "using nested tasks "
-                    << "(see https://github.com/ray-project/ray/issues/3644) for "
-                    << "some a discussion of workarounds.";
-    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+        static_cast<int64_t>(state.registered_workers.size());
+    for (const auto &starting_process : state.starting_worker_processes) {
+      num_workers_started_or_registered += starting_process.second;
+    }
+    int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
+    std::stringstream warning_message;
+    if (multiple >= 3 && multiple > state.last_warning_multiple) {
+      // Push an error message to the user if the worker pool tells us that it is
+      // getting too big.
+      state.last_warning_multiple = multiple;
+      warning_message << "WARNING: " << num_workers_started_or_registered << " "
+                      << Language_Name(entry.first)
+                      << " workers have been started. This could be a result of using "
+                      << "a large number of actors, or it could be a consequence of "
+                      << "using nested tasks "
+                      << "(see https://github.com/ray-project/ray/issues/3644) for "
+                      << "some a discussion of workarounds.";
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+    }
   }
 }
 
@@ -382,8 +386,10 @@ std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
   for (const auto &entry : states_by_lang_) {
-    result << "\n- num workers: " << entry.second.registered_workers.size();
-    result << "\n- num drivers: " << entry.second.registered_drivers.size();
+    result << "\n- num " << Language_Name(entry.first)
+           << " workers: " << entry.second.registered_workers.size();
+    result << "\n- num " << Language_Name(entry.first)
+           << " drivers: " << entry.second.registered_drivers.size();
   }
   return result.str();
 }

@@ -194,6 +194,12 @@ class WorkerPool {
     std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
     std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
+    /// We'll push a warning to the user every time a multiple of this many
+    /// worker processes has been started.
+    int multiple_for_warning;
+    /// The last size at which a warning about the number of registered workers
+    /// was generated.
+    int64_t last_warning_multiple;
   };
 
   /// The number of workers per process per language.
@@ -206,14 +212,8 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
-  /// We'll push a warning to the user every time a multiple of this many
-  /// workers has been started.
-  int multiple_for_warning_;
-  /// The maximum number of workers that can be started concurrently.
+  /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
-  /// The last size at which a warning about the number of registered workers
-  /// was generated.
-  int64_t last_warning_multiple_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 };
