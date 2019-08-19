@@ -41,13 +41,14 @@ class VisionNetwork(TFModelV2):
         out_size, kernel, stride = filters[-1]
         if no_final_linear:
             # the last layer is adjusted to be of size num_outputs
-            conv_out = tf.keras.layers.Conv2D(
+            last_layer = tf.keras.layers.Conv2D(
                 num_outputs,
                 kernel,
                 strides=(stride, stride),
                 activation=activation,
                 padding="valid",
                 name="conv_out")(last_layer)
+            conv_out = last_layer
         else:
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
