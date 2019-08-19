@@ -191,8 +191,12 @@ def start():
             "git clone {repo} {directory} || true".format(
                 repo=project_definition["repo"],
                 directory=project_definition["name"]),
-            cwd=working_directory,
         )
+    else:
+        session_exec_cluster(
+            cluster_yaml,
+            "mkdir {directory} || true".format(
+                directory=project_definition["name"]))
 
     logger.info("[3/4] Setting up environment")
     _setup_environment(
@@ -203,8 +207,9 @@ def start():
         cluster_yaml, project_definition["commands"], cwd=working_directory)
 
 
-def session_exec_cluster(cluster_yaml, cmd, cwd):
-    cmd = "cd {cwd}; {cmd}".format(cwd=cwd, cmd=cmd)
+def session_exec_cluster(cluster_yaml, cmd, cwd=None):
+    if cwd is not None:
+        cmd = "cd {cwd}; {cmd}".format(cwd=cwd, cmd=cmd)
     exec_cluster(
         config_file=cluster_yaml,
         cmd=cmd,

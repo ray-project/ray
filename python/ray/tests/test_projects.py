@@ -130,6 +130,16 @@ def test_session_start_default_project():
             cmd for cmd in commands_executed if "pip install -r" not in cmd
         ]
 
+    # if we don't have a repo, we will be creating a directory
+    if "repo" not in loaded_project:
+        mkdir_command = "mkdir {project_name}".format(
+            project_name=loaded_project["name"])
+        assert any(mkdir_command in cmd for cmd in commands_executed)
+        # pop the `pip install` off commands executed
+        commands_executed = [
+            cmd for cmd in commands_executed if mkdir_command not in cmd
+        ]
+
     assert expected_commands == commands_executed
 
 
@@ -171,8 +181,11 @@ def test_session_git_repo_cloned():
     exec_cluster_call = mock_calls["exec_cluster"]
     commands_executed = []
     for _, kwargs in exec_cluster_call.call_args_list:
-        commands_executed.append(kwargs["cmd"].replace(
-            "cd {}; ".format(loaded_project["name"]), ""))
+        command_executed = kwargs["cmd"]
+        # Filter out the cd call that was appended to each command
+        cd_project_dir_call = "cd {}; ".format(loaded_project["name"])
+        command_executed = command_executed.replace(cd_project_dir_call, "")
+        commands_executed.append(command_executed)
 
     assert any("git clone" in cmd for cmd in commands_executed)
 
