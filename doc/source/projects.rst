@@ -3,7 +3,7 @@ Ray Projects (Experimental)
 
 Ray projects make it easy to package a Ray application so it can be
 rerun later in the same environment. They allow for the sharing and
-reuse of existing code reliably.
+reliable reuse of existing code.
 
 Quick start (CLI)
 -----------------
@@ -31,7 +31,7 @@ Quick start (CLI)
 
 Examples
 --------
-- `Open Tachotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
+- `Open Tacotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
   A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)
 - `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/.rayproject/project.yaml>`__:
   A library of state-of-the-art pretrained models for Natural Language Processing (NLP)
