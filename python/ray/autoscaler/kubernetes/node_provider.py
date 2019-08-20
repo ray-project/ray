@@ -23,9 +23,8 @@ class KubernetesNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         # TODO(gaocegege): Support custom kubeconfig in yaml.
-        config.load_kube_config()
         self.kubernetes_core_v1_client = client.CoreV1Api(
-            client.ApiClient(configuration))
+            config.new_client_from_config())
 
     @staticmethod
     def to_kubernetes_format(tag_filters):
@@ -36,7 +35,7 @@ class KubernetesNodeProvider(NodeProvider):
         return label_selector
 
     def non_terminated_nodes(self, tag_filters):
-        label_selector = to_kubernetes_format(tag_filters)
+        label_selector = self.to_kubernetes_format(tag_filters)
 
         nodes = list(self.kubernetes_core_v1_client.list_namespaced_pod(hard_coded_namespace,label_selector=label_selector))
         logger.info("nodes: {}".format(nodes))

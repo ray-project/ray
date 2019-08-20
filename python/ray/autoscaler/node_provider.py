@@ -23,8 +23,9 @@ def import_gcp():
 
 
 def import_kubernetes():
+    from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
     from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
-    return "", KubernetesNodeProvider
+    return bootstrap_kubernetes, KubernetesNodeProvider
 
 
 def import_local():
@@ -38,6 +39,10 @@ def load_local_example_config():
     return os.path.join(
         os.path.dirname(ray_local.__file__), "example-full.yaml")
 
+def load_kubernetes_example_config():
+    import ray.autoscaler.kubernetes as ray_kubernetes
+    return os.path.join(
+        os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
 
 def load_aws_example_config():
     import ray.autoscaler.aws as ray_aws
@@ -73,7 +78,7 @@ DEFAULT_CONFIGS = {
     "aws": load_aws_example_config,
     "gcp": load_gcp_example_config,
     "azure": None,  # TODO: support more node providers
-    "kubernetes": None,
+    "kubernetes": load_kubernetes_example_config,
     "docker": None,
 }
 
