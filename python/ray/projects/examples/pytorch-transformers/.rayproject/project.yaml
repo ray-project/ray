@@ -2,7 +2,7 @@
 
 name: pytorch-transformers
 description: "A library of state-of-the-art pretrained models for Natural Language Processing (NLP)"
-repo: https://github.com/pcmoritz/pytorch-transformers
+repo: https://github.com/huggingface/pytorch-transformers
 
 cluster: .rayproject/cluster.yaml
 
@@ -12,7 +12,8 @@ environment:
 commands:
   - name: train_sst_2
     command: |
-      python ./examples/download_glue_data.py -d /tmp -t SST && \
+      wget https://raw.githubusercontent.com/nyu-mll/GLUE-baselines/master/download_glue_data.py && \
+      python download_glue_data.py -d /tmp -t SST && \
       python ./examples/run_glue.py \
       --model_type bert \
       --model_name_or_path bert-base-uncased \
