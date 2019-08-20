@@ -49,10 +49,10 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
         /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
     Status status = object_interface_.Put(*results[i], id);
     if (!status.ok()) {
-      // TODO (kfstorm): RAY_LOG(FATAL) except the error is about the object to put
-      // already exists.
-      RAY_LOG(WARNING) << "Task " << task_spec.TaskId() << " failed to put object " << id
-                       << " in store: " << status.message();
+      // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
+      // `ObjectInterface::Put`, we treat other error types as fatal here.
+      RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
+                     << " in store: " << status.message();
     } else {
       RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
                      << " in store.";
