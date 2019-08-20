@@ -32,8 +32,8 @@ Examples
 --------
 - `Open Tachotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
   A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)
-- `Mozilla DeepSpeech <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/mozilla-deepspeech/.rayproject/project.yaml>`__:
-  A TensorFlow implementation of Baidu's DeepSpeech architecture
+- `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/.rayproject/project.yaml>`__:
+  A library of state-of-the-art pretrained models for Natural Language Processing (NLP)
 
 Project file format (project.yaml)
 ----------------------------------
