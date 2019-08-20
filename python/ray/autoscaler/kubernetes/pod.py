@@ -23,7 +23,7 @@ default_pod_config = {
             "image": "eoakes/ray-test",
             "command": ["/bin/bash", "-c", "--"],
             "args": [
-                "echo \"export KUBERNETES_SERVICE_HOST=$KUBERNETES_SERVICE_HOST\" >> /root/.bashrc && echo \"export KUBERNETES_SERVICE_PORT=$KUBERNETES_SERVICE_PORT\" >> /root/.bashrc && cd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && cd .. && apt-get install -y rsync && pip3 install kubernetes && service ssh start && trap : TERM INT; sleep infinity & wait;"
+                "cd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && cd .. && apt-get install -y rsync && trap : TERM INT; sleep infinity & wait;"
             ],
             "ports": [{
                 "containerPort": 12345

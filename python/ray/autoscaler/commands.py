@@ -211,9 +211,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         logger.info("get_or_create_head_node: Updating files on head node...")
 
         # Rewrite the auth config so that the head node can update the workers
-        remote_key_path = "~/ray_bootstrap_key.pem"
         remote_config = copy.deepcopy(config)
-        remote_config["auth"]["ssh_private_key"] = remote_key_path
+        if config["provider"]["type"] != "kubernetes":
+            remote_key_path = "~/ray_bootstrap_key.pem"
+            remote_config["auth"]["ssh_private_key"] = remote_key_path
 
         # Adjust for new file locations
         new_mounts = {}
@@ -228,9 +229,12 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         remote_config_file.write(json.dumps(remote_config))
         remote_config_file.flush()
         config["file_mounts"].update({
-            remote_key_path: config["auth"]["ssh_private_key"],
             "~/ray_bootstrap_config.yaml": remote_config_file.name
         })
+        if config["provider"]["type"] != "kubernetes":
+            config["file_mounts"].update({
+                remote_key_path: config["auth"]["ssh_private_key"],
+            })
 
         if restart_only:
             init_commands = config["head_start_ray_commands"]

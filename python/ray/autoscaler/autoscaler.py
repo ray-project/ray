@@ -84,8 +84,9 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": (
         {
-            "ssh_user": (str, REQUIRED),  # e.g. ubuntu
+            "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
             "ssh_private_key": (str, OPTIONAL),
+            "kubernetes_config": (dict, OPTIONAL),
         },
         REQUIRED),
 
@@ -806,11 +807,7 @@ def with_head_node_ip(cmds):
     head_ip = services.get_node_ip_address()
     out = []
     for cmd in cmds:
-        out.append("export RAY_HEAD_IP={}; " +
-                   "export KUBERNETES_SERVICE_HOST={}; " +
-                   "export KUBERNETES_SERVICE_PORT={} {}".format(
-                       head_ip, os.environ["KUBERNETES_SERVICE_HOST"],
-                       os.environ["KUBERNETES_SERVICE_PORT"], cmd))
+        out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
     return out
 
 

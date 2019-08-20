@@ -16,9 +16,12 @@ from threading import Thread
 from getpass import getuser
 
 from kubernetes import client, config
+from kubernetes.stream import stream
+from kubernetes.config.config_exception import ConfigException
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.kubernetes import RAY_NAMESPACE
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,16 @@ logger = logging.getLogger(__name__)
 NODE_START_WAIT_S = 300
 READY_CHECK_INTERVAL = 5
 CONTROL_PATH_MAX_LENGTH = 70
+K8S_RSYNC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "kubernetes/k8s-rsync.sh")
+
+
+def with_interactive(cmd):
+    force_interactive = (
+        "true && source ~/.bashrc && "
+        "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
+    return "bash --login -c -i {}".format(
+        quote(force_interactive + cmd))
 
 
 class KubernetesCommandRunner(object):
@@ -36,23 +49,86 @@ class KubernetesCommandRunner(object):
         self.process_runner = process_runner
         self.node_id = node_id
         self.provider = provider
-        config.load_incluster_config()
+        try:
+            config.load_incluster_config()
+        except ConfigException:
+            config.load_kube_config()
         self.core_api = client.CoreV1Api()
 
-    def run(self,
+    def run(
+            self,
             cmd,
             timeout=120,
             redirect=None,
             allocate_tty=False,
+            emulate_interactive=True,  # not implemented
             exit_on_fail=False,
             port_forward=None):
-        raise NotImplementedError()
+
+        logger.info(self.log_prefix + "Running {}...".format(cmd))
+
+        if emulate_interactive:
+            cmd = with_interactive(cmd)
+
+        # TODO: redirect stdout/stderr to specified if passed, else normal
+        # stdout/stderr
+        try:
+            cmd = ["kubectl", "-n", RAY_NAMESPACE, "exec", "-i",
+                   self.node_id, "--", "/bin/sh", "-c", cmd]
+            self.process_runner.check_call(
+                cmd,
+                stdout=redirect or sys.stdout,
+                stderr=redirect or sys.stderr)
+        except Exception:  # TODO better handling
+            if exit_on_fail:
+                logger.error(
+                    self.log_prefix +
+                    "Command failed: \n\n  {}\n".format(" ".join(cmd)))
+                sys.exit(1)
+            else:
+                raise
 
     def run_rsync_up(self, source, target, redirect=None):
-        raise NotImplementedError()
+        if target.startswith('~'):
+            target = '/root' + target[1:]
 
-    def rsync_down(self, source, target):
-        raise NotImplementedError()
+        try:
+            self.process_runner.check_call([
+                K8S_RSYNC, "-avz",
+                source, "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, target),
+            ],
+                stdout=redirect,
+                stderr=redirect)
+        except Exception:
+            logger.warning(
+                self.log_prefix + "rsync failed. Falling back to 'kubectl cp'")
+            self.process_runner.check_call([
+                "kubectl", "cp", "-n", RAY_NAMESPACE,
+                source, "{}@{}:{}".format(self.node_id, target),
+            ],
+                stdout=redirect,
+                stderr=redirect)
+
+    def run_rsync_down(self, source, target, redirect=None):
+        if target.startswith('~'):
+            target = '/root' + target[1:]
+
+        try:
+            self.process_runner.check_call([
+                K8S_RSYNC, "-avz",
+                "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, source), target,
+            ],
+                stdout=redirect,
+                stderr=redirect)
+        except Exception:
+            logger.warning(
+                self.log_prefix + "rsync failed. Falling back to 'kubectl cp'")
+            self.process_runner.check_call([
+                "kubectl", "cp", "-n", RAY_NAMESPACE,
+                "{}:{}".format(self.node_id, source), target,
+            ],
+                stdout=redirect,
+                stderr=redirect)
 
 
 class SSHCommandRunner(object):
@@ -153,11 +229,7 @@ class SSHCommandRunner(object):
         if allocate_tty:
             ssh.append("-tt")
         if emulate_interactive:
-            force_interactive = (
-                "true && source ~/.bashrc && "
-                "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-            cmd = "bash --login -c -i {}".format(
-                quote(force_interactive + cmd))
+            cmd = with_interactive(cmd)
 
         if port_forward is None:
             ssh_opt = []
@@ -187,23 +259,23 @@ class SSHCommandRunner(object):
         self.set_ssh_ip_if_required()
         self.process_runner.check_call(
             [
-                "rsync", "-e",
+                "rsync", "--rsh",
                 " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
                 source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
             ],
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+            stdout=redirect,
+            stderr=redirect)
 
-    def rsync_down(self, source, target):
+    def rsync_down(self, source, target, redirect=None):
         self.set_ssh_ip_if_required()
         self.process_runner.check_call(
             [
-                "rsync", "-e",
+                "rsync", "--rsh",
                 " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
             ],
-            stdout=sys.stdout,
-            stderr=sys.stderr)
+            stdout=redirect,
+            stderr=redirect)
 
 
 class NodeUpdater(object):
@@ -224,15 +296,17 @@ class NodeUpdater(object):
                  use_internal_ip=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
-        use_internal_ip = (use_internal_ip
-                           or provider_config.get("use_internal_ips", False))
-        self.cmd_runner = SSHCommandRunner(
-            self.log_prefix, node_id, provider, auth_config, cluster_name,
-            process_runner, use_internal_ip)
-
-        self.k8s_cmd_runner = KubernetesCommandRunner(
-            self.log_prefix, node_id, provider, auth_config, cluster_name,
-            process_runner)
+        if provider_config["type"] == "kubernetes":
+            self.cmd_runner = KubernetesCommandRunner(
+                self.log_prefix, node_id, provider, auth_config, cluster_name,
+                process_runner)
+        else:
+            use_internal_ip = (use_internal_ip or
+                               provider_config.get("use_internal_ips", False))
+            self.cmd_runner = SSHCommandRunner(self.log_prefix, node_id,
+                                                   provider,
+                                                   auth_config, cluster_name,
+                                                   process_runner, use_internal_ip)
 
         self.daemon = True
         self.process_runner = process_runner
@@ -261,8 +335,8 @@ class NodeUpdater(object):
                     e.returncode, " ".join(e.cmd))
             logger.error(self.log_prefix +
                          "Error updating {}".format(error_str))
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: "update-failed"})
+            self.provider.set_node_tags(self.node_id,
+                                        {TAG_RAY_NODE_STATUS: "update-failed"})
             raise e
 
         self.provider.set_node_tags(
@@ -317,19 +391,19 @@ class NodeUpdater(object):
         assert False, "Unable to connect to node"
 
     def do_update(self):
-        self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: "waiting-for-start"})
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "waiting-for-start"})
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
 
-        self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: "syncing-files"})
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         self.sync_file_mounts(self.rsync_up)
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
-                                         {TAG_RAY_NODE_STATUS: "setting-up"})
+                                    {TAG_RAY_NODE_STATUS: "setting-up"})
         with LogTimer(self.log_prefix + "Initialization commands completed"):
             for cmd in self.initialization_commands:
                 self.cmd_runner.run(cmd, exit_on_fail=self.exit_on_update_fail)
