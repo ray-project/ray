@@ -550,7 +550,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
 
-  // Test Wait with objects which become ready later.
+  // Test Wait() with objects which will become ready later.
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
     unready_ids[i] = ObjectID::FromRandom();
