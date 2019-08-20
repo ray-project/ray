@@ -167,7 +167,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client
   if (!status.ok()) {
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
   }
-  return Status::OK();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
