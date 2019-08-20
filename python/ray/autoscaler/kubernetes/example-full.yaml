@@ -8,3 +8,6 @@ max_workers: 5
 # Cloud-provider specific configuration.
 provider:
     type: kubernetes
+
+file_mounts: {
+}

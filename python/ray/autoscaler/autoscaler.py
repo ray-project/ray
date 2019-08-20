@@ -71,6 +71,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "type": (str, REQUIRED),  # e.g. aws
             "region": (str, OPTIONAL),  # e.g. us-east-1
             "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
+            "ssh_command": (str, OPTIONAL),
             "module": (str,
                        OPTIONAL),  # module, if using external node provider
             "project_id": (None, OPTIONAL),  # gcp project id, if using gcp

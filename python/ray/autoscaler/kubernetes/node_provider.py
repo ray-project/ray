@@ -19,6 +19,7 @@ hard_coded_cluster_name = "sample-cluster"
 hard_coded_namespace = "default"
 logger = logging.getLogger(__name__)
 
+
 class KubernetesNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
@@ -31,12 +32,27 @@ class KubernetesNodeProvider(NodeProvider):
         label_selector = ""
         for k, v in tag_filters.items():
             if k == TAG_RAY_NODE_TYPE:
-                label_selector += "ray-{}=".format(v) + "{}-{}".format(hard_coded_cluster_name, v)
+                label_selector += "ray-{}=".format(v) + \
+                    "{}-{}".format(hard_coded_cluster_name, v)
         return label_selector
 
     def non_terminated_nodes(self, tag_filters):
         label_selector = self.to_kubernetes_format(tag_filters)
 
-        nodes = self.kubernetes_core_v1_client.list_namespaced_pod(hard_coded_namespace,label_selector=label_selector)
-        logger.info("nodes: {}".format(nodes))
-        return [node.id for node in nodes.items]
+        nodes = self.kubernetes_core_v1_client.list_namespaced_pod(
+            hard_coded_namespace, label_selector=label_selector)
+        logger.info("nodes: {}".format(
+            [node.metadata.name for node in nodes.items]))
+        return [node.metadata.name for node in nodes.items]
+
+    def is_terminated(self, node_id):
+        return not self.kubernetes_core_v1_client.read_namespaced_pod(
+            node_id, hard_coded_namespace)
+    
+    def external_ip(self, node_id):
+        return self.internal_ip(node_id)
+
+    def internal_ip(self, node_id):
+        node = self.kubernetes_core_v1_client.read_namespaced_pod(
+            node_id, hard_coded_namespace)
+        return node.status.pod_ip

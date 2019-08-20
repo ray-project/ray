@@ -63,6 +63,8 @@ class NodeUpdater(object):
         self.daemon = True
         self.process_runner = process_runner
         self.node_id = node_id
+        self.attach_cmd = provider_config.get(
+            "ssh_command", "ssh")
         self.use_internal_ip = (use_internal_ip or provider_config.get(
             "use_internal_ips", False))
         self.provider = provider
@@ -276,7 +278,8 @@ class NodeUpdater(object):
 
         logger.info("NodeUpdater: Running {} on {}...".format(
             cmd, self.ssh_ip))
-        ssh = ["ssh"]
+        attach_cmd = ["ssh"]
+        ssh = [self.attach_cmd]
         if allocate_tty:
             ssh.append("-tt")
         if emulate_interactive:
@@ -297,6 +300,7 @@ class NodeUpdater(object):
             self.ssh_private_key, connect_timeout, self.ssh_control_path) + [
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ]
+        logger.info(final_cmd)
         try:
             self.process_runner.check_call(
                 final_cmd,

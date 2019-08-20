@@ -8,6 +8,7 @@ max_workers: 5
 # Cloud-provider specific configuration.
 provider:
     type: kubernetes
+    ssh_command: kubectl
 
 setup_commands: []
 
