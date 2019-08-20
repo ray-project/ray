@@ -37,6 +37,6 @@ class KubernetesNodeProvider(NodeProvider):
     def non_terminated_nodes(self, tag_filters):
         label_selector = self.to_kubernetes_format(tag_filters)
 
-        nodes = list(self.kubernetes_core_v1_client.list_namespaced_pod(hard_coded_namespace,label_selector=label_selector))
+        nodes = self.kubernetes_core_v1_client.list_namespaced_pod(hard_coded_namespace,label_selector=label_selector)
         logger.info("nodes: {}".format(nodes))
-        return [node.id for node in nodes]
+        return [node.id for node in nodes.items]
