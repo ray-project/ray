@@ -8,7 +8,7 @@ namespace ray {
 namespace gcs {
 
 ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl), actor_sub_executor_(client_impl_.actor_table()) {}
 
 Status ActorStateAccessor::AsyncGet(const ActorID &actor_id,
                                     const MultiItemCallback<ActorTableData> &callback) {
@@ -90,23 +90,19 @@ Status ActorStateAccessor::AsyncSubscribe(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](RedisGcsClient *client, const ActorID &actor_id,
-                                  const std::vector<ActorTableData> &data) {
-    if (!data.empty()) {
-      // We only need the last entry, because it represents the latest state of
-      // this actor.
-      subscribe(actor_id, data.back());
-    }
-  };
+  return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);
+}
 
-  auto on_done = [done](RedisGcsClient *client) {
-    if (done != nullptr) {
-      done(Status::OK());
-    }
-  };
+Status ActorStateAccessor::AsyncSubscribe(
+    const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
+}
 
-  ActorTable &actor_table = client_impl_.actor_table();
-  return actor_table.Subscribe(JobID::Nil(), ClientID::Nil(), on_subscribe, on_done);
+Status ActorStateAccessor::AsyncUnsubscribe(const ActorID &actor_id,
+                                            const StatusCallback &done) {
+  return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
 }
 
 }  // namespace gcs
