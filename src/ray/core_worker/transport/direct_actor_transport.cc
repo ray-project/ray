@@ -63,7 +63,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    return PushTask(*client, *request, task_id, num_returns);
+    PushTask(*client, *request, task_id, num_returns);
+    return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -92,18 +93,16 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
     } else {
       // Remove rpc client if it's dead or being reconstructed.
       rpc_clients_.erase(actor_id);
-      // If this actor is permanantly dead and there're pending requests, treat
+      // If this actor is permanently dead and there are pending requests, treat
       // the pending tasks as failed.
       if (actor_data.state() == ActorTableData::DEAD &&
           pending_requests_.count(actor_id) > 0) {
-        auto &requests = pending_requests_[actor_id];
-        while (!requests.empty()) {
-          const auto &request = *requests.front();
+        for (const auto &request : pending_requests_[actor_id]) {
           TreatTaskAsFailed(TaskID::FromBinary(request.task_spec().task_id()),
                             request.task_spec().num_returns(),
                             rpc::ErrorType::ACTOR_DIED);
-          requests.pop_front();
         }
+        pending_requests_.erase(actor_id);
       }
     }
 
@@ -127,10 +126,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
     const auto &request = *requests.front();
-    auto status =
-        PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
-                 request.task_spec().num_returns());
-    RAY_CHECK_OK(status);
+    PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
+             request.task_spec().num_returns());
     requests.pop_front();
   }
 }
