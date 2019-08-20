@@ -141,6 +141,13 @@ class AnalysisSuite(unittest.TestCase):
         self.assertTrue(logdir2.startswith(self.test_dir))
         self.assertNotEquals(logdir, logdir2)
 
+    def testBestConfigIsLogdir(self):
+        analysis = Analysis(self.test_dir)
+        for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
+            logdir = analysis.get_best_logdir(metric, mode=mode)
+            best_config = analysis.get_best_config(metric, mode=mode)
+            self.assertEquals(analysis.get_all_configs()[logdir], best_config)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

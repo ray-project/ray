@@ -9,7 +9,7 @@ import time
 
 import ray
 from ray.utils import _random_string
-from ray.tests.utils import (run_and_get_output, run_string_as_driver,
+from ray.tests.utils import (run_string_as_driver,
                              run_string_as_driver_nonblocking)
 
 
@@ -272,60 +272,117 @@ def test_calling_start_ray_head():
     # should also test the non-head node code path.
 
     # Test starting Ray with no arguments.
-    run_and_get_output(["ray", "start", "--head"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "start", "--head"])
+    subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with a redis port specified.
-    run_and_get_output(["ray", "start", "--head", "--redis-port", "6379"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "start", "--head", "--redis-port", "6379"])
+    subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with a node IP address specified.
-    run_and_get_output(
+    subprocess.check_output(
         ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with the object manager and node manager ports
     # specified.
-    run_and_get_output([
+    subprocess.check_output([
         "ray", "start", "--head", "--object-manager-port", "12345",
         "--node-manager-port", "54321"
     ])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with the number of CPUs specified.
-    run_and_get_output(["ray", "start", "--head", "--num-cpus", "2"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "start", "--head", "--num-cpus", "2"])
+    subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with the number of GPUs specified.
-    run_and_get_output(["ray", "start", "--head", "--num-gpus", "100"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "start", "--head", "--num-gpus", "100"])
+    subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with the max redis clients specified.
-    run_and_get_output(
+    subprocess.check_output(
         ["ray", "start", "--head", "--redis-max-clients", "100"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "stop"])
 
     if "RAY_USE_NEW_GCS" not in os.environ:
         # Test starting Ray with redis shard ports specified.
-        run_and_get_output([
+        subprocess.check_output([
             "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382"
         ])
-        subprocess.Popen(["ray", "stop"]).wait()
+        subprocess.check_output(["ray", "stop"])
 
         # Test starting Ray with all arguments specified.
-        run_and_get_output([
+        subprocess.check_output([
             "ray", "start", "--head", "--redis-port", "6379",
             "--redis-shard-ports", "6380,6381,6382", "--object-manager-port",
             "12345", "--num-cpus", "2", "--num-gpus", "0",
             "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
-        subprocess.Popen(["ray", "stop"]).wait()
+        subprocess.check_output(["ray", "stop"])
 
     # Test starting Ray with invalid arguments.
-    with pytest.raises(Exception):
-        run_and_get_output(
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(
             ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "stop"])
+
+    # Test --block. Killing any child process should cause the command to exit.
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked.poll()
+
+    # Wait for up to 10s for the ray command to spawn a child process.
+    for _ in range(10):
+        try:
+            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(1)
+    else:
+        assert False, "ray start didn't spawn children within 10s of starting"
+
+    blocked.poll()
+    assert blocked.returncode is None
+
+    # Kill all child processes of the ray command and check that it exits.
+    subprocess.check_output(["pkill", "-P", str(blocked.pid)])
+    for _ in range(10):
+        time.sleep(1)
+        blocked.poll()
+        if blocked.returncode is not None:
+            break
+    else:
+        assert False, "ray start didn't exit within 10s of child process dying"
+
+    assert blocked.returncode != 0
+
+    # Test --block. Killing the command should clean up all child processes.
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
+    blocked.poll()
+    assert blocked.returncode is None
+
+    # Wait for up to 10s for the ray command to spawn a child process.
+    for _ in range(10):
+        try:
+            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
+            break
+        except subprocess.CalledProcessError:
+            time.sleep(1)
+    else:
+        assert False, "ray start didn't spawn children within 10s of starting"
+
+    blocked.terminate()
+
+    # Check that the child processes are cleaned up within 10s.
+    for _ in range(10):
+        try:
+            subprocess.check_output(
+                ["pgrep", "-P", str(blocked.pid), "raylet"])
+        except subprocess.CalledProcessError:
+            # pgrep didn't find anything, so the child processes are dead.
+            break
+    else:
+        assert False, "ray start didn't kill children within 10s of exiting."
 
 
 @pytest.mark.parametrize(

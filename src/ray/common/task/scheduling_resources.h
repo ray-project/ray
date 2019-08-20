@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/protobuf/common.pb.h"
+#include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
 
@@ -422,10 +422,18 @@ class ResourceIdSet {
   /// \return A human-readable string version of the object.
   std::string ToString() const;
 
-  /// \brief Convert this object to a vector of protobuf `ResourceIdSetInfo`s.
+  /// \brief Serialize this object using flatbuffers.
   ///
-  /// \return A vector inclusing resource id set infos.
-  std::vector<rpc::ResourceIdSetInfo> ToProtobuf() const;
+  /// \param fbb A flatbuffer builder object.
+  /// \return A flatbuffer serialized version of this object.
+  std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
+      flatbuffers::FlatBufferBuilder &fbb) const;
+
+  /// \brief Serialize this object as a string.
+  ///
+  /// \return A serialized string of this object.
+  /// TODO(zhijunfu): this can be removed after raylet client is migrated to grpc.
+  const std::string Serialize() const;
 
  private:
   /// A mapping from resource name to a set of resource IDs for that resource.
