@@ -12,7 +12,8 @@ Quick start (CLI)
 
     # Creates a project in the current directory. It will create a
     # project.yaml defining the code and environment and a cluster.yaml
-    # describing the cluster configuration.
+    # describing the cluster configuration. Both will be created in the
+    # .rayproject subdirectory of the current directory.
     $ ray project create <project-name>
 
     # Create a new session from the given project with an optional name.
@@ -46,23 +47,26 @@ Here is an example for a minimal project format:
 
 .. code-block:: yaml
 
-    name: <<project name>>
-    description: <<short description>>
-    repo: <<code repository, e.g., github repo>>
+    name: test-project
+    description: "This is a simple test project"
+    repo: https://github.com/ray-project/ray
 
     # Cluster to be instantiated by default when starting the project.
-    cluster: <<autoscaler config file>>
+    cluster: .rayproject/cluster.yaml
 
     # Commands/information to build the environment, once the cluster is
     # instantiated. This can include the versions of python libraries etc.
     # It can be specified as a Python requirements.txt, a conda environment,
     # a Dockerfile, or a shell script to run to set up the libraries.
-    environment: <<information/commands to build environment>>
+    environment:
+      requirements: requirements.txt
 
     # List of commands that can be executed once the cluster is instantiated
     # and the environment is set up.
     # A command can also specify a cluster that overwrites the default cluster.
-    commands: <<list of commands that can be executed>>
+    commands:
+      - name: test
+        command: python test.py
 
 Project files have to adhere to the following schema:
 
