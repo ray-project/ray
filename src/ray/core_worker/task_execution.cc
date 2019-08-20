@@ -1,3 +1,5 @@
+#include <boost/optional/optional.hpp>
+
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -8,28 +10,45 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor)
+    CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor,
+    bool use_asio_rpc)
     : worker_context_(worker_context),
       object_interface_(object_interface),
       execution_callback_(executor),
-      worker_server_("Worker", 0 /* let grpc choose port */),
       main_work_(main_service_) {
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
                         std::placeholders::_1, std::placeholders::_2);
+
+  boost::optional<rpc::GrpcServer &> grpc_server;
+  boost::optional<rpc::AsioRpcServer &> asio_server;
+
+  if (use_asio_rpc) {
+    // TODO: fix the port.
+    std::unique_ptr<rpc::AsioRpcServer> server(new rpc::AsioRpcServer("Worker", 0 /* let grpc choose port */, main_service_));
+    asio_server = *server;
+    worker_server_ = std::move(server);
+  } else {
+    std::unique_ptr<rpc::GrpcServer> server(new rpc::GrpcServer("Worker", 0 /* let grpc choose port */));
+    grpc_server = *server;
+    worker_server_ = std::move(server);
+  }
+
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_, main_service_, worker_server_, func)));
+          raylet_client, object_interface_, main_service_, grpc_server.get() /* TODO: fix me */, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
+      use_asio_rpc ?
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(object_interface_, main_service_,
-                                                worker_server_, func)));
+          new DirectActorAsioTaskReceiver(object_interface_, main_service_, asio_server.get(), func)) :
+      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+          new DirectActorGrpcTaskReceiver(object_interface_, main_service_, grpc_server.get(), func))); 
 
   // Start RPC server after all the task receivers are properly initialized.
-  worker_server_.Run();
+  worker_server_->Run();
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(

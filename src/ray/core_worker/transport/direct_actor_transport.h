@@ -26,20 +26,26 @@ struct ActorStateData {
   std::pair<std::string, int> location_;
 };
 
+class DirectActorRpcClientFactory {
+ public:
+  virtual ~DirectActorRpcClientFactory() {}
+  
+  virtual std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) = 0;
+};
+
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
+  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
+                                     gcs::RedisGcsClient &gcs_client,
+                                     CoreWorkerObjectInterface &object_interface,
+                                     bool use_asio_rpc);
+
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
- protected:
-  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
-
-  virtual std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) = 0;
  private:
   /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();
@@ -110,30 +116,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
 
+  std::unique_ptr<DirectActorRpcClientFactory> rpc_client_factory_;
+
   friend class CoreWorkerTest;
-};
-
-class GrpcDirectActorTaskSubmitter : public CoreWorkerDirectActorTaskSubmitter {
- public:
-  GrpcDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
-
-  std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) override;
-
- private:  
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
-};
-
-class AsioDirectActorTaskSubmitter : public CoreWorkerDirectActorTaskSubmitter {
- public:
-  AsioDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
-
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
@@ -141,7 +126,6 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
  public:
   CoreWorkerDirectActorTaskReceiver(CoreWorkerObjectInterface &object_interface,
                                     boost::asio::io_service &io_service,
-                                    rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
   /// Handle a `PushTask` request.
@@ -157,10 +141,32 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
  private:
   // Object interface.
   CoreWorkerObjectInterface &object_interface_;
-  /// The rpc service for `DirectActorService`.
-  rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+};
+
+class DirectActorGrpcTaskReceiver : public CoreWorkerDirectActorTaskReceiver {
+ public:
+  DirectActorGrpcTaskReceiver(CoreWorkerObjectInterface &object_interface,
+                                    boost::asio::io_service &io_service,
+                                    rpc::GrpcServer &server,
+                                    const TaskHandler &task_handler);
+
+ private:
+  /// The rpc service for `DirectActorService`.
+  rpc::DirectActorGrpcService task_service_;
+};
+
+class DirectActorAsioTaskReceiver : public CoreWorkerDirectActorTaskReceiver {
+ public:
+  DirectActorAsioTaskReceiver(CoreWorkerObjectInterface &object_interface,
+                                    boost::asio::io_service &io_service,
+                                    rpc::AsioRpcServer &server,
+                                    const TaskHandler &task_handler);
+
+ private:
+  /// The rpc service for `DirectActorService`.
+  rpc::DirectActorAsioRpcService task_service_;
 };
 
 }  // namespace ray

@@ -101,7 +101,7 @@ void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    gcs::RedisGcsClient &gcs_client)
+    gcs::RedisGcsClient &gcs_client, bool use_asio_rpc)
     : worker_context_(worker_context) {
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
@@ -109,7 +109,7 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
   task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
                            std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
                                new CoreWorkerDirectActorTaskSubmitter(
-                                   io_service, gcs_client, object_interface)));
+                                   io_service, gcs_client, object_interface, use_asio_rpc)));
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(

@@ -38,7 +38,8 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
-                                   const TaskExecutor &executor);
+                                   const TaskExecutor &executor,
+                                   bool use_asio_prc);
 
   /// Start receving and executes tasks in a infinite loop.
   /// \return void.
@@ -77,7 +78,7 @@ class CoreWorkerTaskExecutionInterface {
       task_receivers_;
 
   /// The RPC server.
-  rpc::GrpcServer worker_server_;
+  std::unique_ptr<rpc::RpcServer> worker_server_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service main_service_;

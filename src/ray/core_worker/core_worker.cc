@@ -7,7 +7,8 @@ CoreWorker::CoreWorker(
     const WorkerType worker_type, const Language language,
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback)
+    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+    bool use_asio_rpc)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
@@ -21,15 +22,15 @@ CoreWorker::CoreWorker(
   object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
       new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket));
   task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
-      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
+      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_, use_asio_rpc));
 
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                             *object_interface_, execution_callback));
-    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
+                                             *object_interface_, execution_callback, use_asio_rpc));
+    rpc_server_port = task_execution_interface_->worker_server_->GetPort();
   }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later

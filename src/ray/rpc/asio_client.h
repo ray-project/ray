@@ -72,7 +72,9 @@ class AsioRpcClient : public RpcClient {
           HandleReply(client, message_type, message);
         };
 
-    RAY_RPC_COMMON_H
+    const std::vector<std::string> asio_common_message_enum =
+        GenerateEnumNames(RpcServiceType);
+
     // Accept a new TCP client and dispatch it to the node manager.
     connection_ = TcpClientConnection::Create(
         client_handler, message_handler, std::move(socket), name_,

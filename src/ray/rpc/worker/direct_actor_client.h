@@ -18,6 +18,7 @@ namespace rpc {
 /// Client used for communicating with a direct actor server.
 class DirectActorClient {
  public:
+  virtual ~DirectActorClient() {}
   /// Push a task.
   ///
   /// \param[in] request The request message.

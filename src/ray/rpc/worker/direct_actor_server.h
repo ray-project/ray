@@ -77,10 +77,10 @@ class DirectActorAsioRpcService : public AsioRpcService {
 
  protected:
   void InitMethodHandlers(
-      std::vector<std::unique_ptr<ServerCallMethod>> *server_call_methods) override { 
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override { 
 
     // Initialize the Factory for `PushTask` requests.
-    std::unique_ptr<ServerCallMethod> push_task_call_method(
+    std::shared_ptr<ServiceMethod> push_task_call_method(
         new ServerCallMethodImpl<DirectActorHandler, PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
             DirectActorServiceMessageType::PushTaskRequestMessage,
             DirectActorServiceMessageType::PushTaskReplyMessage,

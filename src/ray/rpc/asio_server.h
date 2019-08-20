@@ -14,7 +14,10 @@
 namespace ray {
 namespace rpc {
 
-class ServerCallMethod;
+class ServiceMethod;
+class AsioRpcService;
+
+using ServiceHandler = std::function<void (const std::shared_ptr<TcpClientConnection> &client, int64_t message_type, const uint8_t *message_data)>;
 
 /// Class that represents an asio based rpc server.
 ///
@@ -52,7 +55,7 @@ class AsioRpcServer : public RpcServer {
   /// `AsioRpcServer`, as it holds the underlying `grpc::Service`.
   ///
   /// \param[in] service A `GrpcService` to register to this server.
-  void RegisterService(RpcService &service);
+  void RegisterService(AsioRpcService &service);
 
  protected:
   
@@ -73,6 +76,8 @@ class AsioRpcServer : public RpcServer {
   std::unique_ptr<boost::asio::ip::tcp::acceptor> tcp_acceptor_;
   /// The socket to listen on for new tcp clients.
   std::unique_ptr<boost::asio::ip::tcp::socket> tcp_socket_;
+
+  EnumUnorderedMap<rpc::RpcServiceType, ServiceHandler> service_handlers_;
 };
 
 /// Base class that represents an abstract gRPC service.
@@ -91,7 +96,6 @@ class AsioRpcService : public RpcService {
   /// Destruct this gRPC service.
   ~AsioRpcService() = default;
 
- protected:
   rpc::RpcServiceType GetServiceType() const { return service_type_; }
 
   /// Subclasses should implement this method to initialize the `ServerCallFactory`
@@ -102,12 +106,13 @@ class AsioRpcService : public RpcService {
   /// \param[out] server_call_factories_and_concurrencies The `ServerCallFactory` objects,
   /// and the maximum number of concurrent requests that this gRPC server can handle.
   virtual void InitMethodHandlers(
-      std::vector<std::unique_ptr<ServerCallMethod>> *server_call_methods) = 0;
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) = 0;
 
+ protected:
   rpc::RpcServiceType service_type_;
 };
 
-class ServerCallMethod {
+class ServiceMethod {
  public:
   virtual int GetRequestType() const = 0;
 
@@ -122,7 +127,7 @@ class ServerCallMethod {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply, class MessageType>
-class ServerCallMethodImpl : public ServerCallMethod {
+class ServerCallMethodImpl : public ServiceMethod {
 
  public:
   /// Constructor.
@@ -189,112 +194,6 @@ class ServerCallMethodImpl : public ServerCallMethod {
   /// Pointer to the service handler function.
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
 };
-
-
-using boost::asio::local::stream_protocol;
-using boost::asio::ip::tcp;
-/*
-const std::vector<std::string> GenerateEnumNames(int start_index, int end_index) {
-  std::vector<std::string> enum_names;
-  for (int i = 0; i < start_index; ++i) {
-    enum_names.push_back("EmptyMessageType");
-  }
-  for (int i = start_index; i <= end_index; i++) {
-    enum_names.push_back(RpcServiceType_Name(static_cast<RpcServiceType>(i)));
-  }
-  RAY_CHECK(static_cast<size_t>(end_index) == enum_names.size() - 1)
-      << "Message Type mismatch!";
-  return enum_names;
-}
-*/
-static const std::vector<std::string> asio_common_message_enum =
-    GenerateProtobufEnumNames<RpcServiceType>();
-
-void AsioRpcServer::Run() {
-  std::string server_address = "0.0.0.0:" + std::to_string(port_);
-
-  tcp_socket_ = std::unique_ptr<tcp::socket>(
-      new tcp::socket(io_service_));
-  tcp_acceptor_ = std::unique_ptr<tcp::acceptor>(
-      new tcp::acceptor(io_service_, tcp::endpoint(tcp::v4(), port_)));  
-
-  DoAcceptTcp();
-
-  is_closed_ = false;
-}
-
-void AsioRpcServer::DoAcceptTcp() {
-  if (tcp_acceptor_ != nullptr) {
-    (*tcp_acceptor_).async_accept(*tcp_socket_,
-                                        boost::bind(&AsioRpcServer::HandleAcceptTcp, this,
-                                                    boost::asio::placeholders::error));
-  }
-}
-
-void AsioRpcServer::HandleAcceptTcp(const boost::system::error_code &error) {
-  if (!error) {
-    ClientHandler<tcp> client_handler =
-        [](TcpClientConnection &client) {
-          // Begin listening for messages.
-          client.ProcessMessages();
-        };
-    MessageHandler<tcp> message_handler =
-        [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          ProcessClientMessage(client, message_type, message);
-        };
-    // Accept a new TCP client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(
-        client_handler, message_handler, std::move(*tcp_socket_), name_,
-        asio_common_message_enum,
-        static_cast<int64_t>(ServiceMessageType::DisconnectClient));
-  }
-  // We're ready to accept another client.
-  DoAcceptTcp();
-}
-
-
-void AsioRpcServer::ProcessClientMessage(
-    const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
-    const uint8_t *message_data) {
-
-  auto message_type_value = static_cast<ServiceMessageType>(message_type);
-  switch (message_type_value) {
-  case ServiceMessageType::ConnectClient: {
-    ProcessConnectClientMessage(client, message_data);
-  } break;
-  case ServiceMessageType::DisconnectClient: {
-    ProcessDisconnectClientMessage(client);
-    // We don't need to receive future messages from this client,
-    // because it's already disconnected.
-    return;
-  } break;
-  default:
-    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
-  }
-
-  // Listen for more messages.
-  client->ProcessMessages();
-}
-
-void AsioRpcServer::ProcessConnectClientMessage(
-    const std::shared_ptr<TcpClientConnection> &client, const uint8_t *message_data) {
-      /*
-  // Find the handler for the type of service, and overwrite.
-  ConnectClientMessage message;
-  auto service_type = message.service_type;
-  auto handler = ...
-  client->SetHandler(handler);
-  */
-}
-
-/*
-void AsioRpcServer::RegisterService(GrpcService &service) {
-  services_.emplace_back(service.GetGrpcService());
-  service.InitServerCallFactories(cq_, &server_call_factories_and_concurrencies_);
-}
-*/
-
 
 }  // namespace rpc
 }  // namespace ray
