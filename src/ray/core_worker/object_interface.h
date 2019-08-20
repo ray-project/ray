@@ -48,7 +48,8 @@ class CoreWorkerObjectInterface {
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Wait for a list of objects to appear in the object store.
-  /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this case.
+  /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
+  /// case.
   /// TODO(zhijunfu): it is probably more clear in semantics to just fail when there
   /// are duplicates, and require it to be handled at application level.
   ///
