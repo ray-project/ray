@@ -30,7 +30,7 @@ Quick start (CLI)
 
 Examples
 --------
-- `Open Tachotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
+- `Open Tacotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
   A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)
 - `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/.rayproject/project.yaml>`__:
   A library of state-of-the-art pretrained models for Natural Language Processing (NLP)
