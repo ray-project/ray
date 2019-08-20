@@ -108,6 +108,16 @@ int WorkerPool::StartWorkerProcess(const Language &language,
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
+  int workers_to_start;
+  if (dynamic_options.empty()) {
+    workers_to_start = state.num_workers_per_process;
+  } else {
+    for (const auto &option : dynamic_options) {
+      RAY_LOG(INFO) << "dynamic option: " << option;
+    }
+    workers_to_start = 1;
+  }
+
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
@@ -128,9 +138,9 @@ int WorkerPool::StartWorkerProcess(const Language &language,
       size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
       if (num_workers_index != std::string::npos) {
         std::string arg = token;
-        worker_command_args.push_back(
-            arg.replace(num_workers_index, strlen(kWorkerNumWorkersPlaceholder),
-                        std::to_string(state.num_workers_per_process)));
+        worker_command_args.push_back(arg.replace(num_workers_index,
+                                                  strlen(kWorkerNumWorkersPlaceholder),
+                                                  std::to_string(workers_to_start)));
         num_workers_arg_replaced = true;
       } else {
         worker_command_args.push_back(token);
@@ -148,14 +158,9 @@ int WorkerPool::StartWorkerProcess(const Language &language,
     RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
   } else if (pid > 0) {
     // Parent process case.
-    RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
-    int starting_workers;
-    if (dynamic_options.empty()) {
-      starting_workers = state.num_workers_per_process;
-    } else {
-      starting_workers = 1;
-    }
-    state.starting_worker_processes.emplace(pid, starting_workers);
+    RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
+                   << " worker(s) with pid " << pid;
+    state.starting_worker_processes.emplace(pid, workers_to_start);
     return pid;
   }
   return -1;

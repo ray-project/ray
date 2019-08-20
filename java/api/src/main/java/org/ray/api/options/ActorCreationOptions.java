@@ -30,7 +30,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
-    private String jvmOptions = "";
+    private String jvmOptions = null;
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;
