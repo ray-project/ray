@@ -5,6 +5,7 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/reconstruction_policy.h"
 
 #include "ray/object_manager/object_directory.h"
@@ -417,7 +418,6 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
   task_reconstruction_data->set_node_manager_id(ClientID::FromRandom().Binary());
   task_reconstruction_data->set_num_reconstructions(0);
-
   RAY_CHECK_OK(
       mock_gcs_.AppendAt(JobID::Nil(), task_id, task_reconstruction_data, nullptr,
                          /*failure_callback=*/

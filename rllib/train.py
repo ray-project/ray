@@ -37,7 +37,7 @@ def create_parser(parser_creator=None):
 
     # See also the base parser definition in ray/tune/config_parser.py
     parser.add_argument(
-        "--redis-address",
+        "--ray-address",
         default=None,
         type=str,
         help="Connect to an existing Ray cluster at this address instead "
@@ -144,10 +144,10 @@ def run(args, parser):
                 num_gpus=args.ray_num_gpus or 0,
                 object_store_memory=args.ray_object_store_memory,
                 redis_max_memory=args.ray_redis_max_memory)
-        ray.init(redis_address=cluster.redis_address)
+        ray.init(address=cluster.redis_address)
     else:
         ray.init(
-            redis_address=args.redis_address,
+            address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,

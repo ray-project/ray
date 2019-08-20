@@ -11,9 +11,7 @@ import java.util.Random;
  */
 public class TaskId extends BaseId implements Serializable {
 
-  private static final int UNIQUE_BYTES_LENGTH = 6;
-
-  public static final int LENGTH = UNIQUE_BYTES_LENGTH + ActorId.LENGTH;
+  public static final int LENGTH = 14;
 
   public static final TaskId NIL = genNil();
 
@@ -36,15 +34,6 @@ public class TaskId extends BaseId implements Serializable {
    */
   public static TaskId fromBytes(byte[] bytes) {
     return new TaskId(bytes);
-  }
-
-  /**
-   * Get the id of the actor to which this task belongs
-   */
-  public ActorId getActorId() {
-    byte[] actorIdBytes = new byte[ActorId.LENGTH];
-    System.arraycopy(getBytes(), UNIQUE_BYTES_LENGTH, actorIdBytes, 0, ActorId.LENGTH);
-    return ActorId.fromByteBuffer(ByteBuffer.wrap(actorIdBytes));
   }
 
   /**

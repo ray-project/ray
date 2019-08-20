@@ -207,7 +207,7 @@ Policy Gradients
 ----------------
 `[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm in both TensorFlow and PyTorch. This is usually outperformed by PPO.
 
-.. figure:: ppo-arch.svg
+.. figure:: a2c-arch.svg
 
     Policy gradients architecture (same as A2C)
 
@@ -336,8 +336,8 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-Multi-Agent Actor Critic (contrib/MADDPG)
------------------------------------------
+Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
+---------------------------------------------------------------
 `[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `wsjeon/maddpg-rllib <https://github.com/wsjeon/maddpg-rllib>`__ for examples and more information.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
@@ -354,7 +354,7 @@ Advantage Re-Weighted Imitation Learning (MARWIL)
 
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/marwil.py>`__ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning. MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/examples/cartpole-marwil.py>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cartpole-marwil.yaml>`__
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

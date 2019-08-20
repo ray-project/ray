@@ -152,7 +152,7 @@ class Policy(object):
                 which will contain at most one episode trajectory.
             other_agent_batches (dict): In a multi-agent env, this contains a
                 mapping of agent ids to (policy, agent_batch) tuples
-                containing the policy and experiences of the other agent.
+                containing the policy and experiences of the other agents.
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.

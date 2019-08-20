@@ -13,8 +13,7 @@ def pg_torch_loss(policy, batch_tensors):
     logits, _ = policy.model({
         SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
     })
-    action_dist = policy.dist_class(
-        logits, model_config=policy.config["model"])
+    action_dist = policy.dist_class(logits, policy.model)
     log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
     # save the error in the policy object
     policy.pi_err = -batch_tensors[Postprocessing.ADVANTAGES].dot(
