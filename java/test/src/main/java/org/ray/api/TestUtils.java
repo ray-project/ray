@@ -2,6 +2,7 @@ package org.ray.api;
 
 import java.util.function.Supplier;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.options.ActorCreationOptions;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RunMode;
 import org.testng.Assert;
@@ -15,6 +16,12 @@ public class TestUtils {
     AbstractRayRuntime runtime = (AbstractRayRuntime)Ray.internal();
     if (runtime.getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
       throw new SkipException("This test doesn't work under single-process mode.");
+    }
+  }
+
+  public static void skipTestIfDirectActorCallEnabled() {
+    if (ActorCreationOptions.DEFAULT_IS_DIRECT_CALL) {
+      throw new SkipException("This test doesn't work when direct actor call is enabled.");
     }
   }
 

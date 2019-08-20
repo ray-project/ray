@@ -10,7 +10,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public static final int NO_RECONSTRUCTION = 0;
   public static final int INFINITE_RECONSTRUCTIONS = (int) Math.pow(2, 30);
-  private static final boolean DEFAULT_IS_DIRECT_CALL = "1"
+  public static final boolean DEFAULT_IS_DIRECT_CALL = "1"
       .equals(System.getenv("ACTOR_CREATION_OPTIONS_DEFAULT_IS_DIRECT_CALL"));
 
   public final int maxReconstructions;

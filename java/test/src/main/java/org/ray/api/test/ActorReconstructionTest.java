@@ -47,6 +47,8 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
+    // No lineage cache when direct actor call is enabled.
+    TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
@@ -128,6 +130,8 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
+    // Actor checkpointing is not implemented in direct actor call yet.
+    TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);

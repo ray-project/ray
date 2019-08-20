@@ -9,6 +9,7 @@ import org.apache.commons.io.FileUtils;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
+import org.ray.api.TestUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -47,6 +48,9 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonActor() {
+    // Direct actor call only allows passing arguments as values.
+    // However, bytes arguments are passed from Java to Python as references.
+    TestUtils.skipTestIfDirectActorCallEnabled();
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
