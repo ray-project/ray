@@ -15,12 +15,15 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
   return false;
 }
 
+/*
+ * CoreWorkerDirectActorTaskSubmitter
+ */
+
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
     CoreWorkerObjectInterface &object_interface)
     : io_service_(io_service),
       gcs_client_(gcs_client),
-      client_call_manager_(io_service),
       store_provider_(
           object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
@@ -175,6 +178,30 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
 }
 
+GrpcDirectActorTaskSubmitter::GrpcDirectActorTaskSubmitter(
+    boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+    CoreWorkerObjectInterface &object_interface)
+    : CoreWorkerDirectActorTaskSubmitter(io_service, gcs_client, object_interface),
+      client_call_manager_(io_service) {}
+
+std::unique_ptr<rpc::DirectActorClient> GrpcDirectActorTaskSubmitter::CreateRpcClient(std::string ip_address, int port) {
+  return std::unique_ptr<rpc::DirectActorClient>(
+      new rpc::DirectActorGrpcClient(ip_address, port, client_call_manager_));  
+}
+
+AsioDirectActorTaskSubmitter::AsioDirectActorTaskSubmitter(
+    boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+    CoreWorkerObjectInterface &object_interface)
+    : CoreWorkerDirectActorTaskSubmitter(io_service, gcs_client, object_interface) {}
+
+std::unique_ptr<rpc::DirectActorClient> AsioDirectActorTaskSubmitter::CreateRpcClient(std::string ip_address, int port) {
+  return std::unique_ptr<rpc::DirectActorClient>(
+      new rpc::DirectActorAsioClient(ip_address, port));  
+}
+
+/*
+ * CoreWorkerDirectActorTaskReceiver
+ */
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)

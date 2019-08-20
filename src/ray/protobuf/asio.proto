@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+// This enum is needed by asio based rpc. For asio based rpc service, a message type
+// MUST be defined for that service.
+enum RpcServiceType {
+  // refer to `worker.proto` for details of the service.
+  WorkerTaskServiceType = 0;
+  // refer to `direct_actor.proto` for details of the service.
+  DirectActorServiceType = 1;
+}
+
+// The messages that MUST be defined for all the asio based RPC services.
+enum ServiceMessageType {
+  ConnectClient = 0;
+  DisconnectClient = 1;
+}
+
+message ConnectClientMessage {
+  // Type of the service to connect to for this connection.
+  RpcServiceType service_type = 1;
+}
+
+message DisconnectClientMessage {
+}
+
+message RpcRequestMessage {
+  // The request id, this is unique for each request.
+  uint64 request_id = 1;
+  // The actual request message.
+  bytes request = 2;
+}
+
+message RpcReplyMessage {
+  // The request id of this reply. This is used for the caller
+  // to match reply with its correpsonding request.
+  uint64 request_id = 1;
+  // The type of the error.
+  uint32 error_code = 2;
+  // The error message.
+  string error_message = 3;
+  // The actual reply message.
+  bytes reply = 4;
+}
+

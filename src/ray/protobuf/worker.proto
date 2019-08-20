@@ -19,3 +19,4 @@ service WorkerTaskService {
   // Push a task to a worker.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
 }
+

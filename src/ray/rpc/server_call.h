@@ -6,19 +6,10 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/rpc/server.h"
 
 namespace ray {
 namespace rpc {
-
-/// Represents the callback function to be called when a `ServiceHandler` finishes
-/// handling a request.
-/// \param status The status would be returned to client.
-/// \param success Success callback which will be invoked when the reply is successfully
-/// sent to the client.
-/// \param failure Failure callback which will be invoked when the reply fails to be
-/// sent to the client.
-using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
-                                             std::function<void()> failure)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
@@ -84,16 +75,6 @@ class ServerCallFactory {
 
   virtual ~ServerCallFactory() = default;
 };
-
-/// Represents the generic signature of a `FooServiceHandler::HandleBar()`
-/// function, where `Foo` is the service name and `Bar` is the rpc method name.
-///
-/// \tparam ServiceHandler Type of the handler that handles the request.
-/// \tparam Request Type of the request message.
-/// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
-                                                       SendReplyCallback);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.

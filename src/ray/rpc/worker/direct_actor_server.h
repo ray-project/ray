@@ -4,6 +4,8 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 
+#include "ray/rpc/asio_server.h"
+
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
 
@@ -24,7 +26,7 @@ class DirectActorHandler {
                               SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcServer` for `WorkerService`.
+/// The `GrpcService` for `DirectActorService`.
 class DirectActorGrpcService : public GrpcService {
  public:
   /// Constructor.
@@ -61,6 +63,38 @@ class DirectActorGrpcService : public GrpcService {
   /// The service handler that actually handle the requests.
   DirectActorHandler &service_handler_;
 };
+
+
+/// The `AsioRpcService` for `DirectActorService`.
+class DirectActorAsioRpcService : public AsioRpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] main_service See super class.
+  /// \param[in] handler The service handler that actually handle the requests.
+  DirectActorAsioRpcService(DirectActorHandler &service_handler)
+      : AsioRpcService(rpc::RpcServiceType::DirectActorServiceType), service_handler_(service_handler){};
+
+ protected:
+  void InitMethodHandlers(
+      std::vector<std::unique_ptr<ServerCallMethod>> *server_call_methods) override { 
+
+    // Initialize the Factory for `PushTask` requests.
+    std::unique_ptr<ServerCallMethod> push_task_call_method(
+        new ServerCallMethodImpl<DirectActorHandler, PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
+            DirectActorServiceMessageType::PushTaskRequestMessage,
+            DirectActorServiceMessageType::PushTaskReplyMessage,
+            service_handler_, &DirectActorHandler::HandlePushTask));
+
+    server_call_methods->emplace_back(std::move(push_task_call_method));
+  }
+
+ private:
+
+  /// The service handler that actually handle the requests.
+  DirectActorHandler &service_handler_;
+};
+
 
 }  // namespace rpc
 }  // namespace ray

@@ -28,16 +28,18 @@ struct ActorStateData {
 
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
-
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
+ protected:
+  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
+                                     gcs::RedisGcsClient &gcs_client,
+                                     CoreWorkerObjectInterface &object_interface);
+
+  virtual std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) = 0;
  private:
   /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();
@@ -84,9 +86,6 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Gcs client.
   gcs::RedisGcsClient &gcs_client_;
 
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
-
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
 
@@ -112,6 +111,29 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
 
   friend class CoreWorkerTest;
+};
+
+class GrpcDirectActorTaskSubmitter : public CoreWorkerDirectActorTaskSubmitter {
+ public:
+  GrpcDirectActorTaskSubmitter(boost::asio::io_service &io_service,
+                                     gcs::RedisGcsClient &gcs_client,
+                                     CoreWorkerObjectInterface &object_interface);
+
+  std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) override;
+
+ private:  
+  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
+  rpc::ClientCallManager client_call_manager_;
+};
+
+class AsioDirectActorTaskSubmitter : public CoreWorkerDirectActorTaskSubmitter {
+ public:
+  AsioDirectActorTaskSubmitter(boost::asio::io_service &io_service,
+                                     gcs::RedisGcsClient &gcs_client,
+                                     CoreWorkerObjectInterface &object_interface);
+
+  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
+  rpc::ClientCallManager client_call_manager_;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,

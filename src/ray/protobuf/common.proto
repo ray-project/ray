@@ -135,3 +135,11 @@ message Task {
   TaskSpec task_spec = 1;
   TaskExecutionSpec task_execution_spec = 2;
 }
+
+// Type of RPC used.
+enum RpcType {
+  // GPRC.
+  Grpc = 0;
+  // Rpc based on Asio and protobuf.
+  Asio = 1;
+}

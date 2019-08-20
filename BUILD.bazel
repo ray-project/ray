@@ -112,6 +112,17 @@ cc_proto_library(
     deps = ["direct_actor_proto"],
 )
 
+proto_library(
+    name = "asio_proto",
+    srcs = ["src/ray/protobuf/asio.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "asio_cc_proto",
+    deps = ["asio_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -129,6 +140,7 @@ cc_library(
     deps = [
         ":ray_common",
         "@boost//:asio",
+        "asio_cc_proto",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_protobuf//:protobuf",
     ],
@@ -234,6 +246,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "asio_cc_proto",
         "direct_actor_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",

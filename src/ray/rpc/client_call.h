@@ -6,6 +6,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/rpc/client.h"
 
 namespace ray {
 namespace rpc {
@@ -27,12 +28,6 @@ class ClientCall {
 };
 
 class ClientCallManager;
-
-/// Represents the client callback function of a particular rpc method.
-///
-/// \tparam Reply Type of the reply message.
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
