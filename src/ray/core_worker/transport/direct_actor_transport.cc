@@ -98,8 +98,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
       if (actor_data.state() == ActorTableData::DEAD &&
           pending_requests_.count(actor_id) > 0) {
         for (const auto &request : pending_requests_[actor_id]) {
-          TreatTaskAsFailed(TaskID::FromBinary(request.task_spec().task_id()),
-                            request.task_spec().num_returns(),
+          TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
+                            request->task_spec().num_returns(),
                             rpc::ErrorType::ACTOR_DIED);
         }
         pending_requests_.erase(actor_id);
