@@ -22,6 +22,11 @@ def import_gcp():
     return bootstrap_gcp, GCPNodeProvider
 
 
+def import_kubernetes():
+    from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
+    return "", KubernetesNodeProvider
+
+
 def import_local():
     from ray.autoscaler.local.config import bootstrap_local
     from ray.autoscaler.local.node_provider import LocalNodeProvider
@@ -58,7 +63,7 @@ NODE_PROVIDERS = {
     "aws": import_aws,
     "gcp": import_gcp,
     "azure": None,  # TODO: support more node providers
-    "kubernetes": None,
+    "kubernetes": import_kubernetes,
     "docker": None,
     "external": import_external  # Import an external module
 }
