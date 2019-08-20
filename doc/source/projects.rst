@@ -3,7 +3,7 @@ Ray Projects (Experimental)
 
 Ray projects make it easy to package a Ray application so it can be
 rerun later in the same environment. They allow for the sharing and
-reuse of existing code reliably.
+reliable reuse of existing code.
 
 Quick start (CLI)
 -----------------
