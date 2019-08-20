@@ -111,6 +111,7 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
+  bool num_workers_arg_replaced = false;
   for (auto const &token : state.worker_command) {
     const auto option_placeholder =
         kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
@@ -125,20 +126,21 @@ int WorkerPool::StartWorkerProcess(const Language &language,
       }
     } else {
       size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
-      if (num_workers_index >= 0) {
+      if (num_workers_index != std::string::npos) {
         std::string arg = token;
         worker_command_args.push_back(
             arg.replace(num_workers_index, strlen(kWorkerNumWorkersPlaceholder),
                         std::to_string(state.num_workers_per_process)));
+        num_workers_arg_replaced = true;
       } else {
-        RAY_CHECK(state.num_workers_per_process == 1)
-            << "Expect to start " << state.num_workers_per_process << " workers per "
-            << Language_Name(language) << " worker process. But the "
-            << kWorkerNumWorkersPlaceholder << " is not found in worker command.";
         worker_command_args.push_back(token);
       }
     }
   }
+  RAY_CHECK(num_workers_arg_replaced || state.num_workers_per_process == 1)
+      << "Expect to start " << state.num_workers_per_process << " workers per "
+      << Language_Name(language) << " worker process. But the "
+      << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
 
   pid_t pid = StartProcess(worker_command_args);
   if (pid < 0) {
