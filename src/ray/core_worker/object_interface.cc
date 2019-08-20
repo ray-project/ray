@@ -66,6 +66,9 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
+  // Divide the object ids by store provider type. For each store provider,
+  // maintain an unordered_set which does proper de-duplication, thus the
+  // store provider could simply assume its object ids don't have duplicates.
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
   GroupObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
@@ -102,6 +105,10 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     }
   }
 
+  // Loop through `ids` and fill each entry for the `results` vector,
+  // this ensures that entries `results` have exactly the same order as
+  // they are in `ids`. When there are duplicate object ids, all the entries
+  // for the same id are filled in.
   for (size_t i = 0; i < ids.size(); i++) {
     (*results)[i] = objects[ids[i]];
   }
@@ -120,9 +127,7 @@ Status CoreWorkerObjectInterface::GetFromStoreProvider(
         ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
     RAY_CHECK(ids.size() == objects.size());
     for (size_t i = 0; i < objects.size(); i++) {
-      if (objects[i] != nullptr) {
-        (*results).emplace(ids[i], objects[i]);
-      }
+      (*results).emplace(ids[i], objects[i]);
     }
   }
 

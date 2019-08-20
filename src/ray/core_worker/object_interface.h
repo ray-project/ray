@@ -38,7 +38,7 @@ class CoreWorkerObjectInterface {
   /// \return Status.
   Status Put(const RayObject &object, const ObjectID &object_id);
 
-  /// Get a list of objects from the object store.
+  /// Get a list of objects from the object store. Duplicate object ids are supported.
   ///
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
@@ -48,6 +48,9 @@ class CoreWorkerObjectInterface {
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Wait for a list of objects to appear in the object store.
+  /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this case.
+  /// TODO(zhijunfu): it is probably more clear in semantics to just fail when there
+  /// are duplicates, and require it to be handled at application level.
   ///
   /// \param[in] IDs of the objects to wait for.
   /// \param[in] num_objects Number of objects that should appear.
