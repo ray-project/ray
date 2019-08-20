@@ -132,10 +132,10 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   }
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
-                                                    const rpc::PushTaskRequest &request,
-                                                    const TaskID &task_id,
-                                                    int num_returns) {
+void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
+                                                  const rpc::PushTaskRequest &request,
+                                                  const TaskID &task_id,
+                                                  int num_returns) {
   auto status = client.PushTask(
       request,
       [this, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
