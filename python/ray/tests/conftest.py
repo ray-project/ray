@@ -30,7 +30,6 @@ def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
-        "num_worker_heartbeats_timeout": 10,
     })
     return internal_config
 
