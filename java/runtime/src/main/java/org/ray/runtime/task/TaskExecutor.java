@@ -100,7 +100,9 @@ public final class TaskExecutor {
           // TODO (kfstorm): handle checkpoint in core worker.
           maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
         }
-        returnObjects.add(runtime.getObjectStore().serialize(result));
+        if (rayFunction.hasReturn()) {
+          returnObjects.add(runtime.getObjectStore().serialize(result));
+        }
       } else {
         // TODO (kfstorm): handle checkpoint in core worker.
         maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());

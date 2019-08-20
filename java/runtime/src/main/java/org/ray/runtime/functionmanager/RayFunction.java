@@ -72,6 +72,14 @@ public class RayFunction {
     return rayRemote;
   }
 
+  public boolean hasReturn() {
+    if (isConstructor()) {
+      return true;
+    } else {
+      return !getMethod().getReturnType().equals(Void.class);
+    }
+  }
+
   @Override
   public String toString() {
     return executable.toString();
