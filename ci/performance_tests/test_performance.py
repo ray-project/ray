@@ -26,24 +26,14 @@ parser.add_argument(
     help="True if the object store should not be warmed up. This could cause "
     "the benchmarks to appear slower than usual.")
 parser.add_argument(
-    "--warmup-object-store",
-    required=False,
-    type=bool,
-    default=True,
-    help="The number of nodes to simulate in the cluster.")
-parser.add_argument(
     "--redis-address",
     required=False,
     type=str,
     help="The address of the cluster to connect to. If this is ommitted, then "
     "a cluster will be started locally (on a single machine).")
 
-num_redis_shards = 2
-redis_max_memory = 10**8
-object_store_memory = 10**8
 
-
-def start_local_cluster(num_nodes):
+def start_local_cluster(num_nodes, object_store_memory):
     """Start a local Ray cluster.
 
     The ith node in the cluster will have a resource named "i".
@@ -54,6 +44,9 @@ def start_local_cluster(num_nodes):
     Returns:
         The cluster object.
     """
+    num_redis_shards = 2
+    redis_max_memory = 10**8
+
     cluster = Cluster()
     for i in range(num_nodes):
         cluster.add_node(
@@ -73,6 +66,13 @@ def wait_for_and_check_cluster_configuration(num_nodes):
     """Check that the cluster's custom resources are properly configured.
 
     The ith node should have a resource labeled 'i' with quantity 500.
+
+    Args:
+        num_nodes: The number of nodes that we expect to be in the cluster.
+
+    Raises:
+        RuntimeError: This exception is raised if the cluster is not configured
+            properly for this test.
     """
     logger.warning("Waiting for cluster to have %s nodes.", num_nodes)
     while True:
@@ -84,7 +84,8 @@ def wait_for_and_check_cluster_configuration(num_nodes):
                 "The cluster has %s nodes, but it should "
                 "only have %s.", len(nodes), num_nodes)
     if not ([set(node["Resources"].keys())
-             for node in ray.nodes()] == [{str(i), "CPU"} for i in range(3)]):
+             for node in ray.nodes()] == [{str(i), "CPU"}
+                                          for i in range(num_nodes)]):
         raise RuntimeError(
             "The ith node in the cluster should have a "
             "custom resource called 'i' with quantity "
@@ -93,7 +94,7 @@ def wait_for_and_check_cluster_configuration(num_nodes):
             resource_quantity
             for resource_name, resource_quantity in node["Resources"].items()
             if resource_name != "CPU"
-    ] for node in ray.nodes()] == 3 * [[500.0]]):
+    ] for node in ray.nodes()] == num_nodes * [[500.0]]):
         raise RuntimeError(
             "The ith node in the cluster should have a "
             "custom resource called 'i' with quantity "
@@ -123,7 +124,7 @@ class Actor():
         pass
 
 
-def warm_up_cluster(num_nodes):
+def warm_up_cluster(num_nodes, object_store_memory):
     """Warm up the cluster.
 
     This will allocate enough objects in each object store to cause eviction
@@ -190,8 +191,7 @@ def test_tasks(num_nodes):
         np.std(durations))
 
     def ten_thousand_parallel_tasks_local():
-        for i in range(10000):
-            ray.get(no_op._remote(resources={"0": 1}))
+        ray.get([no_op._remote(resources={"0": 1}) for _ in range(10000)])
 
     durations = run_multiple_trials(ten_thousand_parallel_tasks_local, 5)
     logger.warning(
@@ -221,6 +221,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     num_nodes = args.num_nodes
 
+    object_store_memory = 10**8
+
     # Configure the cluster or check that it is properly configured.
 
     if num_nodes < 2:
@@ -237,10 +239,10 @@ if __name__ == "__main__":
             "Running performance benchmarks on a simulated cluster "
             "of %s nodes.", num_nodes)
 
-        cluster = start_local_cluster(num_nodes)
+        cluster = start_local_cluster(num_nodes, object_store_memory)
 
     if not args.skip_object_store_warmup:
-        warm_up_cluster(num_nodes)
+        warm_up_cluster(num_nodes, object_store_memory)
 
     # Run the benchmarks.
 
