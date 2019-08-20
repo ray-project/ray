@@ -3,11 +3,45 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import tensorflow as tf
+
 from ray import tune
 from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
     TensorFlowTrainer, TensorFlowTrainable)
 
-from ray.experimental.sgd.tests.tf_helper import (get_model, get_dataset)
+def get_dataset(batch_size):
+    NUM_TRAIN_SAMPLES = 60000
+    mnist = tf.keras.datasets.mnist
+
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train, x_test = x_train / 255.0, x_test / 255.0
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+
+    tf.random.set_seed(22)
+    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(
+        batch_size, drop_remainder=True)
+    test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
+
+    return train_dataset, test_dataset
+
+
+def get_model(config=None):
+
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Flatten(input_shape=(28, 28)),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(10, activation='softmax')
+    ])
+
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    return model
 
 
 def train_example(num_replicas=1, use_gpu=False):
@@ -26,7 +60,7 @@ def train_example(num_replicas=1, use_gpu=False):
     train_stats2.update(trainer.validate())
     print(train_stats2)
 
-    assert train_stats1["train_loss"] > train_stats2["train_loss"]
+    assert train_stats1["validation_loss"] > train_stats2["validation_loss"]
 
     val_stats = trainer.validate()
     print(val_stats)

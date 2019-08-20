@@ -11,7 +11,7 @@ from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.tensorflow import TensorFlowTrainer, TensorFlowTrainable
 
-from ray.experimental.sgd.tests.tf_helper import (get_model, get_dataset)
+from ray.experimental.sgd.examples.tensorflow_train_example import (get_model, get_dataset)
 
 
 @pytest.mark.parametrize(  # noqa: F811
@@ -31,13 +31,14 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     train_stats2.update(trainer.validate())
     print(train_stats2)
 
-    print(train_stats1["train_loss"], train_stats2["train_loss"])
+    if "train_loss" in train_stats1 and "train_loss" in train_stats2:
+        print(train_stats1["train_loss"], train_stats2["train_loss"])
+        assert train_stats1["train_loss"] > train_stats2["train_loss"]
+
     print(
         train_stats1["validation_loss"],
         train_stats2["validation_loss"],
     )
-
-    assert train_stats1["train_loss"] > train_stats2["train_loss"]
     assert train_stats1["validation_loss"] > train_stats2["validation_loss"]
 
 
@@ -62,12 +63,9 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
-        train_loss1 = df.loc[0, "train_loss"]
-        train_loss2 = df.loc[1, "train_loss"]
         validation_loss1 = df.loc[0, "validation_loss"]
         validation_loss2 = df.loc[1, "validation_loss"]
 
-        assert train_loss2 <= train_loss1
         assert validation_loss2 <= validation_loss1
 
 

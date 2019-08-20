@@ -13,8 +13,6 @@ import ray
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.experimental.sgd.tensorflow.tensorflow_runner import TensorFlowRunner
-from ray.experimental.sgd.tensorflow.distributed_tensorflow_runner import (
-    DistributedTensorFlowRunner)
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -53,10 +51,10 @@ class TensorFlowTrainer(object):
         self.verbose = True
 
         # Generate actor class
+        Runner = ray.remote(
+            num_cpus=1, num_gpus=int(use_gpu))(TensorFlowRunner)
+
         if num_replicas == 1:
-            # Generate actor class
-            Runner = ray.remote(
-                num_cpus=1, num_gpus=int(use_gpu))(TensorFlowRunner)
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, self.config,
@@ -65,10 +63,6 @@ class TensorFlowTrainer(object):
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
         else:
-            # Geneate actor class
-            Runner = ray.remote(
-                num_cpus=1, num_gpus=int(use_gpu))(DistributedTensorFlowRunner)
-
             # Start workers
             self.workers = [
                 Runner.remote(model_creator, data_creator, self.config,
@@ -88,7 +82,7 @@ class TensorFlowTrainer(object):
 
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(urls, i, len(self.workers))
+                worker.setup_distributed.remote(urls, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
 
