@@ -8,7 +8,7 @@ import random
 import ray
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
@@ -97,6 +97,10 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         if not self.sgd_minibatch_size:
             yield samples
             return
+
+        if isinstance(samples, MultiAgentBatch):
+            raise NotImplementedError(
+                "Minibatching not implemented for multi-agent in simple mode")
 
         if "state_in_0" in samples.data:
             logger.warn("Not shuffling RNN data for SGD in simple mode")
