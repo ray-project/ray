@@ -51,7 +51,7 @@ This causes a few things changes in behavior:
 
         object_id = remote_function.remote()
 
-        # The value of the
+        # The value of the original `regular_function`
         assert ray.get(object_id) == 1
 
 3. **Parallelism:** Invocations of ``regular_function`` happen
@@ -175,8 +175,6 @@ Object IDs can be created in multiple ways.
     y = 1
     object_id = ray.put(y)
 
-Here is the docstring for ``ray.put``:
-
 .. autofunction:: ray.put
     :noindex:
 
@@ -201,8 +199,6 @@ shared memory and avoid copying the object.
     obj_id = ray.put(y)
     assert ray.get(obj_id) == 1
 
-Here is the docstring for ``ray.get``:
-
 .. autofunction:: ray.get
     :noindex:
 
@@ -214,8 +210,6 @@ works as follows.
 .. code:: python
 
     ready_ids, remaining_ids = ray.wait(object_ids, num_returns=1, timeout=None)
-
-Here is the docstring for ``ray.wait``:
 
 .. autofunction:: ray.wait
     :noindex:

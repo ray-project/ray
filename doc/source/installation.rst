@@ -43,8 +43,8 @@ master branch). To install these wheels, run the following command:
 .. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp35-cp35m-macosx_10_6_intel.whl
 .. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp27-cp27m-macosx_10_6_intel.whl
 
-Installing Ray from Source
---------------------------
+Building Ray from Source
+------------------------
 
 Installing from ``pip`` should be sufficient for most Ray users.
 
