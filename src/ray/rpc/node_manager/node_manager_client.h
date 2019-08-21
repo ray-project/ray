@@ -5,7 +5,6 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/logging.h"

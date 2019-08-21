@@ -1,26 +1,18 @@
-#ifndef RAY_RPC_RAYLET_CLIENT_H
-#define RAY_RPC_RAYLET_CLIENT_H
+#ifndef RAYLET_CLIENT_H
+#define RAYLET_CLIENT_H
 
-#include <ray/common/ray_config.h>
 #include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
-#include <future>
 #include <mutex>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
-#include <grpcpp/grpcpp.h>
-
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/common/status.h"
-#include "src/ray/protobuf/raylet.grpc.pb.h"
-#include "src/ray/protobuf/raylet.pb.h"
-#include "src/ray/rpc/client_call.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
+using ray::ClientID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
@@ -28,39 +20,65 @@ using ray::WorkerID;
 
 using ray::Language;
 using ray::rpc::ProfileTableData;
-using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-namespace ray {
-namespace rpc {
-
+using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
+using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-/// Client used for communicating with the raylet.
+class RayletConnection {
+ public:
+  /// Connect to the raylet.
+  ///
+  /// \param raylet_socket The name of the socket to use to connect to the raylet.
+  /// \param worker_id A unique ID to represent the worker.
+  /// \param is_worker Whether this client is a worker. If it is a worker, an
+  ///        additional message will be sent to register as one.
+  /// \param job_id The ID of the driver. This is non-nil if the client is a
+  ///        driver.
+  /// \return The connection information.
+  RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
+
+  ~RayletConnection() { close(conn_); }
+  /// Notify the raylet that this client is disconnecting gracefully. This
+  /// is used by actors to exit gracefully so that the raylet doesn't
+  /// propagate an error message to the driver.
+  ///
+  /// \return ray::Status.
+  ray::Status Disconnect();
+  ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
+  ray::Status WriteMessage(MessageType type,
+                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
+  ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
+                                 std::unique_ptr<uint8_t[]> &reply_message,
+                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
+
+ private:
+  /// File descriptor of the Unix domain socket that connects to raylet.
+  int conn_;
+  /// A mutex to protect stateful operations of the raylet client.
+  std::mutex mutex_;
+  /// A mutex to protect write operations of the raylet client.
+  std::mutex write_mutex_;
+};
+
 class RayletClient {
  public:
-  /// Constructor for the raylet client.
-  /// TODO(jzh): At present, client call manager and reply handler service are generated
-  /// in raylet client. Instead, we should add parameters to the constructor and pass them
-  /// in. Change them as input parameters once we changed the worker into a server.
+  /// Connect to the raylet.
   ///
-  /// \param[in] raylet_socket Unix domain socket of the raylet server.
-  /// \param[in] worker_id The worker id.
-  /// \param[in] is_worker Indicates whether a worker or a driver.
-  /// \param[in] job_id The job id that this raylet client belongs to.
-  /// \param[in] language The language type, python or java.
-  /// \param[in] port The listening port of the worker server, -1 means that the worker
-  ///            does not have a server.
+  /// \param raylet_socket The name of the socket to use to connect to the raylet.
+  /// \param worker_id A unique ID to represent the worker.
+  /// \param is_worker Whether this client is a worker. If it is a worker, an
+  /// additional message will be sent to register as one.
+  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                int port = -1);
 
-  ~RayletClient();
+  ray::Status Disconnect() { return conn_->Disconnect(); };
 
-  /// Send disconnect request to local raylet.
-  ray::Status Disconnect();
-
-  /// Submit a task to the local raylet.
+  /// Submit a task using the raylet code path.
   ///
   /// \param The task specification.
   /// \return ray::Status.
@@ -160,7 +178,7 @@ class RayletClient {
 
   Language GetLanguage() const { return language_; }
 
-  WorkerID GetWorkerId() const { return worker_id_; }
+  WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
 
@@ -169,53 +187,16 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  /// Try to register client in raylet, we would retry serveral time to
-  /// reconnect if failed. We need this because raylet client may start before raylet
-  /// server.
-  ///
-  /// \param times Number of times to retry.
-  void TryRegisterClient(int retry_times);
-
-  ray::Status RegisterClient();
-
-  /// Send heartbeat requests to the raylet server.
-  void Heartbeat();
-  /// Id of the worker to which this raylet client belongs.
   const WorkerID worker_id_;
-  /// Indicates whether this worker is a driver worker.
-  /// Driver is treated as a special worker.
   const bool is_worker_;
   const JobID job_id_;
   const Language language_;
-  const int port_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
-
-  /// The gRPC-generated stub.
-  std::unique_ptr<RayletService::Stub> stub_;
-
-  /// Service for handling reply.
-  boost::asio::io_service main_service_;
-
-  /// Asio work for main service.
-  boost::asio::io_service::work work_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager client_call_manager_;
-
-  /// The thread used to handle reply.
-  std::thread rpc_thread_;
-
-  /// Heartbeat timer.
-  boost::asio::deadline_timer heartbeat_timer_;
-
-  /// Indicates whether the connection has been closed.
-  bool is_connected_;
+  /// The connection to the raylet server.
+  std::unique_ptr<RayletConnection> conn_;
 };
 
-}  // namespace rpc
-}  // namespace ray
-
-#endif  // RAY_RPC_RAYLET_CLIENT_H
+#endif
