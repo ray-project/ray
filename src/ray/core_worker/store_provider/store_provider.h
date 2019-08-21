@@ -89,7 +89,7 @@ class CoreWorkerStoreProvider {
   /// Wait for a list of objects to appear in the object store.
   ///
   /// \param[in] IDs of the objects to wait for.
-  /// \param[in] num_returns Number of objects that should appear.
+  /// \param[in] num_objects Number of objects that should appear before returning.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] task_id ID for the current task.
   /// \param[out] results A bitset that indicates each object has appeared or not.

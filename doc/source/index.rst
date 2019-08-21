@@ -179,6 +179,7 @@ The following are good places to discuss Ray.
    autoscaling.rst
    using-ray-on-a-cluster.rst
    deploy-on-kubernetes.rst
+   deploying-on-slurm.rst
 
 .. toctree::
    :maxdepth: 1
@@ -217,6 +218,7 @@ The following are good places to discuss Ray.
 
    distributed_training.rst
    pandas_on_ray.rst
+   projects.rst
    signals.rst
    async_api.rst
 
