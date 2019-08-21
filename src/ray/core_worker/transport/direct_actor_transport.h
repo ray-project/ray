@@ -28,9 +28,9 @@ struct ActorStateData {
 
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
+  CoreWorkerDirectActorTaskSubmitter(
+      boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+      std::unique_ptr<CoreWorkerStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
