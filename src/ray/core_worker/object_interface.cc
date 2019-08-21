@@ -180,8 +180,6 @@ Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
     const std::vector<ObjectID> &ids,
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
     int64_t timeout_ms, int *num_objects, std::vector<bool> *results) {
-  std::cout << "WaitFromMultipleStoreProviders(timeout=" << timeout_ms
-            << ") num_objects: " << *num_objects << std::endl;
   std::unordered_map<ObjectID, int> object_counts;
   for (const auto &entry : ids) {
     auto iter = object_counts.find(entry);
@@ -230,7 +228,6 @@ Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
 Status CoreWorkerObjectInterface::WaitFromStoreProvider(
     StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
     int num_objects, int64_t timeout_ms, std::unordered_set<ObjectID> *results) {
-  std::cout << "WaitFromStoreProvider() num_objects: " << num_objects << std::endl;
   std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());
   if (!ids.empty()) {
     std::vector<bool> objects;

@@ -135,7 +135,6 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
-  std::cout << "raylet num_objects: " << num_objects << std::endl;
   auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms,
                                      /*wait_local=*/false, task_id, &result_pair);
   std::unordered_set<ObjectID> ready_ids;
