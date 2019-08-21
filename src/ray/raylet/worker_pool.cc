@@ -112,9 +112,6 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   if (dynamic_options.empty()) {
     workers_to_start = state.num_workers_per_process;
   } else {
-    for (const auto &option : dynamic_options) {
-      RAY_LOG(INFO) << "dynamic option: " << option;
-    }
     workers_to_start = 1;
   }
 
