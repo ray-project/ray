@@ -37,8 +37,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
-  Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
-              bool delete_creating_tasks = false) override;
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                bool delete_creating_tasks = false) override;
 
  private:
   /// Whether the buffer represents an exception object.

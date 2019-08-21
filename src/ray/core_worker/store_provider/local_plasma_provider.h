@@ -35,8 +35,8 @@ class CoreWorkerLocalPlasmaStoreProvider : public CoreWorkerStoreProvider {
               std::vector<bool> *results) override;
 
   /// Note that `local_only` msut be true, and `delete_creating_tasks` must be false here.
-  Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
-              bool delete_creating_tasks = false) override;
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                bool delete_creating_tasks = false) override;
 
  private:
   plasma::PlasmaClient store_client_;

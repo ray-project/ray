@@ -79,7 +79,7 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   @Override
   protected void finalize() {
-    nativeFree(nativeActorHandle);
+    nativeDelete(nativeActorHandle);
   }
 
   private static native long nativeFork(long nativeActorHandle);
@@ -97,5 +97,5 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   private static native long nativeDeserialize(byte[] data);
 
-  private static native void nativeFree(long nativeActorHandle);
+  private static native void nativeDelete(long nativeActorHandle);
 }

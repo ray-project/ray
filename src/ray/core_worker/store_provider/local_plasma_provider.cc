@@ -16,7 +16,9 @@ Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(
       Create(object.GetMetadata(), object.GetData()->Size(), object_id, &data));
-  memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
+  if (data != nullptr) {
+    memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
+  }
   RAY_RETURN_NOT_OK(Seal(object_id));
   return Status::OK();
 }
@@ -29,9 +31,15 @@ Status CoreWorkerLocalPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> 
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
-    RAY_ARROW_RETURN_NOT_OK(
+    arrow::Status status =
         store_client_.Create(plasma_id, data_size, metadata ? metadata->Data() : nullptr,
-                             metadata ? metadata->Size() : 0, &arrow_buffer));
+                             metadata ? metadata->Size() : 0, &arrow_buffer);
+    if (plasma::IsPlasmaObjectExists(status)) {
+      RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
+                       << object_id << ".";
+      return Status::OK();
+    }
+    RAY_ARROW_RETURN_NOT_OK(status);
   }
   *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
   return Status::OK();
@@ -93,9 +101,9 @@ Status CoreWorkerLocalPlasmaStoreProvider::Wait(const std::vector<ObjectID> &obj
   return Status::OK();
 }
 
-Status CoreWorkerLocalPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
-                                                bool local_only,
-                                                bool delete_creating_tasks) {
+Status CoreWorkerLocalPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
+                                                  bool local_only,
+                                                  bool delete_creating_tasks) {
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {

@@ -36,7 +36,7 @@ static void flushall_redis(void) {
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
   freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
-  redisFree(context);
+  redisDelete(context);
 }
 
 std::shared_ptr<Buffer> GenerateRandomBuffer() {
@@ -499,7 +499,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait().
+  // Test Wait() with duplicate object ids.
   std::vector<ObjectID> ids_with_duplicate;
   ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
   // add the same ids again to test `Get` with duplicate object ids.
@@ -511,6 +511,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::vector<bool> wait_results;
   RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 5);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+
+  // Test Wait() with duplicate object ids, and the required `num_objects`
+  // is less than size of `wait_ids`.
+  wait_results.clear();
+  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
@@ -531,17 +538,40 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
               0);
   }
 
-  // Test Free().
+  // Test Delete().
   // clear the reference held.
   results.clear();
 
-  RAY_CHECK_OK(provider.Free(ids, true, false));
+  RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
   RAY_CHECK_OK(provider.Get(ids, 0, RandomTaskId(), &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
+
+  // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> unready_ids(buffers.size());
+  for (size_t i = 0; i < unready_ids.size(); i++) {
+    unready_ids[i] = ObjectID::FromRandom();
+  }
+
+  auto thread_func = [&unready_ids, &provider, &buffers]() {
+    sleep(1);
+
+    for (size_t i = 0; i < unready_ids.size(); i++) {
+      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
+    }
+  };
+
+  std::thread async_thread(thread_func);
+
+  // wait for the objects to appear.
+  wait_results.clear();
+  RAY_CHECK_OK(
+      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
+  // wait for the thread to finish.
+  async_thread.join();
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
@@ -780,12 +810,12 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  // Test Free().
+  // Test Delete().
   // clear the reference held by PlasmaBuffer.
   results.clear();
-  RAY_CHECK_OK(core_worker.Objects().Free(ids, true, false));
+  RAY_CHECK_OK(core_worker.Objects().Delete(ids, true, false));
 
-  // Note that Free() calls RayletClient::FreeObjects and would not
+  // Note that Delete() calls RayletClient::DeleteObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
@@ -838,12 +868,12 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  // Test Free() from all machines.
+  // Test Delete() from all machines.
   // clear the reference held by PlasmaBuffer.
   results.clear();
-  RAY_CHECK_OK(worker2.Objects().Free(ids, false, false));
+  RAY_CHECK_OK(worker2.Objects().Delete(ids, false, false));
 
-  // Note that Free() calls RayletClient::FreeObjects and would not
+  // Note that Delete() calls RayletClient::DeleteObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(1000 * 1000);

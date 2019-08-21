@@ -110,7 +110,7 @@ class CoreWorkerStoreProvider {
   /// Wait for a list of objects to appear in the object store.
   ///
   /// \param[in] IDs of the objects to wait for.
-  /// \param[in] num_returns Number of objects that should appear.
+  /// \param[in] num_objects Number of objects that should appear before returning.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] task_id ID for the current task.
   /// \param[out] results A bitset that indicates each object has appeared or not.
@@ -119,7 +119,7 @@ class CoreWorkerStoreProvider {
                       int64_t timeout_ms, const TaskID &task_id,
                       std::vector<bool> *results) = 0;
 
-  /// Free a list of objects from the object store.
+  /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -127,8 +127,8 @@ class CoreWorkerStoreProvider {
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects.
   /// \return Status.
-  virtual Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                      bool delete_creating_tasks = false) = 0;
+  virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                        bool delete_creating_tasks = false) = 0;
 };
 
 }  // namespace ray

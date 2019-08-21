@@ -39,10 +39,10 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
-  /// See `CoreWorkerStoreProvider::Free` for semantics.
+  /// See `CoreWorkerStoreProvider::Delete` for semantics.
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
-  Status Free(const std::vector<ObjectID> &object_ids, bool local_only = true,
-              bool delete_creating_tasks = false) override;
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+                bool delete_creating_tasks = false) override;
 
  private:
   /// Implementation.

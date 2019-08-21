@@ -13,6 +13,7 @@ namespace ray {
 
 class CoreWorker;
 class CoreWorkerStoreProvider;
+class CoreWorkerMemoryStore;
 
 /// The interface that contains all `CoreWorker` methods related to the object store.
 class CoreWorkerObjectInterface {
@@ -66,16 +67,20 @@ class CoreWorkerObjectInterface {
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Wait for a list of objects to appear in the object store.
+  /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
+  /// case.
+  /// TODO(zhijunfu): it is probably more clear in semantics to just fail when there
+  /// are duplicates, and require it to be handled at application level.
   ///
   /// \param[in] IDs of the objects to wait for.
-  /// \param[in] num_returns Number of objects that should appear.
+  /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, std::vector<bool> *results);
 
-  /// Free a list of objects from the object store.
+  /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -83,10 +88,24 @@ class CoreWorkerObjectInterface {
   /// \param[in] delete_creating_tasks Whether also delete the tasks that
   /// created these objects.
   /// \return Status.
-  Status Free(const std::vector<ObjectID> &object_ids, bool local_only,
-              bool delete_creating_tasks);
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
+                bool delete_creating_tasks);
 
  private:
+  /// Helper function to get a list of objects from different store providers.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[in] ids_per_provider A map from store provider type to the set of
+  //             object ids for that store provider.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
+  /// \param[in/out] num_objects Number of objects that should appear before returning.
+  /// \param[out] results A bitset that indicates each object has appeared or not.
+  /// \return Status.
+  Status WaitFromMultipleStoreProviders(
+      const std::vector<ObjectID> &object_ids,
+      EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
+      int64_t timeout_ms, int *num_objects, std::vector<bool> *results);
+
   /// Helper function to get a list of objects from a specific store provider.
   ///
   /// \param[in] type The type of store provider to use.
@@ -94,9 +113,23 @@ class CoreWorkerObjectInterface {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's -1.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+  Status GetFromStoreProvider(
+      StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
+      int64_t timeout_ms,
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
+  /// Helper function to wait a list of objects from a specific store provider.
+  ///
+  /// \param[in] type The type of store provider to use.
+  /// \param[in] object_ids IDs of the objects to wait for.
+  /// \param[in] num_objects Number of objects that should appear before returning.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results A bitset that indicates each object has appeared or not.
+  /// \return Status.
+  Status WaitFromStoreProvider(StoreProviderType type,
+                               const std::unordered_set<ObjectID> &object_ids,
+                               int num_objects, int64_t timeout_ms,
+                               std::unordered_set<ObjectID> *results);
 
   /// Create a new store provider for the specified type on demand.
   std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
@@ -112,6 +145,9 @@ class CoreWorkerObjectInterface {
 
   /// Store socket name.
   std::string store_socket_;
+
+  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>

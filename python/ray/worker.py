@@ -414,14 +414,6 @@ class Worker(object):
         """
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.plasma.PlasmaObjectExists:
-            # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare hashes
-            # and make sure that the objects are in fact the same. We also
-            # should return an error code to caller instead of printing a
-            # message.
-            logger.info("The object with ID {} already exists "
-                        "in the object store.".format(object_id))
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need

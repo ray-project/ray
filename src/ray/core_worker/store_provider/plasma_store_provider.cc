@@ -135,6 +135,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
   WaitResultPair result_pair;
+  std::cout << "raylet num_objects: " << num_objects << std::endl;
   auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms,
                                      /*wait_local=*/false, task_id, &result_pair);
   std::unordered_set<ObjectID> ready_ids;
@@ -153,8 +154,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_i
   return status;
 }
 
-Status CoreWorkerPlasmaStoreProvider::Free(const std::vector<ObjectID> &object_ids,
-                                           bool local_only, bool delete_creating_tasks) {
+Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
+                                             bool local_only,
+                                             bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
 }
 

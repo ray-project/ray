@@ -37,21 +37,17 @@ Status CoreWorkerMemoryStoreProvider::Seal(const ObjectID &object_id) {
 Status CoreWorkerMemoryStoreProvider::Get(
     const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
     std::vector<std::shared_ptr<RayObject>> *results) {
-  return store_->Get(object_ids, timeout_ms, true, results);
+  return store_->Get(object_ids, object_ids.size(), timeout_ms, true, results);
 }
 
 Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::vector<bool> *results) {
-  if (num_objects != static_cast<int>(object_ids.size())) {
-    return Status::Invalid("num_objects should equal to number of items in object_ids");
-  }
-
   (*results).resize(object_ids.size(), false);
 
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  auto status = store_->Get(object_ids, timeout_ms, false, &result_objects);
+  auto status = store_->Get(object_ids, num_objects, timeout_ms, false, &result_objects);
   if (status.ok()) {
     RAY_CHECK(result_objects.size() == object_ids.size());
     for (size_t i = 0; i < object_ids.size(); i++) {
@@ -62,9 +58,10 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_i
   return status;
 }
 
-Status CoreWorkerMemoryStoreProvider::Free(const std::vector<ObjectID> &object_ids,
-                                           bool local_only, bool delete_creating_tasks) {
-  store_->Free(object_ids);
+Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
+                                             bool local_only,
+                                             bool delete_creating_tasks) {
+  store_->Delete(object_ids);
   return Status::OK();
 }
 

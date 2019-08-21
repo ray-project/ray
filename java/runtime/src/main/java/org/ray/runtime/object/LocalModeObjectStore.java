@@ -91,7 +91,7 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
     for (ObjectId objectId : objectIds) {
       pool.remove(objectId);
     }
