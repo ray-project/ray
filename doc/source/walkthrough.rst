@@ -47,14 +47,12 @@ This causes a few things changes in behavior:
 
     .. code:: python
 
-        >>> regular_function()
-        1
+        assert regular_function() == 1
 
-        >>> remote_function.remote()
-        ObjectID(1c80d6937802cd7786ad25e50caf2f023c95e350)
+        object_id = remote_function.remote()
 
-        >>> ray.get(remote_function.remote())
-        1
+        # The value of the
+        assert ray.get(object_id) == 1
 
 3. **Parallelism:** Invocations of ``regular_function`` happen
    **serially**, for example
@@ -174,10 +172,8 @@ Object IDs can be created in multiple ways.
 
 .. code-block:: python
 
-    >>> y = 1
-    >>> y_id = ray.put(y)
-    >>> print(y_id)
-    ObjectID(0369a14bc595e08cfbd508dfaa162cb7feffffff)
+    y = 1
+    object_id = ray.put(y)
 
 Here is the docstring for ``ray.put``:
 
@@ -201,12 +197,9 @@ shared memory and avoid copying the object.
 
 .. code-block:: python
 
-    >>> y = 1
-    >>> obj_id = ray.put(y)
-    >>> print(obj_id)
-    ObjectID(0369a14bc595e08cfbd508dfaa162cb7feffffff)
-    >>> ray.get(obj_id)
-    1
+    y = 1
+    obj_id = ray.put(y)
+    assert ray.get(obj_id) == 1
 
 Here is the docstring for ``ray.get``:
 

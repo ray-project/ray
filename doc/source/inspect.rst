@@ -42,9 +42,13 @@ To get information about the current nodes in your cluster, you can use ``ray.no
 
 .. code-block:: python
 
-    >>> import ray
-    >>> ray.init()
-    >>> ray.nodes()
+    import ray
+
+    ray.init()
+
+    print(ray.nodes())
+
+    """
     [{'ClientID': 'a9e430719685f3862ed7ba411259d4138f8afb1e',
       'IsInsertion': True,
       'NodeManagerAddress': '192.168.19.108',
@@ -54,6 +58,7 @@ To get information about the current nodes in your cluster, you can use ``ray.no
       'RayletSocketName': '/tmp/ray/session_2019-07-28_17-03-53_955034_24883/sockets/raylet',
       'Resources': {'CPU': 4.0},
       'alive': True}]
+    """
 
 The above information includes:
 

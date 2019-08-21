@@ -143,7 +143,6 @@ Plasma is a high-performance shared memory object store originally developed in
 Ray and now being developed in `Apache Arrow`_. See the `relevant
 documentation`_.
 
-
 On Linux, it is possible to increase the write throughput of the Plasma object
 store by using huge pages. You first need to create a file system and activate
 huge pages as follows.

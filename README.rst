@@ -13,47 +13,135 @@
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
-
-Ray is easy to install: ``pip install ray``
-
-Example Use
------------
-
-+------------------------------------------------+----------------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                           |
-+------------------------------------------------+----------------------------------------------------+
-|.. code-block:: python                          |.. code-block:: python                              |
-|                                                |                                                    |
-|  # Execute f serially.                         |  # Execute f in parallel.                          |
-|                                                |                                                    |
-|                                                |  @ray.remote                                       |
-|  def f():                                      |  def f():                                          |
-|      time.sleep(1)                             |      time.sleep(1)                                 |
-|      return 1                                  |      return 1                                      |
-|                                                |                                                    |
-|                                                |                                                    |
-|                                                |  ray.init()                                        |
-|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
-+------------------------------------------------+----------------------------------------------------+
-
-
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
-- `Tune`_: Hyperparameter Optimization Framework
+- `Tune`_: Scalable Hyperparameter Search
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <http://ray.readthedocs.io/en/latest/distributed_training.html>`__
+- `Distributed Training <distributed_training.html>`__
 
-.. _`Tune`: http://ray.readthedocs.io/en/latest/tune.html
-.. _`RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
+Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation page <installation.html>`__.
 
-Installation
-------------
+View the `codebase on GitHub`_.
 
-Ray can be installed on Linux and Mac with ``pip install ray``.
+.. _`codebase on GitHub`: https://github.com/ray-project/ray
 
-To build Ray from source or to install the nightly versions, see the `installation documentation`_.
 
-.. _`installation documentation`: http://ray.readthedocs.io/en/latest/installation.html
+Quick Start
+-----------
+
+.. code-block:: python
+
+    ray.init()
+
+    @ray.remote
+    def f(x):
+        return x * x
+
+    futures = [f.remote(i) for i in range(4)]
+    print(ray.get(futures))
+
+To use Ray's actor model:
+
+.. code-block:: python
+
+    ray.init()
+
+    @ray.remote
+    class Counter():
+        def __init__(self):
+            self.n = 0
+
+        def increment(self):
+            self.n += 1
+
+        def read(self):
+            return self.n
+
+    counters = [Counter.remote() for i in range(4)]
+    [c.increment.remote() for c in counters]
+    futures = [c.read.remote() for c in counters]
+    print(ray.get(futures))
+
+
+Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
+
+``ray submit [CLUSTER.YAML] example.py --start``
+
+See more details in the `Cluster Launch page <autoscaling.html>`_.
+
+Tune Quick Start
+----------------
+
+`Tune`_ is a scalable framework for hyperparameter search built on top of Ray with a focus on deep learning and deep reinforcement learning.
+
+.. note::
+
+    To run this example, you will need to install the following:
+
+    .. code-block:: bash
+
+        $ pip install ray torch torchvision filelock
+
+
+This example runs a small grid search to train a CNN using PyTorch and Tune.
+
+.. literalinclude:: ../../python/ray/tune/tests/example.py
+   :language: python
+   :start-after: __quick_start_begin__
+   :end-before: __quick_start_end__
+
+If TensorBoard is installed, automatically visualize all trial results:
+
+.. code-block:: bash
+
+    tensorboard --logdir ~/ray_results
+
+.. _`Tune`: tune.html
+
+RLlib Quick Start
+-----------------
+
+`RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
+
+.. code-block:: bash
+
+  pip install tensorflow  # or tensorflow-gpu
+  pip install ray[rllib]  # also recommended: ray[debug]
+
+.. code-block:: python
+
+    import gym
+    from gym.spaces import Discrete, Box
+    from ray import tune
+
+    class SimpleCorridor(gym.Env):
+        def __init__(self, config):
+            self.end_pos = config["corridor_length"]
+            self.cur_pos = 0
+            self.action_space = Discrete(2)
+            self.observation_space = Box(0.0, self.end_pos, shape=(1, ))
+
+        def reset(self):
+            self.cur_pos = 0
+            return [self.cur_pos]
+
+        def step(self, action):
+            if action == 0 and self.cur_pos > 0:
+                self.cur_pos -= 1
+            elif action == 1:
+                self.cur_pos += 1
+            done = self.cur_pos >= self.end_pos
+            return [self.cur_pos], 1 if done else 0, done, {}
+
+    tune.run(
+        "PPO",
+        config={
+            "env": SimpleCorridor,
+            "num_workers": 4,
+            "env_config": {"corridor_length": 5}})
+
+.. _`RLlib`: rllib.html
+
 
 More Information
 ----------------

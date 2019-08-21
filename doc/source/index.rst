@@ -7,6 +7,8 @@ Ray
     <a href="https://github.com/ray-project/ray"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
   </embed>
 
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
+
 *Ray is a fast and simple framework for building and running distributed applications.*
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
@@ -27,6 +29,7 @@ Quick Start
 
 .. code-block:: python
 
+    import ray
     ray.init()
 
     @ray.remote
@@ -40,6 +43,7 @@ To use Ray's actor model:
 
 .. code-block:: python
 
+    import ray
     ray.init()
 
     @ray.remote
@@ -167,6 +171,7 @@ The following are good places to discuss Ray.
    using-ray-with-gpus.rst
    user-profiling.rst
    inspect.rst
+   object-store.rst
    configure.rst
    advanced.rst
    troubleshooting.rst
@@ -238,7 +243,6 @@ The following are good places to discuss Ray.
    :maxdepth: -1
    :caption: Development and Internals
 
-   install-source.rst
    development.rst
    profiling.rst
    internals-overview.rst

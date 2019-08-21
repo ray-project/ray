@@ -42,6 +42,9 @@ When the above actor is instantiated, the following events happen.
 2. A ``Counter`` object is created on that worker and the ``Counter``
    constructor is run.
 
+Actor Methods
+-------------
+
 Any method of the actor can return multiple object IDs with the ``ray.method`` decorator:
 
 .. code-block:: python
@@ -58,6 +61,7 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
     obj_id1, obj_id2 = f.bar.remote()
     assert ray.get(obj_id1) == 1
     assert ray.get(obj_id2) == 2
+
 
 Resources with Actors
 ---------------------
