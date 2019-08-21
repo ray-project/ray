@@ -16,18 +16,16 @@ Quick start (CLI)
     # .rayproject subdirectory of the current directory.
     $ ray project create <project-name>
 
-    # Create a new session from the given project with an optional name.
+    # Create a new session from the given project.
     # Launch a cluster and run the appropriate command.
-    $ ray session start [--name="default-session"]
+    $ ray session start
 
-    # Open a console for the given session. If the session is stopped,
-    # this auto-starts the session if --start is specified.
-    $ ray session attach [<default-session>] [--start]
+    # Open a console for the given session.
+    $ ray session attach
 
     # Stop the given session and all of its worker nodes. The nodes/clusters
-    # are not actually terminated unless --terminate is given or we
-    # configure the cluster to autoterminate after a period of inactivity.
-    $ ray session stop [<default-session>] [--terminate]
+    # are not actually terminated.
+    $ ray session stop
 
 Examples
 --------

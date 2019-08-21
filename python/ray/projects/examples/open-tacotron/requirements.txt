@@ -1,3 +1,4 @@
+# Adapted from https://github.com/keithito/tacotron/blob/master/requirements.txt
 # Note: this doesn't include tensorflow or tensorflow-gpu because the package you need to install
 # depends on your platform. It is assumed you have already installed tensorflow.
 falcon==1.2.0
