@@ -28,7 +28,7 @@ class ActorStateAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   Status AsyncGet(const ActorID &actor_id,
-                  const MultiItemCallback<ActorTableData> &callback);
+                  const OptionalItemCallback<ActorTableData> &callback);
 
   /// Register an actor to GCS asynchronously.
   ///
