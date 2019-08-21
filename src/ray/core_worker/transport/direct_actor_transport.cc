@@ -17,12 +17,11 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
-    CoreWorkerObjectInterface &object_interface)
+    std::unique_ptr<CoreWorkerStoreProvider> store_provider)
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
-      store_provider_(
-          object_interface.CreateStoreProvider(StoreProviderType::LOCAL_PLASMA)) {
+      store_provider_(std::move(store_provider)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
@@ -63,7 +62,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    return PushTask(*client, *request, task_id, num_returns);
+    PushTask(*client, *request, task_id, num_returns);
+    return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -92,6 +92,17 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
     } else {
       // Remove rpc client if it's dead or being reconstructed.
       rpc_clients_.erase(actor_id);
+      // If this actor is permanently dead and there are pending requests, treat
+      // the pending tasks as failed.
+      if (actor_data.state() == ActorTableData::DEAD &&
+          pending_requests_.count(actor_id) > 0) {
+        for (const auto &request : pending_requests_[actor_id]) {
+          TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
+                            request->task_spec().num_returns(),
+                            rpc::ErrorType::ACTOR_DIED);
+        }
+        pending_requests_.erase(actor_id);
+      }
     }
 
     RAY_LOG(INFO) << "received notification on actor, state="
@@ -114,17 +125,16 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
     const auto &request = *requests.front();
-    auto status =
-        PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
-                 request.task_spec().num_returns());
+    PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
+             request.task_spec().num_returns());
     requests.pop_front();
   }
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
-                                                    const rpc::PushTaskRequest &request,
-                                                    const TaskID &task_id,
-                                                    int num_returns) {
+void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
+                                                  const rpc::PushTaskRequest &request,
+                                                  const TaskID &task_id,
+                                                  int num_returns) {
   auto status = client.PushTask(
       request,
       [this, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
@@ -153,7 +163,9 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
               store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
-  return status;
+  if (!status.ok()) {
+    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
+  }
 }
 
 void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
