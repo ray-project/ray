@@ -47,9 +47,9 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
   for (const auto &elem : id_to_data_) {
     ++pending_count_;
     RAY_CHECK_OK(actor_accessor.AsyncGet(
-        elem.first, [this](Status status, std::vector<ActorTableData> datas) {
-          ASSERT_EQ(datas.size(), 1U);
-          ActorID actor_id = ActorID::FromBinary(datas[0].actor_id());
+        elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
+          ASSERT_TRUE(data);
+          ActorID actor_id = ActorID::FromBinary(data->actor_id());
           auto it = id_to_data_.find(actor_id);
           ASSERT_TRUE(it != id_to_data_.end());
           --pending_count_;
