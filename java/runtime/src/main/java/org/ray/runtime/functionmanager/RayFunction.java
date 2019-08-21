@@ -72,6 +72,9 @@ public class RayFunction {
     return rayRemote;
   }
 
+  /**
+   * @return Whether this function has a return value.
+   */
   public boolean hasReturn() {
     if (isConstructor()) {
       return true;

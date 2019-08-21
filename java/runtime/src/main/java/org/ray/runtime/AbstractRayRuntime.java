@@ -172,7 +172,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, numReturns, options);
-    Preconditions.checkState(returnIds.size() <=1);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
     if (returnIds.isEmpty()) {
       return null;
     } else {
@@ -186,7 +186,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, numReturns, null);
-    Preconditions.checkState(returnIds.size() <=1);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
     if (returnIds.isEmpty()) {
       return null;
     } else {
