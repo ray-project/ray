@@ -74,7 +74,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.
   static void WarnIfAttemptedTooManyTimes(
-      int num_attempts, const std::unordered_map<ObjectID, std::vector<int>> &remaining);
+      int num_attempts, const std::unordered_map<ObjectID, int> &remaining);
 
   /// local plasma store provider.
   CoreWorkerLocalPlasmaStoreProvider local_store_provider_;

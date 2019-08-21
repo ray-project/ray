@@ -21,7 +21,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     std::vector<std::shared_ptr<RayObject>> *results) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   (*results).resize(ids.size(), nullptr);
-  std::unordered_map<ObjectID, std::vector<int>> remaining;
+  std::unordered_map<ObjectID, int> remaining;
 
   // First, attempt to fetch all of the required objects without reconstructing.
   for (int64_t start = 0; start < int64_t(ids.size()); start += batch_size) {
@@ -34,8 +34,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     // Iterate through the results from the local store, adding them to the remaining
     // map if they weren't successfully fetched from the local store (are nullptr).
-    // Keeps track of the locations of the remaining object IDs in the original list
-    // (accounting for duplicates).
+    // Keeps track of the locations of the remaining object IDs in the original list.
     for (size_t i = 0; i < ids_slice.size(); i++) {
       if (results_slice[i] != nullptr) {
         (*results)[start + i] = results_slice[i];
@@ -44,14 +43,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
           return Status::OK();
         }
       } else {
-        auto it = remaining.find(ids_slice[i]);
-        if (it == remaining.end()) {
-          std::vector<int> v;
-          v.push_back(start + i);
-          remaining.insert({ids[i], v});
-        } else {
-          it->second.push_back(start + i);
-        }
+        remaining.insert({ids_slice[i], start + i});
       }
     }
   }
@@ -98,9 +90,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       if (batch_results[i] != nullptr) {
         successes++;
         const auto &object_id = batch_ids[i];
-        for (int idx : remaining[object_id]) {
-          (*results)[idx] = batch_results[i];
-        }
+        (*results)[remaining[object_id]] = batch_results[i];
         remaining.erase(object_id);
         if (IsException(*batch_results[i])) {
           should_break = true;
@@ -163,7 +153,7 @@ bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const std::unordered_map<ObjectID, std::vector<int>> &remaining) {
+    int num_attempts, const std::unordered_map<ObjectID, int> &remaining) {
   if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
       0) {
     std::ostringstream oss;
