@@ -425,6 +425,13 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Create(
                 metadata, data_size, c_object_id, &data))
 
+        # If data is nullptr, that means the ObjectID already existed,
+        # which we ignore.
+        # TODO(edoakes): this is hacky, we should return the error instead
+        # and deal with it here.
+        if not data:
+            return
+
         stream = pyarrow.FixedSizeBufferWriter(
             pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)

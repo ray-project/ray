@@ -36,7 +36,7 @@ static void flushall_redis(void) {
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
   freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
-  redisDelete(context);
+  redisFree(context);
 }
 
 std::shared_ptr<Buffer> GenerateRandomBuffer() {

@@ -16,10 +16,12 @@ Status CoreWorkerLocalPlasmaStoreProvider::Put(const RayObject &object,
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(
       Create(object.GetMetadata(), object.GetData()->Size(), object_id, &data));
+  // data could be a nullptr if the ObjectID already existed, but this does
+  // not throw an error.
   if (data != nullptr) {
     memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
+    RAY_RETURN_NOT_OK(Seal(object_id));
   }
-  RAY_RETURN_NOT_OK(Seal(object_id));
   return Status::OK();
 }
 
