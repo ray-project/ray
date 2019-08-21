@@ -184,7 +184,7 @@ class ModelV2(object):
         if SampleBatch.PREV_ACTIONS in train_batch:
             input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
         if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_reward"] = train_batch[SampleBatch.PREV_REWARDS]
+            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
         states = []
         i = 0
         while "state_in_{}".format(i) in train_batch:
