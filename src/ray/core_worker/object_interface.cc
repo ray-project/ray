@@ -158,8 +158,6 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
       object_ids_per_store_provider;
   GroupObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
-  std::cout << "Wait() num_objects: " << num_objects << std::endl;
-
   // Wait from all the store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
@@ -173,13 +171,6 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(ids, object_ids_per_store_provider,
                                                      /* timeout_ms= */ timeout_ms,
                                                      &num_objects, results));
-  }
-
-  int true_count = 0;
-  for (bool result : *results) {
-    if (result) {
-      true_count++;
-    }
   }
 
   return Status::OK();
@@ -233,12 +224,6 @@ Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
     }
   }
 
-  int true_count = 0;
-  for (bool result : *results) {
-    if (result) {
-      true_count++;
-    }
-  }
   return Status::OK();
 };
 
