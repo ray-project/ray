@@ -76,7 +76,7 @@ public class RayFunction {
     if (isConstructor()) {
       return true;
     } else {
-      return !getMethod().getReturnType().equals(Void.class);
+      return !getMethod().getReturnType().equals(void.class);
     }
   }
 
