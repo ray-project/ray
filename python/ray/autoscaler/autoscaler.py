@@ -287,7 +287,7 @@ class NodeLauncher(threading.Thread):
     def _launch_node(self, config, count):
         worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
+        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"] if "auth" in self.config else None)
         self.log("Launching {} nodes.".format(count))
         self.provider.create_node(
             config["worker_nodes"], {
@@ -540,7 +540,7 @@ class StandardAutoscaler(object):
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"])
+                                               new_config["auth"] if "auth" in self.config else None)
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
                 new_config["worker_setup_commands"],
                 new_config["worker_start_ray_commands"]
