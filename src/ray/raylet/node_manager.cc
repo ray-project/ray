@@ -2,10 +2,10 @@
 
 #include <fstream>
 
-#include "ray/common/status.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
+#include "ray/common/pb_util.h"
+#include "ray/common/status.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 
@@ -848,8 +848,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_info_ptr =
           CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                             nitial_config_.node_manager_address, message->worker_pid());
-      RAY_CHECK_OK(gcs_client_->Jobs().AsyncRegister(job_info_ptr, nullptr);
+                             initial_config_.node_manager_address, message->worker_pid());
+      RAY_CHECK_OK(gcs_client_->Jobs().AsyncRegister(job_info_ptr, nullptr));
     }
   }
 }
@@ -1026,7 +1026,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     RAY_CHECK(!job_id.IsNil());
     auto job_info_ptr =
         CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr),
-                           nitial_config_.node_manager_address, worker->Pid());
+                           initial_config_.node_manager_address, worker->Pid());
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncUpdate(job_info_ptr, nullptr));
     const auto driver_id = ComputeDriverIdFromJob(job_id);
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
@@ -1041,18 +1041,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
-}
-
-std::shared_ptr<JobTableData> NodeManager::CreateJobTableData(
-    const JobID &job_id, bool is_dead, int64_t timestamp,
-    const std::string &node_manager_address, int64_t driver_pid) {
-  auto job_info = std::make_shared<JobTableData>();
-  job_info->set_job_id(job_id.Binary());
-  job_info->set_is_dead(is_dead);
-  job_info->set_timestamp(timestamp);
-  job_info->set_node_manager_address();
-  job_info->set_driver_pid(driver_pid);
-  return job_info;
 }
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {

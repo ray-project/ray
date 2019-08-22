@@ -5,6 +5,7 @@ extern "C" {
 #include "ray/thirdparty/hiredis/hiredis.h"
 }
 
+#include "ray/common/pb_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
@@ -600,8 +601,9 @@ void TestLogSubscribeAll(const JobID &job_id,
   auto subscribe_callback = [job_ids](gcs::RedisGcsClient *client) {
     // We have subscribed. Do the writes to the table.
     for (size_t i = 0; i < job_ids.size(); i++) {
+      auto job_info_ptr = CreateJobTableData(job_ids[i], false, 0, "localhost", 1);
       RAY_CHECK_OK(
-          client->job_table().AppendJobData(job_ids[i], false, 0, "localhost", 1));
+          client->job_table().Append(job_ids[i], job_ids[i], job_info_ptr, nullptr));
     }
   };
 
