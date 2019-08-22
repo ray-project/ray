@@ -15,7 +15,6 @@ def bootstrap_kubernetes(config):
 
     # TODO: make cluster role if not set
 
-    print(config)
     return config
 
 
