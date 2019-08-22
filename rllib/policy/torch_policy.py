@@ -107,7 +107,8 @@ class TorchPolicy(Policy):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         with self.lock:
-            loss_out = self._loss(self, train_batch)
+            loss_out = self._loss(self, self.model, self.dist_class,
+                                  train_batch)
             self._optimizer.zero_grad()
             loss_out.backward()
 
