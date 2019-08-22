@@ -178,6 +178,7 @@ class Trial(object):
         self.result_logger = None
         self.last_debug = 0
         self.error_file = None
+        self.error_msg = None
         self.num_failures = 0
         self.custom_trial_name = None
 
@@ -270,6 +271,7 @@ class Trial(object):
             with open(error_file, "w") as f:
                 f.write(error_msg)
             self.error_file = error_file
+            self.error_msg = error_msg
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""

@@ -444,7 +444,8 @@ def test_actor_deletion(ray_start_regular):
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     # When an actor that uses a GPU exits, make sure that the GPU resources
     # are released.
@@ -516,7 +517,7 @@ def test_resource_assignment(shutdown_only):
         num_cpus=16,
         num_gpus=1,
         resources={"Custom": 1},
-        object_store_memory=int(10**8))
+        object_store_memory=int(150 * 1024 * 1024))
 
     class Actor(object):
         def __init__(self):
@@ -1296,7 +1297,8 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
-    ray.init(num_cpus=10, num_gpus=10, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=10, num_gpus=10, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -1330,7 +1332,8 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
 
 
 def test_blocking_actor_task(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -1740,7 +1743,7 @@ def test_nondeterministic_reconstruction_concurrent_forks(
 
 @pytest.fixture
 def setup_queue_actor():
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(num_cpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote
     class Queue(object):
@@ -2105,7 +2108,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**8], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory
 

@@ -29,6 +29,8 @@ class RemoteFunction(object):
             remote function.
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
+        _memory: The heap memory request for this task.
+        _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_return_vals: The default number of return values for invocations
@@ -51,8 +53,8 @@ class RemoteFunction(object):
             different workers.
     """
 
-    def __init__(self, function, num_cpus, num_gpus, resources,
-                 num_return_vals, max_calls):
+    def __init__(self, function, num_cpus, num_gpus, memory,
+                 object_store_memory, resources, num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
         self._function_name = (
@@ -60,6 +62,11 @@ class RemoteFunction(object):
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus
+        self._memory = memory
+        if object_store_memory is not None:
+            raise NotImplementedError(
+                "setting object_store_memory is not implemented for tasks")
+        self._object_store_memory = None
         self._resources = resources
         self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
                                  num_return_vals is None else num_return_vals)
@@ -107,6 +114,8 @@ class RemoteFunction(object):
                 num_return_vals=None,
                 num_cpus=None,
                 num_gpus=None,
+                memory=None,
+                object_store_memory=None,
                 resources=None):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
@@ -126,8 +135,9 @@ class RemoteFunction(object):
             num_return_vals = self._num_return_vals
 
         resources = ray.utils.resources_from_resource_arguments(
-            self._num_cpus, self._num_gpus, self._resources, num_cpus,
-            num_gpus, resources)
+            self._num_cpus, self._num_gpus, self._memory,
+            self._object_store_memory, self._resources, num_cpus, num_gpus,
+            memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
             args = ray.signature.extend_args(self._function_signature, args,
