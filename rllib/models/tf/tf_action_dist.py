@@ -17,8 +17,8 @@ class TFActionDistribution(ActionDistribution):
     """TF-specific extensions for building action distributions."""
 
     @DeveloperAPI
-    def __init__(self, inputs):
-        super(TFActionDistribution, self).__init__(inputs)
+    def __init__(self, inputs, model):
+        super(TFActionDistribution, self).__init__(inputs, model)
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -26,23 +26,27 @@ class TFActionDistribution(ActionDistribution):
         """Implement this instead of sample(), to enable op reuse.
 
         This is needed since the sample op is non-deterministic and is shared
-        between sample() and sampled_action_prob().
+        between sample() and sampled_action_logp().
         """
         raise NotImplementedError
 
-    @DeveloperAPI
+    @override(ActionDistribution)
     def sample(self):
         """Draw a sample from the action distribution."""
         return self.sample_op
 
-    @DeveloperAPI
-    def sampled_action_prob(self):
+    @override(ActionDistribution)
+    def sampled_action_logp(self):
         """Returns the log probability of the sampled action."""
-        return tf.exp(self.logp(self.sample_op))
+        return self.logp(self.sample_op)
 
 
 class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
+
+    @DeveloperAPI
+    def __init__(self, inputs, model=None):
+        super(Categorical, self).__init__(inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -76,13 +80,20 @@ class Categorical(TFActionDistribution):
     def _build_sample_op(self):
         return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return action_space.n
+
 
 class MultiCategorical(TFActionDistribution):
-    """Categorical distribution for discrete action spaces."""
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    def __init__(self, inputs, input_lens):
+    def __init__(self, inputs, model, input_lens):
+        # skip TFActionDistribution init
+        ActionDistribution.__init__(self, inputs, model)
         self.cats = [
-            Categorical(input_)
+            Categorical(input_, model)
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
@@ -116,6 +127,11 @@ class MultiCategorical(TFActionDistribution):
     def _build_sample_op(self):
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.sum(action_space.nvec)
+
 
 class DiagGaussian(TFActionDistribution):
     """Action distribution where each vector element is a gaussian.
@@ -124,12 +140,12 @@ class DiagGaussian(TFActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, model):
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        TFActionDistribution.__init__(self, inputs)
+        TFActionDistribution.__init__(self, inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -157,6 +173,11 @@ class DiagGaussian(TFActionDistribution):
     def _build_sample_op(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
 
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
 
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
@@ -165,12 +186,17 @@ class Deterministic(TFActionDistribution):
     """
 
     @override(TFActionDistribution)
-    def sampled_action_prob(self):
-        return 1.0
+    def sampled_action_logp(self):
+        return 0.0
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.inputs
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)
 
 
 class MultiActionDistribution(TFActionDistribution):
@@ -180,12 +206,15 @@ class MultiActionDistribution(TFActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, action_space, child_distributions, input_lens):
+    def __init__(self, inputs, model, action_space, child_distributions,
+                 input_lens):
+        # skip TFActionDistribution init
+        ActionDistribution.__init__(self, inputs, model)
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i]))
+            child_list.append(distribution(split_inputs[i], model))
         self.child_distributions = child_list
 
     @override(ActionDistribution)
@@ -228,10 +257,10 @@ class MultiActionDistribution(TFActionDistribution):
         return TupleActions([s.sample() for s in self.child_distributions])
 
     @override(TFActionDistribution)
-    def sampled_action_prob(self):
-        p = self.child_distributions[0].sampled_action_prob()
+    def sampled_action_logp(self):
+        p = self.child_distributions[0].sampled_action_logp()
         for c in self.child_distributions[1:]:
-            p *= c.sampled_action_prob()
+            p += c.sampled_action_logp()
         return p
 
 
@@ -241,7 +270,7 @@ class Dirichlet(TFActionDistribution):
 
     e.g. actions that represent resource allocation."""
 
-    def __init__(self, inputs):
+    def __init__(self, inputs, model):
         """Input is a tensor of logits. The exponential of logits is used to
         parametrize the Dirichlet distribution as all parameters need to be
         positive. An arbitrary small epsilon is added to the concentration
@@ -256,7 +285,7 @@ class Dirichlet(TFActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        TFActionDistribution.__init__(self, concentration)
+        TFActionDistribution.__init__(self, concentration, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -278,3 +307,8 @@ class Dirichlet(TFActionDistribution):
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self.dist.sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape)

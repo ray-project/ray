@@ -165,7 +165,7 @@ class _LoaderThread(threading.Thread):
         opt = s.idle_optimizers.get()
 
         with self.load_timer:
-            tuples = s.policy._get_loss_inputs_dict(batch)
+            tuples = s.policy._get_loss_inputs_dict(batch, shuffle=False)
             data_keys = [ph for _, ph in s.policy._loss_inputs]
             if s.policy._state_inputs:
                 state_keys = s.policy._state_inputs + [s.policy._seq_lens]

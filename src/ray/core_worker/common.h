@@ -6,7 +6,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet/raylet_client.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -62,16 +62,6 @@ class TaskArg {
   const std::shared_ptr<ObjectID> id_;
   /// Data of the argument, if passed by value, otherwise nullptr.
   const std::shared_ptr<Buffer> data_;
-};
-
-/// Information of a task
-struct TaskInfo {
-  /// The ID of task.
-  const TaskID task_id;
-  /// The job ID.
-  const JobID job_id;
-  /// The type of task.
-  const TaskType task_type;
 };
 
 enum class StoreProviderType { LOCAL_PLASMA, PLASMA, MEMORY };

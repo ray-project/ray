@@ -140,12 +140,9 @@ You may want to get a summary of multiple experiments that point to the same ``l
 
 See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
 
-Training Features
------------------
 
 Tune Search Space (Default)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+---------------------------
 
 You can use ``tune.grid_search`` to specify an axis of a grid search. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used independently or in combination with grid search.
 
@@ -177,7 +174,7 @@ The following shows grid search over two nested parameters combined with random 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
 Custom Trial Names
-~~~~~~~~~~~~~~~~~~
+------------------
 
 To specify custom trial names, you can pass use the ``trial_name_creator`` argument
 to `tune.run`.  This takes a function with the following signature, and
@@ -205,7 +202,7 @@ be sure to wrap it with `tune.function`:
 An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 Sampling Multiple Times
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated `num_samples` of times.
 
@@ -230,7 +227,7 @@ E.g. in the above, ``num_samples=10`` repeats the 3x3 grid search 10 times, for 
 
 
 Using GPUs (Resource Allocation)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------------
 
 Tune will allocate the specified GPU and CPU ``resources_per_trial`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
@@ -255,8 +252,8 @@ If your trainable function / class creates further Ray actors or tasks that also
         }
     )
 
-Saving and Recovery
--------------------
+Save and Restore
+----------------
 
 When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
 
@@ -296,7 +293,7 @@ Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_na
 
 
 Trainable (Trial) Checkpointing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on. You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 
@@ -349,7 +346,7 @@ The checkpoint will be saved at a path that looks like ``local_dir/exp_name/tria
     )
 
 Fault Tolerance
-~~~~~~~~~~~~~~~
+---------------
 
 Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
 
@@ -486,7 +483,12 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
-These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune has default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+
+MLFlow
+~~~~~~
+
+Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found `mlflow_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mlflow_example.py>`__. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
 
 Uploading/Syncing
 -----------------

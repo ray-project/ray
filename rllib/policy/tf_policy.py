@@ -22,6 +22,9 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
+ACTION_PROB = "action_prob"
+ACTION_LOGP = "action_logp"
+
 
 @DeveloperAPI
 class TFPolicy(Policy):
@@ -59,7 +62,7 @@ class TFPolicy(Policy):
                  loss,
                  loss_inputs,
                  model=None,
-                 action_prob=None,
+                 action_logp=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -87,7 +90,7 @@ class TFPolicy(Policy):
                 placeholders during loss computation.
             model (rllib.models.Model): used to integrate custom losses and
                 stats from user-defined RLlib models.
-            action_prob (Tensor): probability of the sampled action.
+            action_logp (Tensor): log probability of the sampled action.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -113,7 +116,9 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._sampler = action_sampler
         self._is_training = self._get_is_training_placeholder()
-        self._action_prob = action_prob
+        self._action_logp = action_logp
+        self._action_prob = (tf.exp(self._action_logp)
+                             if self._action_logp is not None else None)
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
@@ -121,6 +126,7 @@ class TFPolicy(Policy):
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
         self._stats_fetches = {}
+        self._loss_input_dict = None
 
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
@@ -155,14 +161,8 @@ class TFPolicy(Policy):
         if name in obs_inputs:
             return obs_inputs[name]
 
-        if not self.loss_initialized():
-            raise RuntimeError(
-                "You cannot call policy.get_placeholder() for non-obs inputs "
-                "before the loss has been initialized. To avoid this, use "
-                "policy.loss_initialized() to check whether this is the "
-                "case, or move the call to later (e.g., from stats_fn to "
-                "grad_stats_fn).")
-
+        assert self._loss_input_dict is not None, \
+            "Should have set this before get_placeholder can be called"
         return self._loss_input_dict[name]
 
     def get_session(self):
@@ -302,8 +302,11 @@ class TFPolicy(Policy):
 
         By default we only return action probability info (if present).
         """
-        if self._action_prob is not None:
-            return {"action_prob": self._action_prob}
+        if self._action_logp is not None:
+            return {
+                ACTION_PROB: self._action_prob,
+                ACTION_LOGP: self._action_logp,
+            }
         else:
             return {}
 

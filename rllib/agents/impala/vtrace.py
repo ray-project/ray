@@ -49,13 +49,14 @@ VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 
 def log_probs_from_logits_and_actions(policy_logits,
                                       actions,
-                                      dist_class=Categorical):
+                                      dist_class=Categorical,
+                                      model=None):
     return multi_log_probs_from_logits_and_actions([policy_logits], [actions],
-                                                   dist_class)[0]
+                                                   dist_class, model)[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions,
-                                            dist_class):
+def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
+                                            model):
     """Computes action log-probs from policy logits and actions.
 
   In the notation used throughout documentation and comments, T refers to the
@@ -76,6 +77,7 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
       ...,
       [T, B, ...]
       with actions.
+    dist_class: Python class of the action distribution
 
   Returns:
     A list with length of ACTION_SPACE of float32
@@ -97,7 +99,7 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions,
                                   tf.concat([[-1], a_shape[2:]], axis=0))
         log_probs.append(
             tf.reshape(
-                dist_class(policy_logits_flat).logp(actions_flat),
+                dist_class(policy_logits_flat, model).logp(actions_flat),
                 a_shape[:2]))
 
     return log_probs
@@ -111,6 +113,7 @@ def from_logits(behaviour_policy_logits,
                 values,
                 bootstrap_value,
                 dist_class=Categorical,
+                model=None,
                 clip_rho_threshold=1.0,
                 clip_pg_rho_threshold=1.0,
                 name="vtrace_from_logits"):
@@ -123,6 +126,7 @@ def from_logits(behaviour_policy_logits,
         values,
         bootstrap_value,
         dist_class,
+        model,
         clip_rho_threshold=clip_rho_threshold,
         clip_pg_rho_threshold=clip_pg_rho_threshold,
         name=name)
@@ -146,6 +150,8 @@ def multi_from_logits(behaviour_policy_logits,
                       values,
                       bootstrap_value,
                       dist_class,
+                      model,
+                      behaviour_action_log_probs=None,
                       clip_rho_threshold=1.0,
                       clip_pg_rho_threshold=1.0,
                       name="vtrace_from_logits"):
@@ -196,6 +202,8 @@ def multi_from_logits(behaviour_policy_logits,
     bootstrap_value: A float32 of shape [B] with the value function estimate at
       time T.
     dist_class: action distribution class for the logits.
+    model: backing ModelV2 instance
+    behaviour_action_log_probs: precalculated values of the behaviour actions
     clip_rho_threshold: A scalar float32 tensor with the clipping threshold for
       importance weights (rho) when calculating the baseline targets (vs).
       rho^bar in the paper.
@@ -235,9 +243,16 @@ def multi_from_logits(behaviour_policy_logits,
                 discounts, rewards, values, bootstrap_value
             ]):
         target_action_log_probs = multi_log_probs_from_logits_and_actions(
-            target_policy_logits, actions, dist_class)
-        behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions, dist_class)
+            target_policy_logits, actions, dist_class, model)
+
+        if (len(behaviour_policy_logits) > 1
+                or behaviour_action_log_probs is None):
+            # can't use precalculated values, recompute them. Note that
+            # recomputing won't work well for autoregressive action dists
+            # which may have variables not captured by 'logits'
+            behaviour_action_log_probs = (
+                multi_log_probs_from_logits_and_actions(
+                    behaviour_policy_logits, actions, dist_class, model))
 
         log_rhos = get_log_rhos(target_action_log_probs,
                                 behaviour_action_log_probs)

@@ -7,11 +7,13 @@ Ray
     <a href="https://github.com/ray-project/ray"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
   </embed>
 
-*Ray is a fast and simple framework for building and running distributed applications.*
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-Ray comes with libraries that accelerate deep learning and reinforcement learning development:
+**Ray is a fast and simple framework for building and running distributed applications.**
 
-- `Tune`_: Scalable Hyperparameter Search
+Ray is packaged with the following libraries for accelerating machine learning workloads:
+
+- `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `Distributed Training <distributed_training.html>`__
 
@@ -27,6 +29,7 @@ Quick Start
 
 .. code-block:: python
 
+    import ray
     ray.init()
 
     @ray.remote
@@ -40,6 +43,7 @@ To use Ray's actor model:
 
 .. code-block:: python
 
+    import ray
     ray.init()
 
     @ray.remote
@@ -47,7 +51,7 @@ To use Ray's actor model:
         def __init__(self):
             self.n = 0
 
-        def inc(self):
+        def increment(self):
             self.n += 1
 
         def read(self):
@@ -63,34 +67,34 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-See more details in the `Cluster Launch page <autoscaling.html>`_.
+Read more about `launching clusters <autoscaling.html>`_.
 
 Tune Quick Start
 ----------------
 
 `Tune`_ is a scalable framework for hyperparameter search built on top of Ray with a focus on deep learning and deep reinforcement learning.
 
-.. code-block:: python
+.. note::
 
-   import torch.optim as optim
-   from ray import tune
-   from ray.tune.examples.mnist_pytorch import get_data_loaders, Net, train, test
+    To run this example, you will need to install the following:
 
-   def train_mnist(config):
-       train_loader, test_loader = get_data_loaders()
-       model = Net(config)
-       optimizer = optim.SGD(model.parameters(), lr=config["lr"])
-       for i in range(10):
-           train(model, optimizer, train_loader)
-           acc = test(model, test_loader)
-           tune.track.log(mean_accuracy=acc)
+    .. code-block:: bash
 
-   analysis = tune.run(
-       train_mnist,
-       stop={"mean_accuracy": 0.98},
-       config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
+        $ pip install ray torch torchvision filelock
 
-   print("Best config: ", analysis.get_best_config())
+
+This example runs a small grid search to train a CNN using PyTorch and Tune.
+
+.. literalinclude:: ../../python/ray/tune/tests/example.py
+   :language: python
+   :start-after: __quick_start_begin__
+   :end-before: __quick_start_end__
+
+If TensorBoard is installed, automatically visualize all trial results:
+
+.. code-block:: bash
+
+    tensorboard --logdir ~/ray_results
 
 .. _`Tune`: tune.html
 
@@ -153,13 +157,13 @@ The following are good places to discuss Ray.
 
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Installation
 
    installation.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Using Ray
 
    walkthrough.rst
@@ -167,22 +171,25 @@ The following are good places to discuss Ray.
    using-ray-with-gpus.rst
    user-profiling.rst
    inspect.rst
+   object-store.rst
+   using-ray-with-tensorflow.rst
+   using-ray-with-pytorch.rst
    configure.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst
-   examples.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Cluster Setup
 
    autoscaling.rst
    using-ray-on-a-cluster.rst
    deploy-on-kubernetes.rst
+   deploying-on-slurm.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Tune
 
    tune.rst
@@ -197,10 +204,11 @@ The following are good places to discuss Ray.
    tune-contrib.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: RLlib
 
    rllib.rst
+   rllib-toc.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst
@@ -212,7 +220,7 @@ The following are good places to discuss Ray.
    rllib-package-ref.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Experimental
 
    distributed_training.rst
@@ -221,18 +229,15 @@ The following are good places to discuss Ray.
    async_api.rst
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Examples
-
    auto_examples/index.rst
    auto_examples/plot_pong_example.rst
 
-
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: -1
    :caption: Development and Internals
 
-   install-source.rst
    development.rst
    profiling.rst
    internals-overview.rst

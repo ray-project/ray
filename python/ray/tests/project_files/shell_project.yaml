@@ -1,0 +1,10 @@
+name: testproject3
+repo: "https://github.com/ray-project/ray"
+
+environment:
+  shell:
+    - first command
+    - second command
+    - third command
+
+cluster: "cluster.yaml"

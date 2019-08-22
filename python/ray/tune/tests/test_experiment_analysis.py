@@ -48,6 +48,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
 
+    def testStats(self):
+        assert self.ea.stats()
+        assert self.ea.runner_data()
+
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints
         idx = random.randint(0, len(checkpoints) - 1)
@@ -136,6 +140,13 @@ class AnalysisSuite(unittest.TestCase):
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_dir))
         self.assertNotEquals(logdir, logdir2)
+
+    def testBestConfigIsLogdir(self):
+        analysis = Analysis(self.test_dir)
+        for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
+            logdir = analysis.get_best_logdir(metric, mode=mode)
+            best_config = analysis.get_best_config(metric, mode=mode)
+            self.assertEquals(analysis.get_all_configs()[logdir], best_config)
 
 
 if __name__ == "__main__":

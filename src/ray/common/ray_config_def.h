@@ -20,12 +20,8 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
-/// The duration between heartbeats. This value is used for both worker and raylet.
+/// The duration between heartbeats. These are sent by the raylet.
 RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100)
-/// Worker heartbeats also use `heartbeat_timeout_milliseconds` as timer timeout period.
-/// If a worker has not sent a heartbeat in the last `num_worker_heartbeats_timeout`
-/// heartbeat intervals, raylet will mark this worker as dead.
-RAY_CONFIG(int64_t, num_worker_heartbeats_timeout, 30)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -151,13 +147,10 @@ RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)
 /// Note: this number should be set to at least 2. Because saving a application
 /// checkpoint isn't atomic with saving the backend checkpoint, and it will break
 /// if this number is set to 1 and users save application checkpoints in place.
-RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20)
+RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
-
-/// Number of times for a raylet client to retry to register.
-RAY_CONFIG(int, num_raylet_client_retry_times, 25)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
