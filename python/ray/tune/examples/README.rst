@@ -35,17 +35,17 @@ General Examples
 
    * - Example
      - Description
-   * - `async_hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__
+   * - `async_hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`_
      - Example of using a Trainable class with AsyncHyperBandScheduler.
-   * - `hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__
+   * - `hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`_
      - Example of using a Trainable class with HyperBandScheduler. Also uses the Experiment class API for specifying the experiment configuration.
-   * - `hyperopt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__
+   * - `hyperopt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`_
      - Optimizes a basic function using the function-based API and the HyperOptSearch (SearchAlgorithm wrapper for HyperOpt TPE). Also uses the AsyncHyperBandScheduler.
-   * -`pbt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__
+   * -`pbt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`_
      - Example of using a Trainable class with PopulationBasedTraining scheduler.
-   * - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__
+   * - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`_
      - Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
-   * - `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__
+   * - `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`_
      - Example of custom loggers and custom trial directory naming.
 
 
