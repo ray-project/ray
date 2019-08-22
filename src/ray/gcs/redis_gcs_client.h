@@ -19,6 +19,7 @@ class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
+  friend class JobStateAccessor;
   friend class SubscriptionExecutorTest;
 
  public:
@@ -48,11 +49,12 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
-  JobTable &job_table();
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
   DynamicResourceTable &resource_table();
+
+  JobTable &job_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -75,8 +77,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  /// Use method Actors() instead
+  /// Use method Actors() instead.
   ActorTable &actor_table();
+  /// Use method Jobs() instead.
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

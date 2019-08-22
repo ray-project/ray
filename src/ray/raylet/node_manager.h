@@ -375,10 +375,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handles updates to job table.
   ///
-  /// \param id An unused value. TODO(rkn): Should this be removed?
   /// \param job_data Data associated with a job table event.
   /// \return Void.
-  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
+  void HandleJobTableUpdate(const std::vector<JobTableData> &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
@@ -400,6 +399,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The connection for the worker.
   /// \return Void.
   void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
+
+  std::shared_ptr<JobTableData> CreateJobTableData(
+      const JobID &job_id, bool is_dead, int64_t timestamp,
+      const std::string &node_manager_address, int64_t driver_pid);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client

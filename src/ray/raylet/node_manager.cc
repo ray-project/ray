@@ -224,13 +224,11 @@ ray::Status NodeManager::RegisterGcs() {
       /*subscribe_callback=*/nullptr,
       /*done_callback=*/nullptr));
 
-  // Subscribe to driver table updates.
-  const auto job_table_handler = [this](gcs::RedisGcsClient *client, const JobID &job_id,
-                                        const std::vector<JobTableData> &job_data) {
-    HandleJobTableUpdate(job_id, job_data);
+  // Subscribe to job updates.
+  const auto job_sub_handler = [this](const std::vector<JobTableData> &job_data) {
+    HandleJobTableUpdate(job_data);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->job_table().Subscribe(JobID::Nil(), ClientID::Nil(),
-                                                       job_table_handler, nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncSubscribe(job_sub_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
@@ -261,8 +259,7 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   });
 }
 
-void NodeManager::HandleJobTableUpdate(const JobID &id,
-                                       const std::vector<JobTableData> &job_data) {
+void NodeManager::HandleJobTableUpdate(const std::vector<JobTableData> &job_data) {
   for (const auto &entry : job_data) {
     RAY_LOG(DEBUG) << "HandleJobTableUpdate " << JobID::FromBinary(entry.job_id()) << " "
                    << entry.is_dead();
@@ -849,9 +846,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     status = worker_pool_.RegisterDriver(std::move(worker));
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
-      RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-          job_id, /*is_dead=*/false, std::time(nullptr),
-          initial_config_.node_manager_address, message->worker_pid()));
+      auto job_info_ptr =
+          CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
+                             nitial_config_.node_manager_address, message->worker_pid());
+      RAY_CHECK_OK(gcs_client_->Jobs().AsyncRegister(job_info_ptr, nullptr);
     }
   }
 }
@@ -1025,11 +1023,12 @@ void NodeManager::ProcessDisconnectClientMessage(
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
-    const auto driver_id = ComputeDriverIdFromJob(job_id);
     RAY_CHECK(!job_id.IsNil());
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        job_id, /*is_dead=*/true, std::time(nullptr),
-        initial_config_.node_manager_address, worker->Pid()));
+    auto job_info_ptr =
+        CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr),
+                           nitial_config_.node_manager_address, worker->Pid());
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncUpdate(job_info_ptr, nullptr));
+    const auto driver_id = ComputeDriverIdFromJob(job_id);
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
@@ -1042,6 +1041,18 @@ void NodeManager::ProcessDisconnectClientMessage(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
+}
+
+std::shared_ptr<JobTableData> NodeManager::CreateJobTableData(
+    const JobID &job_id, bool is_dead, int64_t timestamp,
+    const std::string &node_manager_address, int64_t driver_pid) {
+  auto job_info = std::make_shared<JobTableData>();
+  job_info->set_job_id(job_id.Binary());
+  job_info->set_is_dead(is_dead);
+  job_info->set_timestamp(timestamp);
+  job_info->set_node_manager_address();
+  job_info->set_driver_pid(driver_pid);
+  return job_info;
 }
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {

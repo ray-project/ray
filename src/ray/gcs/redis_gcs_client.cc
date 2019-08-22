@@ -112,33 +112,37 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
                                              /*password=*/options_.password_));
   }
 
-  actor_table_.reset(new ActorTable({primary_context_}, this));
-
-  // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
-  // We will use NodeID instead of ClientID.
-  // For worker/driver, it might not have this field(NodeID).
-  // For raylet, NodeID should be initialized in raylet layer(not here).
-  client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
-
-  error_table_.reset(new ErrorTable({primary_context_}, this));
-  job_table_.reset(new JobTable({primary_context_}, this));
-  heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
-  // Tables below would be sharded.
-  object_table_.reset(new ObjectTable(shard_contexts_, this));
-  raylet_task_table_.reset(
-      new raylet::TaskTable(shard_contexts_, this, options_.command_type_));
-  task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
-  task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
-  heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
-  profile_table_.reset(new ProfileTable(shard_contexts_, this));
-  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
-  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
-  resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
-
-  actor_accessor_.reset(new ActorStateAccessor(*this));
-
   Status status = Attach(io_service);
   is_connected_ = status.ok();
+
+  if (is_connected_) {
+    actor_table_.reset(new ActorTable({primary_context_}, this));
+
+    // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
+    // We will use NodeID instead of ClientID.
+    // For worker/driver, it might not have this field(NodeID).
+    // For raylet, NodeID should be initialized in raylet layer(not here).
+    client_table_.reset(
+        new ClientTable({primary_context_}, this, ClientID::FromRandom()));
+
+    error_table_.reset(new ErrorTable({primary_context_}, this));
+    job_table_.reset(new JobTable({primary_context_}, this));
+    heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
+    // Tables below would be sharded.
+    object_table_.reset(new ObjectTable(shard_contexts_, this));
+    raylet_task_table_.reset(
+        new raylet::TaskTable(shard_contexts_, this, options_.command_type_));
+    task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
+    task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
+    heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
+    profile_table_.reset(new ProfileTable(shard_contexts_, this));
+    actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
+    actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
+    resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
+
+    actor_accessor_.reset(new ActorStateAccessor(*this));
+    job_accessor_.reset(new JobStateAccessor(*this));
+  }
 
   // TODO(micafan): Synchronously register node and look up existing nodes here
   // for this client is Raylet.

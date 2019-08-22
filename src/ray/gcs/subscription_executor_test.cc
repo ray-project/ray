@@ -9,17 +9,20 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable> ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>
+      ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
     actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
 
-    subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
-      const auto it = id_to_data_.find(id);
-      ASSERT_TRUE(it != id_to_data_.end());
-      --sub_pending_count_;
+    subscribe_ = [this](const ActorID &id, const std::vector<ActorTableData> &data) {
+      if (!data.empty()) {
+        const auto it = id_to_data_.find(id);
+        ASSERT_TRUE(it != id_to_data_.end());
+        --sub_pending_count_;
+      }
     };
 
     sub_done_ = [this](Status status) {
@@ -42,7 +45,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
 
  protected:
   virtual void GenTestData() {
-    for (size_t i = 0; i < 2; ++i) {
+    for (size_t i = 0; i < 100; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       actor->set_max_reconstructions(1);
       actor->set_remaining_reconstructions(1);
@@ -77,7 +80,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   std::atomic<int> do_sub_pending_count_{0};
   std::atomic<int> do_unsub_pending_count_{0};
 
-  SubscribeCallback<ActorID, ActorTableData> subscribe_{nullptr};
+  SubscribePairCallback<ActorID, std::vector<ActorTableData>> subscribe_{nullptr};
   StatusCallback sub_done_{nullptr};
   StatusCallback unsub_done_{nullptr};
 };
@@ -123,6 +126,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeOneWithClientIDTest) {
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   ASSERT_TRUE(status.ok());
   AsyncRegisterActorToGcs();
+  WaitPendingDone(pending_count_, wait_pending_timeout_);
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 
