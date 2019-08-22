@@ -27,7 +27,7 @@ For context, when using Ray, several processes are involved.
   that it can submit tasks to its raylet and get objects from the object
   store, but it is different in that the raylet will not assign tasks to
   the driver to be executed.
-- A **Redis server** maintains much of the system's state. For example, it keeps
+- Multiple **Redis servers** maintain much of the system's state. For example, it keeps
   track of which objects live on which machines and of the task specifications
   (but not data). It can also be queried directly for debugging purposes.
 
