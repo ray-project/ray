@@ -18,8 +18,10 @@ Status ActorStateAccessor::AsyncGet(
     boost::optional<ActorTableData> result;
     if (!data.empty()) {
       result = data.back();
+      callback(Status::OK(), result);
+    } else {
+      callback(Status::Invalid("Actor not exist."), result);
     }
-    callback(Status::OK(), result);
   };
 
   ActorTable &actor_table = client_impl_.actor_table();
