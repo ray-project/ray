@@ -38,7 +38,7 @@ def get_default_fixture_ray_kwargs():
     internal_config = get_default_fixure_internal_config()
     ray_kwargs = {
         "num_cpus": 1,
-        "object_store_memory": 10**8,
+        "object_store_memory": 150 * 1024 * 1024,
         "_internal_config": internal_config,
     }
     return ray_kwargs

@@ -936,7 +936,7 @@ class Worker(object):
         try:
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
-            self.memory_monitor.raise_if_low_memory()
+                self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments"):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -957,6 +957,20 @@ class Worker(object):
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
+                    worker_name = "ray_{}_{}".format(
+                        self.actors[key].__class__.__name__, os.getpid())
+                    if "memory" in task.required_resources():
+                        self.memory_monitor.set_heap_limit(
+                            worker_name,
+                            ray_constants.from_memory_units(
+                                task.required_resources()["memory"]))
+                    if "object_store_memory" in task.required_resources():
+                        self._set_plasma_client_options(
+                            worker_name,
+                            int(
+                                ray_constants.from_memory_units(
+                                    task.required_resources()[
+                                        "object_store_memory"])))
                     outputs = function_executor(dummy_return_id,
                                                 self.actors[key], *arguments)
         except Exception as e:
@@ -985,6 +999,22 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
+
+    def _set_plasma_client_options(self, client_name, object_store_memory):
+        try:
+            logger.debug("Setting plasma memory limit to {} for {}".format(
+                object_store_memory, client_name))
+            self.plasma_client.set_client_options(client_name,
+                                                  object_store_memory)
+        except pyarrow._plasma.PlasmaStoreFull:
+            raise memory_monitor.RayOutOfMemoryError(
+                "Failed to set object_store_memory={} for {}. The "
+                "plasma store may have insufficient memory remaining "
+                "to satisfy this limit (30% of object store memory is "
+                "permanently reserved for shared usage). The current "
+                "object store memory status is:\n\n{}".format(
+                    object_store_memory, client_name,
+                    self.plasma_client.debug_string()))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1050,6 +1080,7 @@ class Worker(object):
             title = "ray_{}:{}()".format(actor.__class__.__name__,
                                          function_name)
             next_title = "ray_{}".format(actor.__class__.__name__)
+
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
                 self._process_task(task, execution_info)
@@ -1265,8 +1296,10 @@ def init(redis_address=None,
          address=None,
          num_cpus=None,
          num_gpus=None,
-         resources=None,
+         memory=None,
          object_store_memory=None,
+         resources=None,
+         driver_object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
          node_ip_address=None,
@@ -1321,14 +1354,17 @@ def init(redis_address=None,
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        memory: The amount of memory (in bytes) that is available for use by
+            workers requesting memory resources. By default, this is autoset
+            based on available system memory.
         object_store_memory: The amount of memory (in bytes) to start the
-            object store with. By default, this is capped at 20GB but can be
-            set higher.
+            object store with. By default, this is autoset based on available
+            system memory, subject to a 20GB cap.
         redis_max_memory: The max amount of memory (in bytes) to allow each
             redis shard to use. Once the limit is exceeded, redis will start
             LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables). By default, this is
-            capped at 10GB but can be set higher.
+            tables (task, object, and profile tables).  By default, this is
+            autoset based on available system memory, subject to a 10GB cap.
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
@@ -1339,6 +1375,9 @@ def init(redis_address=None,
             drivers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
+        driver_object_store_memory (int): Limit the amount of memory the driver
+            can use in the object store for creating objects. By default, this
+            is autoset based on available system memory, subject to a 20GB cap.
         ignore_reinit_error: True if we should suppress errors from calling
             ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to
@@ -1440,6 +1479,7 @@ def init(redis_address=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
+            memory=memory,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,
             plasma_store_socket_name=plasma_store_socket_name,
@@ -1467,6 +1507,9 @@ def init(redis_address=None,
         if redis_max_clients is not None:
             raise Exception("When connecting to an existing cluster, "
                             "redis_max_clients must not be provided.")
+        if memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "memory must not be provided.")
         if object_store_memory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "object_store_memory must not be provided.")
@@ -1508,6 +1551,7 @@ def init(redis_address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
+        driver_object_store_memory=driver_object_store_memory,
         job_id=job_id)
 
     for hook in _post_init_hooks:
@@ -1765,6 +1809,7 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
+            driver_object_store_memory=None,
             job_id=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1775,6 +1820,8 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
+        driver_object_store_memory: Limit the amount of memory the driver can
+            use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1917,6 +1964,10 @@ def connect(node,
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
+
+    if driver_object_store_memory is not None:
+        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
+                                          driver_object_store_memory)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -2426,6 +2477,8 @@ def get_global_worker():
 def make_decorator(num_return_vals=None,
                    num_cpus=None,
                    num_gpus=None,
+                   memory=None,
+                   object_store_memory=None,
                    resources=None,
                    max_calls=None,
                    max_reconstructions=None,
@@ -2439,8 +2492,8 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, resources,
-                num_return_vals, max_calls)
+                function_or_class, num_cpus, num_gpus, memory,
+                object_store_memory, resources, num_return_vals, max_calls)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -2451,7 +2504,8 @@ def make_decorator(num_return_vals=None,
                                 "actors.")
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     resources, max_reconstructions)
+                                     memory, object_store_memory, resources,
+                                     max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2523,15 +2577,21 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', "
-                    "or 'max_reconstructions', like "
+                    "'memory', 'object_store_memory', 'resources', "
+                    "'max_calls', or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
-            "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "max_reconstructions"
+            "num_return_vals",
+            "num_cpus",
+            "num_gpus",
+            "memory",
+            "object_store_memory",
+            "resources",
+            "max_calls",
+            "max_reconstructions",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2549,11 +2609,15 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     max_reconstructions = kwargs.get("max_reconstructions")
+    memory = kwargs.get("memory")
+    object_store_memory = kwargs.get("object_store_memory")
 
     return make_decorator(
         num_return_vals=num_return_vals,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
+        memory=memory,
+        object_store_memory=object_store_memory,
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
