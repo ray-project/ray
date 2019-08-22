@@ -11,7 +11,7 @@ Ray
 
 *Ray is a fast and simple framework for building and running distributed applications.*
 
-Ray comes with libraries that accelerate deep learning and reinforcement learning development:
+Ray is packaged with the following libraries for accelerating machine learning workloads:
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning

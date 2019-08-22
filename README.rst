@@ -11,9 +11,10 @@
 
 |
 
+
 **Ray is a fast and simple framework for building and running distributed applications.**
 
-Ray comes with libraries that accelerate deep learning and reinforcement learning development:
+Ray is packaged with the following libraries for accelerating machine learning workloads:
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
@@ -31,6 +32,7 @@ Quick Start
 
 .. code-block:: python
 
+    import ray
     ray.init()
 
     @ray.remote
@@ -67,7 +69,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-See more details in the `Cluster Launch page <autoscaling.html>`_.
+See more details in the `Cluster Launch page <https://ray.readthedocs.io/en/latest/autoscaling.html>`_.
 
 Tune Quick Start
 ----------------
@@ -85,10 +87,32 @@ Tune Quick Start
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
 
-.. literalinclude:: ../../python/ray/tune/tests/example.py
-   :language: python
-   :start-after: __quick_start_begin__
-   :end-before: __quick_start_end__
+.. code-block:: python
+
+
+    import torch.optim as optim
+    from ray import tune
+    from ray.tune.examples.mnist_pytorch import (
+        get_data_loaders, ConvNet, train, test)
+
+
+    def train_mnist(config):
+        train_loader, test_loader = get_data_loaders()
+        model = ConvNet()
+        optimizer = optim.SGD(model.parameters(), lr=config["lr"])
+        for i in range(10):
+            train(model, optimizer, train_loader)
+            acc = test(model, test_loader)
+            tune.track.log(mean_accuracy=acc)
+
+
+    analysis = tune.run(
+        train_mnist, config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
+
+    print("Best config: ", analysis.get_best_config(metric="mean_accuracy"))
+
+    # Get a dataframe for analyzing trial results.
+    df = analysis.dataframe()
 
 If TensorBoard is installed, automatically visualize all trial results:
 

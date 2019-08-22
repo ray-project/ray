@@ -52,22 +52,22 @@ Then, separately, on each machine:
 .. code-block::
 
     # Node 1: *(IP: 192.168.1.1, and has a free port: 1234)*
-    >>> python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
+    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
                --nnodes=4 --node_rank=0 --master_addr="192.168.1.1"
                --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
                and all other arguments of your training script)
     # Node 2:
-    >>> python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
+    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
                --nnodes=4 --node_rank=1 --master_addr="192.168.1.1"
                --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
                and all other arguments of your training script)
     # Node 3:
-    >>> python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
+    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
                --nnodes=4 --node_rank=2 --master_addr="192.168.1.1"
                --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
                and all other arguments of your training script)
     # Node 4:
-    >>> python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
+    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
                --nnodes=4 --node_rank=3 --master_addr="192.168.1.1"
                --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
                and all other arguments of your training script)
