@@ -10,7 +10,7 @@ If you are training a deep network in the distributed setting, you may need to
 ship your deep network between processes (or machines). However, shipping the model is not always straightforward.
 
 .. tip::
-  Avoid sending the Tensorflow model directly. A straightforward attempt to pickle a TensorFlow graph gives mixed results.  Furthermore, creating a TensorFlow graph can take tens of seconds, and so serializing a graph and recreating it in another process will be inefficient.
+  Avoid sending the Tensorflow model directly. A straightforward attempt to pickle a TensorFlow graph gives mixed results. Furthermore, creating a TensorFlow graph can take tens of seconds, and so serializing a graph and recreating it in another process will be inefficient.
 
 It is recommended to replicate the same TensorFlow graph on each worker once
 at the beginning and then to ship only the weights between the workers.
@@ -23,12 +23,15 @@ TensorFlow documentation).
    :start-after: __tf_model_start__
    :end-before: __tf_model_end__
 
-It is strongly recommended you create actors to handle this:
+It is strongly recommended you create actors to handle this. To do this, first initialize
+ray and define an Actor class:
 
 .. literalinclude:: ../examples/tf_example.py
    :language: python
    :start-after: __ray_start__
    :end-before: __ray_end__
+
+Then, we can instantiate this actor and train it on the separate process:
 
 .. literalinclude:: ../examples/tf_example.py
    :language: python
@@ -36,13 +39,8 @@ It is strongly recommended you create actors to handle this:
    :end-before: __actor_end__
 
 
-Distributed Weight Averaging
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Putting this all together, we would first embed the graph in an actor. We would then use those methods to ship the weights
-(as a dictionary of variable names mapping to numpy arrays) between the
-processes without shipping the actual TensorFlow graphs, which are much more
-complex Python objects.
+We can then use ``set_weights`` and ``get_weights`` to move the weights of the neural network
+around. This allows us to manipulate weights between different models running in parallel without shipping the actual TensorFlow graphs, which are much more complex Python objects.
 
 
 .. literalinclude:: ../examples/tf_example.py
@@ -50,9 +48,29 @@ complex Python objects.
    :start-after: __weight_average_start__
 
 
-
 Lower-level TF Utilities
 ------------------------
+Given a low-level TF definition:
+
+.. code-block:: python
+
+  import tensorflow as tf
+  import numpy as np
+
+  x_data = tf.placeholder(tf.float32, shape=[100])
+  y_data = tf.placeholder(tf.float32, shape=[100])
+
+  w = tf.Variable(tf.random_uniform([1], -1.0, 1.0))
+  b = tf.Variable(tf.zeros([1]))
+  y = w * x_data + b
+
+  loss = tf.reduce_mean(tf.square(y - y_data))
+  optimizer = tf.train.GradientDescentOptimizer(0.5)
+  grads = optimizer.compute_gradients(loss)
+  train = optimizer.apply_gradients(grads)
+
+  init = tf.global_variables_initializer()
+  sess = tf.Session()
 
 To extract the weights and set the weights, you can use the following helper
 method.
@@ -70,6 +88,7 @@ network as follows.
 
 .. code-block:: python
 
+  sess = tf.Session()
   # First initialize the weights.
   sess.run(init)
   # Get the weights
@@ -89,6 +108,9 @@ unmanageably large over time.
 
 .. autoclass:: ray.experimental.tf_utils.TensorFlowVariables
    :members:
+
+.. note:: This may not work with `tf.Keras`.
+
 
 
 Troubleshooting
