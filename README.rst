@@ -18,14 +18,9 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <distributed_training.html>`__
+- `Distributed Training <https://ray.readthedocs.io/en/latest/distributed_training.html>`__
 
-Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation page <installation.html>`__.
-
-View the `codebase on GitHub`_.
-
-.. _`codebase on GitHub`: https://github.com/ray-project/ray
-
+Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation page <https://ray.readthedocs.io/en/latest/installation.html>`__.
 
 Quick Start
 -----------
@@ -76,7 +71,17 @@ Read more about `launching clusters <https://ray.readthedocs.io/en/latest/autosc
 Tune Quick Start
 ----------------
 
-`Tune`_ is a scalable framework for hyperparameter search built on top of Ray with a focus on deep learning and deep reinforcement learning.
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/tune.png
+    :scale: 30%
+    :align: center
+
+`Tune`_ is a library for hyperparameter tuning at any scale.
+
+  * Launch a multi-node distributed asynchronous hyperparameter sweep in less than 10 lines of code.
+  * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+  * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
+  * Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
 .. note::
 
@@ -87,7 +92,7 @@ Tune Quick Start
         $ pip install ray torch torchvision filelock
 
 
-This example runs a small grid search to train a CNN using PyTorch and Tune.
+This example runs a parallel asynchronous grid search to train a CNN using PyTorch and Tune.
 
 .. code-block:: python
 
@@ -122,7 +127,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 
     tensorboard --logdir ~/ray_results
 
-.. _`Tune`: tune.html
+.. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
 
 RLlib Quick Start
 -----------------
@@ -166,7 +171,7 @@ RLlib Quick Start
             "num_workers": 4,
             "env_config": {"corridor_length": 5}})
 
-.. _`RLlib`: rllib.html
+.. _`RLlib`: https://ray.readthedocs.io/en/latest/rllib.html
 
 
 More Information
