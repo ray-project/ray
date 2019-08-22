@@ -21,6 +21,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
   friend class JobStateAccessor;
   friend class SubscriptionExecutorTest;
+  friend void TestLogSubscribeAll(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
+  friend void TestLogSubscribeId(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
+  friend void TestLogSubscribeCancel(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
 
  public:
   /// Constructor of RedisGcsClient.
@@ -54,8 +57,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   ActorCheckpointIdTable &actor_checkpoint_id_table();
   DynamicResourceTable &resource_table();
 
-  JobTable &job_table();
-
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
 
@@ -80,6 +81,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// Use method Actors() instead.
   ActorTable &actor_table();
   /// Use method Jobs() instead.
+  JobTable &job_table();
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
