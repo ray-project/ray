@@ -1,7 +1,6 @@
 package org.ray.runtime.util.generator;
 
 import java.io.IOException;
-import org.ray.api.function.RayFunc;
 import org.ray.runtime.util.FileUtil;
 
 /**
