@@ -73,14 +73,11 @@ class RpcServer {
   std::string unix_socket_path_;
 };
 
-/// Base class that represents an abstract gRPC service.
+/// Base class that represents an abstract RPC service.
 ///
-/// Subclass should implement `InitServerCallFactories` to decide
-/// which kinds of requests this service should accept.
 class RpcService {
  protected:
-
-  /// Destruct this gRPC service.
+  /// Destruct this RPC service.
   virtual ~RpcService() {}
 };
 

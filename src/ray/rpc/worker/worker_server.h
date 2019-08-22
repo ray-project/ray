@@ -79,7 +79,7 @@ class WorkerTaskAsioRpcService : public AsioRpcService {
 
     // Initialize the Factory for `PushTask` requests.
     std::shared_ptr<ServiceMethod> assign_task_call_method(
-        new ServerCallMethodImpl<WorkerTaskHandler, AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
+        new ServiceMethodImpl<WorkerTaskHandler, AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
             service_type_,
             WorkerTaskServiceMessageType::AssignTaskRequestMessage,
             WorkerTaskServiceMessageType::AssignTaskReplytMessage,

@@ -17,7 +17,7 @@ namespace rpc {
 class ServiceMethod;
 class AsioRpcService;
 
-using ServiceHandler = std::function<void (const std::shared_ptr<TcpClientConnection> &client,
+using ServiceMessageHandler = std::function<void (const std::shared_ptr<TcpClientConnection> &client,
     int64_t message_type, uint64_t length, const uint8_t *message_data)>;
 
 /// Class that represents an asio based rpc server.
@@ -25,7 +25,7 @@ using ServiceHandler = std::function<void (const std::shared_ptr<TcpClientConnec
 /// An `AsioRpcServer` listens on a specific port. 
 ///
 /// Subclasses can register one or multiple services to a `AsioRpcServer`, see
-/// `RegisterServices`. And they should also implement `InitServerCallFactories` to decide
+/// `RegisterServices`. And they should also implement `InitMethodHandlers` to decide
 /// which kinds of requests this server should accept.
 class AsioRpcServer : public RpcServer {
  public:
@@ -34,10 +34,11 @@ class AsioRpcServer : public RpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
+  /// \param[in] io_service The io service to process requests.
   AsioRpcServer(std::string name, const uint32_t port, boost::asio::io_service &io_service)
       : RpcServer(name, port), io_service_(io_service) {}
 
-  /// Destruct this gRPC server.
+  /// Destruct this asio RPC server.
   ~AsioRpcServer() { Shutdown(); }
 
   /// Initialize and run this server.
@@ -51,23 +52,43 @@ class AsioRpcServer : public RpcServer {
     }
   }
 
-  /// Register a grpc service. Multiple services can be registered to the same server.
-  /// Note that the `service` registered must remain valid for the lifetime of the
-  /// `AsioRpcServer`, as it holds the underlying `grpc::Service`.
+  /// Register a rpc service. Multiple services can be registered to the same server.
   ///
-  /// \param[in] service A `GrpcService` to register to this server.
+  /// \param[in] service An `AsioRpcService` to register to this server.
   void RegisterService(AsioRpcService &service);
 
  protected:
-  
+    /// Accept a client connection.
     void DoAcceptTcp();
+    /// Handle an accepted client connection.
     void HandleAcceptTcp(const boost::system::error_code &error);
 
+  /// Process a message from a client. This method is responsible for
+  /// explicitly listening for more messages from the client if the client is
+  /// still alive.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_type The message type (e.g., a flatbuffer enum).
+  /// \param length The length of the message data.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
     void ProcessClientMessage(
         const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
         uint64_t length, const uint8_t *message_data);
+  /// Process client message of ConnectClient.
+  ///
+  /// \param client The client that sent the message.
+  /// \param length The length of the message data.  
+  /// \param message_data A pointer to the message data.
+  /// \return Void.        
     void ProcessConnectClientMessage(
         const std::shared_ptr<TcpClientConnection> &client, uint64_t length, const uint8_t *message_data);
+  /// Handle a client that has disconnected. This can be called multiple times
+  /// on the same client because this is triggered both when a client
+  /// disconnects and when the node manager fails to write a message to the
+  /// client.
+  ///
+  /// \param client The client that sent the message.      
     void ProcessDisconnectClientMessage(
         const std::shared_ptr<TcpClientConnection> &client);
 
@@ -77,13 +98,14 @@ class AsioRpcServer : public RpcServer {
   std::unique_ptr<boost::asio::ip::tcp::acceptor> tcp_acceptor_;
   /// The socket to listen on for new tcp clients.
   std::unique_ptr<boost::asio::ip::tcp::socket> tcp_socket_;
-
-  EnumUnorderedMap<rpc::RpcServiceType, ServiceHandler> service_handlers_;
+  /// Map from the rpc service type to the handler function for the requests from
+  /// this service.
+  EnumUnorderedMap<rpc::RpcServiceType, ServiceMessageHandler> service_handlers_;
 };
 
-/// Base class that represents an abstract gRPC service.
+/// Asio based RPC service.
 ///
-/// Subclass should implement `InitServerCallFactories` to decide
+/// Subclass should implement `InitMethodHandlers` to decide
 /// which kinds of requests this service should accept.
 class AsioRpcService : public RpcService {
  public:
@@ -99,50 +121,55 @@ class AsioRpcService : public RpcService {
 
   rpc::RpcServiceType GetServiceType() const { return service_type_; }
 
-  /// Subclasses should implement this method to initialize the `ServerCallFactory`
-  /// instances, as well as specify maximum number of concurrent requests that gRPC
-  /// server can handle.
+  /// Subclasses should implement this method to initialize the `ServiceMethod`
+  /// instances.
   ///
   /// \param[in] cq The grpc completion queue.
-  /// \param[out] server_call_factories_and_concurrencies The `ServerCallFactory` objects,
-  /// and the maximum number of concurrent requests that this gRPC server can handle.
+  /// \param[out] server_call_methods The `ServiceMethod` objects.
   virtual void InitMethodHandlers(
       std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) = 0;
 
  protected:
+  /// RPC service type.
   rpc::RpcServiceType service_type_;
 };
 
+/// A method of a service that can be called. 
 class ServiceMethod {
  public:
+  /// Returns the type of the request for this method.
   virtual int GetRequestType() const = 0;
 
+  /// Process a request of specific type from a client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param length The length of the message data.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
   virtual void HandleRequest(const std::shared_ptr<TcpClientConnection> &client,
                      int64_t length, const uint8_t *message_data) = 0;
 };
 
-// Implementation of `ServerCallFactory`
+// Implementation of `ServiceMethod`.
 ///
-/// \tparam GrpcService Type of the gRPC-generated service class.
-/// \tparam ServiceHandler Type of the handler that handles the request.
+/// \tparam ServiceMessageHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply, class MessageType>
-class ServerCallMethodImpl : public ServiceMethod {
+/// \tparam Reply Enum type for request/reply message.
+template <class ServiceMessageHandler, class Request, class Reply, class MessageType>
+class ServiceMethodImpl : public ServiceMethod {
 
  public:
   /// Constructor.
   ///
-  /// \param[in] service The gRPC-generated `AsyncService`.
-  /// \param[in] request_call_function Pointer to the `AsyncService::RequestMethod`
-  //  function.
+  /// \param[in] service_type The type of the RPC service that this method belongs to.
+  /// \param[in] request_type Enum message type for request of this method.
+  /// \param[in] reply_type Enum message type for reply of this method.  
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
-  /// \param[in] cq The `CompletionQueue`.
-  /// \param[in] io_service The event loop.
-  ServerCallMethodImpl(RpcServiceType service_type, MessageType request_type, MessageType reply_type,
-      ServiceHandler &service_handler,
-      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function)
+  ServiceMethodImpl(RpcServiceType service_type, MessageType request_type, MessageType reply_type,
+      ServiceMessageHandler &service_handler,
+      HandleRequestFunction<ServiceMessageHandler, Request, Reply> handle_request_function)
       : service_type_(service_type),
         request_type_(request_type),
         reply_type_(reply_type),
@@ -151,6 +178,12 @@ class ServerCallMethodImpl : public ServiceMethod {
  
   int GetRequestType() const override { return static_cast<int>(request_type_); }
 
+  /// Process a request of this method from a client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param length The length of the message data.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
   void HandleRequest(const std::shared_ptr<TcpClientConnection> &client,
                      int64_t length, const uint8_t *message_data) override {
 
@@ -202,15 +235,16 @@ class ServerCallMethodImpl : public ServiceMethod {
   }
 
  private:
+  /// Enum type for the RPC service.
   rpc::RpcServiceType service_type_; 
   /// Enum type for request message.
   MessageType request_type_;
   /// Enum type for reply message.
   MessageType reply_type_;
   /// The service handler that handles the request.
-  ServiceHandler &service_handler_;
+  ServiceMessageHandler &service_handler_;
   /// Pointer to the service handler function.
-  HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
+  HandleRequestFunction<ServiceMessageHandler, Request, Reply> handle_request_function_;
 };
 
 }  // namespace rpc

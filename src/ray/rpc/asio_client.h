@@ -13,7 +13,7 @@
 namespace ray {
 namespace rpc {
 
-
+/// Class that represents a RPC client.
 class RpcClient {
  public:
   explicit RpcClient(rpc::RpcServiceType service_type,
@@ -23,12 +23,11 @@ class RpcClient {
       address_(address),
       port_(port) {}
 
-  /// Destruct this gRPC server.
+  /// Destruct this RPC client.
   virtual ~RpcClient() {}
 
-  virtual Status Connect() = 0;
-
  protected:
+  /// Type of the RPC service.
   const rpc::RpcServiceType service_type_;
   /// Name of this client, used for logging and debugging purpose.
   const std::string name_;
@@ -56,7 +55,7 @@ class AsioRpcClient : public RpcClient {
       request_id_(0),
       is_connected_(false) {}
 
-  Status Connect() override;
+  Status Connect();
 
   /// Create a new `ClientCall` and send request.
   ///

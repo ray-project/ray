@@ -102,6 +102,8 @@ void AsioRpcServer::ProcessConnectClientMessage(
                 << GenerateEnumName(RpcServiceType, service_type);
   auto iter = service_handlers_.find(service_type);
   if (iter != service_handlers_.end()) {
+    // Override the handler for the connection to the handler
+    // of the specific service.
     client->SetHandler(iter->second);
 
   } else {
@@ -111,7 +113,7 @@ void AsioRpcServer::ProcessConnectClientMessage(
 
 void AsioRpcServer::ProcessDisconnectClientMessage(
     const std::shared_ptr<TcpClientConnection> &client) {
-  // TODO: fill this in!
+  // TODO: do we need to do anything here?
 }
 
 
@@ -142,7 +144,8 @@ void AsioRpcServer::RegisterService(AsioRpcService &service) {
       }
     }
 
-    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
+    RAY_LOG(FATAL) << "Received unexpected message type " << message_type
+                   << " for service " << rpc::RpcServiceType_Name(service_type);
   };
 
   service_handlers_.emplace(service.GetServiceType(), service_handler);
