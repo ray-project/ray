@@ -202,7 +202,6 @@ public class RunManager {
       try (FileUtil.TempFile redisModuleFile = FileUtil.getTempFileFromResource(
           "libray_redis_module.so")) {
         redisServerFile.getFile().setExecutable(true);
-        redisModuleFile.getFile().setExecutable(true);
         List<String> command = Lists.newArrayList(
             // The redis-server executable file.
             redisServerFile.getFile().getAbsolutePath(),

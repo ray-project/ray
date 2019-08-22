@@ -10,24 +10,18 @@ import java.nio.file.StandardCopyOption;
 
 public class FileUtil {
 
+  /**
+   * Represents a temp file.
+   *
+   * This class implements the `AutoCloseable` interface. It can be used in a `try-with-resource`
+   * block. When exiting the block, the temp file will be automatically removed.
+   */
   public static class TempFile implements AutoCloseable {
 
     File file;
 
-    TempFile(String resourceFileName) {
-      try {
-        file = File.createTempFile(resourceFileName, "");
-      } catch (IOException e) {
-        throw new RuntimeException("Couldn't create temp file " + resourceFileName, e);
-      }
-
-      try (InputStream in = FileUtil.class.getResourceAsStream("/" + resourceFileName)) {
-        Preconditions.checkNotNull(in, "{} doesn't exist.", resourceFileName);
-        Files.copy(in, Paths.get(file.getCanonicalPath()), StandardCopyOption.REPLACE_EXISTING);
-
-      } catch (IOException e) {
-        throw new RuntimeException("Couldn't get temp file from resource " + resourceFileName, e);
-      }
+    TempFile(File file) {
+      this.file = file;
     }
 
     public File getFile() {
@@ -40,8 +34,29 @@ public class FileUtil {
     }
   }
 
+  /**
+   * Get a temp file from resource.
+   *
+   * @param resourceFileName File name.
+   * @return A `TempFile` object.
+   */
   public static TempFile getTempFileFromResource(String resourceFileName) {
-    return new TempFile(resourceFileName);
+    File file;
+    try {
+      file = File.createTempFile(resourceFileName, "");
+    } catch (IOException e) {
+      throw new RuntimeException("Couldn't create temp file " + resourceFileName, e);
+    }
+
+    try (InputStream in = FileUtil.class.getResourceAsStream("/" + resourceFileName)) {
+      Preconditions.checkNotNull(in, "{} doesn't exist.", resourceFileName);
+      Files.copy(in, Paths.get(file.getCanonicalPath()), StandardCopyOption.REPLACE_EXISTING);
+
+    } catch (IOException e) {
+      throw new RuntimeException("Couldn't get temp file from resource " + resourceFileName, e);
+    }
+
+    return new TempFile(file);
   }
 }
 
