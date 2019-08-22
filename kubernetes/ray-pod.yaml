@@ -32,12 +32,12 @@ spec:
         value: "C.UTF-8"
       - name: LANG
         value: "C.UTF-8"
-      - name: MY_CPU_LIMIT
+      - name: MY_CPU_REQUEST
         valueFrom:
           resourceFieldRef:
             containerName: ray-worker
-            resource: limits.cpu
+            resource: requests.cpu
     resources:
       requests:
-        cpu: 100m
+        cpu: 1100m
         memory: 1Gi

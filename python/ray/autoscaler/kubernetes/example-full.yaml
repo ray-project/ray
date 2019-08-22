@@ -7,25 +7,17 @@ min_workers: 0
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 10
+max_workers: 2
 
 # The initial number of worker nodes to launch in addition to the head
 # node. When the cluster is first brought up (or when it is refreshed with a
 # subsequent `ray up`) this number of nodes will be started.
-initial_workers: 1
+initial_workers: 0
 
 # Whether or not to autoscale aggressively. If this is enabled, if at any point
 #   we would start more workers, we start at least enough to bring us to
 #   initial_workers.
 autoscaling_mode: aggressive
-
-# This executes all commands on all nodes in the docker container,
-# and opens all the necessary ports to support the Ray cluster.
-# Empty string means disabled.
-docker:
-    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
-    container_name: "" # e.g. ray_docker
-    run_options: []  # Extra options to pass into "docker run"
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -41,30 +33,82 @@ idle_timeout_minutes: 5
 provider:
     type: kubernetes
     use_internal_ips: true
+    namespace: ray
 
-# TODO
-# How Ray will authenticate with newly launched nodes.
-auth:
-    ssh_user: root
-    ssh_private_key: ~/.ssh/id_rsa
-
-# Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-# For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+# Provider-specific config for the head node, e.g. instance type.
 head_node:
-    cpu: 100m
-    memory: 1Gi
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        generateName: ray-head-
+    spec:
+        restartPolicy: Never
+        volumes:
+        - name: dshm
+          emptyDir:
+              medium: Memory
+        containers:
+        - name: ray-node
+          image: rayproject/autoscaler
+          command: ["/bin/bash", "-c", "--"]
+          args: ["trap : TERM INT; sleep infinity & wait;"]
+          ports:
+              - containerPort: 6379
+              - containerPort: 6380
+              - containerPort: 6381
+              - containerPort: 12345
+              - containerPort: 12346
+          volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+          resources:
+              requests:
+                  cpu: 100m
+                  memory: 1Gi
+          env:
+              - name: MY_CPU_REQUEST
+                valueFrom:
+                    resourceFieldRef:
+                        resource: requests.cpu
 
 # Provider-specific config for worker nodes, e.g. instance type.
 worker_nodes:
-    cpu: 100m
-    memory: 1Gi
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        name: ray-worker-
+    spec:
+        restartPolicy: Never
+        volumes:
+        - name: dshm
+          emptyDir:
+              medium: Memory
+        containers:
+        - name: ray-node
+          image: rayproject/autoscaler
+          command: ["/bin/bash", "-c", "--"]
+          args: ["trap : TERM INT; sleep infinity & wait;"]
+          ports:
+              - containerPort: 12345
+              - containerPort: 12346
+          volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+          resources:
+              requests:
+                  cpu: 100m
+                  memory: 1Gi
+          env:
+              - name: MY_CPU_REQUEST
+                valueFrom:
+                    resourceFieldRef:
+                        resource: requests.cpu
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
-    "/test": "/tmp/test",
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
 # List of commands that will be run before `setup_commands`. If docker is
@@ -73,9 +117,7 @@ file_mounts: {
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands: [
-  "push ray && git fetch && git checkout k8s && git reset --hard origin/k8s && popd"
-]
+setup_commands: []
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
@@ -86,9 +128,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=1 --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --num-cpus=1 --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

@@ -15,12 +15,8 @@ import time
 from threading import Thread
 from getpass import getuser
 
-from kubernetes import client, config
-from kubernetes.config.config_exception import ConfigException
-
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 from ray.autoscaler.log_timer import LogTimer
-from ray.autoscaler.kubernetes import RAY_NAMESPACE
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +35,14 @@ def with_interactive(cmd):
 
 
 class KubernetesCommandRunner(object):
-    def __init__(self, log_prefix, node_id, provider, auth_config,
-                 cluster_name, process_runner):
+    def __init__(self, log_prefix, namespace, node_id, auth_config,
+                 process_runner):
 
         self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = node_id
-        self.provider = provider
-        try:
-            config.load_incluster_config()
-        except ConfigException:
-            config.load_kube_config()
-        self.core_api = client.CoreV1Api()
-        self.kubectl = ["kubectl", "-n", RAY_NAMESPACE]
+        self.namespace = namespace
+        self.kubectl = ["kubectl", "-n", self.namespace]
 
     def run(self,
             cmd,
@@ -115,7 +106,7 @@ class KubernetesCommandRunner(object):
                     K8S_RSYNC,
                     "-avz",
                     source,
-                    "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, target),
+                    "{}@{}:{}".format(self.node_id, self.namespace, target),
                 ],
                 stdout=redirect,
                 stderr=redirect)
@@ -141,7 +132,7 @@ class KubernetesCommandRunner(object):
                 [
                     K8S_RSYNC,
                     "-avz",
-                    "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, source),
+                    "{}@{}:{}".format(self.node_id, self.namespace, source),
                     target,
                 ],
                 stdout=redirect,
@@ -326,7 +317,7 @@ class NodeUpdater(object):
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         if provider_config["type"] == "kubernetes":
             self.cmd_runner = KubernetesCommandRunner(
-                self.log_prefix, node_id, provider, auth_config, cluster_name,
+                self.log_prefix, provider.namespace, node_id, auth_config,
                 process_runner)
         else:
             use_internal_ip = (use_internal_ip or provider_config.get(
@@ -391,13 +382,14 @@ class NodeUpdater(object):
                 sync_cmd(local_path, remote_path, redirect=None)
 
     def wait_ready(self, deadline):
-        with LogTimer(self.log_prefix + "Got SSH"):
-            logger.info(self.log_prefix + "Waiting for SSH...")
+        with LogTimer(self.log_prefix + "Got remote shell"):
+            logger.info(self.log_prefix + "Waiting for remote shell...")
 
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 try:
-                    logger.debug(self.log_prefix + "Waiting for SSH...")
+                    logger.debug(self.log_prefix +
+                                 "Waiting for remote shell...")
 
                     # Setting redirect=False allows the user to see errors like
                     # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too

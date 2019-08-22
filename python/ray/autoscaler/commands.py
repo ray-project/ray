@@ -185,7 +185,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         elif not no_restart:
             confirm("This will restart cluster services", yes)
 
-        launch_hash = hash_launch_conf(config["head_node"], config["auth"])
+        launch_hash = hash_launch_conf(
+            config["head_node"], config["auth"] if "auth" in config else None)
         if head_node is None or provider.node_tags(head_node).get(
                 TAG_RAY_LAUNCH_CONFIG) != launch_hash:
             if head_node is not None:
@@ -248,7 +249,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             node_id=head_node,
             provider_config=config["provider"],
             provider=provider,
-            auth_config=config["auth"],
+            auth_config=config["auth"] if "auth" in config else None,
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             initialization_commands=config["initialization_commands"],
@@ -275,7 +276,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             "Head node up-to-date, IP address is: {}".format(head_node_ip))
 
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
-        use_docker = bool(config["docker"]["container_name"])
+        use_docker = "docker" in config and bool(
+            config["docker"]["container_name"])
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))

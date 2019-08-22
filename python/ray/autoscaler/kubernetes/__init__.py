@@ -1,1 +1,0 @@
-RAY_NAMESPACE = "ray"

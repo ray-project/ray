@@ -77,7 +77,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
-            "extra_config": (dict, OPTIONAL),  # provider-specific config
+            "namespace": (str, OPTIONAL),  # # k8s namespace, if using k8s
         },
         REQUIRED),
 
@@ -88,7 +88,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "ssh_private_key": (str, OPTIONAL),
             "kubernetes_config": (dict, OPTIONAL),
         },
-        REQUIRED),
+        OPTIONAL),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
@@ -619,7 +619,7 @@ class StandardAutoscaler(object):
             node_id=node_id,
             provider_config=self.config["provider"],
             provider=self.provider,
-            auth_config=self.config["auth"],
+            auth_config=self.config["auth"] if "auth" in self.config else None,
             cluster_name=self.config["cluster_name"],
             file_mounts={},
             initialization_commands=[],
@@ -654,7 +654,7 @@ class StandardAutoscaler(object):
             node_id=node_id,
             provider_config=self.config["provider"],
             provider=self.provider,
-            auth_config=self.config["auth"],
+            auth_config=self.config["auth"] if "auth" in self.config else None,
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
@@ -788,8 +788,10 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 
 
 def fillout_defaults(config):
+    config_copy = config.copy()
     defaults = get_default_config(config["provider"])
-    defaults.update(config)
+    config_copy["provider"].update(defaults["provider"])
+    defaults.update(config_copy)
     merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
     return defaults
