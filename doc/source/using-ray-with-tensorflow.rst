@@ -1,10 +1,10 @@
 Best Practices: Ray with Tensorflow
 ===================================
 
-This document describes best practices for using Ray with TensorFlow.
+This document describes best practices for using Ray with TensorFlow. Feel free to contribute if you think this document is missing anything.
 
-Use Actors for Distributed Models
----------------------------------
+Use Actors for Parallel Models
+------------------------------
 
 If you are training a deep network in the distributed setting, you may need to
 ship your deep network between processes (or machines). However, shipping the model is not always straightforward.
