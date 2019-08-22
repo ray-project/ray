@@ -34,13 +34,7 @@ class RpcClient {
   int port_;
 };
 
-/// Class that represents an asio based rpc server.
-///
-/// An `AsioRpcServer` listens on a specific port.
-///
-/// Subclasses can register one or multiple services to a `AsioRpcServer`, see
-/// `RegisterServices`. And they should also implement `InitServerCallFactories` to decide
-/// which kinds of requests this server should accept.
+/// Class that represents an asio based rpc client.
 class AsioRpcClient : public RpcClient {
  public:
   explicit AsioRpcClient(rpc::RpcServiceType service_type, const std::string &address,
@@ -48,23 +42,23 @@ class AsioRpcClient : public RpcClient {
       : RpcClient(service_type, RpcServiceType_Name(service_type), address, port),
         io_service_(io_service),
         request_id_(0),
-        is_connected_(false) {}
+        is_connected_(false) {
+    auto status = Connect();
+    is_connected_ = status.ok();
+  }
 
-  Status Connect();
-
-  /// Create a new `ClientCall` and send request.
+  /// Call a service method.
   ///
-  /// \tparam GrpcService Type of the gRPC-generated service class.
   /// \tparam Request Type of the request message.
   /// \tparam Reply Type of the reply message.
+  /// \tparam MessageType Enum type for request/reply message.
   ///
-  /// \param[in] stub The gRPC-generated stub.
-  /// \param[in] prepare_async_function Pointer to the gRPC-generated
-  /// `FooService::Stub::PrepareAsyncBar` function.
+  /// \param[in] request_type Enum message type for request of this method.
+  /// \param[in] reply_type Enum message type for reply of this method.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   ///
-  /// \return A `ClientCall` representing the request that was just sent.
+  /// \return Status.
   template <class Request, class Reply, class MessageType>
   Status CallMethod(MessageType request_type, MessageType reply_type,
                     const Request &request, const ClientCallback<Reply> &callback) {
@@ -139,6 +133,8 @@ class AsioRpcClient : public RpcClient {
   }
 
  protected:
+  Status Connect();
+
   void ProcessServerMessage(const std::shared_ptr<TcpClientConnection> &client,
                             int64_t message_type, uint64_t length,
                             const uint8_t *message_data);

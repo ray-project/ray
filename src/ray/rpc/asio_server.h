@@ -156,7 +156,7 @@ class ServiceMethod {
 /// \tparam ServiceMessageHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-/// \tparam Reply Enum type for request/reply message.
+/// \tparam MessageType Enum type for request/reply message.
 template <class ServiceMessageHandler, class Request, class Reply, class MessageType>
 class ServiceMethodImpl : public ServiceMethod {
  public:

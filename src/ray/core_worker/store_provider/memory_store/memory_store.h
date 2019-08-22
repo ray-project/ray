@@ -16,6 +16,7 @@ class CoreWorkerMemoryStore;
 /// actor call (see direct_actor_transport.cc).
 class CoreWorkerMemoryStore {
  public:
+
   CoreWorkerMemoryStore();
   ~CoreWorkerMemoryStore(){};
 
@@ -45,6 +46,10 @@ class CoreWorkerMemoryStore {
   void Delete(const std::vector<ObjectID> &object_ids);
 
  private:
+  static const std::string GetObjectExistError() {
+     return "object already exists in the memory store";
+  }
+
   /// Map from object ID to `RayObject`.
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
 
@@ -54,6 +59,8 @@ class CoreWorkerMemoryStore {
 
   /// Protect the two maps above.
   std::mutex lock_;
+
+  friend class CoreWorkerMemoryStoreProvider;
 };
 
 }  // namespace ray

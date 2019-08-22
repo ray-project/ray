@@ -86,9 +86,6 @@ class DirectActorAsioClient : public DirectActorClient, public AsioRpcClient {
   /// \return if the rpc call succeeds
   ray::Status PushTask(const PushTaskRequest &request,
                        const ClientCallback<PushTaskReply> &callback) override {
-    if (!is_connected_) {
-      RAY_RETURN_NOT_OK(Connect());
-    }
 
     return CallMethod<PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
         DirectActorServiceMessageType::PushTaskRequestMessage,

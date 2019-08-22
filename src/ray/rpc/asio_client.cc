@@ -48,8 +48,6 @@ Status AsioRpcClient::Connect() {
       static_cast<int64_t>(serialized_message.size()),
       reinterpret_cast<const uint8_t *>(serialized_message.data())));
 
-  is_connected_ = true;
-
   return Status::OK();
 }
 
@@ -95,6 +93,7 @@ void AsioRpcClient::ProcessDisconnectClientMessage(
   RAY_LOG(INFO) << "Received DiconnectClient message from server " << address_ << ":"
                 << port_ << ", service: " << name_;
 
+  // Mark is as not connected, so that further requests will be rejected with failure.
   is_connected_ = false;
 
   // Invoke all the callbacks that are pending replies, this is necessary so that

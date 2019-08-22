@@ -84,9 +84,6 @@ class WorkerTaskAsioClient : public WorkerTaskClient, public AsioRpcClient {
   /// \return if the rpc call succeeds
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) override {
-    if (!is_connected_) {
-      RAY_RETURN_NOT_OK(Connect());
-    }
 
     return CallMethod<AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
         WorkerTaskServiceMessageType::AssignTaskRequestMessage,
