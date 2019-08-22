@@ -10,25 +10,28 @@ It is very common for multiple Ray actors running PyTorch to have code that down
 
 .. code-block:: python
 
+    # This is running inside a Ray actor
+    # ...
     torch.utils.data.DataLoader(
         datasets.MNIST(
-            '../data', train=True, download=True,
+            "../data", train=True, download=True,
             transform=transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize((0.1307,), (0.3081,))
             ])),
         128, shuffle=True, **kwargs)
+    # ...
 
 This may cause different processes to simultaneously download the data and cause data corruption. One easy workaround for this is to use ``Filelock``:
 
 .. code-block:: python
 
-    from filelock import Filelock
+    from filelock import FileLock
 
-    with Filelock("../data.lock"):
+    with FileLock("./data.lock"):
         torch.utils.data.DataLoader(
             datasets.MNIST(
-                '../data', train=True, download=True,
+                "./data", train=True, download=True,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307,), (0.3081,))
