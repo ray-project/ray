@@ -98,7 +98,7 @@ void AsioRpcServer::ProcessConnectClientMessage(
   message.ParseFromArray(message_data, length);
 
   auto service_type = message.service_type();
-  RAY_LOG(INFO) << "Processing ConnectClient message for service: "
+  RAY_LOG(DEBUG) << "Processing ConnectClient message for service: "
                 << GenerateEnumName(RpcServiceType, service_type);
   auto iter = service_handlers_.find(service_type);
   if (iter != service_handlers_.end()) {

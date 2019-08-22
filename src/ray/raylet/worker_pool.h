@@ -51,27 +51,30 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(const WorkerID &worker_id, const std::shared_ptr<Worker> &worker);
+  /// \return If the registration is successful.
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
-  /// Driver is a treated as a special worker, so use WorkerID as key here.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const WorkerID &driver_id, const std::shared_ptr<Worker> &worker);
+  /// \return If the registration is successful.
+  Status RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
   /// \param The client connection owned by a registered worker.
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
-  std::shared_ptr<Worker> GetRegisteredWorker(const WorkerID &worker_id) const;
+  std::shared_ptr<Worker> GetRegisteredWorker(
+      const std::shared_ptr<LocalClientConnection> &connection) const;
 
   /// Get the client connection's registered driver.
   ///
   /// \param The client connection owned by a registered driver.
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a driver.
-  std::shared_ptr<Worker> GetRegisteredDriver(const WorkerID &driver_id) const;
+  std::shared_ptr<Worker> GetRegisteredDriver(
+      const std::shared_ptr<LocalClientConnection> &connection) const;
 
   /// Disconnect a registered worker.
   ///
@@ -128,21 +131,6 @@ class WorkerPool {
   /// Record metrics.
   void RecordMetrics() const;
 
-  /// Tick the heartbeat timer and get the workers that have timed out.
-  /// A worker which has missed `max_missed_heartbeats` times would be treated as a
-  /// dead process or the network to it has been down.
-  ///
-  /// \param[in] max_missed_heartbeats The maximum number of heartbeats that can be
-  /// missed before a worker times out.
-  /// \param[out] dead_workers Workers whose processes have been dead.
-  void TickHeartbeatTimer(int max_missed_heartbeats,
-                          std::vector<std::shared_ptr<Worker>> *dead_workers);
-
-  /// Return the pointer to the worker according to the worker id.
-  ///
-  /// \param worker_id The worker id.
-  std::shared_ptr<Worker> GetWorker(const WorkerID &worker_id);
-
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -180,9 +168,9 @@ class WorkerPool {
     std::unordered_map<ActorID, std::shared_ptr<Worker>> idle_actor;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
-    std::unordered_map<WorkerID, std::shared_ptr<Worker>> registered_workers;
+    std::unordered_set<std::shared_ptr<Worker>> registered_workers;
     /// All drivers that have registered and are still connected.
-    std::unordered_map<WorkerID, std::shared_ptr<Worker>> registered_drivers;
+    std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;

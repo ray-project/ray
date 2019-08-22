@@ -108,8 +108,9 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
   task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
                            std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-                               new CoreWorkerDirectActorTaskSubmitter(
-                                   io_service, gcs_client, object_interface, use_asio_rpc)));
+                               new CoreWorkerDirectActorTaskSubmitter(io_service, gcs_client,
+                                   object_interface.CreateStoreProvider(StoreProviderType::MEMORY),
+                                   use_asio_rpc)));
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
@@ -171,7 +172,7 @@ Status CoreWorkerTaskInterface::CreateActor(
                       actor_creation_options.resources, actor_creation_options.resources,
                       TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
-                                   {});
+                                   actor_creation_options.dynamic_worker_options);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
       actor_id, ActorHandleID::Nil(), function.language,

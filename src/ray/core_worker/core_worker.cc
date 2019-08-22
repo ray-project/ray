@@ -1,3 +1,4 @@
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/context.h"
 
@@ -49,6 +50,12 @@ CoreWorker::~CoreWorker() {
   gcs_client_->Disconnect();
   io_service_.stop();
   io_thread_.join();
+  if (task_execution_interface_) {
+    task_execution_interface_->Stop();
+  }
+  if (raylet_client_) {
+    RAY_IGNORE_EXPR(raylet_client_->Disconnect());
+  }
 }
 
 void CoreWorker::StartIOService() { io_service_.run(); }

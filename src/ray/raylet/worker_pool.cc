@@ -12,6 +12,29 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
+namespace {
+
+// A helper function to get a worker from a list.
+std::shared_ptr<ray::raylet::Worker> GetWorker(
+    const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+    const std::shared_ptr<ray::LocalClientConnection> &connection) {
+  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
+    if ((*it)->Connection() == connection) {
+      return (*it);
+    }
+  }
+  return nullptr;
+}
+
+// A helper function to remove a worker from a list. Returns true if the worker
+// was found and removed.
+bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+                  const std::shared_ptr<ray::raylet::Worker> &worker) {
+  return worker_pool.erase(worker) > 0;
+}
+
+}  // namespace
+
 namespace ray {
 
 namespace raylet {
@@ -50,8 +73,8 @@ WorkerPool::~WorkerPool() {
   for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
-    for (const auto &worker_pair : entry.second.registered_workers) {
-      pids_to_kill.insert(worker_pair.second->Pid());
+    for (const auto &worker : entry.second.registered_workers) {
+      pids_to_kill.insert(worker->Pid());
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
@@ -166,49 +189,50 @@ pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_ar
   return 0;
 }
 
-void WorkerPool::RegisterWorker(const WorkerID &worker_id,
-                                const std::shared_ptr<Worker> &worker) {
+Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
   const auto pid = worker->Pid();
   const auto port = worker->Port();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  state.registered_workers.emplace(worker_id, std::move(worker));
 
   auto it = state.starting_worker_processes.find(pid);
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
-    return;
+    return Status::Invalid("Unknown worker");
   }
   it->second--;
   if (it->second == 0) {
     state.starting_worker_processes.erase(it);
   }
+
+  state.registered_workers.emplace(std::move(worker));
+  return Status::OK();
 }
 
-void WorkerPool::RegisterDriver(const WorkerID &driver_id,
-                                const std::shared_ptr<Worker> &driver) {
+Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.emplace(driver_id, std::move(driver));
+  state.registered_drivers.insert(std::move(driver));
+  return Status::OK();
 }
 
-std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(const WorkerID &worker_id) const {
+std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
+    const std::shared_ptr<LocalClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
-    auto &registered_workers = entry.second.registered_workers;
-    auto it = registered_workers.find(worker_id);
-    if (it != registered_workers.end()) {
-      return it->second;
+    auto worker = GetWorker(entry.second.registered_workers, connection);
+    if (worker != nullptr) {
+      return worker;
     }
   }
   return nullptr;
 }
 
-std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(const WorkerID &worker_id) const {
+std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
+    const std::shared_ptr<LocalClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
-    auto &registered_drivers = entry.second.registered_drivers;
-    auto it = registered_drivers.find(worker_id);
-    if (it != registered_drivers.end()) {
-      return it->second;
+    auto driver = GetWorker(entry.second.registered_drivers, connection);
+    if (driver != nullptr) {
+      return driver;
     }
   }
   return nullptr;
@@ -292,20 +316,18 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  RAY_CHECK(state.registered_workers.erase(worker->GetWorkerId()));
+  RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
 
-  // Indicates that we disconnect a idle worker successfully.
-  return (state.idle.erase(worker) > 0);
+  return RemoveWorker(state.idle, worker);
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
-  RAY_CHECK(state.registered_drivers.erase(driver->GetWorkerId()));
-
+  RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
@@ -322,8 +344,7 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   std::vector<std::shared_ptr<Worker>> workers;
 
   for (const auto &entry : states_by_lang_) {
-    for (const auto &worker_pair : entry.second.registered_workers) {
-      auto &worker = worker_pair.second;
+    for (const auto &worker : entry.second.registered_workers) {
       if (worker->GetAssignedJobId() == job_id) {
         workers.push_back(worker);
       }
@@ -378,53 +399,19 @@ std::string WorkerPool::DebugString() const {
 void WorkerPool::RecordMetrics() const {
   for (const auto &entry : states_by_lang_) {
     // Record worker.
-    for (auto worker_pair : entry.second.registered_workers) {
-      auto &worker = worker_pair.second;
+    for (auto worker : entry.second.registered_workers) {
       stats::CurrentWorker().Record(
           worker->Pid(), {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
     }
 
     // Record driver.
-    for (auto driver_pair : entry.second.registered_drivers) {
-      auto &driver = driver_pair.second;
+    for (auto driver : entry.second.registered_drivers) {
       stats::CurrentDriver().Record(
           driver->Pid(), {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
                           {stats::WorkerPidKey, std::to_string(driver->Pid())}});
     }
   }
-}
-
-void WorkerPool::TickHeartbeatTimer(int max_missed_heartbeats,
-                                    std::vector<std::shared_ptr<Worker>> *dead_workers) {
-  for (const auto &entry : states_by_lang_) {
-    // Worker heartbeat.
-    for (const auto &worker_pair : entry.second.registered_workers) {
-      auto &worker = worker_pair.second;
-      if (worker->TickHeartbeatTimer() >= max_missed_heartbeats) {
-        dead_workers->emplace_back(worker);
-      }
-    }
-
-    // Driver heartbeat.
-    for (const auto &driver_pair : entry.second.registered_drivers) {
-      auto &driver = driver_pair.second;
-      if (driver->TickHeartbeatTimer() >= max_missed_heartbeats) {
-        dead_workers->emplace_back(driver);
-      }
-    }
-  }
-}
-
-std::shared_ptr<Worker> WorkerPool::GetWorker(const WorkerID &worker_id) {
-  auto worker = GetRegisteredWorker(worker_id);
-  if (!worker) {
-    worker = GetRegisteredDriver(worker_id);
-    if (!worker) {
-      return nullptr;
-    }
-  }
-  return worker;
 }
 
 }  // namespace raylet

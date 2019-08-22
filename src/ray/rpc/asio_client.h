@@ -130,7 +130,7 @@ class AsioRpcClient : public RpcClient {
     std::string serialized_message;
     request_message.SerializeToString(&serialized_message);
 
-    RAY_LOG(INFO) << "Calling method for service " << name_
+    RAY_LOG(DEBUG) << "Calling method for service " << name_
                   << ", request id: " << request_id
                   << ", request type: " << static_cast<int>(request_type);
 
@@ -140,8 +140,9 @@ class AsioRpcClient : public RpcClient {
     if (status.ok()) {
       // Send succeeds. Add the request to the records, so that
       // we can invoke the callback after receivig the reply.
+      std::unique_lock<std::mutex> guard(callback_mutex_);
       pending_callbacks_.emplace(request_id,
-        [callback, reply_type](const RpcReplyMessage &reply_message) {
+        [callback, reply_type, this](const RpcReplyMessage &reply_message) {
 
           const auto request_id = reply_message.request_id();
           auto error_code = static_cast<StatusCode>(reply_message.error_code());
@@ -153,15 +154,16 @@ class AsioRpcClient : public RpcClient {
           reply.ParseFromString(reply_message.reply());
 
           callback(status, reply); 
-          RAY_LOG(INFO) << "Calling reply callback for message " << static_cast<int>(reply_type)
-                        << ", request id " << request_id << ", status: " << status.ToString();                           
+          RAY_LOG(DEBUG) << "Calling reply callback for message " << static_cast<int>(reply_type)
+                        << " for service " << name_ << ", request id " << request_id
+                        << ", status: " << status.ToString();                           
       });
 
     } else {
       // There are errors, invoke the callback.
       Reply reply;
       callback(status, reply);
-      RAY_LOG(INFO) << "Failed to write request message " << static_cast<int>(request_type)
+      RAY_LOG(DEBUG) << "Failed to write request message " << static_cast<int>(request_type)
                     << " for service " << name_ << " to " << address_ << ":" << port_
                     << ", request id " << request_id << ", status: " << status.ToString();              
     }
@@ -177,6 +179,7 @@ class AsioRpcClient : public RpcClient {
           if (status.ok()) {
             // Send succeeds. Add the request to the records, so that
             // we can invoke the callback after receivig the reply.
+            std::unique_lock<std::mutex> guard(callback_mutex_);
             pending_callbacks_.emplace(request_id,
               [callback, reply_type](const RpcReplyMessage &reply_message) {
 
@@ -225,14 +228,23 @@ class AsioRpcClient : public RpcClient {
     RpcReplyMessage reply_message;
     reply_message.ParseFromArray(message_data, length);
 
-    RAY_LOG(INFO) << "Processing server message for request id: " << reply_message.request_id()
+    RAY_LOG(DEBUG) << "Processing server message for request id: " << reply_message.request_id()
                   << ", service: " << name_ << ", message type: " << message_type;  
 
     const auto request_id = reply_message.request_id();
-    auto iter = pending_callbacks_.find(request_id);
-    if (iter != pending_callbacks_.end()) {
-      iter->second(reply_message);
-      pending_callbacks_.erase(iter);
+    ReplyCallback reply_callback;
+
+    {
+      std::unique_lock<std::mutex> guard(callback_mutex_); 
+      auto iter = pending_callbacks_.find(request_id);
+      if (iter != pending_callbacks_.end()) {
+        reply_callback = iter->second;
+        pending_callbacks_.erase(iter);
+      }
+    }
+
+    if (reply_callback != nullptr) {
+      reply_callback(reply_message);
     }
     // TODO: what would happen if we don't find an entry rom pending_callbacks_?
 
@@ -241,12 +253,29 @@ class AsioRpcClient : public RpcClient {
 
   void ProcessDisconnectClientMessage(
       const std::shared_ptr<TcpClientConnection> &client) {
-    RAY_LOG(INFO) << "Processing DiconnectClient message for service: " << name_; 
+    RAY_LOG(INFO) << "Received DiconnectClient message from server "
+                  << address_ << ":" << port_ << ", service: " << name_; 
     
     is_connected_ = false;
 
-    // TODO: we might need to call these callbacks.
-    pending_callbacks_.clear();
+    // Invoke all the callbacks that are pending replies, this is necessary so that
+    // the transport can put exceptions into store for these object ids, to avoid
+    // the client from getting blocked on `ray.get`.
+    {
+      std::unique_lock<std::mutex> guard(callback_mutex_);
+
+      for (const auto &entry : pending_callbacks_) {
+        Status status = Status::Invalid("rpc server died");
+        RpcReplyMessage reply_message;
+        reply_message.set_request_id(entry.first);
+        reply_message.set_error_code(static_cast<uint32_t>(status.code()));
+        reply_message.set_error_message(status.message());
+      
+        entry.second(reply_message);
+      }
+
+      pending_callbacks_.clear();
+    }
   }
 
 
@@ -254,16 +283,22 @@ class AsioRpcClient : public RpcClient {
   /// Map from request id to the corresponding reply callback, which will be
   /// invoked when the reply is received for the request.
   std::unordered_map<uint64_t, ReplyCallback> pending_callbacks_;
+  /// Mutex to protect the `pending_callbacks_` above.
+  std::mutex callback_mutex_;
 
   /// IO service to handle the service calls.
   boost::asio::io_service &io_service_;
+  /// Connection to server. Note that TCP is full-duplex, and it's OK for
+  /// read and write simultaneously in different threads, provided that
+  /// there's only one thread for read and one for write. In this case
+  /// we don't need a lock for it.
   std::shared_ptr<TcpClientConnection> connection_;
 
-  // TODO: should consider multi-thread?
-  uint64_t request_id_;
+  // Request sequence id which starts with 1.
+  std::atomic_uint64_t request_id_;
 
   /// Whether we have connected to server.
-  bool is_connected_;
+  std::atomic_bool is_connected_;
 };
 
 }  // namespace rpc

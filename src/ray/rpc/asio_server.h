@@ -164,7 +164,7 @@ class ServerCallMethodImpl : public ServiceMethod {
 
     Reply reply;
 
-    RAY_LOG(INFO) << "Handle request for service " << RpcServiceType_Name(service_type_)
+    RAY_LOG(DEBUG) << "Handle request for service " << RpcServiceType_Name(service_type_)
                   << ", request id: " << request_id
                   << ", request type: " << static_cast<int>(request_type_);
 
@@ -172,7 +172,7 @@ class ServerCallMethodImpl : public ServiceMethod {
         request, &reply,
         [this, &request_id, &reply, &client](Status status, std::function<void()> success,
                std::function<void()> failure) {
-            RAY_LOG(INFO) << "Calling send reply callback for request " << request_id
+            RAY_LOG(DEBUG) << "Calling send reply callback for request " << request_id
                           << ", service: " << RpcServiceType_Name(service_type_);
 
             RpcReplyMessage reply_message;

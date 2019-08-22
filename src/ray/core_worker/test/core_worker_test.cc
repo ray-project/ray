@@ -10,7 +10,7 @@
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
 #include "src/ray/util/test_util.h"
@@ -62,7 +62,7 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(buffer));
 
-  ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources};
+  ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources, {}};
 
   // Create an actor.
   RAY_CHECK_OK(worker.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -246,7 +246,7 @@ void CoreWorkerTest::TestNormalTask(
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
-ASSERT_TRUE(!results[0]->HasMetadata());      
+      ASSERT_TRUE(!results[0]->HasMetadata());      
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
@@ -418,7 +418,7 @@ void CoreWorkerTest::TestActorFailure(
     std::vector<std::pair<ObjectID, std::shared_ptr<Buffer>>> all_results;
     for (int i = 0; i < num_tasks; i++) {
       if (i == task_index_to_kill_worker) {
-        RAY_LOG(INFO) << "killing worker";
+        RAY_LOG(INFO) << "killing worker after sending " << i << " tasks";
         ASSERT_EQ(system("pkill mock_worker"), 0);
       }
 
@@ -450,7 +450,6 @@ void CoreWorkerTest::TestActorFailure(
       std::vector<std::shared_ptr<RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
       ASSERT_EQ(results.size(), 1);
-RAY_LOG(INFO) << "get object " << i + 1;
       if (results[0]->HasMetadata()) {
         // Verify if this is the desired error.
         std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::ACTOR_DIED));
@@ -500,7 +499,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait().
+  // Test Wait() with duplicate object ids.
   std::vector<ObjectID> ids_with_duplicate;
   ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
   // add the same ids again to test `Get` with duplicate object ids.
@@ -512,6 +511,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::vector<bool> wait_results;
   RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 5);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+
+  // Test Wait() with duplicate object ids, and the required `num_objects`
+  // is less than size of `wait_ids`.
+  wait_results.clear();
+  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
@@ -543,6 +549,29 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
+
+  // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> unready_ids(buffers.size());
+  for (size_t i = 0; i < unready_ids.size(); i++) {
+    unready_ids[i] = ObjectID::FromRandom();
+  }
+
+  auto thread_func = [&unready_ids, &provider, &buffers]() {
+    sleep(1);
+
+    for (size_t i = 0; i < unready_ids.size(); i++) {
+      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
+    }
+  };
+
+  std::thread async_thread(thread_func);
+
+  // wait for the objects to appear.
+  wait_results.clear();
+  RAY_CHECK_OK(
+      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
+  // wait for the thread to finish.
+  async_thread.join();
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
@@ -587,7 +616,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            ActorHandleID::Nil(), function.language, true,
@@ -597,7 +626,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // `PushTaskRequest`, this is to batch performance of TaskSpec
   // creation/copy/destruction.
   int64_t start_ms = current_time_ms();
-  const auto num_tasks = 10000 * 10;
+  const auto num_tasks = 10000;
   RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
   for (int i = 0; i < num_tasks; i++) {
     TaskOptions options{1, resources};
@@ -634,7 +663,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
-#if 0
+
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
@@ -648,13 +677,14 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
   // wait for actor creation finish.
   ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
                                           30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
+  std::vector<ObjectID> object_ids;
   int64_t start_ms = current_time_ms();
   const int num_tasks = 10000;
   RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
@@ -670,9 +700,20 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     RAY_CHECK_OK(
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
+    object_ids.emplace_back(return_ids[0]);
   }
+
   RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
+
+  for (int i = 0; i < num_tasks; i++) {
+    std::vector<std::shared_ptr<RayObject>> results;
+    RAY_CHECK_OK(driver.Objects().Get({object_ids[i]}, -1, &results));
+    ASSERT_EQ(results.size(), 1);
+    ASSERT_TRUE(!results[0]->HasMetadata());
+  }
+  RAY_LOG(INFO) << "finish executing " << num_tasks << " tasks"
+                << ", which takes " << current_time_ms() - start_ms << " ms";  
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {
@@ -881,7 +922,6 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   resources.emplace("resource1", 1);
   TestActorTask(resources, false);
 }
-#endif
 
 TEST_F(SingleNodeTest, TestDirectActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
@@ -893,7 +933,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
   resources.emplace("resource1", 1);
   TestActorTask(resources, true);
 }
-/*
+
 TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
   std::unordered_map<std::string, double> resources;
   TestActorReconstruction(resources, true);
@@ -915,7 +955,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
   resources.emplace("resource1", 1);
   TestActorFailure(resources, true);
 }
-*/
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

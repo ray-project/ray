@@ -7,7 +7,7 @@ By default, Tune schedules trials in serial order with the ``FIFOScheduler`` cla
 
     tune.run( ... , scheduler=AsyncHyperBandScheduler())
 
-Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__. All schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://homes.cs.washington.edu/~jamieson/hyperband.html>`__. All schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
 
 Current Available Trial Schedulers:
 
@@ -119,7 +119,7 @@ An example of this can be found in `hyperband_example.py <https://github.com/ray
 HyperBand Implementation Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Implementation details may deviate slightly from theory but are focused on increasing usability. Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper. See `this post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ for context.
+Implementation details may deviate slightly from theory but are focused on increasing usability. Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper. See `this post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ for context.
 
 1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.  In many practical settings, ``R``, which represents some resource unit and often the number of training iterations, can be set reasonably large, like ``R >= 200``. For simplicity, assume ``eta = 3``. Varying ``R`` between ``R = 200`` and ``R = 1000`` creates a huge range of the number of trials needed to fill up all brackets.
 

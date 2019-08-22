@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -384,7 +385,16 @@ def start(node_ip_address, redis_address, address, redis_port,
     if block:
         import time
         while True:
-            time.sleep(30)
+            time.sleep(1)
+            deceased = node.dead_processes()
+            if len(deceased) > 0:
+                logger.error("Ray processes died unexpectedly:")
+                for process_type, process in deceased:
+                    logger.error("\t{} died with exit code {}".format(
+                        process_type, process.returncode))
+                logger.error("Killing remaining processes and exiting...")
+                node.kill_all_processes(check_alive=False, allow_graceful=True)
+                sys.exit(1)
 
 
 @cli.command()

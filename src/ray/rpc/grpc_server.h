@@ -35,13 +35,6 @@ class GrpcServer : public RpcServer {
   GrpcServer(std::string name, const uint32_t port)
       : RpcServer(name, port) {}
 
-  /// Construct a gRPC server that listens on unix domain socket.
-  ///
-  /// \param[in] name Name of this server, used for logging and debugging purpose.
-  /// \param[in] unix_socket_path Unix domain socket full path.
-  GrpcServer(std::string name, const std::string &unix_socket_path)
-      : RpcServer(name, unix_socket_path) {}
-
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
 

@@ -11,18 +11,6 @@ enum Language {
   CPP = 2;
 }
 
-// Resource id set info.
-message ResourceIdSetInfo {
-  // The name of the resource.
-  bytes resource_name = 1;
-  // The resource IDs reserved for this worker.
-  repeated uint64 resource_ids = 2;
-  // The fraction of each resource ID that is reserved for this worker. Note
-  // that the length of this list must be the same as the length of
-  // resource_ids.
-  repeated double resource_fractions = 3;
-}
-
 // Type of a worker.
 enum WorkerType {
   WORKER = 0;
@@ -95,7 +83,7 @@ message ActorCreationTaskSpec {
   // The max number of times this actor should be recontructed.
   // If this number of 0 or negative, the actor won't be reconstructed on failure.
   uint64 max_actor_reconstructions = 3;
-  // The dynamic options used in the worker command when starting the worker process for
+  // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder strings (`RAY_WORKER_OPTION_0`, `RAY_WORKER_OPTION_1`, etc) in the
   // worker command.
