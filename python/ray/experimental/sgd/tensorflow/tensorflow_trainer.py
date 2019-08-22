@@ -97,13 +97,10 @@ class TensorFlowTrainer(object):
         stats = ray.get(self.workers[0].validate.remote())
         return stats
 
-    def get_state(self):
-        # NOTE: at first I tried to implement get_model(),
-        # but was not possible since we cannot restore optimizer
-        # weights in the trainer.
-        # see TensorFlowRunner.set_state()
+    def get_model(self):
+        """Returns the learned model."""
         state = ray.get(self.workers[0].get_state.remote())
-        return state
+        return self._get_model_from_state(state)
 
     def save(self, checkpoint):
         """Saves the model at the provided checkpoint.
@@ -113,22 +110,11 @@ class TensorFlowTrainer(object):
 
         """
 
-        state = self.get_state()
-        state["optimizer_weights"][0] = np.array(
-            state["optimizer_weights"][0], dtype=np.int64)
-        # this fix is needed due to ray.get() changing scalar np.int64 to int,
-        # causing error at optimizer.set_weights()
+        state = ray.get(self.workers[0].get_state.remote())
 
-        # NOTE: this is a HACK, help needed
-        # because newly created model does not have variables initialized,
-        # set_weights does not work
-        self.model = self.model_creator()
-        _, self.test_dataset = self.data_creator(self.batch_size)
-        self.model.fit(self.test_dataset)
-        self.model.set_weights(state["weights"])
-        self.model.optimizer.set_weights(state["optimizer_weights"])
+        model = self._get_model_from_state(state)
 
-        self.model.save(checkpoint + ".h5")
+        model.save(checkpoint + ".h5")
 
         del state["weights"]
         del state["optimizer_weights"]
@@ -149,6 +135,7 @@ class TensorFlowTrainer(object):
         with open(checkpoint + '_state.json') as f:
             state = json.load(f)
 
+        state['config'] = model.to_json()
         state["weights"] = model.get_weights()
         state["optimizer_weights"] = model.optimizer.get_weights()
 
@@ -160,6 +147,22 @@ class TensorFlowTrainer(object):
         for worker in self.workers:
             worker.shutdown.remote()
             worker.__ray_terminate__.remote()
+
+    def _get_model_from_state(self, state):
+        """Creates model and load weights from state"""
+
+        model = self.model_creator()
+        model.set_weights(state["weights"])
+
+        # This part is due to ray.get() changing scalar np.int64 object to int
+        state["optimizer_weights"][0] = np.array(
+            state["optimizer_weights"][0], dtype=np.int64)
+
+        if model.optimizer.weights == []:
+            model._make_train_function()
+        model.optimizer.set_weights(state["optimizer_weights"])
+
+        return model
 
 
 class TensorFlowTrainable(Trainable):

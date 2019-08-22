@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import tensorflow as tf
+import numpy as np
 
 import ray
 from ray.experimental.sgd import utils
@@ -72,7 +73,7 @@ class TensorFlowRunner(object):
             self.train_dataset, self.test_dataset = self.data_creator(
                 self.batch_size)
 
-        # for use in model.evaluate()
+        # For use in model.evaluate()
         self.local_model = self.model_creator()
 
     def step(self):
@@ -107,7 +108,7 @@ class TensorFlowRunner(object):
         return stats
 
     def get_state(self):
-
+        """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
             "weights": self.model.get_weights(),
@@ -115,21 +116,22 @@ class TensorFlowRunner(object):
         }
 
     def set_state(self, state):
+        """Sets the state of the model."""
+
+        self.model = self.model_creator()
         self.epoch = state["epoch"]
-        if self.model.optimizer.weights == []:
-            # NOTE: This is a hack; optimizer.weights are initially [] and are
-            # generated at first run of fit(). need help getting around this
-            self.model.fit(self.test_dataset)
         self.model.set_weights(state["weights"])
 
-        import numpy as np
+        # This part is due to ray.get() changing scalar np.int64 object to int
         state["optimizer_weights"][0] = np.array(
             state["optimizer_weights"][0], dtype=np.int64)
-        # this part is due to ray.get() changing scalar np.int64 to int
 
+        if self.model.optimizer.weights == []:
+            self.model._make_train_function()
         self.model.optimizer.set_weights(state["optimizer_weights"])
 
     def shutdown(self):
+        """Attempts to shut down the worker."""
         del self.model
         del self.train_dataset
         del self.test_dataset

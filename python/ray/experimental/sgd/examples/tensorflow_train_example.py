@@ -9,7 +9,7 @@ from ray import tune
 from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
     TensorFlowTrainer, TensorFlowTrainable)
 
-def get_dataset(batch_size):
+def mnist_dataset(batch_size):
     NUM_TRAIN_SAMPLES = 60000
     mnist = tf.keras.datasets.mnist
 
@@ -27,7 +27,7 @@ def get_dataset(batch_size):
     return train_dataset, test_dataset
 
 
-def get_model(config=None):
+def mnist_model(config=None):
 
     model = tf.keras.models.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
@@ -46,8 +46,8 @@ def get_model(config=None):
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer = TensorFlowTrainer(
-        model_creator=get_model,
-        data_creator=get_dataset,
+        model_creator=mnist_model,
+        data_creator=mnist_dataset,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         batch_size=512)
@@ -69,8 +69,8 @@ def train_example(num_replicas=1, use_gpu=False):
 
 def tune_example(num_replicas=1, use_gpu=False):
     config = {
-        "model_creator": tune.function(get_model),
-        "data_creator": tune.function(get_dataset),
+        "model_creator": tune.function(mnist_model),
+        "data_creator": tune.function(mnist_dataset),
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
         "batch_size": 512
