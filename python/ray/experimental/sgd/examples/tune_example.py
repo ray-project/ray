@@ -4,7 +4,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
+import numpy as np
+import torch
+import torch.nn as nn
 
 import ray
 from ray import tune
@@ -65,6 +67,7 @@ def tune_example(num_replicas=1, use_gpu=False):
 
 
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--redis-address",

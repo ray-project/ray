@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ray import tune
 from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
 
 
