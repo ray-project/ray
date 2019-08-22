@@ -10,11 +10,11 @@ from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.suggest import grid_search
 from ray.tune.sample import (function, sample_from, uniform, choice, randint,
-                             randn)
+                             randn, loguniform)
 
 __all__ = [
     "Trainable", "TuneError", "grid_search", "register_env",
     "register_trainable", "run", "run_experiments", "Experiment", "function",
     "sample_from", "track", "uniform", "choice", "randint", "randn",
-    "ExperimentAnalysis", "Analysis"
+    "loguniform", "ExperimentAnalysis", "Analysis"
 ]
