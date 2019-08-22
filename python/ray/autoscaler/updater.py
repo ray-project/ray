@@ -74,9 +74,10 @@ class KubernetesCommandRunner(object):
                 final_cmd, stdout=redirect, stderr=redirect)
         except subprocess.CalledProcessError:
             if exit_on_fail:
+                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
                 logger.error(
                     self.log_prefix +
-                    "Command failed: \n\n  {}\n".format(" ".join(cmd)))
+                    "Command failed: \n\n  {}\n".format(quoted_cmd))
                 sys.exit(1)
             else:
                 raise
@@ -91,9 +92,11 @@ class KubernetesCommandRunner(object):
                     port_forward_process.poll()
                     if port_forward_process.returncode:
                         break
-                    print("Waiting for port forward to die...")
+                    logger.info(self.log_prefix +
+                                "Waiting for port forward to die...")
                 else:
-                    print("Killing port forward with SIGKILL.")
+                    logger.warning(self.log_prefix +
+                                   "Killing port forward with SIGKILL.")
                     port_forward_process.kill()
 
     def run_rsync_up(self, source, target, redirect=None):
@@ -263,9 +266,10 @@ class SSHCommandRunner(object):
                 final_cmd, stdout=redirect, stderr=redirect)
         except subprocess.CalledProcessError:
             if exit_on_fail:
+                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
                 logger.error(
                     self.log_prefix +
-                    "Command failed: \n\n  {}\n".format(" ".join(final_cmd)))
+                    "Command failed: \n\n  {}\n".format(quoted_cmd))
                 sys.exit(1)
             else:
                 raise
