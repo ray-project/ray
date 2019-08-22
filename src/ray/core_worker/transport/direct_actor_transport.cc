@@ -28,6 +28,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
+  RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   if (HasByReferenceArgs(task_spec)) {
     return Status::Invalid("direct actor call only supports by-value arguments");
   }
@@ -52,6 +53,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // to have a timeout to mark it as invalid if it doesn't show up in the
     // specified time.
     pending_requests_[actor_id].emplace_back(std::move(request));
+    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
@@ -125,6 +127,7 @@ Status CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &clie
                                                     const rpc::PushTaskRequest &request,
                                                     const TaskID &task_id,
                                                     int num_returns) {
+  RAY_LOG(DEBUG) << "Push task " << task_id;
   auto status = client.PushTask(
       request,
       [this, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
@@ -188,6 +191,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const TaskSpecification task_spec(request.task_spec());
+  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
   if (HasByReferenceArgs(task_spec)) {
     send_reply_callback(
         Status::Invalid("direct actor call only supports by value arguments"), nullptr,

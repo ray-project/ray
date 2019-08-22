@@ -24,7 +24,8 @@ public class ArgumentsBuilder {
   /**
    * Convert real function arguments to task spec arguments.
    */
-  public static List<FunctionArg> wrap(Object[] args, boolean crossLanguage) {
+  public static List<FunctionArg> wrap(Object[] args, boolean crossLanguage,
+      boolean isDirectActorCall) {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
       ObjectId id = null;
@@ -32,15 +33,20 @@ public class ArgumentsBuilder {
       if (arg == null) {
         data = Serializer.encode(null);
       } else if (arg instanceof RayObject) {
+        throwExceptionIfIsDirectActorCall(isDirectActorCall,
+            "Passing RayObject to a direct call actor is not supported.");
         id = ((RayObject) arg).getId();
       } else if (arg instanceof byte[] && crossLanguage) {
+        // TODO (kfstorm): This could be supported once we supported passing by value with metadata.
+        throwExceptionIfIsDirectActorCall(isDirectActorCall,
+            "Passing raw bytes to a direct call actor is not supported.");
         // If the argument is a byte array and will be used by a different language,
         // do not inline this argument. Because the other language doesn't know how
         // to deserialize it.
         id = Ray.put(arg).getId();
       } else {
         byte[] serialized = Serializer.encode(arg);
-        if (serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
+        if (!isDirectActorCall && serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
           id = ((AbstractRayRuntime) Ray.internal()).getObjectStore()
               .put(new NativeRayObject(serialized, null));
         } else {
@@ -54,6 +60,13 @@ public class ArgumentsBuilder {
       }
     }
     return ret;
+  }
+
+  private static void throwExceptionIfIsDirectActorCall(boolean isDirectActorCall, String message) {
+    if (isDirectActorCall) {
+      throw new IllegalArgumentException(
+          message != null ? message : "Direct actor call only supports by-value arguments.");
+    }
   }
 
   /**

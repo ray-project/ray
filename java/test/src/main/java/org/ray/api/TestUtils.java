@@ -1,5 +1,6 @@
 package org.ray.api;
 
+import java.io.Serializable;
 import java.util.function.Supplier;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
@@ -9,6 +10,10 @@ import org.testng.Assert;
 import org.testng.SkipException;
 
 public class TestUtils {
+
+  public static class LargeObject implements Serializable {
+    public byte[] data = new byte[1024 * 1024];
+  }
 
   private static final int WAIT_INTERVAL_MS = 5;
 

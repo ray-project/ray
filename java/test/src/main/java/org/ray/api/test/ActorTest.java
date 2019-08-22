@@ -8,6 +8,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
+import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
@@ -36,6 +37,25 @@ public class ActorTest extends BaseTest {
       value += delta;
       return value;
     }
+
+    public int accessLargeObject(LargeObject largeObject) {
+      value += largeObject.data.length;
+      return value;
+    }
+  }
+
+  @RayRemote
+  public static class Caller {
+
+    private final RayActor<Counter> counter;
+
+    public Caller(RayActor<Counter> counter) {
+      this.counter = counter;
+    }
+
+    public int call() {
+      return Ray.call(Counter::increase, counter, 1).get();
+    }
   }
 
   @Test
@@ -46,6 +66,14 @@ public class ActorTest extends BaseTest {
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());
+  }
+
+  @Test
+  public void testCallActorWithLargeObject() {
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    LargeObject largeObject = new LargeObject();
+    Assert.assertEquals(Integer.valueOf(largeObject.data.length + 1),
+        Ray.call(Counter::accessLargeObject, actor, largeObject).get());
   }
 
   @RayRemote

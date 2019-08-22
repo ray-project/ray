@@ -42,6 +42,14 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(JNIEnv *, jclass, jl
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
+ * Method:    nativeIsDirectCall
+ * Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCall(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeGetActorCreationTaskFunctionDescriptor
  * Signature: (J)Ljava/util/List;
  */
