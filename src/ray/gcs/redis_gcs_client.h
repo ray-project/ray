@@ -19,7 +19,11 @@ class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
+  friend class JobStateAccessor;
   friend class SubscriptionExecutorTest;
+  friend void TestLogSubscribeAll(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
+  friend void TestLogSubscribeId(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
+  friend void TestLogSubscribeCancel(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
 
  public:
   /// Constructor of RedisGcsClient.
@@ -48,7 +52,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
-  JobTable &job_table();
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
@@ -75,8 +78,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  /// Use method Actors() instead
+  /// Use method Actors() instead.
   ActorTable &actor_table();
+  /// Use method Jobs() instead.
+  JobTable &job_table();
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

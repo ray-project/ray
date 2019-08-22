@@ -375,10 +375,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handles updates to job table.
   ///
-  /// \param id An unused value. TODO(rkn): Should this be removed?
   /// \param job_data Data associated with a job table event.
   /// \return Void.
-  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
+  void HandleJobTableUpdate(const std::vector<JobTableData> &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
