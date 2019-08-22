@@ -32,7 +32,6 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: kubernetes
-    use_internal_ips: true
     namespace: ray
 
 # Provider-specific config for the head node, e.g. instance type.
@@ -117,7 +116,8 @@ file_mounts: {
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands: []
+setup_commands:
+    - "pushd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && popd"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

@@ -287,7 +287,7 @@ class NodeLauncher(threading.Thread):
     def _launch_node(self, config, count):
         worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"] if "auth" in self.config else None)
+        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"] if "auth" in config else None)
         self.log("Launching {} nodes.".format(count))
         self.provider.create_node(
             config["worker_nodes"], {
@@ -368,8 +368,7 @@ class StandardAutoscaler(object):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
-        self.provider = get_node_provider(self.config["provider"],
-                                          self.config["cluster_name"])
+        self.provider = get_node_provider(self.config)
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -540,7 +539,7 @@ class StandardAutoscaler(object):
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"] if "auth" in self.config else None)
+                                               new_config["auth"] if "auth" in new_config else None)
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
                 new_config["worker_setup_commands"],
                 new_config["worker_start_ray_commands"]
@@ -788,10 +787,8 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 
 
 def fillout_defaults(config):
-    config_copy = config.copy()
     defaults = get_default_config(config["provider"])
-    config_copy["provider"].update(defaults["provider"])
-    defaults.update(config_copy)
+    defaults.update(config)
     merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
     return defaults

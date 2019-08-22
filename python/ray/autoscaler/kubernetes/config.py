@@ -10,7 +10,7 @@ DEFAULT_NAMESPACE = "ray"
 
 
 def bootstrap_kubernetes(config):
-    config["use_internal_ips"] = True
+    config["provider"]["use_internal_ips"] = True
     config = _configure_namespace(config)
 
     # TODO: make cluster role if not set
@@ -19,6 +19,6 @@ def bootstrap_kubernetes(config):
 
 
 def _configure_namespace(config):
-    if "namespace" not in config:
-        config["namespace"] = DEFAULT_NAMESPACE
+    if "namespace" not in config["provider"]:
+        config["provider"]["namespace"] = DEFAULT_NAMESPACE
     return config
