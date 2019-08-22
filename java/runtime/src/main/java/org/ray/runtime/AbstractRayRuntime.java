@@ -146,7 +146,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, "",
         functionName);
-    return callNormalFunction(functionDescriptor, args, 1, options);
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
   }
 
   @Override
@@ -154,7 +155,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), functionName);
-    return callActorFunction(pyActor, functionDescriptor, args, 1);
+    // Python functions always have a return value, even if it's `None`.
+    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
   }
 
   @Override
