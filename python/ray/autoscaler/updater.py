@@ -16,7 +16,6 @@ from threading import Thread
 from getpass import getuser
 
 from kubernetes import client, config
-from kubernetes.stream import stream
 from kubernetes.config.config_exception import ConfigException
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
@@ -29,16 +28,14 @@ logger = logging.getLogger(__name__)
 NODE_START_WAIT_S = 300
 READY_CHECK_INTERVAL = 5
 CONTROL_PATH_MAX_LENGTH = 70
-K8S_RSYNC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "kubernetes/k8s-rsync.sh")
+K8S_RSYNC = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "kubernetes/k8s-rsync.sh")
 
 
 def with_interactive(cmd):
-    force_interactive = (
-        "true && source ~/.bashrc && "
-        "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-    return "bash --login -c -i {}".format(
-        quote(force_interactive + cmd))
+    force_interactive = ("true && source ~/.bashrc && "
+                         "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
+    return ["bash", "--login", "-c", "-i", force_interactive + cmd]
 
 
 class KubernetesCommandRunner(object):
@@ -54,32 +51,37 @@ class KubernetesCommandRunner(object):
         except ConfigException:
             config.load_kube_config()
         self.core_api = client.CoreV1Api()
+        self.kubectl = ["kubectl", "-n", RAY_NAMESPACE]
 
-    def run(
-            self,
+    def run(self,
             cmd,
             timeout=120,
             redirect=None,
             allocate_tty=False,
-            emulate_interactive=True,  # not implemented
             exit_on_fail=False,
             port_forward=None):
 
         logger.info(self.log_prefix + "Running {}...".format(cmd))
 
-        if emulate_interactive:
-            cmd = with_interactive(cmd)
+        if port_forward:
+            port_forward_cmd = self.kubectl + [
+                "port-forward", self.node_id,
+                str(port_forward)
+            ]
+            port_forward_process = subprocess.Popen(port_forward_cmd)
+            # Give port-forward a grace period to run and print output before
+            # running the actual command. This is a little ugly, but it should
+            # work in most scenarios and nothing should go very wrong if the
+            # command starts running before the port forward starts.
+            time.sleep(1)
 
-        # TODO: redirect stdout/stderr to specified if passed, else normal
-        # stdout/stderr
+        final_cmd = self.kubectl + [
+            "exec", "-it" if allocate_tty else "-i", self.node_id, "--"
+        ] + with_interactive(cmd)
         try:
-            cmd = ["kubectl", "-n", RAY_NAMESPACE, "exec", "-i",
-                   self.node_id, "--", "/bin/sh", "-c", cmd]
             self.process_runner.check_call(
-                cmd,
-                stdout=redirect or sys.stdout,
-                stderr=redirect or sys.stderr)
-        except Exception:  # TODO better handling
+                final_cmd, stdout=redirect, stderr=redirect)
+        except subprocess.CalledProcessError:
             if exit_on_fail:
                 logger.error(
                     self.log_prefix +
@@ -87,25 +89,46 @@ class KubernetesCommandRunner(object):
                 sys.exit(1)
             else:
                 raise
+        finally:
+            # Clean up the port forward process. First, try to let it exit
+            # gracefull with SIGTERM. If that doesn't work after 1s, send
+            # SIGKILL.
+            if port_forward:
+                port_forward_process.terminate()
+                for _ in range(10):
+                    time.sleep(0.1)
+                    port_forward_process.poll()
+                    if port_forward_process.returncode:
+                        break
+                    print("Waiting for port forward to die...")
+                else:
+                    print("Killing port forward with SIGKILL.")
+                    port_forward_process.kill()
 
     def run_rsync_up(self, source, target, redirect=None):
         if target.startswith('~'):
             target = '/root' + target[1:]
 
         try:
-            self.process_runner.check_call([
-                K8S_RSYNC, "-avz",
-                source, "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, target),
-            ],
+            self.process_runner.check_call(
+                [
+                    K8S_RSYNC,
+                    "-avz",
+                    source,
+                    "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, target),
+                ],
                 stdout=redirect,
                 stderr=redirect)
         except Exception:
-            logger.warning(
-                self.log_prefix + "rsync failed. Falling back to 'kubectl cp'")
-            self.process_runner.check_call([
-                "kubectl", "cp", "-n", RAY_NAMESPACE,
-                source, "{}@{}:{}".format(self.node_id, target),
-            ],
+            logger.warning(self.log_prefix +
+                           "rsync failed. Falling back to 'kubectl cp'")
+            self.process_runner.check_call(
+                [
+                    self.kubectl,
+                    "cp",
+                    source,
+                    "{}@{}:{}".format(self.node_id, target),
+                ],
                 stdout=redirect,
                 stderr=redirect)
 
@@ -114,21 +137,31 @@ class KubernetesCommandRunner(object):
             target = '/root' + target[1:]
 
         try:
-            self.process_runner.check_call([
-                K8S_RSYNC, "-avz",
-                "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, source), target,
-            ],
+            self.process_runner.check_call(
+                [
+                    K8S_RSYNC,
+                    "-avz",
+                    "{}@{}:{}".format(self.node_id, RAY_NAMESPACE, source),
+                    target,
+                ],
                 stdout=redirect,
                 stderr=redirect)
         except Exception:
-            logger.warning(
-                self.log_prefix + "rsync failed. Falling back to 'kubectl cp'")
-            self.process_runner.check_call([
-                "kubectl", "cp", "-n", RAY_NAMESPACE,
-                "{}:{}".format(self.node_id, source), target,
-            ],
+            logger.warning(self.log_prefix +
+                           "rsync failed. Falling back to 'kubectl cp'")
+            self.process_runner.check_call(
+                [
+                    self.kubectl,
+                    "cp",
+                    "{}:{}".format(self.node_id, source),
+                    target,
+                ],
                 stdout=redirect,
                 stderr=redirect)
+
+    def remote_shell_command_str(self):
+        return "{} exec -it {} bash".format(' '.join(self.kubectl),
+                                            self.node_id)
 
 
 class SSHCommandRunner(object):
@@ -217,7 +250,6 @@ class SSHCommandRunner(object):
             timeout=120,
             redirect=None,
             allocate_tty=False,
-            emulate_interactive=True,
             exit_on_fail=False,
             port_forward=None):
 
@@ -228,24 +260,16 @@ class SSHCommandRunner(object):
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
-        if emulate_interactive:
-            cmd = with_interactive(cmd)
 
-        if port_forward is None:
-            ssh_opt = []
-        else:
-            ssh_opt = [
-                "-L", "{}:localhost:{}".format(port_forward, port_forward)
-            ]
+        if port_forward:
+            ssh += ["-L", "{}:localhost:{}".format(port_forward, port_forward)]
 
-        final_cmd = ssh + ssh_opt + self.get_default_ssh_options(timeout) + [
-            "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
-        ]
+        final_cmd = ssh + self.get_default_ssh_options(timeout) + [
+            "{}@{}".format(self.ssh_user, self.ssh_ip)
+        ] + with_interactive(cmd)
         try:
             self.process_runner.check_call(
-                final_cmd,
-                stdout=redirect or sys.stdout,
-                stderr=redirect or sys.stderr)
+                final_cmd, stdout=redirect, stderr=redirect)
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 logger.error(
@@ -277,6 +301,10 @@ class SSHCommandRunner(object):
             stdout=redirect,
             stderr=redirect)
 
+    def remote_shell_command_str(self):
+        return "ssh -i {} {}@{}\n".format(self.ssh_private_key, self.ssh_user,
+                                          self.ssh_ip)
+
 
 class NodeUpdater(object):
     """A process for syncing files and running init commands on a node."""
@@ -301,12 +329,11 @@ class NodeUpdater(object):
                 self.log_prefix, node_id, provider, auth_config, cluster_name,
                 process_runner)
         else:
-            use_internal_ip = (use_internal_ip or
-                               provider_config.get("use_internal_ips", False))
-            self.cmd_runner = SSHCommandRunner(self.log_prefix, node_id,
-                                                   provider,
-                                                   auth_config, cluster_name,
-                                                   process_runner, use_internal_ip)
+            use_internal_ip = (use_internal_ip or provider_config.get(
+                "use_internal_ips", False))
+            self.cmd_runner = SSHCommandRunner(
+                self.log_prefix, node_id, provider, auth_config, cluster_name,
+                process_runner, use_internal_ip)
 
         self.daemon = True
         self.process_runner = process_runner

@@ -38,7 +38,8 @@ class KubernetesNodeProvider(NodeProvider):
         # Unfortunately there is no OR operator in field selectors, so we
         # have to match on NOT any of the other phases.
         field_selector = ",".join([
-            "status.phase!=Failed", "status.phase!=Unknown",
+            "status.phase!=Failed",
+            "status.phase!=Unknown",
             "status.phase!=Succeeded",
         ])
 
@@ -50,26 +51,22 @@ class KubernetesNodeProvider(NodeProvider):
         return [pod.metadata.name for pod in pod_list.items]
 
     def is_running(self, node_id):
-        pod = self.core_api.read_namespaced_pod_status(node_id,
-                                                       RAY_NAMESPACE)
+        pod = self.core_api.read_namespaced_pod_status(node_id, RAY_NAMESPACE)
         return pod.status.phase == "Running"
 
     def is_terminated(self, node_id):
-        pod = self.core_api.read_namespaced_pod_status(node_id,
-                                                       RAY_NAMESPACE)
+        pod = self.core_api.read_namespaced_pod_status(node_id, RAY_NAMESPACE)
         return pod.status.phase not in ["Running", "Pending"]
 
     def node_tags(self, node_id):
-        pod = self.core_api.read_namespaced_pod_status(node_id,
-                                                       RAY_NAMESPACE)
+        pod = self.core_api.read_namespaced_pod_status(node_id, RAY_NAMESPACE)
         return pod.metadata.labels
 
     def external_ip(self, node_id):
         raise NotImplementedError("No external IPs for kubernetes pods")
 
     def internal_ip(self, node_id):
-        pod = self.core_api.read_namespaced_pod_status(node_id,
-                                                       RAY_NAMESPACE)
+        pod = self.core_api.read_namespaced_pod_status(node_id, RAY_NAMESPACE)
         return pod.status.pod_ip
 
     def set_node_tags(self, node_id, tags):

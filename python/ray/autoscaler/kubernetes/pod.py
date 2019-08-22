@@ -23,7 +23,7 @@ default_pod_config = {
             "image": "eoakes/ray-test",
             "command": ["/bin/bash", "-c", "--"],
             "args": [
-                "cd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && cd .. && apt-get install -y rsync && trap : TERM INT; sleep infinity & wait;"
+                "trap : TERM INT; sleep infinity & wait;"
             ],
             "ports": [{
                 "containerPort": 12345

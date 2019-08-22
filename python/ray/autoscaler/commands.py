@@ -288,10 +288,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         print("To open a console on the cluster:\n\n"
               "  ray attach {}{}\n".format(config_file, modifiers))
 
-        print("To ssh manually to the cluster, run:\n\n"
-              "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
-                                           config["auth"]["ssh_user"],
-                                           head_node_ip))
+        print("To get a remote shell to the cluster manually, run:\n\n"
+              "  {}\n".format(updater.cmd_runner.remote_shell_command_str()))
     finally:
         provider.cleanup()
 
