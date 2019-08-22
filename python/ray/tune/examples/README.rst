@@ -11,42 +11,19 @@ If any example is broken, or if you'd like to add an example to this page, feel 
 General Examples
 ----------------
 
-.. list-table:: Frozen Delights!
-   :widths: 15 10 30
-   :header-rows: 1
-
-   * - Treat
-     - Quantity
-     - Description
-   * - Albatross
-     - 2.99
-     - On a stick!
-   * - Crunchy Frog
-     - 1.49
-     - If we took the bones out, it wouldn't be
-       crunchy, now would it?
-   * - Gannet Ripple
-     - 1.99
-     - On a stick!
-
-.. list-table:: General Examples
-   :widths: 10 30
-   :header-rows: 1
-
-   * - Example
-     - Description
-   * - `async_hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`_
-     - Example of using a Trainable class with AsyncHyperBandScheduler.
-   * - `hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`_
-     - Example of using a Trainable class with HyperBandScheduler. Also uses the Experiment class API for specifying the experiment configuration.
-   * - `hyperopt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`_
-     - Optimizes a basic function using the function-based API and the HyperOptSearch (SearchAlgorithm wrapper for HyperOpt TPE). Also uses the AsyncHyperBandScheduler.
-   * -`pbt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`_
-     - Example of using a Trainable class with PopulationBasedTraining scheduler.
-   * - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`_
-     - Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
-   * - `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`_
-     - Example of custom loggers and custom trial directory naming.
+- `async_hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__:
+   Example of using a Trainable class with AsyncHyperBandScheduler.
+- `hyperband_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__:
+   Example of using a Trainable class with HyperBandScheduler. Also uses the Experiment class API for specifying the experiment configuration.
+- `hyperopt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__:
+   Optimizes a basic function using the function-based API and the HyperOptSearch (SearchAlgorithm wrapper for HyperOpt TPE).
+   Also uses the AsyncHyperBandScheduler.
+- `pbt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__:
+   Example of using a Trainable class with PopulationBasedTraining scheduler.
+- `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__:
+   Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
+- `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__:
+   Example of custom loggers and custom trial directory naming.
 
 
 Keras Examples
@@ -75,11 +52,13 @@ TensorFlow Examples
 - `tune_mnist_async_hyperband <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_async_hyperband.py>`__:
    Example of tuning a TensorFlow model on MNIST using AsyncHyperBand.
 
+
 XGBoost Example
 ---------------
 
 - `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__:
    Trains a basic XGBoost model with Tune with the function-based API and a XGBoost callback.
+
 
 LightGBM Example
 ----------------
