@@ -43,8 +43,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       String fileName = System.mapLibraryName(library);
       try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
         System.load(libFile.getFile().getAbsolutePath());
-        LOGGER.debug("Native libraries loaded.");
       }
+      LOGGER.debug("Native libraries loaded.");
     }
     nativeSetup(RayConfig.create().logDir);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
