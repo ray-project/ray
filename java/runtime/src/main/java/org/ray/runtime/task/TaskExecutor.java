@@ -73,6 +73,7 @@ public final class TaskExecutor {
     // Find the executable object.
     RayFunction rayFunction = runtime.getFunctionManager()
         .getFunction(jobId, parseFunctionDescriptor(rayFunctionInfo));
+    Preconditions.checkNotNull(rayFunction);
     try {
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
