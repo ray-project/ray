@@ -32,11 +32,6 @@ depends on how well the policy is doing. For example, a really bad policy will
 lose very quickly. As the policy learns, we should expect these numbers to
 increase.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import numpy as np
 import os

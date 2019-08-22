@@ -113,7 +113,6 @@ Driver Code Walkthrough
 The driver manages the coordination among workers and handles updating the
 global model parameters. The main training script looks like the following.
 
-
 .. code-block:: python
 
   import numpy as np

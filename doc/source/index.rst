@@ -231,6 +231,7 @@ The following are good places to discuss Ray.
 .. toctree::
    :maxdepth: -1
    :caption: Examples
+
    auto_examples/index.rst
    auto_examples/plot_pong_example.rst
 

@@ -76,7 +76,7 @@ extensions = [
 sphinx_gallery_conf = {
     'examples_dirs': ['../examples'],  # path to your example scripts
     'gallery_dirs': ['auto_examples'],  # path where to save generated examples
-    "ignore_pattern": ["tf_example.py", "torch_example.py"],
+    "ignore_pattern": "../examples/doc_code/",
     'plot_gallery': 'False',
     'filename_pattern': 'tutorial.py',
     'backreferences_dir': False
