@@ -46,15 +46,15 @@ public class MultiThreadingTest extends BaseTest {
   @RayRemote
   public static class ActorIdTester {
 
+    private final ActorId actorId;
+
     public ActorIdTester() {
-      Assert.assertNotEquals(Ray.getRuntimeContext().getCurrentActorId(), ActorId.NIL);
+      actorId = Ray.getRuntimeContext().getCurrentActorId();
+      Assert.assertNotEquals(actorId, ActorId.NIL);
     }
 
     @RayRemote
-    public ActorId getCurrentActorId(boolean async) {
-      if (!async) {
-        return Ray.getRuntimeContext().getCurrentActorId();
-      }
+    public ActorId getCurrentActorId() {
       final ActorId[] result = new ActorId[1];
       Thread thread = new Thread(() -> {
         result[0] = Ray.getRuntimeContext().getCurrentActorId();
@@ -65,6 +65,7 @@ public class MultiThreadingTest extends BaseTest {
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
+      Assert.assertEquals(result[0], actorId);
       return result[0];
     }
   }
@@ -136,9 +137,7 @@ public class MultiThreadingTest extends BaseTest {
   public void testGetCurrentActorId() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
-    ActorId actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester, false).get();
-    Assert.assertEquals(actorId, actorIdTester.getId());
-    actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester, true).get();
+    ActorId actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester).get();
     Assert.assertEquals(actorId, actorIdTester.getId());
   }
 
