@@ -238,6 +238,7 @@ The following are good places to discuss Ray.
    example-lbfgs.rst
    example-streaming.rst
    using-ray-with-tensorflow.rst
+   using-ray-with-pytorch.rst
 
 .. toctree::
    :maxdepth: -1
