@@ -77,6 +77,8 @@ class MedianStoppingRule(FIFOScheduler):
         value by step `t` is strictly worse than the median of the running
         averages of all completed trials' objectives reported up to step `t`.
         """
+        if self._time_attr not in result or self._metric not in result:
+            return TrialScheduler.CONTINUE
 
         if trial in self._stopped_trials:
             assert not self._hard_stop
