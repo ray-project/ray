@@ -46,6 +46,8 @@ To use Ray's actor model:
 
 .. code-block:: python
 
+
+    import ray
     ray.init()
 
     @ray.remote
@@ -69,7 +71,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-See more details in the `Cluster Launch page <https://ray.readthedocs.io/en/latest/autoscaling.html>`_.
+Read more about `launching clusters <https://ray.readthedocs.io/en/latest/autoscaling.html>`_.
 
 Tune Quick Start
 ----------------

@@ -9,7 +9,7 @@ Ray
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-*Ray is a fast and simple framework for building and running distributed applications.*
+**Ray is a fast and simple framework for building and running distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -67,7 +67,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-See more details in the `Cluster Launch page <autoscaling.html>`_.
+Read more about `launching clusters <autoscaling.html>`_.
 
 Tune Quick Start
 ----------------
