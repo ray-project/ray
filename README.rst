@@ -128,6 +128,9 @@ If TensorBoard is installed, automatically visualize all trial results:
     tensorboard --logdir ~/ray_results
 
 .. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
+.. _`Population Based Training (PBT)`: https://ray.readthedocs.io/en/latest/tune-schedulers.html#population-based-training-pbt
+.. _`Vizier's Median Stopping Rule`: https://ray.readthedocs.io/en/latest/tune-schedulers.html#median-stopping-rule
+.. _`HyperBand/ASHA`: https://ray.readthedocs.io/en/latest/tune-schedulers.html#asynchronous-hyperband
 
 RLlib Quick Start
 -----------------
