@@ -59,10 +59,9 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
 class RayletGrpcTaskReceiver : public CoreWorkerRayletTaskReceiver {
  public:
   RayletGrpcTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
-                                    CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
-                                    rpc::GrpcServer &server,
-                                    const TaskHandler &task_handler);
+                         CoreWorkerObjectInterface &object_interface,
+                         boost::asio::io_service &io_service, rpc::GrpcServer &server,
+                         const TaskHandler &task_handler);
 
  private:
   /// The rpc service for `DirectActorService`.
@@ -72,9 +71,8 @@ class RayletGrpcTaskReceiver : public CoreWorkerRayletTaskReceiver {
 class RayletAsioTaskReceiver : public CoreWorkerRayletTaskReceiver {
  public:
   RayletAsioTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
-                                    CoreWorkerObjectInterface &object_interface,
-                                    rpc::AsioRpcServer &server,
-                                    const TaskHandler &task_handler);
+                         CoreWorkerObjectInterface &object_interface,
+                         rpc::AsioRpcServer &server, const TaskHandler &task_handler);
 
  private:
   /// The rpc service for `DirectActorService`.

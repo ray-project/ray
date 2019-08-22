@@ -32,8 +32,7 @@ class GrpcServer : public RpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name, const uint32_t port)
-      : RpcServer(name, port) {}
+  GrpcServer(std::string name, const uint32_t port) : RpcServer(name, port) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -83,7 +82,7 @@ class GrpcServer : public RpcServer {
 ///
 /// Subclass should implement `InitServerCallFactories` to decide
 /// which kinds of requests this service should accept.
-class GrpcService : public RpcService{
+class GrpcService : public RpcService {
  public:
   /// Constructor.
   ///

@@ -22,8 +22,7 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     gcs::RedisGcsClient &gcs_client,
     std::unique_ptr<CoreWorkerStoreProvider> store_provider)
-    : gcs_client_(gcs_client),
-      store_provider_(std::move(store_provider)) {
+    : gcs_client_(gcs_client), store_provider_(std::move(store_provider)) {
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
@@ -118,8 +117,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
-  std::unique_ptr<rpc::DirectActorClient> grpc_client =
-      CreateRpcClient(ip_address, port);
+  std::unique_ptr<rpc::DirectActorClient> grpc_client = CreateRpcClient(ip_address, port);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.
@@ -193,10 +191,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
  * CoreWorkerDirectActorTaskReceiver
  */
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    CoreWorkerObjectInterface &object_interface,
-    const TaskHandler &task_handler)
-    : object_interface_(object_interface),
-      task_handler_(task_handler) {}
+    CoreWorkerObjectInterface &object_interface, const TaskHandler &task_handler)
+    : object_interface_(object_interface), task_handler_(task_handler) {}
 
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
@@ -247,8 +243,8 @@ DirectActorGrpcTaskReceiver::DirectActorGrpcTaskReceiver(
 }
 
 DirectActorAsioTaskReceiver::DirectActorAsioTaskReceiver(
-    CoreWorkerObjectInterface &object_interface,
-    rpc::AsioRpcServer &server, const TaskHandler &task_handler)
+    CoreWorkerObjectInterface &object_interface, rpc::AsioRpcServer &server,
+    const TaskHandler &task_handler)
     : CoreWorkerDirectActorTaskReceiver(object_interface, task_handler),
       task_service_(*this) {
   server.RegisterService(task_service_);

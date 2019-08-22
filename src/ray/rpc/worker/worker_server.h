@@ -1,9 +1,9 @@
 #ifndef RAY_RPC_WORKER_SERVER_H
 #define RAY_RPC_WORKER_SERVER_H
 
+#include "ray/rpc/asio_server.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "ray/rpc/asio_server.h"
 
 #include "src/ray/protobuf/worker.grpc.pb.h"
 #include "src/ray/protobuf/worker.pb.h"
@@ -71,29 +71,27 @@ class WorkerTaskAsioRpcService : public AsioRpcService {
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
   WorkerTaskAsioRpcService(WorkerTaskHandler &service_handler)
-      : AsioRpcService(rpc::RpcServiceType::WorkerTaskServiceType), service_handler_(service_handler){};
+      : AsioRpcService(rpc::RpcServiceType::WorkerTaskServiceType),
+        service_handler_(service_handler){};
 
  protected:
   void InitMethodHandlers(
-      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override { 
-
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override {
     // Initialize the Factory for `PushTask` requests.
     std::shared_ptr<ServiceMethod> assign_task_call_method(
-        new ServiceMethodImpl<WorkerTaskHandler, AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
-            service_type_,
-            WorkerTaskServiceMessageType::AssignTaskRequestMessage,
-            WorkerTaskServiceMessageType::AssignTaskReplytMessage,
-            service_handler_, &WorkerTaskHandler::HandleAssignTask));
+        new ServiceMethodImpl<WorkerTaskHandler, AssignTaskRequest, AssignTaskReply,
+                              WorkerTaskServiceMessageType>(
+            service_type_, WorkerTaskServiceMessageType::AssignTaskRequestMessage,
+            WorkerTaskServiceMessageType::AssignTaskReplytMessage, service_handler_,
+            &WorkerTaskHandler::HandleAssignTask));
 
     server_call_methods->emplace_back(std::move(assign_task_call_method));
   }
 
  private:
-
   /// The service handler that actually handle the requests.
   WorkerTaskHandler &service_handler_;
 };
-
 
 }  // namespace rpc
 }  // namespace ray

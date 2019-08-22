@@ -25,7 +25,7 @@ class DirectActorClient {
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   virtual ray::Status PushTask(const PushTaskRequest &request,
-                       const ClientCallback<PushTaskReply> &callback) = 0;
+                               const ClientCallback<PushTaskReply> &callback) = 0;
 };
 
 /// Grpc client for direct actor call.
@@ -74,8 +74,10 @@ class DirectActorAsioClient : public DirectActorClient, public AsioRpcClient {
   /// \param[in] address Address of the direct actor server.
   /// \param[in] port Port of the direct actor server.
   /// \param[in] io_service The `io_service` to process reply messages.
-  DirectActorAsioClient(const std::string &address, const int port, boost::asio::io_service &io_service)
-      : AsioRpcClient(RpcServiceType::DirectActorServiceType, address, port, io_service) {}
+  DirectActorAsioClient(const std::string &address, const int port,
+                        boost::asio::io_service &io_service)
+      : AsioRpcClient(RpcServiceType::DirectActorServiceType, address, port, io_service) {
+  }
 
   /// Push a task.
   ///
@@ -84,15 +86,13 @@ class DirectActorAsioClient : public DirectActorClient, public AsioRpcClient {
   /// \return if the rpc call succeeds
   ray::Status PushTask(const PushTaskRequest &request,
                        const ClientCallback<PushTaskReply> &callback) override {
-
     if (!is_connected_) {
       RAY_RETURN_NOT_OK(Connect());
     }
 
     return CallMethod<PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
         DirectActorServiceMessageType::PushTaskRequestMessage,
-        DirectActorServiceMessageType::PushTaskReplyMessage,
-        request, callback);
+        DirectActorServiceMessageType::PushTaskReplyMessage, request, callback);
   }
 };
 

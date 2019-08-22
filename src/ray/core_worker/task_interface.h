@@ -133,8 +133,7 @@ class CoreWorkerTaskInterface {
                           std::unique_ptr<RayletClient> &raylet_client,
                           CoreWorkerObjectInterface &object_interface,
                           boost::asio::io_service &io_service,
-                          gcs::RedisGcsClient &gcs_client,
-                          bool use_asio_rpc);
+                          gcs::RedisGcsClient &gcs_client, bool use_asio_rpc);
 
   /// Submit a normal task.
   ///

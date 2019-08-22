@@ -246,7 +246,7 @@ void CoreWorkerTest::TestNormalTask(
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
-      ASSERT_TRUE(!results[0]->HasMetadata());      
+      ASSERT_TRUE(!results[0]->HasMetadata());
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
@@ -713,7 +713,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     ASSERT_TRUE(!results[0]->HasMetadata());
   }
   RAY_LOG(INFO) << "finish executing " << num_tasks << " tasks"
-                << ", which takes " << current_time_ms() - start_ms << " ms";  
+                << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
 TEST_F(ZeroNodeTest, TestWorkerContext) {

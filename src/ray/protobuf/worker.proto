@@ -29,7 +29,7 @@ service WorkerTaskService {
 // method.
 enum WorkerTaskServiceMessageType {
   // `ConnectClient` and `DisconnectClient` MUST be defined and their values
-  // MUST be consistent with the ones in `ServiceMessageType` in 
+  // MUST be consistent with the ones in `ServiceMessageType` in
   // "src/ray/protobuf/asio.proto".
   WorkerConnectClient = 0;
   WorkerDisconnectClient = 1;

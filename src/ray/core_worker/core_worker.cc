@@ -1,5 +1,5 @@
-#include "ray/common/ray_config.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 
 namespace ray {
@@ -23,15 +23,17 @@ CoreWorker::CoreWorker(
 
   object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
       new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket));
-  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
-      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_, use_asio_rpc));
+  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(
+      new CoreWorkerTaskInterface(worker_context_, raylet_client_, *object_interface_,
+                                  io_service_, *gcs_client_, use_asio_rpc));
 
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                             *object_interface_, execution_callback, use_asio_rpc));
+                                             *object_interface_, execution_callback,
+                                             use_asio_rpc));
     rpc_server_port = task_execution_interface_->worker_server_->GetPort();
   }
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot

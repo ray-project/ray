@@ -12,7 +12,6 @@ namespace rpc {
 template <class Reply>
 using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
 
-
 }  // namespace rpc
 }  // namespace ray
 

@@ -70,7 +70,7 @@ class Worker {
 
  private:
   Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-       std::shared_ptr<LocalClientConnection> connection);
+         std::shared_ptr<LocalClientConnection> connection);
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's PID.

@@ -37,8 +37,7 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
-                                   const TaskExecutor &executor,
-                                   bool use_asio_prc);
+                                   const TaskExecutor &executor, bool use_asio_prc);
 
   /// Start receiving and executing tasks.
   /// \return void.

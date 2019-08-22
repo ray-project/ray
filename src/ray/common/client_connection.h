@@ -129,8 +129,8 @@ class ClientConnection;
 template <typename T>
 using ClientHandler = std::function<void(ClientConnection<T> &)>;
 template <typename T>
-using MessageHandler =
-    std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, uint64_t, const uint8_t *)>;
+using MessageHandler = std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t,
+                                          uint64_t, const uint8_t *)>;
 
 /// \typename ClientConnection
 ///

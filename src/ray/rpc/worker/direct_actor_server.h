@@ -64,7 +64,6 @@ class DirectActorGrpcService : public GrpcService {
   DirectActorHandler &service_handler_;
 };
 
-
 /// The `AsioRpcService` for `DirectActorService`.
 class DirectActorAsioRpcService : public AsioRpcService {
  public:
@@ -72,29 +71,27 @@ class DirectActorAsioRpcService : public AsioRpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   DirectActorAsioRpcService(DirectActorHandler &service_handler)
-      : AsioRpcService(rpc::RpcServiceType::DirectActorServiceType), service_handler_(service_handler){};
+      : AsioRpcService(rpc::RpcServiceType::DirectActorServiceType),
+        service_handler_(service_handler){};
 
  protected:
   void InitMethodHandlers(
-      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override { 
-
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override {
     // Initialize the Factory for `PushTask` requests.
     std::shared_ptr<ServiceMethod> push_task_call_method(
-        new ServiceMethodImpl<DirectActorHandler, PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
-            service_type_,
-            DirectActorServiceMessageType::PushTaskRequestMessage,
-            DirectActorServiceMessageType::PushTaskReplyMessage,
-            service_handler_, &DirectActorHandler::HandlePushTask));
+        new ServiceMethodImpl<DirectActorHandler, PushTaskRequest, PushTaskReply,
+                              DirectActorServiceMessageType>(
+            service_type_, DirectActorServiceMessageType::PushTaskRequestMessage,
+            DirectActorServiceMessageType::PushTaskReplyMessage, service_handler_,
+            &DirectActorHandler::HandlePushTask));
 
     server_call_methods->emplace_back(std::move(push_task_call_method));
   }
 
  private:
-
   /// The service handler that actually handle the requests.
   DirectActorHandler &service_handler_;
 };
-
 
 }  // namespace rpc
 }  // namespace ray

@@ -331,7 +331,8 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   }
 
   int64_t start_ms = current_time_ms();
-  message_handler_(shared_ClientConnection_from_this(), read_type_, read_length_, read_message_.data());
+  message_handler_(shared_ClientConnection_from_this(), read_type_, read_length_,
+                   read_message_.data());
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;

@@ -10,7 +10,7 @@
 namespace {
 
 const std::vector<std::string> GenerateFlatbufEnumNames(const char *const *enum_names_ptr,
-                                                 int start_index, int end_index) {
+                                                        int start_index, int end_index) {
   std::vector<std::string> enum_names;
   for (int i = 0; i < start_index; ++i) {
     enum_names.push_back("EmptyMessageType");
@@ -31,8 +31,8 @@ const std::vector<std::string> GenerateFlatbufEnumNames(const char *const *enum_
 
 static const std::vector<std::string> node_manager_message_enum =
     GenerateFlatbufEnumNames(ray::protocol::EnumNamesMessageType(),
-                      static_cast<int>(ray::protocol::MessageType::MIN),
-                      static_cast<int>(ray::protocol::MessageType::MAX));
+                             static_cast<int>(ray::protocol::MessageType::MIN),
+                             static_cast<int>(ray::protocol::MessageType::MAX));
 }  // namespace
 
 namespace ray {

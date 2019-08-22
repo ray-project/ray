@@ -71,7 +71,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 }
 
 RayletGrpcTaskReceiver::RayletGrpcTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client, 
+    std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)
     : CoreWorkerRayletTaskReceiver(raylet_client, object_interface, task_handler),
@@ -81,8 +81,8 @@ RayletGrpcTaskReceiver::RayletGrpcTaskReceiver(
 
 RayletAsioTaskReceiver::RayletAsioTaskReceiver(
     std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface,
-    rpc::AsioRpcServer &server, const TaskHandler &task_handler)
+    CoreWorkerObjectInterface &object_interface, rpc::AsioRpcServer &server,
+    const TaskHandler &task_handler)
     : CoreWorkerRayletTaskReceiver(raylet_client, object_interface, task_handler),
       task_service_(*this) {
   server.RegisterService(task_service_);

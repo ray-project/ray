@@ -43,4 +43,3 @@ message RpcReplyMessage {
   // The actual reply message.
   bytes reply = 4;
 }
-

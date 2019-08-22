@@ -28,7 +28,7 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 
 /// Class that represents a rpc server.
 ///
-/// An `RpcServer` listens on a specific port. 
+/// An `RpcServer` listens on a specific port.
 ///
 /// Subclasses can register one or multiple services to a `RpcServer`, see
 /// `RegisterServices`. And they should also implement `InitServerCallFactories` to decide
@@ -62,7 +62,6 @@ class RpcServer {
   int GetPort() const { return port_; }
 
  protected:
-
   /// Name of this server, used for logging and debugging purpose.
   const std::string name_;
   /// Port of this server.

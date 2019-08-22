@@ -1,15 +1,15 @@
 #ifndef RAY_RPC_ASIO_SERVER_H
 #define RAY_RPC_ASIO_SERVER_H
 
-#include <thread>
-#include <utility>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <thread>
+#include <utility>
 
 #include "src/ray/common/client_connection.h"
+#include "src/ray/protobuf/asio.pb.h"
 #include "src/ray/rpc/common.h"
 #include "src/ray/rpc/server.h"
-#include "src/ray/protobuf/asio.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -17,12 +17,13 @@ namespace rpc {
 class ServiceMethod;
 class AsioRpcService;
 
-using ServiceMessageHandler = std::function<void (const std::shared_ptr<TcpClientConnection> &client,
-    int64_t message_type, uint64_t length, const uint8_t *message_data)>;
+using ServiceMessageHandler = std::function<void(
+    const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
+    uint64_t length, const uint8_t *message_data)>;
 
 /// Class that represents an asio based rpc server.
 ///
-/// An `AsioRpcServer` listens on a specific port. 
+/// An `AsioRpcServer` listens on a specific port.
 ///
 /// Subclasses can register one or multiple services to a `AsioRpcServer`, see
 /// `RegisterServices`. And they should also implement `InitMethodHandlers` to decide
@@ -35,7 +36,8 @@ class AsioRpcServer : public RpcServer {
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
   /// \param[in] io_service The io service to process requests.
-  AsioRpcServer(std::string name, const uint32_t port, boost::asio::io_service &io_service)
+  AsioRpcServer(std::string name, const uint32_t port,
+                boost::asio::io_service &io_service)
       : RpcServer(name, port), io_service_(io_service) {}
 
   /// Destruct this asio RPC server.
@@ -58,10 +60,10 @@ class AsioRpcServer : public RpcServer {
   void RegisterService(AsioRpcService &service);
 
  protected:
-    /// Accept a client connection.
-    void DoAcceptTcp();
-    /// Handle an accepted client connection.
-    void HandleAcceptTcp(const boost::system::error_code &error);
+  /// Accept a client connection.
+  void DoAcceptTcp();
+  /// Handle an accepted client connection.
+  void HandleAcceptTcp(const boost::system::error_code &error);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -72,25 +74,24 @@ class AsioRpcServer : public RpcServer {
   /// \param length The length of the message data.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-    void ProcessClientMessage(
-        const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
-        uint64_t length, const uint8_t *message_data);
+  void ProcessClientMessage(const std::shared_ptr<TcpClientConnection> &client,
+                            int64_t message_type, uint64_t length,
+                            const uint8_t *message_data);
   /// Process client message of ConnectClient.
   ///
   /// \param client The client that sent the message.
-  /// \param length The length of the message data.  
+  /// \param length The length of the message data.
   /// \param message_data A pointer to the message data.
-  /// \return Void.        
-    void ProcessConnectClientMessage(
-        const std::shared_ptr<TcpClientConnection> &client, uint64_t length, const uint8_t *message_data);
+  /// \return Void.
+  void ProcessConnectClientMessage(const std::shared_ptr<TcpClientConnection> &client,
+                                   uint64_t length, const uint8_t *message_data);
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
   /// disconnects and when the node manager fails to write a message to the
   /// client.
   ///
-  /// \param client The client that sent the message.      
-    void ProcessDisconnectClientMessage(
-        const std::shared_ptr<TcpClientConnection> &client);
+  /// \param client The client that sent the message.
+  void ProcessDisconnectClientMessage(const std::shared_ptr<TcpClientConnection> &client);
 
   /// IO service to handle the service calls.
   boost::asio::io_service &io_service_;
@@ -114,7 +115,7 @@ class AsioRpcService : public RpcService {
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
   explicit AsioRpcService(rpc::RpcServiceType service_type)
-    : RpcService(), service_type_(service_type) {}
+      : RpcService(), service_type_(service_type) {}
 
   /// Destruct this gRPC service.
   ~AsioRpcService() = default;
@@ -134,7 +135,7 @@ class AsioRpcService : public RpcService {
   rpc::RpcServiceType service_type_;
 };
 
-/// A method of a service that can be called. 
+/// A method of a service that can be called.
 class ServiceMethod {
  public:
   /// Returns the type of the request for this method.
@@ -147,7 +148,7 @@ class ServiceMethod {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   virtual void HandleRequest(const std::shared_ptr<TcpClientConnection> &client,
-                     int64_t length, const uint8_t *message_data) = 0;
+                             int64_t length, const uint8_t *message_data) = 0;
 };
 
 // Implementation of `ServiceMethod`.
@@ -158,24 +159,24 @@ class ServiceMethod {
 /// \tparam Reply Enum type for request/reply message.
 template <class ServiceMessageHandler, class Request, class Reply, class MessageType>
 class ServiceMethodImpl : public ServiceMethod {
-
  public:
   /// Constructor.
   ///
   /// \param[in] service_type The type of the RPC service that this method belongs to.
   /// \param[in] request_type Enum message type for request of this method.
-  /// \param[in] reply_type Enum message type for reply of this method.  
+  /// \param[in] reply_type Enum message type for reply of this method.
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
-  ServiceMethodImpl(RpcServiceType service_type, MessageType request_type, MessageType reply_type,
-      ServiceMessageHandler &service_handler,
-      HandleRequestFunction<ServiceMessageHandler, Request, Reply> handle_request_function)
+  ServiceMethodImpl(RpcServiceType service_type, MessageType request_type,
+                    MessageType reply_type, ServiceMessageHandler &service_handler,
+                    HandleRequestFunction<ServiceMessageHandler, Request, Reply>
+                        handle_request_function)
       : service_type_(service_type),
         request_type_(request_type),
         reply_type_(reply_type),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function) {}
- 
+
   int GetRequestType() const override { return static_cast<int>(request_type_); }
 
   /// Process a request of this method from a client.
@@ -184,9 +185,8 @@ class ServiceMethodImpl : public ServiceMethod {
   /// \param length The length of the message data.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void HandleRequest(const std::shared_ptr<TcpClientConnection> &client,
-                     int64_t length, const uint8_t *message_data) override {
-
+  void HandleRequest(const std::shared_ptr<TcpClientConnection> &client, int64_t length,
+                     const uint8_t *message_data) override {
     RpcRequestMessage request_message;
     request_message.ParseFromArray(message_data, length);
 
@@ -198,45 +198,45 @@ class ServiceMethodImpl : public ServiceMethod {
     Reply reply;
 
     RAY_LOG(DEBUG) << "Handle request for service " << RpcServiceType_Name(service_type_)
-                  << ", request id: " << request_id
-                  << ", request type: " << static_cast<int>(request_type_);
+                   << ", request id: " << request_id
+                   << ", request type: " << static_cast<int>(request_type_);
 
     (service_handler_.*handle_request_function_)(
         request, &reply,
         [this, &request_id, &reply, &client](Status status, std::function<void()> success,
-               std::function<void()> failure) {
-            RAY_LOG(DEBUG) << "Calling send reply callback for request " << request_id
-                          << ", service: " << RpcServiceType_Name(service_type_);
+                                             std::function<void()> failure) {
+          RAY_LOG(DEBUG) << "Calling send reply callback for request " << request_id
+                         << ", service: " << RpcServiceType_Name(service_type_);
 
-            RpcReplyMessage reply_message;
-            reply_message.set_request_id(request_id);
-            reply_message.set_error_code(static_cast<uint32_t>(status.code()));
-            reply_message.set_error_message(status.message());            
-            reply.SerializeToString(reply_message.mutable_reply());
+          RpcReplyMessage reply_message;
+          reply_message.set_request_id(request_id);
+          reply_message.set_error_code(static_cast<uint32_t>(status.code()));
+          reply_message.set_error_message(status.message());
+          reply.SerializeToString(reply_message.mutable_reply());
 
-            std::string serialized_message;
-            reply_message.SerializeToString(&serialized_message);
+          std::string serialized_message;
+          reply_message.SerializeToString(&serialized_message);
 
-            client->WriteMessageAsync(reply_type_,
-                static_cast<int64_t>(serialized_message.size()),
-                reinterpret_cast<const uint8_t *>(serialized_message.data()),
-                [success, failure](const ray::Status &status) {
-                    if (status.ok()) {
-                        if (success != nullptr) {
-                            success();
-                        }
-                    } else {
-                        if (failure != nullptr) {
-                            failure();
-                        }   
-                    }
-                });
+          client->WriteMessageAsync(
+              reply_type_, static_cast<int64_t>(serialized_message.size()),
+              reinterpret_cast<const uint8_t *>(serialized_message.data()),
+              [success, failure](const ray::Status &status) {
+                if (status.ok()) {
+                  if (success != nullptr) {
+                    success();
+                  }
+                } else {
+                  if (failure != nullptr) {
+                    failure();
+                  }
+                }
+              });
         });
   }
 
  private:
   /// Enum type for the RPC service.
-  rpc::RpcServiceType service_type_; 
+  rpc::RpcServiceType service_type_;
   /// Enum type for request message.
   MessageType request_type_;
   /// Enum type for reply message.

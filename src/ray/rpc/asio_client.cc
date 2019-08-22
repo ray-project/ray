@@ -1,15 +1,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <boost/asio.hpp>
 #include <thread>
 #include <utility>
-#include <boost/asio.hpp>
 
 #include "src/ray/common/client_connection.h"
-#include "src/ray/rpc/common.h"
-#include "src/ray/rpc/client.h"
 #include "src/ray/protobuf/asio.pb.h"
 #include "src/ray/rpc/asio_client.h"
+#include "src/ray/rpc/client.h"
+#include "src/ray/rpc/common.h"
 
 namespace ray {
 namespace rpc {
@@ -18,14 +18,13 @@ Status AsioRpcClient::Connect() {
   boost::asio::ip::tcp::socket socket(io_service_);
   RAY_RETURN_NOT_OK(TcpConnect(socket, address_, port_));
 
-  ClientHandler<boost::asio::ip::tcp> client_handler =
-      [](TcpClientConnection &client) {
-        // Begin listening for messages.
-        client.ProcessMessages();
-      };
+  ClientHandler<boost::asio::ip::tcp> client_handler = [](TcpClientConnection &client) {
+    // Begin listening for messages.
+    client.ProcessMessages();
+  };
   MessageHandler<boost::asio::ip::tcp> message_handler =
       [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-              uint64_t length, const uint8_t *message) {
+             uint64_t length, const uint8_t *message) {
         ProcessServerMessage(client, message_type, length, message);
       };
 
@@ -34,8 +33,7 @@ Status AsioRpcClient::Connect() {
 
   // Accept a new TCP client and dispatch it to the node manager.
   connection_ = TcpClientConnection::Create(
-      client_handler, message_handler, std::move(socket), name_,
-      asio_common_message_enum,
+      client_handler, message_handler, std::move(socket), name_, asio_common_message_enum,
       static_cast<int64_t>(ServiceMessageType::DisconnectClient));
   // Prepare connect message.
   ConnectClientMessage message;
@@ -58,25 +56,25 @@ Status AsioRpcClient::Connect() {
 void AsioRpcClient::ProcessServerMessage(
     const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
     uint64_t length, const uint8_t *message_data) {
-    
-  if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {       
+  if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
-    return;    
+    return;
   }
 
   RpcReplyMessage reply_message;
   reply_message.ParseFromArray(message_data, length);
 
-  RAY_LOG(DEBUG) << "Processing server message for request id: " << reply_message.request_id()
-                << ", service: " << name_ << ", message type: " << message_type;  
+  RAY_LOG(DEBUG) << "Processing server message for request id: "
+                 << reply_message.request_id() << ", service: " << name_
+                 << ", message type: " << message_type;
 
   const auto request_id = reply_message.request_id();
   ReplyCallback reply_callback;
 
   {
-    std::unique_lock<std::mutex> guard(callback_mutex_); 
+    std::unique_lock<std::mutex> guard(callback_mutex_);
     auto iter = pending_callbacks_.find(request_id);
     if (iter != pending_callbacks_.end()) {
       reply_callback = iter->second;
@@ -94,9 +92,9 @@ void AsioRpcClient::ProcessServerMessage(
 
 void AsioRpcClient::ProcessDisconnectClientMessage(
     const std::shared_ptr<TcpClientConnection> &client) {
-  RAY_LOG(INFO) << "Received DiconnectClient message from server "
-                << address_ << ":" << port_ << ", service: " << name_; 
-  
+  RAY_LOG(INFO) << "Received DiconnectClient message from server " << address_ << ":"
+                << port_ << ", service: " << name_;
+
   is_connected_ = false;
 
   // Invoke all the callbacks that are pending replies, this is necessary so that
@@ -111,7 +109,7 @@ void AsioRpcClient::ProcessDisconnectClientMessage(
       reply_message.set_request_id(entry.first);
       reply_message.set_error_code(static_cast<uint32_t>(status.code()));
       reply_message.set_error_message(status.message());
-    
+
       entry.second(reply_message);
     }
 

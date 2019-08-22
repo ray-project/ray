@@ -36,7 +36,7 @@ service DirectActorService {
 // method.
 enum DirectActorServiceMessageType {
   // `ConnectClient` and `DisconnectClient` MUST be defined and their values
-  // MUST be consistent with the ones in `ServiceMessageType` in 
+  // MUST be consistent with the ones in `ServiceMessageType` in
   // "src/ray/protobuf/asio.proto".
   DirectActorConnectClient = 0;
   DirectActorDisconnectClient = 1;

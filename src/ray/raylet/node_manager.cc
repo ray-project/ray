@@ -828,11 +828,11 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   Language language = static_cast<Language>(message->language());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   auto worker =
-      RayConfig::instance().use_asio_rpc_for_worker() ?
-      std::make_shared<Worker>(worker_id, message->worker_pid(), language,
-                               message->port(), client, io_service_) :
-      std::make_shared<Worker>(worker_id, message->worker_pid(), language,
-                               message->port(), client, client_call_manager_);
+      RayConfig::instance().use_asio_rpc_for_worker()
+          ? std::make_shared<Worker>(worker_id, message->worker_pid(), language,
+                                     message->port(), client, io_service_)
+          : std::make_shared<Worker>(worker_id, message->worker_pid(), language,
+                                     message->port(), client, client_call_manager_);
 
   Status status;
   if (message->is_worker()) {
