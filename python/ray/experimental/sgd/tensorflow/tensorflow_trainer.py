@@ -13,7 +13,6 @@ import ray
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.experimental.sgd.tensorflow.tensorflow_runner import TensorFlowRunner
-from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +130,11 @@ class TensorFlowTrainer(object):
             checkpoint (str): Path to target checkpoint file.
 
         """
-        model = tf.keras.models.load_model(checkpoint + '.h5')
-        with open(checkpoint + '_state.json') as f:
+        model = tf.keras.models.load_model(checkpoint + ".h5")
+        with open(checkpoint + "_state.json") as f:
             state = json.load(f)
 
-        state['config'] = model.to_json()
+        state["config"] = model.to_json()
         state["weights"] = model.get_weights()
         state["optimizer_weights"] = model.optimizer.get_weights()
 

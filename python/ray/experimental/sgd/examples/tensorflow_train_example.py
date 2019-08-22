@@ -9,6 +9,7 @@ from ray import tune
 from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
     TensorFlowTrainer, TensorFlowTrainable)
 
+
 def mnist_dataset(batch_size):
     NUM_TRAIN_SAMPLES = 60000
     mnist = tf.keras.datasets.mnist
@@ -31,15 +32,15 @@ def mnist_model(config=None):
 
     model = tf.keras.models.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
-        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(128, activation="relu"),
         tf.keras.layers.Dropout(0.2),
-        tf.keras.layers.Dense(10, activation='softmax')
+        tf.keras.layers.Dense(10, activation="softmax")
     ])
 
     model.compile(
-        optimizer='adam',
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy'])
+        optimizer="adam",
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"])
 
     return model
 
