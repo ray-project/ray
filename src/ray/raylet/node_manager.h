@@ -400,8 +400,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
-  /// Helper function to produce job table data for newly created actor or need updated
-  /// actor.
+  /// Helper function to produce job table data for newly created job or updated job.
   ///
   /// \param job_id The ID of job that need to register or update.
   /// \param is_dead Whether the job is dead.
