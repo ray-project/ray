@@ -25,7 +25,7 @@ class Worker {
          std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A constructor that initializes a worker object. The constructed worker object
-  /// uses grpc to communicate with worker process.
+  /// uses asio based rpc to communicate with worker process.
   Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
          std::shared_ptr<LocalClientConnection> connection,
          boost::asio::io_service &io_service);

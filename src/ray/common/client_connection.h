@@ -170,6 +170,7 @@ class ClientConnection : public ServerConnection<T> {
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
 
+  /// Override the message handler for the client connection.
   void SetHandler(MessageHandler<T> message_handler);
 
  private:

@@ -78,21 +78,10 @@ class RpcServer {
 /// Subclass should implement `InitServerCallFactories` to decide
 /// which kinds of requests this service should accept.
 class RpcService {
- public:
-   rpc::RpcType GetRpcType() const { return rpc_type_; }
-
  protected:
-  /// Constructor.
-  ///
-  /// \param[in] main_service The main event loop, to which service handler functions
-  /// will be posted.
-  explicit RpcService(rpc::RpcType type) : rpc_type_(type) {}
 
   /// Destruct this gRPC service.
   virtual ~RpcService() {}
-
-
-  rpc::RpcType rpc_type_;
 };
 
 }  // namespace rpc

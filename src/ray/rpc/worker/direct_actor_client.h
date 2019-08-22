@@ -28,7 +28,7 @@ class DirectActorClient {
                        const ClientCallback<PushTaskReply> &callback) = 0;
 };
 
-/// Grpc Client used for communicating with a direct actor server.
+/// Grpc client for direct actor call.
 class DirectActorGrpcClient : public DirectActorClient {
  public:
   /// Constructor.
@@ -66,14 +66,14 @@ class DirectActorGrpcClient : public DirectActorClient {
   ClientCallManager &client_call_manager_;
 };
 
-/// Client used for communicating with a direct actor server.
+/// Asio based RPC client for direct actor call.
 class DirectActorAsioClient : public DirectActorClient, public AsioRpcClient {
  public:
   /// Constructor.
   ///
   /// \param[in] address Address of the direct actor server.
   /// \param[in] port Port of the direct actor server.
-  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  /// \param[in] io_service The `io_service` to process reply messages.
   DirectActorAsioClient(const std::string &address, const int port, boost::asio::io_service &io_service)
       : AsioRpcClient(RpcServiceType::DirectActorServiceType, address, port, io_service) {}
 
@@ -95,7 +95,6 @@ class DirectActorAsioClient : public DirectActorClient, public AsioRpcClient {
         request, callback);
   }
 };
-
 
 }  // namespace rpc
 }  // namespace ray

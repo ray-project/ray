@@ -78,14 +78,14 @@ class WorkerTaskAsioRpcService : public AsioRpcService {
       std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override { 
 
     // Initialize the Factory for `PushTask` requests.
-    std::shared_ptr<ServiceMethod> push_task_call_method(
+    std::shared_ptr<ServiceMethod> assign_task_call_method(
         new ServerCallMethodImpl<WorkerTaskHandler, AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
             service_type_,
             WorkerTaskServiceMessageType::AssignTaskRequestMessage,
             WorkerTaskServiceMessageType::AssignTaskReplytMessage,
             service_handler_, &WorkerTaskHandler::HandleAssignTask));
 
-    server_call_methods->emplace_back(std::move(push_task_call_method));
+    server_call_methods->emplace_back(std::move(assign_task_call_method));
   }
 
  private:

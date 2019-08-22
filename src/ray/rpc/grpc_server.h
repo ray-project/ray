@@ -90,7 +90,7 @@ class GrpcService : public RpcService{
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
   explicit GrpcService(boost::asio::io_service &main_service)
-      : RpcService(rpc::RpcType::Grpc), main_service_(main_service) {}
+      : RpcService(), main_service_(main_service) {}
 
   /// Destruct this gRPC service.
   ~GrpcService() = default;

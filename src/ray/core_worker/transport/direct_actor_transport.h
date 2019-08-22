@@ -26,25 +26,24 @@ struct ActorStateData {
   std::pair<std::string, int> location_;
 };
 
-class DirectActorRpcClientFactory {
- public:
-  virtual ~DirectActorRpcClientFactory() {}
-  
-  virtual std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) = 0;
-};
-
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     std::unique_ptr<CoreWorkerStoreProvider> store_provider,
-                                     bool use_asio_rpc);
+  CoreWorkerDirectActorTaskSubmitter(gcs::RedisGcsClient &gcs_client,
+                                     std::unique_ptr<CoreWorkerStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
+
+ protected:
+  /// Create a RPC client to the specific address.
+  ///
+  /// \param[in] ip_address IP address of the server.
+  /// \param[in] port Port that the server is listening on.
+  /// \return Created RPC client.
+  virtual std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) = 0;
 
  private:
   /// Subscribe to all actor updates.
@@ -88,9 +87,6 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
-
   /// Gcs client.
   gcs::RedisGcsClient &gcs_client_;
 
@@ -118,9 +114,43 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
 
-  std::unique_ptr<DirectActorRpcClientFactory> rpc_client_factory_;
-
   friend class CoreWorkerTest;
+};
+
+class DirectActorGrpcTaskSubmitter : public CoreWorkerDirectActorTaskSubmitter {
+ public:
+  DirectActorGrpcTaskSubmitter(boost::asio::io_service &io_service,
+                              gcs::RedisGcsClient &gcs_client,
+                              std::unique_ptr<CoreWorkerStoreProvider> store_provider)
+    : CoreWorkerDirectActorTaskSubmitter(gcs_client, std::move(store_provider)),
+      client_call_manager_(io_service) {}
+
+  std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) override {
+    return std::unique_ptr<rpc::DirectActorGrpcClient>(
+        new rpc::DirectActorGrpcClient(ip_address, port, client_call_manager_));  
+  }
+
+ private:  
+  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
+  rpc::ClientCallManager client_call_manager_;
+};
+
+class DirectActorAsioTaskSubmitter : public CoreWorkerDirectActorTaskSubmitter {
+ public:
+  DirectActorAsioTaskSubmitter(boost::asio::io_service &io_service,
+                              gcs::RedisGcsClient &gcs_client,
+                              std::unique_ptr<CoreWorkerStoreProvider> store_provider)
+    : CoreWorkerDirectActorTaskSubmitter(gcs_client, std::move(store_provider)),
+      io_service_(io_service) {}
+
+  std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) override {
+    return std::unique_ptr<rpc::DirectActorAsioClient>(
+        new rpc::DirectActorAsioClient(ip_address, port, io_service_));  
+  }
+
+ private:  
+  /// The IO event loop.
+  boost::asio::io_service &io_service_;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,

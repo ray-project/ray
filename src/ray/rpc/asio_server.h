@@ -92,7 +92,7 @@ class AsioRpcService : public RpcService {
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
   explicit AsioRpcService(rpc::RpcServiceType service_type)
-    : RpcService(rpc::RpcType::Asio), service_type_(service_type) {}
+    : RpcService(), service_type_(service_type) {}
 
   /// Destruct this gRPC service.
   ~AsioRpcService() = default;

@@ -70,7 +70,6 @@ class DirectActorAsioRpcService : public AsioRpcService {
  public:
   /// Constructor.
   ///
-  /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
   DirectActorAsioRpcService(DirectActorHandler &service_handler)
       : AsioRpcService(rpc::RpcServiceType::DirectActorServiceType), service_handler_(service_handler){};

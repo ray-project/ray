@@ -15,54 +15,15 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
   return false;
 }
 
-class DirectActorGrpcClientFactory : public DirectActorRpcClientFactory {
- public:
-  DirectActorGrpcClientFactory(boost::asio::io_service &io_service)
-    : client_call_manager_(io_service) {}
-
-  std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) override {
-    return std::unique_ptr<rpc::DirectActorGrpcClient>(
-        new rpc::DirectActorGrpcClient(ip_address, port, client_call_manager_));  
-  }
-
- private:  
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
-};
-
-class DirectActorAsioClientFactory : public DirectActorRpcClientFactory {
- public:
-  DirectActorAsioClientFactory(boost::asio::io_service &io_service)
-    : io_service_(io_service) {}
-
-  std::unique_ptr<rpc::DirectActorClient> CreateRpcClient(std::string ip_address, int port) override {
-    return std::unique_ptr<rpc::DirectActorAsioClient>(
-        new rpc::DirectActorAsioClient(ip_address, port, io_service_));  
-  }
-
- private:  
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
-};
-
 /*
  * CoreWorkerDirectActorTaskSubmitter
  */
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
-    boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
-    std::unique_ptr<CoreWorkerStoreProvider> store_provider, bool use_asio_rpc)
-    : io_service_(io_service),
-      gcs_client_(gcs_client),
+    gcs::RedisGcsClient &gcs_client,
+    std::unique_ptr<CoreWorkerStoreProvider> store_provider)
+    : gcs_client_(gcs_client),
       store_provider_(std::move(store_provider)) {
-
-  if (use_asio_rpc) {
-    rpc_client_factory_ = std::unique_ptr<DirectActorAsioClientFactory>(
-        new DirectActorAsioClientFactory(io_service_));
-  } else {
-    rpc_client_factory_ = std::unique_ptr<DirectActorGrpcClientFactory>(
-        new DirectActorGrpcClientFactory(io_service_));
-  }
   RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
@@ -158,7 +119,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
   std::unique_ptr<rpc::DirectActorClient> grpc_client =
-      rpc_client_factory_->CreateRpcClient(ip_address, port);
+      CreateRpcClient(ip_address, port);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.

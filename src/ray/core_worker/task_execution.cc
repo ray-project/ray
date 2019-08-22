@@ -26,12 +26,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   boost::optional<rpc::AsioRpcServer &> asio_server;
 
   if (use_asio_rpc) {
-    // TODO: fix the port.
-    std::unique_ptr<rpc::AsioRpcServer> server(new rpc::AsioRpcServer("Worker", 0 /* let grpc choose port */, *main_service_));
+    std::unique_ptr<rpc::AsioRpcServer> server(new rpc::AsioRpcServer(
+      "Worker", 0 /* let asio choose port */, *main_service_));
     asio_server = *server;
     worker_server_ = std::move(server);
   } else {
-    std::unique_ptr<rpc::GrpcServer> server(new rpc::GrpcServer("Worker", 0 /* let grpc choose port */));
+    std::unique_ptr<rpc::GrpcServer> server(new rpc::GrpcServer(
+        "Worker", 0 /* let grpc choose port */));
     grpc_server = *server;
     worker_server_ = std::move(server);
   }

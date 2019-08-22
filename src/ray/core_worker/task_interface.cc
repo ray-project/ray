@@ -106,11 +106,17 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
+
+  auto memory_store_provider = object_interface.CreateStoreProvider(StoreProviderType::MEMORY);
+
   task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
+                           use_asio_rpc ?
                            std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-                               new CoreWorkerDirectActorTaskSubmitter(io_service, gcs_client,
-                                   object_interface.CreateStoreProvider(StoreProviderType::MEMORY),
-                                   use_asio_rpc)));
+                               new DirectActorAsioTaskSubmitter(io_service, gcs_client,
+                                   std::move(memory_store_provider))) :
+                           std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
+                               new DirectActorGrpcTaskSubmitter(io_service, gcs_client,
+                                   std::move(memory_store_provider))));
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(

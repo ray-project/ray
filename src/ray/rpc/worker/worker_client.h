@@ -27,7 +27,7 @@ class WorkerTaskClient {
                          const ClientCallback<AssignTaskReply> &callback) = 0;
 };
 
-/// Client used for communicating with a remote worker server.
+/// Grpc client for remote worker server.
 class WorkerTaskGrpcClient : public WorkerTaskClient {
  public:
   /// Constructor.
@@ -65,7 +65,7 @@ class WorkerTaskGrpcClient : public WorkerTaskClient {
   ClientCallManager &client_call_manager_;
 };
 
-/// Client used for communicating with a direct actor server.
+/// Asio based RPC client for remote worker server.
 class WorkerTaskAsioClient : public WorkerTaskClient, public AsioRpcClient {
  public:
   /// Constructor.
