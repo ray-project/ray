@@ -246,6 +246,7 @@ void CoreWorkerTest::TestNormalTask(
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+ASSERT_TRUE(!results[0]->HasMetadata());      
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
@@ -449,7 +450,7 @@ void CoreWorkerTest::TestActorFailure(
       std::vector<std::shared_ptr<RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
       ASSERT_EQ(results.size(), 1);
-
+RAY_LOG(INFO) << "get object " << i + 1;
       if (results[0]->HasMetadata()) {
         // Verify if this is the desired error.
         std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::ACTOR_DIED));
@@ -633,7 +634,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
-
+#if 0
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
@@ -880,6 +881,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   resources.emplace("resource1", 1);
   TestActorTask(resources, false);
 }
+#endif
 
 TEST_F(SingleNodeTest, TestDirectActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
@@ -891,7 +893,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
   resources.emplace("resource1", 1);
   TestActorTask(resources, true);
 }
-
+/*
 TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
   std::unordered_map<std::string, double> resources;
   TestActorReconstruction(resources, true);
@@ -913,7 +915,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
   resources.emplace("resource1", 1);
   TestActorFailure(resources, true);
 }
-
+*/
 }  // namespace ray
 
 int main(int argc, char **argv) {

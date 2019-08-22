@@ -11,6 +11,23 @@ namespace raylet {
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
                rpc::ClientCallManager &client_call_manager, bool is_worker)
+    : Worker(worker_id, pid, language, port, is_worker) {
+  if (port > 0) {
+    rpc_client_ = std::unique_ptr<rpc::WorkerTaskGrpcClient>(
+        new rpc::WorkerTaskGrpcClient("127.0.0.1", port, client_call_manager));
+  }
+}
+
+Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
+               boost::asio::io_service &io_service, bool is_worker)
+    : Worker(worker_id, pid, language, port, is_worker) {
+  if (port > 0) {
+    rpc_client_ = std::unique_ptr<rpc::WorkerTaskAsioClient>(
+        new rpc::WorkerTaskAsioClient("127.0.0.1", port, io_service));
+  }
+}
+
+Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port, bool is_worker)
     : worker_id_(worker_id),
       pid_(pid),
       port_(port),
@@ -18,13 +35,7 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       blocked_(false),
       num_missed_heartbeats_(0),
       is_being_killed_(false),
-      client_call_manager_(client_call_manager),
-      is_worker_(is_worker) {
-  if (port_ > 0) {
-    rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
-        new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
-  }
-}
+      is_worker_(is_worker) {}
 
 void Worker::MarkAsBeingKilled() { is_being_killed_ = true; }
 
@@ -140,7 +151,9 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) 
           // Worker has finished this task. There's nothing to do here
           // and assigning new task will be done when raylet receives
           // `TaskDone` message.
+RAY_LOG(INFO) << "AssignTask callback invoked, status: " << status.ok();
         });
+RAY_LOG(INFO) << "AssignTask returns ok? " << status.ok();
   } else {
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.

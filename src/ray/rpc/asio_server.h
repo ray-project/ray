@@ -17,7 +17,8 @@ namespace rpc {
 class ServiceMethod;
 class AsioRpcService;
 
-using ServiceHandler = std::function<void (const std::shared_ptr<TcpClientConnection> &client, int64_t message_type, const uint8_t *message_data)>;
+using ServiceHandler = std::function<void (const std::shared_ptr<TcpClientConnection> &client,
+    int64_t message_type, uint64_t length, const uint8_t *message_data)>;
 
 /// Class that represents an asio based rpc server.
 ///
@@ -64,9 +65,9 @@ class AsioRpcServer : public RpcServer {
 
     void ProcessClientMessage(
         const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
-        const uint8_t *message_data);
+        uint64_t length, const uint8_t *message_data);
     void ProcessConnectClientMessage(
-        const std::shared_ptr<TcpClientConnection> &client, const uint8_t *message_data);
+        const std::shared_ptr<TcpClientConnection> &client, uint64_t length, const uint8_t *message_data);
     void ProcessDisconnectClientMessage(
         const std::shared_ptr<TcpClientConnection> &client);
 
@@ -139,10 +140,11 @@ class ServerCallMethodImpl : public ServiceMethod {
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
   /// \param[in] io_service The event loop.
-  ServerCallMethodImpl(MessageType request_type, MessageType reply_type,
+  ServerCallMethodImpl(RpcServiceType service_type, MessageType request_type, MessageType reply_type,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function)
-      : request_type_(request_type),
+      : service_type_(service_type),
+        request_type_(request_type),
         reply_type_(reply_type),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function) {}
@@ -151,6 +153,7 @@ class ServerCallMethodImpl : public ServiceMethod {
 
   void HandleRequest(const std::shared_ptr<TcpClientConnection> &client,
                      int64_t length, const uint8_t *message_data) override {
+
     RpcRequestMessage request_message;
     request_message.ParseFromArray(message_data, length);
 
@@ -161,11 +164,17 @@ class ServerCallMethodImpl : public ServiceMethod {
 
     Reply reply;
 
+    RAY_LOG(INFO) << "Handle request for service " << RpcServiceType_Name(service_type_)
+                  << ", request id: " << request_id
+                  << ", request type: " << static_cast<int>(request_type_);
+
     (service_handler_.*handle_request_function_)(
         request, &reply,
         [this, &request_id, &reply, &client](Status status, std::function<void()> success,
                std::function<void()> failure) {
-          
+            RAY_LOG(INFO) << "Calling send reply callback for request " << request_id
+                          << ", service: " << RpcServiceType_Name(service_type_);
+
             RpcReplyMessage reply_message;
             reply_message.set_request_id(request_id);
             reply_message.set_error_code(static_cast<uint32_t>(status.code()));
@@ -179,12 +188,21 @@ class ServerCallMethodImpl : public ServiceMethod {
                 static_cast<int64_t>(serialized_message.size()),
                 reinterpret_cast<const uint8_t *>(serialized_message.data()),
                 [success, failure](const ray::Status &status) {
-                    status.ok() ? success() : failure();
+                    if (status.ok()) {
+                        if (success != nullptr) {
+                            success();
+                        }
+                    } else {
+                        if (failure != nullptr) {
+                            failure();
+                        }   
+                    }
                 });
         });
   }
 
  private:
+  rpc::RpcServiceType service_type_; 
   /// Enum type for request message.
   MessageType request_type_;
   /// Enum type for reply message.

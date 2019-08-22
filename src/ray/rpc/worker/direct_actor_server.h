@@ -82,6 +82,7 @@ class DirectActorAsioRpcService : public AsioRpcService {
     // Initialize the Factory for `PushTask` requests.
     std::shared_ptr<ServiceMethod> push_task_call_method(
         new ServerCallMethodImpl<DirectActorHandler, PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
+            service_type_,
             DirectActorServiceMessageType::PushTaskRequestMessage,
             DirectActorServiceMessageType::PushTaskReplyMessage,
             service_handler_, &DirectActorHandler::HandlePushTask));

@@ -130,7 +130,7 @@ template <typename T>
 using ClientHandler = std::function<void(ClientConnection<T> &)>;
 template <typename T>
 using MessageHandler =
-    std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, const uint8_t *)>;
+    std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, uint64_t, const uint8_t *)>;
 
 /// \typename ClientConnection
 ///
@@ -169,6 +169,8 @@ class ClientConnection : public ServerConnection<T> {
   /// message has been fully received, the client manager's
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
+
+  void SetHandler(MessageHandler<T> message_handler);
 
  private:
   /// A private constructor for a node client connection.

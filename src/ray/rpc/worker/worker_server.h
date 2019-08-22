@@ -3,6 +3,7 @@
 
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
+#include "ray/rpc/asio_server.h"
 
 #include "src/ray/protobuf/worker.grpc.pb.h"
 #include "src/ray/protobuf/worker.pb.h"
@@ -61,6 +62,38 @@ class WorkerTaskGrpcService : public GrpcService {
   /// The service handler that actually handle the requests.
   WorkerTaskHandler &service_handler_;
 };
+
+/// The `AsioRpcService` for `WorkerTaskService`.
+class WorkerTaskAsioRpcService : public AsioRpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] main_service See super class.
+  /// \param[in] handler The service handler that actually handle the requests.
+  WorkerTaskAsioRpcService(WorkerTaskHandler &service_handler)
+      : AsioRpcService(rpc::RpcServiceType::WorkerTaskServiceType), service_handler_(service_handler){};
+
+ protected:
+  void InitMethodHandlers(
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override { 
+
+    // Initialize the Factory for `PushTask` requests.
+    std::shared_ptr<ServiceMethod> push_task_call_method(
+        new ServerCallMethodImpl<WorkerTaskHandler, AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
+            service_type_,
+            WorkerTaskServiceMessageType::AssignTaskRequestMessage,
+            WorkerTaskServiceMessageType::AssignTaskReplytMessage,
+            service_handler_, &WorkerTaskHandler::HandleAssignTask));
+
+    server_call_methods->emplace_back(std::move(push_task_call_method));
+  }
+
+ private:
+
+  /// The service handler that actually handle the requests.
+  WorkerTaskHandler &service_handler_;
+};
+
 
 }  // namespace rpc
 }  // namespace ray

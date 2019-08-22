@@ -37,13 +37,16 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_, main_service_, grpc_server.get() /* TODO: fix me */, func)));
+      use_asio_rpc ?
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+          new RayletAsioTaskReceiver(raylet_client, object_interface_, asio_server.get(), func)) :
+      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new RayletGrpcTaskReceiver(
+          raylet_client, object_interface_, main_service_, grpc_server.get(), func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       use_asio_rpc ?
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new DirectActorAsioTaskReceiver(object_interface_, main_service_, asio_server.get(), func)) :
+          new DirectActorAsioTaskReceiver(object_interface_, asio_server.get(), func)) :
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
           new DirectActorGrpcTaskReceiver(object_interface_, main_service_, grpc_server.get(), func))); 
 

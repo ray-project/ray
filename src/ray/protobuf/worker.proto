@@ -20,3 +20,19 @@ service WorkerTaskService {
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
 }
 
+// This enum is needed by asio based rpc. For each method in the rpc service,
+// a message type needs to be defined for the corresponding request in that
+// method, so that receiver side can figure out the exact request message
+// based on this type, deserialize it accordingly, and invoke the corresponding
+// method.
+enum WorkerTaskServiceMessageType {
+  // `ConnectClient` and `DisconnectClient` MUST be defined and their values
+  // MUST be consistent with the ones in `ServiceMessageType` in 
+  // "src/ray/protobuf/asio.proto".
+  WorkerConnectClient = 0;
+  WorkerDisconnectClient = 1;
+  // Push task request.
+  AssignTaskRequestMessage = 2;
+  // Push task reply.
+  AssignTaskReplytMessage = 3;
+}

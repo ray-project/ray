@@ -67,9 +67,8 @@ class AsioRpcClient : public RpcClient {
         };
     MessageHandler<boost::asio::ip::tcp> message_handler =
         [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-                const uint8_t *message) {
-          // TODO(zhijunfu): this is not right. need legnth here!!!
-          HandleReply(client, message_type, message);
+                uint64_t length, const uint8_t *message) {
+          ProcessServerMessage(client, message_type, length, message);
         };
 
     const std::vector<std::string> asio_common_message_enum =
@@ -115,8 +114,12 @@ class AsioRpcClient : public RpcClient {
   Status CallMethod(MessageType request_type, MessageType reply_type,
       const Request &request, const ClientCallback<Reply> &callback) {
 
-    if (connection_ == nullptr) {
-      return Status::Invalid("connect server failed");
+    if (connection_ == nullptr || !is_connected_) {
+      // There are errors, invoke the callback.
+      auto status = Status::Invalid("server is not connected");
+      Reply reply;
+      callback(status, reply);     
+      return status;
     }
 
     RpcRequestMessage request_message;
@@ -127,55 +130,125 @@ class AsioRpcClient : public RpcClient {
     std::string serialized_message;
     request_message.SerializeToString(&serialized_message);
 
+    RAY_LOG(INFO) << "Calling method for service " << name_
+                  << ", request id: " << request_id
+                  << ", request type: " << static_cast<int>(request_type);
+
+    auto status = connection_->WriteMessage(request_type,
+        static_cast<int64_t>(serialized_message.size()),
+        reinterpret_cast<const uint8_t *>(serialized_message.data()));
+    if (status.ok()) {
+      // Send succeeds. Add the request to the records, so that
+      // we can invoke the callback after receivig the reply.
+      pending_callbacks_.emplace(request_id,
+        [callback, reply_type](const RpcReplyMessage &reply_message) {
+
+          const auto request_id = reply_message.request_id();
+          auto error_code = static_cast<StatusCode>(reply_message.error_code());
+          auto error_message = reply_message.error_message();  
+          Status status = (error_code == StatusCode::OK) ?
+              Status::OK() : Status(error_code, error_message);
+
+          Reply reply;
+          reply.ParseFromString(reply_message.reply());
+
+          callback(status, reply); 
+          RAY_LOG(INFO) << "Calling reply callback for message " << static_cast<int>(reply_type)
+                        << ", request id " << request_id << ", status: " << status.ToString();                           
+      });
+
+    } else {
+      // There are errors, invoke the callback.
+      Reply reply;
+      callback(status, reply);
+      RAY_LOG(INFO) << "Failed to write request message " << static_cast<int>(request_type)
+                    << " for service " << name_ << " to " << address_ << ":" << port_
+                    << ", request id " << request_id << ", status: " << status.ToString();              
+    }
+  
+
+/*
+
+
     connection_->WriteMessageAsync(request_type,
         static_cast<int64_t>(serialized_message.size()),
         reinterpret_cast<const uint8_t *>(serialized_message.data()),
-        [request_id, callback, this](const ray::Status &status) {
+        [request_id, callback, request_type, reply_type, this](const ray::Status &status) {
           if (status.ok()) {
             // Send succeeds. Add the request to the records, so that
             // we can invoke the callback after receivig the reply.
             pending_callbacks_.emplace(request_id,
-              [callback](const RpcReplyMessage &reply_message) {
+              [callback, reply_type](const RpcReplyMessage &reply_message) {
 
                 const auto request_id = reply_message.request_id();
                 auto error_code = static_cast<StatusCode>(reply_message.error_code());
                 auto error_message = reply_message.error_message();  
-                Status status(error_code, error_message);
+                Status status = (error_code == StatusCode::OK) ?
+                    Status::OK() : Status(error_code, error_message);
 
                 Reply reply;
                 reply.ParseFromString(reply_message.reply());
 
-                callback(status, reply);
+                callback(status, reply); 
+                RAY_LOG(INFO) << "Calling reply callback for message " << static_cast<int>(reply_type)
+                              << ", request id " << request_id << ", status: " << status.ToString();                           
             });
 
           } else {
             // There are errors, invoke the callback.
             Reply reply;
             callback(status, reply);
+            RAY_LOG(INFO) << "Failed to write request message " << static_cast<int>(request_type)
+                          << " for service " << name_ << " to " << address_ << ":" << port_
+                          << ", request id " << request_id << ", status: " << status.ToString();              
           }
         });
+
+*/
 
     return Status::OK();
   }
 
+ protected:
 
-  void HandleReply(const std::shared_ptr<TcpClientConnection> &client,
-                     int64_t length, const uint8_t *message_data) {
+  void ProcessServerMessage(
+      const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
+      uint64_t length, const uint8_t *message_data) {
+      
+    if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {       
+      ProcessDisconnectClientMessage(client);
+      // We don't need to receive future messages from this client,
+      // because it's already disconnected.
+      return;    
+    }
+
     RpcReplyMessage reply_message;
     reply_message.ParseFromArray(message_data, length);
 
+    RAY_LOG(INFO) << "Processing server message for request id: " << reply_message.request_id()
+                  << ", service: " << name_ << ", message type: " << message_type;  
+
     const auto request_id = reply_message.request_id();
-
     auto iter = pending_callbacks_.find(request_id);
-    if (iter == pending_callbacks_.end()) {
-      return;
+    if (iter != pending_callbacks_.end()) {
+      iter->second(reply_message);
+      pending_callbacks_.erase(iter);
     }
+    // TODO: what would happen if we don't find an entry rom pending_callbacks_?
 
-    iter->second(reply_message);
-    pending_callbacks_.erase(iter);
+    client->ProcessMessages();
   }
 
- protected:
+  void ProcessDisconnectClientMessage(
+      const std::shared_ptr<TcpClientConnection> &client) {
+    RAY_LOG(INFO) << "Processing DiconnectClient message for service: " << name_; 
+    
+    is_connected_ = false;
+
+    // TODO: we might need to call these callbacks.
+    pending_callbacks_.clear();
+  }
+
 
   using ReplyCallback = std::function<void(const RpcReplyMessage &)>;
   /// Map from request id to the corresponding reply callback, which will be

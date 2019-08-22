@@ -22,9 +22,15 @@ namespace raylet {
 /// actor. Ray units of work execute in the context of a Worker.
 class Worker {
  public:
-  /// A constructor that initializes a worker object.
+  /// A constructor that initializes a worker object. The constructed worker object
+  /// uses grpc to communicate with worker process.
   Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
          rpc::ClientCallManager &client_call_manager, bool is_worker = true);
+  /// A constructor that initializes a worker object. The constructed worker object
+  /// uses grpc to communicate with worker process.
+  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
+         boost::asio::io_service &io_service, bool is_worker = true);
+
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkAsBeingKilled();
@@ -74,6 +80,7 @@ class Worker {
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
 
  private:
+  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port, bool is_worker);
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's PID.
@@ -103,9 +110,6 @@ class Worker {
   /// Indicates we have sent kill signal to the worker if it's true. We cannot treat the
   /// worker process as really dead until we lost the heartbeats from the worker.
   bool is_being_killed_;
-  /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
-  /// workers.
-  rpc::ClientCallManager &client_call_manager_;
   /// Indicates whether this is a worker or a driver.
   bool is_worker_;
   /// The rpc client to send tasks to this worker.

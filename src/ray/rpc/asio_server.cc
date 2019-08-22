@@ -1,3 +1,5 @@
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <thread>
 #include <utility>
@@ -28,7 +30,10 @@ void AsioRpcServer::Run() {
 
   DoAcceptTcp();
 
+  port_ = tcp_acceptor_->local_endpoint().port();
   is_closed_ = false;
+  RAY_LOG(INFO) << name_ << " server started, listening on " << port_
+                << ", pid: " << getpid();
 }
 
 void AsioRpcServer::DoAcceptTcp() {
@@ -48,8 +53,8 @@ void AsioRpcServer::HandleAcceptTcp(const boost::system::error_code &error) {
         };
     MessageHandler<tcp> message_handler =
         [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          ProcessClientMessage(client, message_type, message);
+               uint64_t length, const uint8_t *message) {
+          ProcessClientMessage(client, message_type, length, message);
         };
     // Accept a new TCP client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(
@@ -64,12 +69,12 @@ void AsioRpcServer::HandleAcceptTcp(const boost::system::error_code &error) {
 
 void AsioRpcServer::ProcessClientMessage(
     const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
-    const uint8_t *message_data) {
+    uint64_t length, const uint8_t *message_data) {
 
   auto message_type_value = static_cast<ServiceMessageType>(message_type);
   switch (message_type_value) {
   case ServiceMessageType::ConnectClient: {
-    ProcessConnectClientMessage(client, message_data);
+    ProcessConnectClientMessage(client, length, message_data);
   } break;
   case ServiceMessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client);
@@ -86,14 +91,22 @@ void AsioRpcServer::ProcessClientMessage(
 }
 
 void AsioRpcServer::ProcessConnectClientMessage(
-    const std::shared_ptr<TcpClientConnection> &client, const uint8_t *message_data) {
-      /*
+    const std::shared_ptr<TcpClientConnection> &client, uint64_t length, const uint8_t *message_data) {
+
   // Find the handler for the type of service, and overwrite.
   ConnectClientMessage message;
-  auto service_type = message.service_type;
-  auto handler = ...
-  client->SetHandler(handler);
-  */
+  message.ParseFromArray(message_data, length);
+
+  auto service_type = message.service_type();
+  RAY_LOG(INFO) << "Processing ConnectClient message for service: "
+                << GenerateEnumName(RpcServiceType, service_type);
+  auto iter = service_handlers_.find(service_type);
+  if (iter != service_handlers_.end()) {
+    client->SetHandler(iter->second);
+
+  } else {
+    RAY_LOG(FATAL) << "Received unexpected service type " << service_type;
+  }
 }
 
 void AsioRpcServer::ProcessDisconnectClientMessage(
@@ -106,12 +119,25 @@ void AsioRpcServer::RegisterService(AsioRpcService &service) {
   std::vector<std::shared_ptr<ServiceMethod>> server_call_methods;
   service.InitMethodHandlers(&server_call_methods);
 
-  auto service_handler = [server_call_methods] (
-      const std::shared_ptr<TcpClientConnection> &client, int64_t message_type, const uint8_t *message_data) {
+  auto service_type = service.GetServiceType();
+
+  auto service_handler = [server_call_methods, service_type, this] (
+      const std::shared_ptr<TcpClientConnection> &client, int64_t message_type, uint64_t length, const uint8_t *message_data) {
+
+    if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {
+      RAY_LOG(INFO) << "Processing DiconnectClient message for service: "
+                    << GenerateEnumName(RpcServiceType, service_type);
+      ProcessDisconnectClientMessage(client);
+      // We don't need to receive future messages from this client,
+      // because it's already disconnected.
+      return;    
+    }
 
     for (const auto &method : server_call_methods) {
-      if (method->GetRequestType() == message_type) {
-        method->HandleRequest(client, length, message_data);
+      if (method->GetRequestType() == message_type) {      
+        method->HandleRequest(client, length, message_data);      
+        client->ProcessMessages();
+
         return;
       }
     }

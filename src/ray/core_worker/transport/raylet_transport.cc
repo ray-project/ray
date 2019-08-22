@@ -15,14 +15,10 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) 
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    CoreWorkerObjectInterface &object_interface, const TaskHandler &task_handler)
     : raylet_client_(raylet_client),
       object_interface_(object_interface),
-      task_service_(io_service, *this),
-      task_handler_(task_handler) {
-  server.RegisterService(task_service_);
-}
+      task_handler_(task_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
@@ -31,7 +27,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   const auto &task_spec = task.GetTaskSpecification();
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, &results);
-
+RAY_LOG(INFO) << "CoreWorkerRayletTaskReceiver::HandleAssignTask: invoked task_handler_ " << status.ok();
   auto num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
@@ -61,6 +57,24 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   RAY_UNUSED(raylet_client_->TaskDone());
   // Send rpc reply.
   send_reply_callback(status, nullptr, nullptr);
+}
+
+RayletGrpcTaskReceiver::RayletGrpcTaskReceiver(
+    std::unique_ptr<RayletClient> &raylet_client, 
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
+    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    : CoreWorkerRayletTaskReceiver(raylet_client, object_interface, task_handler),
+      task_service_(io_service, *this) {
+  server.RegisterService(task_service_);
+}
+
+RayletAsioTaskReceiver::RayletAsioTaskReceiver(
+    std::unique_ptr<RayletClient> &raylet_client,
+    CoreWorkerObjectInterface &object_interface,
+    rpc::AsioRpcServer &server, const TaskHandler &task_handler)
+    : CoreWorkerRayletTaskReceiver(raylet_client, object_interface, task_handler),
+      task_service_(*this) {
+  server.RegisterService(task_service_);
 }
 
 }  // namespace ray

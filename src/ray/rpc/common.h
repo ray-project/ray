@@ -2,10 +2,17 @@
 #ifndef RAY_RPC_COMMON_H
 #define RAY_RPC_COMMON_H
 
+
 #include "ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace rpc {
+
+template <typename T, typename F>
+const std::string GenerateProtobufEnumName(
+    T value, F name) {
+  return name(value);
+}
 
 template <typename T, typename F>
 const std::vector<std::string> GenerateProtobufEnumNames(
@@ -19,6 +26,10 @@ const std::vector<std::string> GenerateProtobufEnumNames(
   }
   return enum_names;
 }
+
+#define GenerateEnumName(T, value)                                       \
+  GenerateProtobufEnumName<T, decltype(BOOST_PP_CAT(T, _Name))>(         \
+  value, BOOST_PP_CAT(T, _Name))   \
 
 // For an protobuf enum class T, this function calls 
 // `GenerateProtobufEnumNames(T_MIN, T_MAX, T_Name)` to return a vector of enum class names.

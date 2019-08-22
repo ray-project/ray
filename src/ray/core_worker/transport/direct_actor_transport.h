@@ -125,7 +125,6 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                                           public rpc::DirectActorHandler {
  public:
   CoreWorkerDirectActorTaskReceiver(CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
                                     const TaskHandler &task_handler);
 
   /// Handle a `PushTask` request.
@@ -160,7 +159,6 @@ class DirectActorGrpcTaskReceiver : public CoreWorkerDirectActorTaskReceiver {
 class DirectActorAsioTaskReceiver : public CoreWorkerDirectActorTaskReceiver {
  public:
   DirectActorAsioTaskReceiver(CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
                                     rpc::AsioRpcServer &server,
                                     const TaskHandler &task_handler);
 

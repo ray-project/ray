@@ -28,8 +28,7 @@ class CoreWorker {
   CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
-             bool use_asio_rpc = true);
+             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback);
 
   ~CoreWorker();
 

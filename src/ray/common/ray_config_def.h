@@ -165,3 +165,7 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
+
+/// Whether to use asio based RPC for raylet-to-worker and worker-to-worker communication.
+/// If this lag is true, then asio based RPC is used; otherwise, GRPC is used.
+RAY_CONFIG(bool, use_asio_rpc_for_worker, true)

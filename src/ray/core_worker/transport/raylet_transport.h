@@ -36,8 +36,7 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
  public:
   CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
                                CoreWorkerObjectInterface &object_interface,
-                               boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server, const TaskHandler &task_handler);
+                               const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
@@ -55,10 +54,33 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   std::unique_ptr<RayletClient> &raylet_client_;
   // Object interface.
   CoreWorkerObjectInterface &object_interface_;
-  /// The rpc service for `WorkerTaskService`.
-  rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+};
+
+class RayletGrpcTaskReceiver : public CoreWorkerRayletTaskReceiver {
+ public:
+  RayletGrpcTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+                                    CoreWorkerObjectInterface &object_interface,
+                                    boost::asio::io_service &io_service,
+                                    rpc::GrpcServer &server,
+                                    const TaskHandler &task_handler);
+
+ private:
+  /// The rpc service for `DirectActorService`.
+  rpc::WorkerTaskGrpcService task_service_;
+};
+
+class RayletAsioTaskReceiver : public CoreWorkerRayletTaskReceiver {
+ public:
+  RayletAsioTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+                                    CoreWorkerObjectInterface &object_interface,
+                                    rpc::AsioRpcServer &server,
+                                    const TaskHandler &task_handler);
+
+ private:
+  /// The rpc service for `DirectActorService`.
+  rpc::WorkerTaskAsioRpcService task_service_;
 };
 
 }  // namespace ray

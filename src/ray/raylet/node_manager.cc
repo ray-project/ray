@@ -359,7 +359,8 @@ void NodeManager::Heartbeat() {
   if (!dead_workers.empty()) {
     for (const auto &worker : dead_workers) {
       RAY_LOG(INFO) << "Worker " << worker->GetWorkerId()
-                    << " dead because of timeout, pid: " << worker->Pid();
+                    << " dead because of timeout, pid: " << worker->Pid()
+                    << ", port: " << worker->Port();
       ProcessDisconnectClientMessage(worker->GetWorkerId(), worker->IsBeingKilled());
     }
   }
@@ -790,6 +791,9 @@ void NodeManager::HandleRegisterClientRequest(
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   bool is_worker = request.is_worker();
   auto worker =
+      RayConfig::instance().use_asio_rpc_for_worker() ?
+      std::make_shared<Worker>(worker_id, request.worker_pid(), request.language(),
+                               request.port(), io_service_, is_worker) :
       std::make_shared<Worker>(worker_id, request.worker_pid(), request.language(),
                                request.port(), client_call_manager_, is_worker);
 

@@ -7,13 +7,14 @@ CoreWorker::CoreWorker(
     const WorkerType worker_type, const Language language,
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
-    bool use_asio_rpc)
+    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
       worker_context_(worker_type, job_id),
       io_work_(io_service_) {
+  bool use_asio_rpc = RayConfig::instance().use_asio_rpc_for_worker();
+
   // Initialize gcs client
   gcs_client_ =
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));

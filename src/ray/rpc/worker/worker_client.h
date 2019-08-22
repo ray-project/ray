@@ -7,6 +7,7 @@
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/asio_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/worker.grpc.pb.h"
 #include "src/ray/protobuf/worker.pb.h"
@@ -17,12 +18,24 @@ namespace rpc {
 /// Client used for communicating with a remote worker server.
 class WorkerTaskClient {
  public:
+  /// Assign a task to the work.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual ray::Status AssignTask(const AssignTaskRequest &request,
+                         const ClientCallback<AssignTaskReply> &callback) = 0;
+};
+
+/// Client used for communicating with a remote worker server.
+class WorkerTaskGrpcClient : public WorkerTaskClient {
+ public:
   /// Constructor.
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  WorkerTaskClient(const std::string &address, const int port,
+  WorkerTaskGrpcClient(const std::string &address, const int port,
                    ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
@@ -50,6 +63,36 @@ class WorkerTaskClient {
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
+};
+
+/// Client used for communicating with a direct actor server.
+class WorkerTaskAsioClient : public WorkerTaskClient, public AsioRpcClient {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] address Address of the direct actor server.
+  /// \param[in] port Port of the direct actor server.
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  WorkerTaskAsioClient(const std::string &address, const int port, boost::asio::io_service &io_service)
+      : AsioRpcClient(RpcServiceType::WorkerTaskServiceType, address, port, io_service) {}
+
+  /// Assign a task to the work.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  ray::Status AssignTask(const AssignTaskRequest &request,
+                         const ClientCallback<AssignTaskReply> &callback) override {
+
+    if (!is_connected_) {
+      RAY_RETURN_NOT_OK(Connect());
+    }
+
+    return CallMethod<AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
+        WorkerTaskServiceMessageType::AssignTaskRequestMessage,
+        WorkerTaskServiceMessageType::AssignTaskReplytMessage,
+        request, callback);
+  }
 };
 
 }  // namespace rpc

@@ -220,7 +220,7 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
  * CoreWorkerDirectActorTaskReceiver
  */
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
+    CoreWorkerObjectInterface &object_interface,
     const TaskHandler &task_handler)
     : object_interface_(object_interface),
       task_handler_(task_handler) {}
@@ -268,15 +268,15 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 DirectActorGrpcTaskReceiver::DirectActorGrpcTaskReceiver(
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : CoreWorkerDirectActorTaskReceiver(object_interface, io_service, task_handler),
+    : CoreWorkerDirectActorTaskReceiver(object_interface, task_handler),
       task_service_(io_service, *this) {
   server.RegisterService(task_service_);
 }
 
 DirectActorAsioTaskReceiver::DirectActorAsioTaskReceiver(
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
+    CoreWorkerObjectInterface &object_interface,
     rpc::AsioRpcServer &server, const TaskHandler &task_handler)
-    : CoreWorkerDirectActorTaskReceiver(object_interface, io_service, task_handler),
+    : CoreWorkerDirectActorTaskReceiver(object_interface, task_handler),
       task_service_(*this) {
   server.RegisterService(task_service_);
 }
