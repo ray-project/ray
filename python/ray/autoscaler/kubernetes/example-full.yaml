@@ -63,7 +63,7 @@ head_node:
           resources:
               requests:
                   cpu: 100m
-                  memory: 1Gi
+                  memory: 512Mi
           env:
               - name: MY_CPU_REQUEST
                 valueFrom:
@@ -75,7 +75,7 @@ worker_nodes:
     apiVersion: v1
     kind: Pod
     metadata:
-        name: ray-worker-
+        generateName: ray-worker-
     spec:
         restartPolicy: Never
         volumes:
@@ -96,7 +96,7 @@ worker_nodes:
           resources:
               requests:
                   cpu: 100m
-                  memory: 1Gi
+                  memory: 100Mi
           env:
               - name: MY_CPU_REQUEST
                 valueFrom:
@@ -106,7 +106,7 @@ worker_nodes:
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
-    "/test": "/tmp/test",
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
@@ -116,8 +116,7 @@ file_mounts: {
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands:
-    - "pushd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && popd"
+setup_commands: []
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

@@ -219,6 +219,7 @@ class LoadMetrics(object):
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
+            print(self.dynamic_resources_by_ip[ip])
             max_frac = 0.0
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
