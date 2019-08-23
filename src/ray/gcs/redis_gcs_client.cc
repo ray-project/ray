@@ -142,6 +142,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
     actor_accessor_.reset(new ActorStateAccessor(*this));
     job_accessor_.reset(new JobStateAccessor(*this));
+    task_accessor_.reset(new TaskStateAccessor(*this));
   }
 
   // TODO(micafan): Synchronously register node and look up existing nodes here

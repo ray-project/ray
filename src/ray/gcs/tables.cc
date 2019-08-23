@@ -309,7 +309,7 @@ template <typename ID, typename Data>
 Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                   const Callback &subscribe,
                                   const SubscriptionCallback &done) {
-  return Log<ID, Data>::Subscribe(job_id, client_id, subscribe, done);
+  return Subscribe(job_id, client_id, subscribe, /*failure*/ nullptr, done);
 }
 
 template <typename ID, typename Data>

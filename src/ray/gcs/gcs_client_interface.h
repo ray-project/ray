@@ -8,6 +8,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/actor_state_accessor.h"
 #include "ray/gcs/job_state_accessor.h"
+#include "ray/gcs/task_state_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -95,6 +96,13 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
     return *job_accessor_;
   }
 
+  /// Get TaskStateAccessor for reading or writing or subsribing to
+  /// tasks. This function is thread safe.
+  TaskStateAccessor &Tasks() {
+    RAY_CHECK(task_accessor_ != nullptr);
+    return *task_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClientInterface.
   ///
@@ -108,6 +116,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
 
   std::unique_ptr<ActorStateAccessor> actor_accessor_;
   std::unique_ptr<JobStateAccessor> job_accessor_;
+  std::unique_ptr<TaskStateAccessor> task_accessor_;
 };
 
 }  // namespace gcs

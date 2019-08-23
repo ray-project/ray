@@ -3,8 +3,8 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/tables.h"
 #include "ray/gcs/subscription_executor.h"
+#include "ray/gcs/tables.h"
 
 namespace ray {
 
@@ -22,14 +22,6 @@ class TaskStateAccessor {
 
   ~TaskStateAccessor() {}
 
-  /// Get task information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finishes.
-  /// \return Status
-  Status AsyncGet(const TaskID &task_id,
-                  const OptionalItemCallback<TaskTableData> &callback);
-
   /// Register a task to GCS asynchronously.
   ///
   /// \param data_ptr The task that will be registered to GCS.
@@ -39,6 +31,23 @@ class TaskStateAccessor {
   Status AsyncRegister(const std::shared_ptr<TaskTableData> &data_ptr,
                        const StatusCallback &callback);
 
+  /// Get task information from GCS asynchronously.
+  ///
+  /// \param task_id The ID of the task to look up in GCS.
+  /// \param callback Callback that is called after lookup finishes.
+  /// \return Status
+  Status AsyncGet(const TaskID &task_id,
+                  const OptionalItemCallback<TaskTableData> &callback);
+
+  /// Delete tasks from GCS asynchronously.
+  ///
+  /// \param task_ids The vector of IDs to delete from GCS.
+  /// \param callback Callback that is called after delete finishes.
+  /// \return Status
+  // TODO(micafan) Will support callback of batch deletion in the future.
+  // Currently this callback will never be called.
+  Status AsyncDelete(const std::vector<TaskID> &task_ids, const StatusCallback &callback);
+
   /// Subscribe to any update operations of a task from GCS asynchronously.
   /// This method is for node only (core worker shouldn't use this method).
   ///
@@ -47,7 +56,7 @@ class TaskStateAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   Status AsyncSubscribe(const TaskID &task_id,
-                        const SubscribeCallback<TaskID, TaskTableData> &subscribe,
+                        const SubscribePairCallback<TaskID, TaskTableData> &subscribe,
                         const StatusCallback &done);
 
   /// Cancel subscribe to a task asynchronously.
@@ -59,11 +68,11 @@ class TaskStateAccessor {
   Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done);
 
  private:
-   RedisGcsClient &client_impl_;
+  RedisGcsClient &client_impl_;
 
-   typedef SubscriptionExecutor<TaskID, std::vector<TaskTableData>, raylet::TaskTable>
-       TaskSubscriptionExecutor;
-   TaskSubscriptionExecutor task_sub_executor_;
+  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
+      TaskSubscriptionExecutor;
+  TaskSubscriptionExecutor task_sub_executor_;
 };
 
 }  // namespace gcs
