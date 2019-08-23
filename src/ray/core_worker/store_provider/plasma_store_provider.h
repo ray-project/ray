@@ -48,12 +48,12 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   static bool IsException(const RayObject &object);
 
   /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable. Only the keys in the unready map are used.
+  /// unavailable. Only the keys in the 'remaining' map are used.
   ///
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.
   static void WarnIfAttemptedTooManyTimes(
-      int num_attempts, const std::unordered_map<ObjectID, std::vector<int>> &remaining);
+      int num_attempts, const std::unordered_map<ObjectID, int> &remaining);
 
   CoreWorkerLocalPlasmaStoreProvider local_store_provider_;
   std::unique_ptr<RayletClient> &raylet_client_;
