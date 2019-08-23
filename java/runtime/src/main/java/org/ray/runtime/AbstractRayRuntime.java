@@ -9,6 +9,7 @@ import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
+import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
@@ -107,7 +108,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
-    return callNormalFunction(functionDescriptor, args, options);
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callNormalFunction(functionDescriptor, args, numReturns, options);
   }
 
   @Override
@@ -115,7 +117,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
-    return callActorFunction(actor, functionDescriptor, args);
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callActorFunction(actor, functionDescriptor, args, numReturns);
   }
 
   @Override
@@ -143,7 +146,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, "",
         functionName);
-    return callNormalFunction(functionDescriptor, args, options);
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
   }
 
   @Override
@@ -151,7 +155,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), functionName);
-    return callActorFunction(pyActor, functionDescriptor, args);
+    // Python functions always have a return value, even if it's `None`.
+    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
   }
 
   @Override
@@ -164,21 +169,31 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
-      Object[] args, CallOptions options) {
+      Object[] args, int numReturns, CallOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
-        functionArgs, 1, options);
-    return new RayObjectImpl(returnIds.get(0));
+        functionArgs, numReturns, options);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
+    if (returnIds.isEmpty()) {
+      return null;
+    } else {
+      return new RayObjectImpl(returnIds.get(0));
+    }
   }
 
   private RayObject callActorFunction(RayActor rayActor,
-      FunctionDescriptor functionDescriptor, Object[] args) {
+      FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
-        functionDescriptor, functionArgs, 1, null);
-    return new RayObjectImpl(returnIds.get(0));
+        functionDescriptor, functionArgs, numReturns, null);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
+    if (returnIds.isEmpty()) {
+      return null;
+    } else {
+      return new RayObjectImpl(returnIds.get(0));
+    }
   }
 
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,

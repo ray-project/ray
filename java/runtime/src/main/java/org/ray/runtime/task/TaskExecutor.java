@@ -70,10 +70,11 @@ public final class TaskExecutor {
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
+    // Find the executable object.
+    RayFunction rayFunction = runtime.getFunctionManager()
+        .getFunction(jobId, parseFunctionDescriptor(rayFunctionInfo));
+    Preconditions.checkNotNull(rayFunction);
     try {
-      // Get method
-      RayFunction rayFunction = runtime.getFunctionManager()
-          .getFunction(jobId, parseFunctionDescriptor(rayFunctionInfo));
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
@@ -100,7 +101,9 @@ public final class TaskExecutor {
           // TODO (kfstorm): handle checkpoint in core worker.
           maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
         }
-        returnObjects.add(runtime.getObjectStore().serialize(result));
+        if (rayFunction.hasReturn()) {
+          returnObjects.add(runtime.getObjectStore().serialize(result));
+        }
       } else {
         // TODO (kfstorm): handle checkpoint in core worker.
         maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());
@@ -110,8 +113,10 @@ public final class TaskExecutor {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        returnObjects.add(runtime.getObjectStore()
-            .serialize(new RayTaskException("Error executing task " + taskId, e)));
+        if(rayFunction.hasReturn()) {
+          returnObjects.add(runtime.getObjectStore()
+              .serialize(new RayTaskException("Error executing task " + taskId, e)));
+        }
       } else {
         actorCreationException = e;
       }
