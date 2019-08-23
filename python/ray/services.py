@@ -772,6 +772,8 @@ def _start_redis_instance(executable,
         # Construct the command to start the Redis server.
         command = [executable]
         if password:
+            if " " in password:
+                raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
         command += (
             ["--port", str(port), "--loglevel", "warning"] + load_module_args)
