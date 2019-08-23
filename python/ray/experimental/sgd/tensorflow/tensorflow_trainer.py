@@ -5,9 +5,7 @@ from __future__ import print_function
 import numpy as np
 import os
 import logging
-import json
 import pickle
-import tensorflow as tf
 
 import ray
 
@@ -112,7 +110,7 @@ class TensorFlowTrainer(object):
 
         state = ray.get(self.workers[0].get_state.remote())
 
-        with open(checkpoint, 'wb') as f:
+        with open(checkpoint, "wb") as f:
             pickle.dump(state, f)
 
         return checkpoint
