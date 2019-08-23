@@ -118,7 +118,7 @@ class DDPGModel(TFModelV2):
         # Noise vars for P network except for layer normalization vars
         if parameter_noise:
             assert not tf.executing_eagerly(), "eager p noise not implemented"
-            with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
+            with tf.variable_scope(action_scope_handle, reuse=tf.AUTO_REUSE):
                 self._build_parameter_noise([
                     var for var in self.action_net.variables
                     if "LayerNorm" not in var.name
