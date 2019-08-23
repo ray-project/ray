@@ -7,8 +7,12 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FileUtil {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(FileUtil.class);
 
   /**
    * Represents a temp file.
@@ -30,7 +34,9 @@ public class FileUtil {
 
     @Override
     public void close() {
-      Preconditions.checkState(file.delete(), "Couldn't delete file {}", file.getAbsolutePath());
+      if (!file.delete()) {
+        LOGGER.warn("Couldn't delete temp file {}", file.getAbsolutePath());
+      }
     }
   }
 
