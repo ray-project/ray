@@ -87,18 +87,17 @@ class DDPGModel(TFModelV2):
                 name="action_out")
 
         action_scope = name + "/action_net"
+        # Save the scope object, since in eager we will execute this
+        # path repeatedly and there is no guarantee it will always be run
+        # in the same original scope.
+        with tf.variable_scope(action_scope) as action_scope_handle:
+            pass
 
         # TODO(ekl) use keras layers instead of variable scopes
         if tf.executing_eagerly():
             # Have to use a variable store to reuse variables in eager mode
             import tensorflow.contrib as tfc
             store = tfc.eager.EagerVariableStore()
-            # Save the scope object, since in eager we will execute this
-            # path repeatedly and there is no guarantee it will always be run
-            # in the same original scope.
-            with tf.variable_scope(
-                    action_scope, reuse=tf.AUTO_REUSE) as action_scope_handle:
-                pass
 
             def build_action_net_scope(model_out):
                 with store.as_default():
@@ -108,7 +107,8 @@ class DDPGModel(TFModelV2):
         else:
 
             def build_action_net_scope(model_out):
-                with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
+                with tf.variable_scope(
+                        action_scope_handle, reuse=tf.AUTO_REUSE):
                     return build_action_net(model_out)
 
         pi_out = tf.keras.layers.Lambda(build_action_net_scope)(self.model_out)
