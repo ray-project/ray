@@ -48,20 +48,6 @@ public class ActorTest extends BaseTest {
     }
   }
 
-  @RayRemote
-  public static class Caller {
-
-    private final RayActor<Counter> counter;
-
-    public Caller(RayActor<Counter> counter) {
-      this.counter = counter;
-    }
-
-    public int call() {
-      return Ray.call(Counter::increase, counter, 1).get();
-    }
-  }
-
   @Test
   public void testCreateAndCallActor() {
     // Test creating an actor from a constructor
