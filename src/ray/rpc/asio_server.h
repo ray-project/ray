@@ -101,7 +101,7 @@ class AsioRpcServer : public RpcServer {
   std::unique_ptr<boost::asio::ip::tcp::socket> tcp_socket_;
   /// Map from the rpc service type to the handler function for the requests from
   /// this service.
-  EnumUnorderedMap<rpc::RpcServiceType, ServiceMessageHandler> service_handlers_;
+  EnumUnorderedMap<rpc::RpcServiceType, std::pair<ServiceMessageHandler, std::vector<std::string>>> service_handlers_;
 };
 
 /// Asio based RPC service.
@@ -128,7 +128,8 @@ class AsioRpcService : public RpcService {
   /// \param[in] cq The grpc completion queue.
   /// \param[out] server_call_methods The `ServiceMethod` objects.
   virtual void InitMethodHandlers(
-      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) = 0;
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods,
+      std::vector<std::string> *message_type_enum_names) = 0;
 
  protected:
   /// RPC service type.

@@ -326,6 +326,11 @@ std::string ClientConnection<boost::asio::ip::tcp>::RemoteEndpointInfo() {
 
 template <class T>
 void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error) {
+  if (ServerConnection<T>::is_closed_) {
+    RAY_LOG(INFO) << "connection is closed";
+    return;
+  }
+
   if (error) {
     read_type_ = error_message_type_;
   }
@@ -349,6 +354,12 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
 template <class T>
 void ClientConnection<T>::SetHandler(MessageHandler<T> message_handler) {
   message_handler_ = message_handler;
+}
+
+template <class T>
+void ClientConnection<T>::SetMessageEnumNames(
+    const std::vector<std::string> &message_type_enum_names) {
+  message_type_enum_names_ = message_type_enum_names;
 }
 
 template <class T>

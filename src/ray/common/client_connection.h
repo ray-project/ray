@@ -70,8 +70,11 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
 
   /// Shuts down socket for this connection.
   void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
+    is_closed_ = true;
+    if (!socket_.get_io_service().stopped()) {
+      boost::system::error_code ec;
+      socket_.close(ec);
+    }
   }
 
   std::string DebugString() const;
@@ -116,6 +119,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// Count of bytes read total.
   int64_t bytes_read_ = 0;
 
+  /// Whether the connection is closed.
+  bool is_closed_ = false;
  private:
   /// Asynchronously flushes the write queue. While async writes are running, the flag
   /// async_write_in_flight_ will be set. This should only be called when no async writes
@@ -173,6 +178,8 @@ class ClientConnection : public ServerConnection<T> {
   /// Override the message handler for the client connection.
   void SetHandler(MessageHandler<T> message_handler);
 
+  /// Set the names for message type enums.
+  void SetMessageEnumNames(const std::vector<std::string> &message_type_enum_names);
  private:
   /// A private constructor for a node client connection.
   ClientConnection(MessageHandler<T> &message_handler,
@@ -206,7 +213,7 @@ class ClientConnection : public ServerConnection<T> {
   const std::string debug_label_;
   /// A table of printable enum names for the message types, used for debug
   /// messages.
-  const std::vector<std::string> message_type_enum_names_;
+  std::vector<std::string> message_type_enum_names_;
   /// The value for disconnect client message.
   int64_t error_message_type_;
   /// Buffers for the current message being read from the client.

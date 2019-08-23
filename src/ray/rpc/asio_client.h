@@ -48,6 +48,29 @@ class AsioRpcClient : public RpcClient {
     is_connected_ = status.ok();
   }
 
+  virtual ~AsioRpcClient() {
+    RAY_LOG(INFO) << "AsioRpcClient " << this << "is destructed";
+    is_connected_ = false;
+
+    if (connection_) {
+      // Close the connection so that we will no longer receive reply callbacks.
+      // This is necessary since when the remote actor dies, the transport
+      // will delete the `AsioRpcClient` for that actor, thus all the member
+      // variables referenced in `ProcessServerMessage` become invalid, but
+      // it's still possible for this callback to be invoked for `DisconnectClient`.
+      // While it is OK to check connection status and just return there,
+      // but since `ClientConnection` has already taken care of this, and
+      // ensures it would not invoke message callback, thus we dont' need
+      // to change `ProcessServerMessage`.
+      connection_->Close();
+    }
+
+    // Invoke all the callbacks that are pending replies, this is necessary so that
+    // the transport can put exceptions into store for these object ids, to avoid
+    // the client from getting blocked on `ray.get`.
+    InvokeAndClearPendingCallbacks();
+  }
+
   /// Call a service method.
   ///
   /// \tparam Request Type of the request message.
@@ -147,6 +170,8 @@ class AsioRpcClient : public RpcClient {
                             const uint8_t *message_data);
 
   void ProcessDisconnectClientMessage(const std::shared_ptr<TcpClientConnection> &client);
+
+  void InvokeAndClearPendingCallbacks();
 
   using ReplyCallback = std::function<void(const RpcReplyMessage &)>;
   /// Map from request id to the corresponding reply callback, which will be

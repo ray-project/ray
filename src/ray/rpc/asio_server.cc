@@ -100,7 +100,8 @@ void AsioRpcServer::ProcessConnectClientMessage(
   if (iter != service_handlers_.end()) {
     // Override the handler for the connection to the handler
     // of the specific service.
-    client->SetHandler(iter->second);
+    client->SetHandler(iter->second.first);
+    client->SetMessageEnumNames(iter->second.second);
 
   } else {
     RAY_LOG(FATAL) << "Received unexpected service type " << service_type;
@@ -114,11 +115,12 @@ void AsioRpcServer::ProcessDisconnectClientMessage(
 
 void AsioRpcServer::RegisterService(AsioRpcService &service) {
   std::vector<std::shared_ptr<ServiceMethod>> server_call_methods;
-  service.InitMethodHandlers(&server_call_methods);
+  std::vector<std::string> message_type_enum_names;
+  service.InitMethodHandlers(&server_call_methods, &message_type_enum_names);
 
   auto service_type = service.GetServiceType();
 
-  auto service_handler = [server_call_methods, service_type, this](
+  auto service_handler = [server_call_methods, message_type_enum_names, service_type, this](
                              const std::shared_ptr<TcpClientConnection> &client,
                              int64_t message_type, uint64_t length,
                              const uint8_t *message_data) {
@@ -144,7 +146,8 @@ void AsioRpcServer::RegisterService(AsioRpcService &service) {
                    << " for service " << rpc::RpcServiceType_Name(service_type);
   };
 
-  service_handlers_.emplace(service.GetServiceType(), service_handler);
+  service_handlers_.emplace(service.GetServiceType(),
+      std::make_pair(service_handler, message_type_enum_names));
 }
 
 }  // namespace rpc

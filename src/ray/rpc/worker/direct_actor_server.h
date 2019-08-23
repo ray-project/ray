@@ -76,7 +76,8 @@ class DirectActorAsioRpcService : public AsioRpcService {
 
  protected:
   void InitMethodHandlers(
-      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods) override {
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods,
+      std::vector<std::string> *message_type_enum_names) override {
     // Initialize the Factory for `PushTask` requests.
     std::shared_ptr<ServiceMethod> push_task_call_method(
         new ServiceMethodImpl<DirectActorHandler, PushTaskRequest, PushTaskReply,
@@ -86,6 +87,8 @@ class DirectActorAsioRpcService : public AsioRpcService {
             &DirectActorHandler::HandlePushTask));
 
     server_call_methods->emplace_back(std::move(push_task_call_method));
+
+    *message_type_enum_names = GenerateEnumNames(DirectActorServiceMessageType);
   }
 
  private:

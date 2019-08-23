@@ -54,6 +54,7 @@ Status AsioRpcClient::Connect() {
 void AsioRpcClient::ProcessServerMessage(
     const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
     uint64_t length, const uint8_t *message_data) {
+
   if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
@@ -99,21 +100,23 @@ void AsioRpcClient::ProcessDisconnectClientMessage(
   // Invoke all the callbacks that are pending replies, this is necessary so that
   // the transport can put exceptions into store for these object ids, to avoid
   // the client from getting blocked on `ray.get`.
-  {
-    std::unique_lock<std::mutex> guard(callback_mutex_);
+  InvokeAndClearPendingCallbacks();
+}
 
-    for (const auto &entry : pending_callbacks_) {
-      Status status = Status::Invalid("rpc server died");
-      RpcReplyMessage reply_message;
-      reply_message.set_request_id(entry.first);
-      reply_message.set_error_code(static_cast<uint32_t>(status.code()));
-      reply_message.set_error_message(status.message());
+void AsioRpcClient::InvokeAndClearPendingCallbacks() {
+  std::unique_lock<std::mutex> guard(callback_mutex_);
 
-      entry.second(reply_message);
-    }
+  for (const auto &entry : pending_callbacks_) {
+    Status status = Status::Invalid("rpc server died");
+    RpcReplyMessage reply_message;
+    reply_message.set_request_id(entry.first);
+    reply_message.set_error_code(static_cast<uint32_t>(status.code()));
+    reply_message.set_error_message(status.message());
 
-    pending_callbacks_.clear();
+    entry.second(reply_message);
   }
+
+  pending_callbacks_.clear();
 }
 
 }  // namespace rpc
