@@ -62,10 +62,10 @@ public class RayFuncGenerator extends BaseGenerator {
       String content = generator.generate(i, true);
       FileUtils.write(new File(root + "RayFunc" + i + ".java"), content,
           Charset.defaultCharset());
-      content = generator.generate(i, false);
-      FileUtil.overrideFile(root + "RayFuncVoid" + i + ".java", content);
       // Functions that don't have return.
-      FileUtil.overrideFile(root + "RayFuncVoid" + i + ".java", content);
+      content = generator.generate(i, false);
+      FileUtils.write(new File(root + "RayFuncVoid" + i + ".java"), content,
+          Charset.defaultCharset());
     }
   }
 
