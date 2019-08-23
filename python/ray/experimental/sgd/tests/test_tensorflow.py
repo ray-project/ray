@@ -97,8 +97,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     model2 = trainer2.get_model()
     trainer2.shutdown()
 
-    os.remove(filename + ".h5")
-    os.remove(filename + "_state.json")
+    os.remove(filename)
 
     model1_config = model1.get_config()
     model2_config = model2.get_config()
