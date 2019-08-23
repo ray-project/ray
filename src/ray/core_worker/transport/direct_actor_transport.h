@@ -172,6 +172,15 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   /// \param[in] done_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
+ protected:
+  /// Invoke the `send_reply_callback` for a task. This allows the derived class to decide whether
+  /// to invoke the callback.
+  ///
+  /// \param[in] status Task execution status.
+  /// \param[in] num_returns Number of return objects for the task.
+  /// \param[out] send_reply_callback The reply callback for the task.
+  /// \return Void.
+  virtual void CallSendReplyCallback(Status status, int num_returns, rpc::SendReplyCallback send_reply_callback) = 0;
 
  private:
   // Object interface.
@@ -187,6 +196,10 @@ class DirectActorGrpcTaskReceiver : public CoreWorkerDirectActorTaskReceiver {
                               rpc::GrpcServer &server, const TaskHandler &task_handler);
 
  private:
+  /// See base class for semantics.
+  void CallSendReplyCallback(Status status, int num_returns, rpc::SendReplyCallback send_reply_callback) override;
+
+ private:
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
 };
@@ -196,8 +209,10 @@ class DirectActorAsioTaskReceiver : public CoreWorkerDirectActorTaskReceiver {
   DirectActorAsioTaskReceiver(CoreWorkerObjectInterface &object_interface,
                               rpc::AsioRpcServer &server,
                               const TaskHandler &task_handler);
-
  private:
+  /// See base class for semantics.
+  void CallSendReplyCallback(Status status, int num_returns, rpc::SendReplyCallback send_reply_callback) override;
+
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorAsioRpcService task_service_;
 };

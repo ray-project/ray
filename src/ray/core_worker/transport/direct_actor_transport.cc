@@ -198,18 +198,18 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const TaskSpecification task_spec(request.task_spec());
-  if (HasByReferenceArgs(task_spec)) {
-    send_reply_callback(
-        Status::Invalid("direct actor call only supports by value arguments"), nullptr,
-        nullptr);
-    return;
-  }
-
-  auto num_returns = task_spec.NumReturns();
   RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
+  auto num_returns = task_spec.NumReturns();
   RAY_CHECK(num_returns > 0);
   // Decrease to account for the dummy object id.
   num_returns--;
+
+  if (HasByReferenceArgs(task_spec)) {
+    CallSendReplyCallback(
+        Status::Invalid("direct actor call only supports by value arguments"), num_returns,
+        send_reply_callback);
+    return;
+  }
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, &results);
@@ -231,7 +231,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     }
   }
 
-  send_reply_callback(status, nullptr, nullptr);
+  CallSendReplyCallback(status, num_returns, send_reply_callback);
 }
 
 DirectActorGrpcTaskReceiver::DirectActorGrpcTaskReceiver(
@@ -242,12 +242,28 @@ DirectActorGrpcTaskReceiver::DirectActorGrpcTaskReceiver(
   server.RegisterService(task_service_);
 }
 
+void DirectActorGrpcTaskReceiver::CallSendReplyCallback(
+    Status status, int num_returns, rpc::SendReplyCallback send_reply_callback) {
+  // For Grpc, we always invoke `send_reply_callback` as Grpc unary mode requires
+  // the reply.
+  send_reply_callback(status, nullptr, nullptr);      
+}
+
 DirectActorAsioTaskReceiver::DirectActorAsioTaskReceiver(
     CoreWorkerObjectInterface &object_interface, rpc::AsioRpcServer &server,
     const TaskHandler &task_handler)
     : CoreWorkerDirectActorTaskReceiver(object_interface, task_handler),
       task_service_(*this) {
   server.RegisterService(task_service_);
+}
+
+void DirectActorAsioTaskReceiver::CallSendReplyCallback(
+    Status status, int num_returns, rpc::SendReplyCallback send_reply_callback) {
+  // For asio based RPC, we only send the reply when the caller requires it,
+  // which is indicated by a non-zero `num_returns`.
+  if (num_returns > 0) {
+    send_reply_callback(status, nullptr, nullptr);
+  }  
 }
 
 }  // namespace ray

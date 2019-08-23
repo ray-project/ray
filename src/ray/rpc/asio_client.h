@@ -2,6 +2,7 @@
 #define RAY_RPC_ASIO_CLIENT_H
 
 #include <boost/asio.hpp>
+#include <atomic>
 #include <thread>
 #include <utility>
 
@@ -57,11 +58,16 @@ class AsioRpcClient : public RpcClient {
   /// \param[in] reply_type Enum message type for reply of this method.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
+  /// \param[in] requires_reply Whether this RPC call requires server to send
+  ///            a reply, by default it's set to true, derived class can decide
+  ///            whether reply is required based on if `num_returns` of the task
+  ///            is non-zero.
   ///
   /// \return Status.
   template <class Request, class Reply, class MessageType>
   Status CallMethod(MessageType request_type, MessageType reply_type,
-                    const Request &request, const ClientCallback<Reply> &callback) {
+                    const Request &request, const ClientCallback<Reply> &callback,
+                    bool requires_reply = true) {
     if (connection_ == nullptr || !is_connected_) {
       // There are errors, invoke the callback.
       auto status = Status::Invalid("server is not connected");
@@ -87,13 +93,14 @@ class AsioRpcClient : public RpcClient {
     // NOTE(zhijunfu): use `WriteMessageAsync` is noticably faster than `WriteMessage`,
     // about 2X faster on task submission, and 50% faster overall.
     io_service_.dispatch([request_id, callback, request_type, reply_type,
-                          serialized_message, this] {
+                          serialized_message, requires_reply, this] {
       connection_->WriteMessageAsync(
           request_type, static_cast<int64_t>(serialized_message->size()),
           reinterpret_cast<const uint8_t *>(serialized_message->data()),
-          [request_id, callback, request_type, reply_type,
+          [request_id, callback, request_type, reply_type, requires_reply,
            this](const ray::Status &status) {
             if (status.ok()) {
+            if (requires_reply) {
               // Send succeeds. Add the request to the records, so that
               // we can invoke the callback after receivig the reply.
               std::unique_lock<std::mutex> guard(callback_mutex_);
@@ -116,7 +123,7 @@ class AsioRpcClient : public RpcClient {
                                    << name_ << ", request id " << request_id
                                    << ", status: " << status.ToString();
                   });
-
+            }
             } else {
               // There are errors, invoke the callback.
               Reply reply;
@@ -157,10 +164,10 @@ class AsioRpcClient : public RpcClient {
   std::shared_ptr<TcpClientConnection> connection_;
 
   // Request sequence id which starts with 1.
-  std::atomic_uint64_t request_id_;
+  std::atomic<uint64_t> request_id_;
 
   /// Whether we have connected to server.
-  std::atomic_bool is_connected_;
+  std::atomic<bool> is_connected_;
 };
 
 }  // namespace rpc

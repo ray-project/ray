@@ -189,6 +189,10 @@ class CoreWorkerTest : public ::testing::Test {
   // it is guaranteed that all tasks are successfully completed.
   void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
                                bool is_direct_call);
+  
+  // Test actor performance.
+  void TestActoPerformance(const std::unordered_map<std::string, double> &resources,
+                           bool is_direct_call, bool use_no_returns);
 
  protected:
   bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
@@ -343,6 +347,68 @@ void CoreWorkerTest::TestActorTask(
                      buffer2->Size()),
               0);
   }
+}
+
+void CoreWorkerTest::TestActoPerformance(
+    const std::unordered_map<std::string, double> &resources,
+    bool is_direct_call, bool use_no_returns) {
+  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
+                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+  std::unique_ptr<ActorHandle> actor_handle;
+
+  // Test creating actor.
+  uint8_t array[] = {1, 2, 3};
+  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
+  RayFunction func{ray::Language::PYTHON, {}};
+  std::vector<TaskArg> args;
+  args.emplace_back(TaskArg::PassByValue(buffer));
+
+  ActorCreationOptions actor_options{0, is_direct_call, resources, {}};
+  // Create an actor.
+  RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
+  // wait for actor creation finish.
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+                                          30 * 1000 /* 30s */));
+  // Test submitting some tasks with by-value args for that actor.
+  std::vector<ObjectID> object_ids;
+  int64_t start_ms = current_time_ms();
+  const int num_tasks = 10000;
+  RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
+  for (int i = 0; i < num_tasks; i++) {
+    // Create arguments with PassByValue.
+    std::vector<TaskArg> args;
+    args.emplace_back(TaskArg::PassByValue(buffer));
+
+    auto num_returns = 1;
+    if (use_no_returns && i < num_tasks - 1) {
+      // If we are testing tasks with no return objects, then set `num_returns`
+      // to 0 except for the last task, as we need to get the return object
+      // of last task to know all the tasks are finished.
+      num_returns = 0;
+    }
+    TaskOptions options{num_returns, resources};
+    std::vector<ObjectID> return_ids;
+    RayFunction func{ray::Language::PYTHON, {}};
+
+    RAY_CHECK_OK(
+        driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));
+    ASSERT_EQ(return_ids.size(), num_returns);
+    if (num_returns > 0) {
+      object_ids.emplace_back(return_ids[0]);
+    }
+  }
+
+  RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks"
+                << ", which takes " << current_time_ms() - start_ms << " ms";
+
+  for (const auto &object_id : object_ids) {
+    std::vector<std::shared_ptr<RayObject>> results;
+    RAY_CHECK_OK(driver.Objects().Get({object_id}, -1, &results));
+    ASSERT_EQ(results.size(), 1);
+    ASSERT_TRUE(!results[0]->HasMetadata());
+  }
+  RAY_LOG(INFO) << "finish executing " << num_tasks << " tasks"
+                << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
 void CoreWorkerTest::TestActorReconstruction(
@@ -664,58 +730,6 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
-TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
-  CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
-  std::unique_ptr<ActorHandle> actor_handle;
-
-  // Test creating actor.
-  uint8_t array[] = {1, 2, 3};
-  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction func{ray::Language::PYTHON, {}};
-  std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(buffer));
-
-  std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
-  // Create an actor.
-  RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
-  // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
-                                          30 * 1000 /* 30s */));
-  // Test submitting some tasks with by-value args for that actor.
-  std::vector<ObjectID> object_ids;
-  int64_t start_ms = current_time_ms();
-  const int num_tasks = 10000;
-  RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
-  for (int i = 0; i < num_tasks; i++) {
-    // Create arguments with PassByValue.
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(buffer));
-
-    TaskOptions options{1, resources};
-    std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {}};
-
-    RAY_CHECK_OK(
-        driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));
-    ASSERT_EQ(return_ids.size(), 1);
-    object_ids.emplace_back(return_ids[0]);
-  }
-
-  RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks"
-                << ", which takes " << current_time_ms() - start_ms << " ms";
-
-  for (int i = 0; i < num_tasks; i++) {
-    std::vector<std::shared_ptr<RayObject>> results;
-    RAY_CHECK_OK(driver.Objects().Get({object_ids[i]}, -1, &results));
-    ASSERT_EQ(results.size(), 1);
-    ASSERT_TRUE(!results[0]->HasMetadata());
-  }
-  RAY_LOG(INFO) << "finish executing " << num_tasks << " tasks"
-                << ", which takes " << current_time_ms() - start_ms << " ms";
-}
-
 TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto job_id = NextJobId();
 
@@ -932,6 +946,28 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorTask(resources, true);
+}
+
+TEST_F(SingleNodeTest, TestDirectActorTaskLocalPerformance) {
+  std::unordered_map<std::string, double> resources;
+  TestActoPerformance(resources, true, false);
+}
+
+TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesPerformance) {
+  std::unordered_map<std::string, double> resources;
+  resources.emplace("resource1", 1);
+  TestActoPerformance(resources, true, false);
+}
+
+TEST_F(SingleNodeTest, TestDirectActorTaskLocalNoReturnPerformance) {
+  std::unordered_map<std::string, double> resources;
+  TestActoPerformance(resources, true, true);
+}
+
+TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesNoReturnPerformance) {
+  std::unordered_map<std::string, double> resources;
+  resources.emplace("resource1", 1);
+  TestActoPerformance(resources, true, true);
 }
 
 TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
