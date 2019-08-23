@@ -14,7 +14,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0
+    rllib train --run DQN --env CartPole-v0  # add --eager for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -122,6 +122,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
+    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -156,6 +157,7 @@ All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This 
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
+            "eager": False,
         },
     )
 
@@ -370,7 +372,9 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 TensorFlow Eager
 ~~~~~~~~~~~~~~~~
 
-While RLlib uses TF graph mode for all computations, you can still leverage TF eager to inspect the intermediate state of computations using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager mode in `a custom RLlib model and loss <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it is slower than graph mode.
 
 Episode Traces
 ~~~~~~~~~~~~~~

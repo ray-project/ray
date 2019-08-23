@@ -151,15 +151,41 @@ class DistributionalQModel(TFModelV2):
                     state_out, units=num_atoms, activation=None)
             return state_score
 
-        def build_action_value_in_scope(model_out):
-            with tf.variable_scope(
-                    name + "/action_value", reuse=tf.AUTO_REUSE):
-                return build_action_value(model_out)
+        if tf.executing_eagerly():
+            # Have to use a variable store to reuse variables in eager mode
+            import tensorflow.contrib as tfc
+            store = tfc.eager.EagerVariableStore()
 
-        def build_state_score_in_scope(model_out):
-            with tf.variable_scope(name + "/state_value", reuse=tf.AUTO_REUSE):
-                return build_state_score(model_out)
+            # Save the scope objects, since in eager we will execute this
+            # path repeatedly and there is no guarantee it will always be run
+            # in the same original scope.
+            with tf.variable_scope(name + "/action_value") as action_scope:
+                pass
+            with tf.variable_scope(name + "/state_value") as state_scope:
+                pass
 
+            def build_action_value_in_scope(model_out):
+                with store.as_default():
+                    with tf.variable_scope(action_scope, reuse=tf.AUTO_REUSE):
+                        return build_action_value(model_out)
+
+            def build_state_score_in_scope(model_out):
+                with store.as_default():
+                    with tf.variable_scope(state_scope, reuse=tf.AUTO_REUSE):
+                        return build_state_score(model_out)
+        else:
+
+            def build_action_value_in_scope(model_out):
+                with tf.variable_scope(
+                        name + "/action_value", reuse=tf.AUTO_REUSE):
+                    return build_action_value(model_out)
+
+            def build_state_score_in_scope(model_out):
+                with tf.variable_scope(
+                        name + "/state_value", reuse=tf.AUTO_REUSE):
+                    return build_state_score(model_out)
+
+        # TODO(ekl) we shouldn't need to use lambda layers here
         q_out = tf.keras.layers.Lambda(build_action_value_in_scope)(
             self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
@@ -170,12 +196,6 @@ class DistributionalQModel(TFModelV2):
                 self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
-
-    def forward(self, input_dict, state, seq_lens):
-        """This generates the model_out tensor input.
-
-        You must implement this as documented in modelv2.py."""
-        raise NotImplementedError
 
     def get_q_value_distributions(self, model_out):
         """Returns distributional values for Q(s, a) given a state embedding.

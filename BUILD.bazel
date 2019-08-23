@@ -640,6 +640,7 @@ cc_library(
     ],
 )
 
+# TODO(micafan) Replace cc_binary with cc_test for GCS test.
 cc_binary(
     name = "redis_gcs_client_test",
     testonly = 1,
@@ -655,6 +656,17 @@ cc_binary(
     name = "actor_state_accessor_test",
     testonly = 1,
     srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "subscription_executor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",

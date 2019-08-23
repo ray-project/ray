@@ -42,8 +42,8 @@ class TorchPolicy(Policy):
             model (nn.Module): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (func): Function that takes (policy, batch_tensors)
-                and returns a single scalar loss.
+            loss (func): Function that takes (policy, model, dist_class,
+                train_batch) and returns a single scalar loss.
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
@@ -87,26 +87,28 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
-        batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         with self.lock:
-            loss_out = self._loss(self, batch_tensors)
+            loss_out = self._loss(self, self.model, self.dist_class,
+                                  train_batch)
             self._optimizer.zero_grad()
             loss_out.backward()
 
             grad_process_info = self.extra_grad_process()
             self._optimizer.step()
 
-            grad_info = self.extra_grad_info(batch_tensors)
+            grad_info = self.extra_grad_info(train_batch)
             grad_info.update(grad_process_info)
             return {LEARNER_STATS_KEY: grad_info}
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
-        batch_tensors = self._lazy_tensor_dict(postprocessed_batch)
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         with self.lock:
-            loss_out = self._loss(self, batch_tensors)
+            loss_out = self._loss(self, self.model, self.dist_class,
+                                  train_batch)
             self._optimizer.zero_grad()
             loss_out.backward()
 
@@ -121,7 +123,7 @@ class TorchPolicy(Policy):
                 else:
                     grads.append(None)
 
-            grad_info = self.extra_grad_info(batch_tensors)
+            grad_info = self.extra_grad_info(train_batch)
             grad_info.update(grad_process_info)
             return grads, {LEARNER_STATS_KEY: grad_info}
 
@@ -161,7 +163,7 @@ class TorchPolicy(Policy):
             model (TorchModelV2): Reference to the model."""
         return {}
 
-    def extra_grad_info(self, batch_tensors):
+    def extra_grad_info(self, train_batch):
         """Return dict of extra grad info."""
 
         return {}
@@ -175,7 +177,7 @@ class TorchPolicy(Policy):
             return torch.optim.Adam(self._model.parameters())
 
     def _lazy_tensor_dict(self, postprocessed_batch):
-        batch_tensors = UsageTrackingDict(postprocessed_batch)
+        train_batch = UsageTrackingDict(postprocessed_batch)
 
         def convert(arr):
             tensor = torch.from_numpy(np.asarray(arr))
@@ -183,5 +185,5 @@ class TorchPolicy(Policy):
                 tensor = tensor.float()
             return tensor.to(self.device)
 
-        batch_tensors.set_get_interceptor(convert)
-        return batch_tensors
+        train_batch.set_get_interceptor(convert)
+        return train_batch

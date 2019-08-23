@@ -1,7 +1,7 @@
 RLlib: Scalable Reinforcement Learning
 ======================================
 
-RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications.
+RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications. RLlib natively supports TensorFlow, TensorFlow Eager, and PyTorch, but most of its internals are framework agnostic.
 
 .. image:: rllib-stack.svg
 
@@ -25,13 +25,13 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0
+  rllib train --run=PPO --env=CartPole-v0  # add --eager for eager execution
 
 .. code-block:: python
 
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
-  tune.run(PPOTrainer, config={"env": "CartPole-v0"})
+  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "eager": True for eager execution
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
@@ -46,10 +46,11 @@ Policies can be implemented using `any framework <https://github.com/ray-project
 
 .. code-block:: python
 
-    def policy_gradient_loss(policy, batch_tensors):
-        actions = batch_tensors[SampleBatch.ACTIONS]
-        rewards = batch_tensors[SampleBatch.REWARDS]
-        return -tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
+  def policy_gradient_loss(policy, model, dist_class, train_batch):
+      logits, _ = model.from_batch(train_batch)
+      action_dist = dist_class(logits, model)
+      return -tf.reduce_mean(
+          action_dist.logp(train_batch["actions"]) * train_batch["rewards"])
 
     # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>
     MyTFPolicy = build_tf_policy(
@@ -85,25 +86,13 @@ Policies each define a ``learn_on_batch()`` method that improves the policy give
 - Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
 - Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_policy.py>`__
 
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizers <rllib-concepts.html#policy-optimization>`__ that implement the desired computation pattern (i.e., synchronous or asynchronous sampling, distributed replay, etc):
+RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizers <rllib-concepts.html#policy-optimization>`__ that implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: a2c-arch.svg
 
     Synchronous Sampling (e.g., A2C, PG, PPO)
 
-.. figure:: dqn-arch.svg
-
-    Synchronous Replay (e.g., DQN, DDPG, TD3)
-
-.. figure:: impala-arch.svg
-
-    Asynchronous Sampling (e.g., IMPALA, APPO)
-
-.. figure:: apex-arch.svg
-
-    Asynchronous Replay (e.g., Ape-X)
-
-RLlib uses `Ray actors <actors.html>`__ to scale these architectures from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
+RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter.
 
 Customization
 ~~~~~~~~~~~~~

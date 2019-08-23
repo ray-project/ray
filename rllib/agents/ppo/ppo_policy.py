@@ -12,6 +12,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule, ACTION_LOGP
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -111,27 +112,30 @@ class PPOLoss(object):
         self.loss = loss
 
 
-def ppo_surrogate_loss(policy, batch_tensors):
-    if policy.state_in:
-        max_seq_len = tf.reduce_max(policy.seq_lens)
-        mask = tf.sequence_mask(policy.seq_lens, max_seq_len)
+def ppo_surrogate_loss(policy, model, dist_class, train_batch):
+    logits, state = model.from_batch(train_batch)
+    action_dist = dist_class(logits, model)
+
+    if state:
+        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
+        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(
-            batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool)
+            train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
-        policy.dist_class,
-        policy.model,
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[BEHAVIOUR_LOGITS],
-        batch_tensors[ACTION_LOGP],
-        batch_tensors[SampleBatch.VF_PREDS],
-        policy.action_dist,
-        policy.value_function,
+        dist_class,
+        model,
+        train_batch[Postprocessing.VALUE_TARGETS],
+        train_batch[Postprocessing.ADVANTAGES],
+        train_batch[SampleBatch.ACTIONS],
+        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.VF_PREDS],
+        action_dist,
+        model.value_function(),
         policy.kl_coeff,
         mask,
         entropy_coeff=policy.entropy_coeff,
@@ -144,7 +148,7 @@ def ppo_surrogate_loss(policy, batch_tensors):
     return policy.loss_obj.loss
 
 
-def kl_and_loss_stats(policy, batch_tensors):
+def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": tf.cast(policy.kl_coeff, tf.float64),
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
@@ -152,8 +156,8 @@ def kl_and_loss_stats(policy, batch_tensors):
         "policy_loss": policy.loss_obj.mean_policy_loss,
         "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
-            batch_tensors[Postprocessing.VALUE_TARGETS],
-            policy.value_function),
+            train_batch[Postprocessing.VALUE_TARGETS],
+            policy.model.value_function()),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
@@ -161,10 +165,10 @@ def kl_and_loss_stats(policy, batch_tensors):
 
 
 def vf_preds_and_logits_fetches(policy):
-    """Adds value function and logits outputs to experience batches."""
+    """Adds value function and logits outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.value_function,
-        BEHAVIOUR_LOGITS: policy.model_out,
+        SampleBatch.VF_PREDS: policy.model.value_function(),
+        BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 
@@ -179,7 +183,7 @@ def postprocess_ppo_gae(policy,
         last_r = 0.0
     else:
         next_state = []
-        for i in range(len(policy.state_in)):
+        for i in range(policy.num_state_tensors()):
             next_state.append([sample_batch["state_out_{}".format(i)][-1]])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
@@ -195,17 +199,16 @@ def postprocess_ppo_gae(policy,
 
 
 def clip_gradients(policy, optimizer, loss):
+    variables = policy.model.trainable_variables()
     if policy.config["grad_clip"] is not None:
-        policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                            tf.get_variable_scope().name)
-        grads = tf.gradients(loss, policy.var_list)
+        grads_and_vars = optimizer.compute_gradients(loss, variables)
+        grads = [g for (g, v) in grads_and_vars]
         policy.grads, _ = tf.clip_by_global_norm(grads,
                                                  policy.config["grad_clip"])
-        clipped_grads = list(zip(policy.grads, policy.var_list))
+        clipped_grads = list(zip(policy.grads, variables))
         return clipped_grads
     else:
-        return optimizer.compute_gradients(
-            loss, colocate_gradients_with_ops=True)
+        return optimizer.compute_gradients(loss, variables)
 
 
 class KLCoeffMixin(object):
@@ -232,23 +235,27 @@ class KLCoeffMixin(object):
 class ValueNetworkMixin(object):
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
-            self.value_function = self.model.value_function()
-        else:
-            self.value_function = tf.zeros(
-                shape=tf.shape(self.get_placeholder(SampleBatch.CUR_OBS))[:1])
 
-    def _value(self, ob, prev_action, prev_reward, *args):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): [ob],
-            self.get_placeholder(SampleBatch.PREV_ACTIONS): [prev_action],
-            self.get_placeholder(SampleBatch.PREV_REWARDS): [prev_reward],
-            self.seq_lens: [1]
-        }
-        assert len(args) == len(self.state_in), (args, self.state_in)
-        for k, v in zip(self.state_in, args):
-            feed_dict[k] = v
-        vf = self.get_session().run(self.value_function, feed_dict)
-        return vf[0]
+            @make_tf_callable(self.get_session())
+            def value(ob, prev_action, prev_reward, *state):
+                model_out, _ = self.model({
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        [prev_action]),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        [prev_reward]),
+                    "is_training": tf.convert_to_tensor(False),
+                }, [tf.convert_to_tensor([s]) for s in state],
+                                          tf.convert_to_tensor([1]))
+                return self.model.value_function()[0]
+
+        else:
+
+            @make_tf_callable(self.get_session())
+            def value(ob, prev_action, prev_reward, *state):
+                return tf.constant(0.0)
+
+        self._value = value
 
 
 def setup_config(policy, obs_space, action_space, config):

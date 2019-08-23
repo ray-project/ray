@@ -3,7 +3,11 @@ from __future__ import division
 from __future__ import print_function
 """Ray constants used in the Python code."""
 
+import logging
+import math
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def env_integer(key, default):
@@ -24,7 +28,8 @@ DEFAULT_PUT_OBJECT_RETRIES = 5
 # DEFAULT_PUT_OBJECT_RETRIES times.
 DEFAULT_PUT_OBJECT_DELAY = 1
 # The smallest cap on the memory used by the object store that we allow.
-OBJECT_STORE_MINIMUM_MEMORY_BYTES = 10**7
+# This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
@@ -49,7 +54,47 @@ PICKLE_OBJECT_WARNING_SIZE = 10**7
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 512
+MAX_RESOURCE_QUANTITY = 10000
+
+# Each memory "resource" counts as this many bytes of memory.
+MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
+
+# Number of units 1 resource can be subdivided into.
+MIN_RESOURCE_GRANULARITY = 0.0001
+
+# Fraction of plasma memory that can be reserved. It is actually 70% but this
+# is set to 69% to leave some headroom.
+PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
+
+
+def round_to_memory_units(memory_bytes, round_up):
+    """Round bytes to the nearest memory unit."""
+    return from_memory_units(to_memory_units(memory_bytes, round_up))
+
+
+def from_memory_units(memory_units):
+    """Convert from memory units -> bytes."""
+    return memory_units * MEMORY_RESOURCE_UNIT_BYTES
+
+
+def to_memory_units(memory_bytes, round_up):
+    """Convert from bytes -> memory units."""
+    value = memory_bytes / MEMORY_RESOURCE_UNIT_BYTES
+    if value < 1:
+        raise ValueError(
+            "The minimum amount of memory that can be requested is {} bytes, "
+            "however {} bytes was asked.".format(MEMORY_RESOURCE_UNIT_BYTES,
+                                                 memory_bytes))
+    if isinstance(value, float) and not value.is_integer():
+        # TODO(ekl) Ray currently does not support fractional resources when
+        # the quantity is greater than one. We should fix memory resources to
+        # be allocated in units of bytes and not 100MB.
+        if round_up:
+            value = int(math.ceil(value))
+        else:
+            value = int(math.floor(value))
+    return int(value)
+
 
 # Different types of Ray errors that can be pushed to the driver.
 # TODO(rkn): These should be defined in flatbuffers and must be synced with

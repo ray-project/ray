@@ -231,39 +231,6 @@ The `rock_paper_scissors_multiagent.py <https://github.com/ray-project/ray/blob/
 
     TensorBoard output of running the rock-paper-scissors example, where a learned policy faces off between a random selection of the same-move and beat-last-move heuristics. Here the performance of heuristic policies vs the learned policy is compared with LSTM enabled (blue) and a plain feed-forward policy (red). While the feedforward policy can easily beat the same-move heuristic by simply avoiding the last move taken, it takes a LSTM policy to distinguish between and consistently beat both policies.
 
-Hierarchical Environments
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Hierarchical training can sometimes be implemented as a special case of multi-agent RL. For example, consider a three-level hierarchy of policies, where a top-level policy issues high level actions that are executed at finer timescales by a mid-level and low-level policy. The following timeline shows one step of the top-level policy, which corresponds to two mid-level actions and five low-level actions:
-
-.. code-block:: text
-
-   top_level ---------------------------------------------------------------> top_level --->
-   mid_level_0 -------------------------------> mid_level_0 ----------------> mid_level_1 ->
-   low_level_0 -> low_level_0 -> low_level_0 -> low_level_1 -> low_level_1 -> low_level_2 ->
-
-This can be implemented as a multi-agent environment with three types of agents. Each higher-level action creates a new lower-level agent instance with a new id (e.g., ``low_level_0``, ``low_level_1``, ``low_level_2`` in the above example). These lower-level agents pop in existence at the start of higher-level steps, and terminate when their higher-level action ends. Their experiences are aggregated by policy, so from RLlib's perspective it's just optimizing three different types of policies. The configuration might look something like this:
-
-.. code-block:: python
-
-    "multiagent": {
-        "policies": {
-            "top_level": (custom_policy or None, ...),
-            "mid_level": (custom_policy or None, ...),
-            "low_level": (custom_policy or None, ...),
-        },
-        "policy_mapping_fn":
-            lambda agent_id:
-                "low_level" if agent_id.startswith("low_level_") else
-                "mid_level" if agent_id.startswith("mid_level_") else "top_level"
-        "policies_to_train": ["top_level"],
-    },
-
-
-In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
-
-See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__.
-
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -322,6 +289,39 @@ It is common to have groups of agents in multi-agent RL. RLlib treats agent grou
    :end-before: __grouping_doc_end__
 
 For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
+
+Hierarchical Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Hierarchical training can sometimes be implemented as a special case of multi-agent RL. For example, consider a three-level hierarchy of policies, where a top-level policy issues high level actions that are executed at finer timescales by a mid-level and low-level policy. The following timeline shows one step of the top-level policy, which corresponds to two mid-level actions and five low-level actions:
+
+.. code-block:: text
+
+   top_level ---------------------------------------------------------------> top_level --->
+   mid_level_0 -------------------------------> mid_level_0 ----------------> mid_level_1 ->
+   low_level_0 -> low_level_0 -> low_level_0 -> low_level_1 -> low_level_1 -> low_level_2 ->
+
+This can be implemented as a multi-agent environment with three types of agents. Each higher-level action creates a new lower-level agent instance with a new id (e.g., ``low_level_0``, ``low_level_1``, ``low_level_2`` in the above example). These lower-level agents pop in existence at the start of higher-level steps, and terminate when their higher-level action ends. Their experiences are aggregated by policy, so from RLlib's perspective it's just optimizing three different types of policies. The configuration might look something like this:
+
+.. code-block:: python
+
+    "multiagent": {
+        "policies": {
+            "top_level": (custom_policy or None, ...),
+            "mid_level": (custom_policy or None, ...),
+            "low_level": (custom_policy or None, ...),
+        },
+        "policy_mapping_fn":
+            lambda agent_id:
+                "low_level" if agent_id.startswith("low_level_") else
+                "mid_level" if agent_id.startswith("mid_level_") else "top_level"
+        "policies_to_train": ["top_level"],
+    },
+
+
+In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
+
+See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__.
 
 Interfacing with External Agents
 --------------------------------

@@ -58,7 +58,8 @@ class SampleBatch(object):
             self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, "data columns must be same length"
+        assert len(set(lengths)) == 1, ("data columns must be same length",
+                                        self.data, lengths)
         self.count = lengths[0]
 
     @staticmethod

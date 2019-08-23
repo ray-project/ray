@@ -106,10 +106,12 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
-  task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
-                           std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-                               new CoreWorkerDirectActorTaskSubmitter(
-                                   io_service, gcs_client, object_interface)));
+  task_submitters_.emplace(
+      TaskTransportType::DIRECT_ACTOR,
+      std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
+          new CoreWorkerDirectActorTaskSubmitter(
+              io_service, gcs_client,
+              object_interface.CreateStoreProvider(StoreProviderType::MEMORY))));
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
