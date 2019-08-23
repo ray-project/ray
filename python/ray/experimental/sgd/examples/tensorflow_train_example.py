@@ -10,7 +10,8 @@ from ray import tune
 from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
     TensorFlowTrainer, TensorFlowTrainable)
 
-def linear_dataset(a=2, b=5, size = 1000):
+
+def linear_dataset(a=2, b=5, size=1000):
     x = np.arange(0, 10, 10 / size, dtype=np.float32)
     y = a * x + b
 
@@ -20,31 +21,31 @@ def linear_dataset(a=2, b=5, size = 1000):
     return x, y
 
 
-def simple_dataset(batch_size = 20):
+def simple_dataset(batch_size=20):
     NUM_TRAIN_SAMPLES = 1000
 
     x_train, y_train = linear_dataset(size=NUM_TRAIN_SAMPLES)
     x_test, y_test = linear_dataset(size=400)
 
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train,y_train))
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
     tf.random.set_seed(22)
-    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(batch_size, drop_remainder=True)
+    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(
+        batch_size, drop_remainder=True)
     test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
 
     return train_dataset, test_dataset
 
+
 def simple_model():
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.Dense(1, input_shape=(1,))
-        ])
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Dense(1, input_shape=(1, ))])
 
     model.compile(
-        optimizer = "sgd",
+        optimizer="sgd",
         loss="mean_squared_error",
-        metrics = ["mean_squared_error"]
-        )
+        metrics=["mean_squared_error"])
 
     return model
 

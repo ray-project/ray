@@ -11,6 +11,7 @@ from ray import tune
 from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
                                                           PyTorchTrainable)
 
+
 class LinearDataset(torch.utils.data.Dataset):
     """y = a * x + b"""
 
