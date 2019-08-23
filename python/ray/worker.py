@@ -423,11 +423,17 @@ class Worker(object):
             # message.
             logger.info("The object with ID {} already exists "
                         "in the object store.".format(object_id))
-        except TypeError:
+        except TypeError as e:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
             # these extra fallbacks here to start from the beginning.
             # Hopefully the object could have a `__reduce__` method.
+
+            # If the type error happens because a torch tensor was on the GPU
+            # and cannot be serialized due to that, we raise it to the user:
+            if "can't convert CUDA tensor to numpy" in e.args[0]:
+                raise e
+
             register_custom_serializer(type(value), use_pickle=True)
             warning_message = ("WARNING: Serializing the class {} failed, "
                                "falling back to cloudpickle.".format(
