@@ -26,6 +26,8 @@ class WorkerContext {
 
   const ActorID &GetCurrentActorID() const;
 
+  bool IsDirectCall() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();

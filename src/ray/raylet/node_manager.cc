@@ -1155,6 +1155,7 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   auto message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointRequest>(message_data);
   ActorID actor_id = from_flatbuf<ActorID>(*message->actor_id());
+  bool is_direct_call = message->is_direct_call();
   RAY_LOG(DEBUG) << "Preparing checkpoint for actor " << actor_id;
   const auto &actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
@@ -1162,13 +1163,19 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
-  // Find the task that is running on this actor.
-  const auto task_id = worker->GetAssignedTaskId();
-  const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
-  // Generate checkpoint id and data.
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  auto checkpoint_data =
-      actor_entry->second.GenerateCheckpointData(actor_entry->first, task);
+  std::shared_ptr<ActorCheckpointData> checkpoint_data;
+  if (is_direct_call) {
+    checkpoint_data =
+        actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
+  } else {
+    // Find the task that is running on this actor.
+    const auto task_id = worker->GetAssignedTaskId();
+    const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
+    // Generate checkpoint data.
+    checkpoint_data =
+        actor_entry->second.GenerateCheckpointData(actor_entry->first, &task);
+  }
 
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(

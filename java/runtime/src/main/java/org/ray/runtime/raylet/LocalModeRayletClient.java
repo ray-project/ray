@@ -10,10 +10,11 @@ import org.slf4j.LoggerFactory;
  * Raylet client for local mode.
  */
 public class LocalModeRayletClient implements RayletClient {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeRayletClient.class);
 
   @Override
-  public UniqueId prepareCheckpoint(ActorId actorId) {
+  public UniqueId prepareCheckpoint(ActorId actorId, boolean isDirectCall) {
     throw new NotImplementedException("Not implemented.");
   }
 

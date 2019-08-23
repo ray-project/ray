@@ -106,6 +106,8 @@ message ActorTaskSpec {
   repeated bytes new_actor_handles = 6;
   // The dummy object ID of the previous actor task.
   bytes previous_actor_task_dummy_object_id = 7;
+  // Whether direct actor call is used.
+  bool is_direct_call = 8;
 }
 
 // The task execution specification encapsulates all mutable information about

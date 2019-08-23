@@ -8,7 +8,7 @@ import org.ray.api.id.UniqueId;
  */
 public interface RayletClient {
 
-  UniqueId prepareCheckpoint(ActorId actorId);
+  UniqueId prepareCheckpoint(ActorId actorId, boolean isDirectCall);
 
   void notifyActorResumedFromCheckpoint(ActorId actorId, UniqueId checkpointId);
 

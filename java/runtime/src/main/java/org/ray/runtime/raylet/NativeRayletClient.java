@@ -19,8 +19,9 @@ public class NativeRayletClient implements RayletClient {
   }
 
   @Override
-  public UniqueId prepareCheckpoint(ActorId actorId) {
-    return new UniqueId(nativePrepareCheckpoint(nativeCoreWorkerPointer, actorId.getBytes()));
+  public UniqueId prepareCheckpoint(ActorId actorId, boolean isDirectCall) {
+    return new UniqueId(
+        nativePrepareCheckpoint(nativeCoreWorkerPointer, actorId.getBytes(), isDirectCall));
   }
 
   @Override
@@ -47,7 +48,8 @@ public class NativeRayletClient implements RayletClient {
   /// 5) vim $Dir/src/ray/core_worker/lib/java/org_ray_runtime_raylet_NativeRayletClient.cc
   /// 6) popd
 
-  private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId);
+  private static native byte[] nativePrepareCheckpoint(long conn, byte[] actorId,
+      boolean isDirectCall);
 
   private static native void nativeNotifyActorResumedFromCheckpoint(long conn, byte[] actorId,
       byte[] checkpointId);

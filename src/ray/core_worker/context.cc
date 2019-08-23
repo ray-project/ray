@@ -100,6 +100,11 @@ const ActorID &WorkerContext::GetCurrentActorID() const {
   return GetThreadContext().GetCurrentActorID();
 }
 
+bool WorkerContext::IsDirectCall() const {
+  std::shared_ptr<const TaskSpecification> task = GetThreadContext().GetCurrentTask();
+  return task && task->IsActorTask() && task->IsDirectCall();
+}
+
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());

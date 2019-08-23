@@ -10,11 +10,12 @@ extern "C" {
 /*
  * Class:     org_ray_runtime_raylet_NativeRayletClient
  * Method:    nativePrepareCheckpoint
- * Signature: (J[B)[B
+ * Signature: (J[BZ)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_raylet_NativeRayletClient_nativePrepareCheckpoint(JNIEnv *, jclass,
-                                                                       jlong, jbyteArray);
+                                                                       jlong, jbyteArray,
+                                                                       jboolean);
 
 /*
  * Class:     org_ray_runtime_raylet_NativeRayletClient

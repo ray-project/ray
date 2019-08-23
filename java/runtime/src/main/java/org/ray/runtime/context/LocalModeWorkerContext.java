@@ -42,6 +42,11 @@ public class LocalModeWorkerContext implements WorkerContext {
   }
 
   @Override
+  public boolean getIsDirectCall() {
+    return false;
+  }
+
+  @Override
   public ClassLoader getCurrentClassLoader() {
     return null;
   }

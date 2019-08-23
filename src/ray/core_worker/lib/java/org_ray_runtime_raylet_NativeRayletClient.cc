@@ -19,15 +19,16 @@ using ray::ClientID;
 /*
  * Class:     org_ray_runtime_raylet_NativeRayletClient
  * Method:    nativePrepareCheckpoint
- * Signature: (J[B)[B
+ * Signature: (J[BZ)[B
  */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_raylet_NativeRayletClient_nativePrepareCheckpoint(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray actorId,
+    jboolean isDirectCall) {
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   ActorCheckpointID checkpoint_id;
   auto status = GetRayletClientFromPointer(nativeCoreWorkerPointer)
-                    .PrepareActorCheckpoint(actor_id, checkpoint_id);
+                    .PrepareActorCheckpoint(actor_id, isDirectCall, checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   jbyteArray result = env->NewByteArray(checkpoint_id.Size());
   env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),

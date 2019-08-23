@@ -130,8 +130,6 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    // Actor checkpointing is not implemented in direct actor call yet.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);

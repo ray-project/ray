@@ -98,7 +98,8 @@ public final class TaskExecutor {
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (taskType == TaskType.ACTOR_TASK) {
           // TODO (kfstorm): handle checkpoint in core worker.
-          maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
+          maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId(),
+              runtime.getWorkerContext().getIsDirectCall());
         }
         returnObjects.add(runtime.getObjectStore().serialize(result));
       } else {
@@ -128,7 +129,7 @@ public final class TaskExecutor {
         rayFunctionInfo.get(2));
   }
 
-  private void maybeSaveCheckpoint(Object actor, ActorId actorId) {
+  private void maybeSaveCheckpoint(Object actor, ActorId actorId, boolean isDirectCall) {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
@@ -144,7 +145,7 @@ public final class TaskExecutor {
     }
     numTasksSinceLastCheckpoint = 0;
     lastCheckpointTimestamp = System.currentTimeMillis();
-    UniqueId checkpointId = runtime.getRayletClient().prepareCheckpoint(actorId);
+    UniqueId checkpointId = runtime.getRayletClient().prepareCheckpoint(actorId, isDirectCall);
     checkpointIds.add(checkpointId);
     if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
       ((Checkpointable) actor).checkpointExpired(actorId, checkpointIds.get(0));

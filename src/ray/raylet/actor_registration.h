@@ -133,10 +133,11 @@ class ActorRegistration {
   /// Generate checkpoint data based on actor's current state.
   ///
   /// \param actor_id ID of this actor.
-  /// \param task The task that just finished on the actor.
+  /// \param task The task that just finished on the actor. (nullptr when it's direct
+  /// call.)
   /// \return A shared pointer to the generated checkpoint data.
   std::shared_ptr<ActorCheckpointData> GenerateCheckpointData(const ActorID &actor_id,
-                                                              const Task &task);
+                                                              const Task *task);
 
  private:
   /// Information from the global actor table about this actor, including the

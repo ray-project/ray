@@ -146,6 +146,11 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
       message_->actor_task_spec().new_actor_handles());
 }
 
+bool TaskSpecification::IsDirectCall() const {
+  RAY_CHECK(IsActorTask());
+  return message_->actor_task_spec().is_direct_call();
+}
+
 std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
@@ -174,7 +179,8 @@ std::string TaskSpecification::DebugString() const {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_handle_id=" << ActorHandleId()
-           << ", actor_counter=" << ActorCounter() << "}";
+           << ", actor_counter=" << ActorCounter()
+           << ", is_direct_call=" << IsDirectCall() << "}";
   }
 
   return stream.str();
