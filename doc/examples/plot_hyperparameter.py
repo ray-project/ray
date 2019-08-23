@@ -14,14 +14,15 @@ use `Tune`_, a scalable hyperparameter tuning library built using Ray's Actor AP
 .. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
 """
 import numpy as np
-import ray
 from filelock import FileLock
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 
+import ray
 
 ray.init()
 

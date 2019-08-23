@@ -12,6 +12,8 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
+import glob
+import shutil
 import sys
 import os
 import shlex
@@ -74,15 +76,29 @@ extensions = [
 ]
 
 sphinx_gallery_conf = {
-    'examples_dirs': ['../examples'],  # path to your example scripts
-    'gallery_dirs': ['auto_examples'],  # path where to save generated examples
+    "examples_dirs": ["../examples"],  # path to your example scripts
+    "gallery_dirs": ["auto_examples"],  # path where to save generated examples
     "ignore_pattern": "../examples/doc_code/",
-    'plot_gallery': 'False',
-    'filename_pattern': 'tutorial.py',
-    'backreferences_dir': False
-    # 'show_memory': False,
+    "plot_gallery": "False",
+    # "filename_pattern": "tutorial.py",
+    "backreferences_dir": False
+    # "show_memory': False,
     # 'min_reported_time': False
 }
+
+for i in range(len(sphinx_gallery_conf["examples_dirs"])):
+    gallery_dir = sphinx_gallery_conf["gallery_dirs"][i]
+    source_dir = sphinx_gallery_conf["examples_dirs"][i]
+    try:
+        os.mkdir(gallery_dir)
+    except OSError:
+        pass
+
+    # Copy rst files from source dir to gallery dir
+    for f in glob.glob(os.path.join(source_dir, '*.rst')):
+        shutil.copy(f, gallery_dir)
+
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -134,6 +150,7 @@ language = None
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
 exclude_patterns += sphinx_gallery_conf['examples_dirs']
+exclude_patterns += ["*/README.rst"]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.

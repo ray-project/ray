@@ -194,7 +194,7 @@ class CustomGalleryItemDirective(Directive):
                 sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400,
                                                    280)
             else:
-                thumbnail = "_static/img/thumbnails/default.png"
+                thumbnail = "/_static/img/thumbnails/default.png"
 
             if "description" in self.options:
                 description = self.options["description"]
