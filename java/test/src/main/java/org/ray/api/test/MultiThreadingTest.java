@@ -15,6 +15,7 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.ActorId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -39,6 +40,33 @@ public class MultiThreadingTest extends BaseTest {
     @RayRemote
     public Integer echo(int num) {
       return num;
+    }
+  }
+
+  @RayRemote
+  public static class ActorIdTester {
+
+    private final ActorId actorId;
+
+    public ActorIdTester() {
+      actorId = Ray.getRuntimeContext().getCurrentActorId();
+      Assert.assertNotEquals(actorId, ActorId.NIL);
+    }
+
+    @RayRemote
+    public ActorId getCurrentActorId() {
+      final ActorId[] result = new ActorId[1];
+      Thread thread = new Thread(() -> {
+        result[0] = Ray.getRuntimeContext().getCurrentActorId();
+      });
+      thread.start();
+      try {
+        thread.join();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+      Assert.assertEquals(result[0], actorId);
+      return result[0];
     }
   }
 
@@ -103,6 +131,14 @@ public class MultiThreadingTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     RayObject<String> obj = Ray.call(MultiThreadingTest::testMultiThreading);
     Assert.assertEquals("ok", obj.get());
+  }
+
+  @Test
+  public void testGetCurrentActorId() {
+    TestUtils.skipTestUnderSingleProcess();
+    RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
+    ActorId actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester).get();
+    Assert.assertEquals(actorId, actorIdTester.getId());
   }
 
   private static void runTestCaseInMultipleThreads(Runnable testCase, int numRepeats) {
