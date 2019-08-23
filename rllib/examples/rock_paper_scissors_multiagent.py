@@ -7,7 +7,7 @@ This demonstrates running the following policies in competition:
     (1) heuristic policy of repeating the same move
     (2) heuristic policy of beating the last opponent move
     (3) LSTM/feedforward PG policies
-    (4) LSTM policy with custom safety loss
+    (4) LSTM policy with custom entropy loss
 """
 
 import random
@@ -195,11 +195,12 @@ def run_with_custom_entropy_loss():
 
     This performs about the same as the default loss does."""
 
-    def entropy_policy_gradient_loss(policy, batch_tensors):
-        actions = batch_tensors["actions"]
-        advantages = batch_tensors["advantages"]
-        return (-0.1 * policy.action_dist.entropy() - tf.reduce_mean(
-            policy.action_dist.logp(actions) * advantages))
+    def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
+        action_dist = dist_class(logits, model)
+        return (-0.1 * action_dist.entropy() - tf.reduce_mean(
+            action_dist.logp(train_batch["actions"]) *
+            train_batch["advantages"]))
 
     EntropyPolicy = PGTFPolicy.with_updates(
         loss_fn=entropy_policy_gradient_loss)

@@ -10,7 +10,7 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-# TODO(ekl) rewrite this using ModelV2
+# Deprecated: see as an alternative models/tf/visionnet_v2.py
 class VisionNetwork(Model):
     """Generic vision network."""
 
