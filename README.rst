@@ -71,17 +71,15 @@ Read more about `launching clusters <https://ray.readthedocs.io/en/latest/autosc
 Tune Quick Start
 ----------------
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/tune.png
-    :scale: 30%
-    :align: center
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/tune-wide.png
 
 `Tune`_ is a library for hyperparameter tuning at any scale.
 
-  * Launch a multi-node distributed asynchronous hyperparameter sweep in less than 10 lines of code.
-  * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
-  * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
-  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
-  * Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
+- Launch a multi-node distributed asynchronous hyperparameter sweep in less than 10 lines of code.
+- Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+- Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+- Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
+- Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
 .. note::
 
