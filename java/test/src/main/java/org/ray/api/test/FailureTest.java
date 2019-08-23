@@ -105,9 +105,6 @@ public class FailureTest extends BaseTest {
   @Test
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
-    // If direct actor call is enabled, we can get a RayActorException only if the actor
-    // is already dead before submitting the task.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
       Ray.call(BadActor::badMethod2, actor).get();
