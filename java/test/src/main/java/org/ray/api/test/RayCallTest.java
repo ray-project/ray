@@ -7,6 +7,8 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.ObjectId;
+import org.ray.runtime.AbstractRayRuntime;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -70,6 +72,12 @@ public class RayCallTest extends BaseTest {
     return largeObject;
   }
 
+  @RayRemote
+  private static void testNoReturn(ObjectId objectId) {
+    // Put an object in object store to inform driver that this function is executing.
+    ((AbstractRayRuntime) Ray.internal()).getObjectStore().put(1, objectId);
+  }
+
   /**
    * Test calling and returning different types.
    */
@@ -89,6 +97,10 @@ public class RayCallTest extends BaseTest {
     Assert.assertEquals(map, Ray.call(RayCallTest::testMap, map).get());
     LargeObject largeObject = new LargeObject();
     Assert.assertNotNull(Ray.call(RayCallTest::testLargeObject, largeObject).get());
+
+    ObjectId randomObjectId = ObjectId.fromRandom();
+    Ray.call(RayCallTest::testNoReturn, randomObjectId);
+    Assert.assertEquals(((int) Ray.get(randomObjectId)), 1);
   }
 
   @RayRemote

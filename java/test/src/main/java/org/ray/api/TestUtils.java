@@ -12,13 +12,14 @@ import org.testng.SkipException;
 public class TestUtils {
 
   public static class LargeObject implements Serializable {
+
     public byte[] data = new byte[1024 * 1024];
   }
 
   private static final int WAIT_INTERVAL_MS = 5;
 
   public static void skipTestUnderSingleProcess() {
-    AbstractRayRuntime runtime = (AbstractRayRuntime)Ray.internal();
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     if (runtime.getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
       throw new SkipException("This test doesn't work under single-process mode.");
     }

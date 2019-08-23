@@ -6,7 +6,7 @@ package org.ray.api.function;
  * Functional interface for a remote function that has 0 parameter.
  */
 @FunctionalInterface
-public interface RayFunc0<R> extends RayFunc {
+public interface RayFuncVoid0 extends RayFuncVoid {
 
-  R apply() throws Exception;
+  void apply() throws Exception;
 }

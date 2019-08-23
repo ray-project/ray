@@ -8,7 +8,7 @@ import org.ray.runtime.util.FileUtil;
  */
 public class RayFuncGenerator extends BaseGenerator {
 
-  private String generate(int numParameters) {
+  private String generate(int numParameters, boolean hasReturn) {
     sb = new StringBuilder();
 
     String genericTypes = "";
@@ -19,6 +19,14 @@ public class RayFuncGenerator extends BaseGenerator {
         paramList += ", ";
       }
       paramList += String.format("T%d t%d", i, i);
+    }
+    if (hasReturn) {
+      genericTypes += "R, ";
+    }
+    if (!genericTypes.isEmpty()) {
+      // Remove trailing ", ".
+      genericTypes = genericTypes.substring(0, genericTypes.length() - 2);
+      genericTypes = "<" + genericTypes + ">";
     }
 
     newLine("// generated automatically, do not modify.");
@@ -32,10 +40,12 @@ public class RayFuncGenerator extends BaseGenerator {
     newLine(comment);
     newLine(" */");
     newLine("@FunctionalInterface");
-    newLine(String.format("public interface RayFunc%d<%sR> extends RayFunc {",
-        numParameters, genericTypes));
+    String className = "RayFunc" + (hasReturn ? "" : "Void") + numParameters;
+    newLine(String.format("public interface %s%s extends %s {",
+        className, genericTypes, hasReturn ? "RayFunc" : "RayFuncVoid"));
+    newLine("");
     indents(1);
-    newLine(String.format("R apply(%s);", paramList));
+    newLine(String.format("%s apply(%s) throws Exception;", hasReturn ? "R" : "void", paramList));
     newLine("}");
 
     return sb.toString();
@@ -46,8 +56,12 @@ public class RayFuncGenerator extends BaseGenerator {
         + "/api/src/main/java/org/ray/api/function/";
     RayFuncGenerator generator = new RayFuncGenerator();
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
-      String content = generator.generate(i);
+      // Functions that have return.
+      String content = generator.generate(i, true);
       FileUtil.overrideFile(root + "RayFunc" + i + ".java", content);
+      // Functions that don't have return.
+      content = generator.generate(i, false);
+      FileUtil.overrideFile(root + "RayFuncVoid" + i + ".java", content);
     }
   }
 
