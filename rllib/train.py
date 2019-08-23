@@ -93,6 +93,10 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Whether to attempt to enable TF eager execution.")
+    parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
@@ -140,6 +144,8 @@ def run(args, parser):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
+        if args.eager:
+            exp["config"]["eager"] = True
 
     if args.ray_num_nodes:
         cluster = Cluster()

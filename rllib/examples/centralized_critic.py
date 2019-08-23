@@ -78,6 +78,9 @@ class CentralizedCriticModel(TFModelV2):
                 [obs, opponent_obs,
                  tf.one_hot(opponent_actions, 2)]), [-1])
 
+    def value_function(self):
+        return self.model.value_function()  # not used
+
 
 class CentralizedValueMixin(object):
     """Add methods to evaluate the central value function from the model."""
@@ -97,7 +100,7 @@ class CentralizedValueMixin(object):
         return self.get_session().run(self.central_value_function, feed_dict)
 
 
-# Grabs the opponent obs/act and includes it in the experience batch,
+# Grabs the opponent obs/act and includes it in the experience train_batch,
 # and computes GAE using the central vf predictions.
 def centralized_critic_postprocessing(policy,
                                       sample_batch,
@@ -105,7 +108,7 @@ def centralized_critic_postprocessing(policy,
                                       episode=None):
     if policy.loss_initialized():
         assert sample_batch["dones"][-1], \
-            "Not implemented for batch_mode=truncate_episodes"
+            "Not implemented for train_batch_mode=truncate_episodes"
         assert other_agent_batches is not None
         [(_, opponent_batch)] = list(other_agent_batches.values())
 
@@ -126,33 +129,36 @@ def centralized_critic_postprocessing(policy,
         sample_batch[SampleBatch.VF_PREDS] = np.zeros_like(
             sample_batch[SampleBatch.ACTIONS], dtype=np.float32)
 
-    batch = compute_advantages(
+    train_batch = compute_advantages(
         sample_batch,
         0.0,
         policy.config["gamma"],
         policy.config["lambda"],
         use_gae=policy.config["use_gae"])
-    return batch
+    return train_batch
 
 
 # Copied from PPO but optimizing the central value function
-def loss_with_central_critic(policy, batch_tensors):
+def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
+
+    logits, state = model.from_batch(train_batch)
+    action_dist = dist_class(logits, model)
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
-        policy.dist_class,
-        policy.model,
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[BEHAVIOUR_LOGITS],
-        batch_tensors[ACTION_LOGP],
-        batch_tensors[SampleBatch.VF_PREDS],
-        policy.action_dist,
+        dist_class,
+        model,
+        train_batch[Postprocessing.VALUE_TARGETS],
+        train_batch[Postprocessing.ADVANTAGES],
+        train_batch[SampleBatch.ACTIONS],
+        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.VF_PREDS],
+        action_dist,
         policy.central_value_function,
         policy.kl_coeff,
-        tf.ones_like(batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool),
+        tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool),
         entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
@@ -174,11 +180,11 @@ def setup_mixins(policy, obs_space, action_space, config):
         tf.shape(policy.get_placeholder(SampleBatch.CUR_OBS))[0])
 
 
-def central_vf_stats(policy, batch_tensors, grads):
+def central_vf_stats(policy, train_batch, grads):
     # Report the explained variance of the central value function.
     return {
         "vf_explained_var": explained_variance(
-            batch_tensors[Postprocessing.VALUE_TARGETS],
+            train_batch[Postprocessing.VALUE_TARGETS],
             policy.central_value_function),
     }
 
