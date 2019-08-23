@@ -1,6 +1,7 @@
 package org.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
@@ -160,7 +161,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       int numReturns, CallOptions options) {
-    Preconditions.checkState(numReturns == 1);
+    Preconditions.checkState(numReturns <= 1);
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.NORMAL_TASK, functionDescriptor, args)
         .setNumReturns(numReturns)
         .build();
@@ -185,7 +186,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public List<ObjectId> submitActorTask(RayActor actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options) {
-    Preconditions.checkState(numReturns == 1);
+    Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
     List<ObjectId> returnIds = getReturnIds(
         TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns + 1);
@@ -200,7 +201,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 .build())
         .build();
     submitTaskSpec(taskSpec);
-    return Collections.singletonList(returnIds.get(0));
+    if (numReturns  == 0) {
+      return ImmutableList.of();
+    } else {
+      return ImmutableList.of(returnIds.get(0));
+    }
   }
 
   public static ActorId getActorId(TaskSpec taskSpec) {
