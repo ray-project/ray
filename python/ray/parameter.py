@@ -23,6 +23,7 @@ class RayParams(object):
         num_gpus (int): Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         redis_max_memory: The max amount of memory (in bytes) to allow redis
@@ -82,6 +83,7 @@ class RayParams(object):
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
+                 memory=None,
                  object_store_memory=None,
                  redis_max_memory=None,
                  redis_port=None,
@@ -116,8 +118,9 @@ class RayParams(object):
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
-        self.resources = resources
+        self.memory = memory
         self.object_store_memory = object_store_memory
+        self.resources = resources
         self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports

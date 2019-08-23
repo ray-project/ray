@@ -8,7 +8,9 @@ from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
+from ray.rllib.utils import try_import_tf
 
+tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 # yapf: disable
@@ -71,7 +73,8 @@ def choose_policy_optimizer(workers, config):
         return SyncSamplesOptimizer(
             workers,
             num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"])
+            train_batch_size=config["train_batch_size"],
+            sgd_minibatch_size=config["sgd_minibatch_size"])
 
     return LocalMultiGPUOptimizer(
         workers,
@@ -140,8 +143,10 @@ def validate_config(config):
             "simple_optimizer=True if this doesn't work for you.")
     if config["simple_optimizer"]:
         logger.warning(
-            "Using the simple non-minibatch optimizer. This will greatly "
+            "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
+    elif tf and tf.executing_eagerly():
+        config["simple_optimizer"] = True  # multi-gpu not supported
 
 
 PPOTrainer = build_trainer(

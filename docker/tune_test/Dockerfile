@@ -13,7 +13,7 @@ RUN conda remove -y --force wrapt
 RUN pip install gym[atari]==0.10.11 opencv-python-headless tensorflow lz4 keras pytest-timeout smart_open
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
-RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster ConfigSpace
+RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster ConfigSpace lightgbm xgboost
 RUN pip install -U mlflow
 RUN pip install -U pytest-remotedata>=0.3.1
 RUN conda install pytorch-cpu torchvision-cpu -c pytorch

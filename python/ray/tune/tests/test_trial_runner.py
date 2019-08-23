@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import glob
 import os
+import numpy as np
 import shutil
 import sys
 import tempfile
@@ -44,7 +45,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0, object_store_memory=int(1e8))
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
         ray.shutdown()
@@ -1297,6 +1298,17 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def testLogUniform(self):
+        sampler = tune.loguniform(1e-10, 1e-1).func
+        results = [sampler(None) for i in range(1000)]
+        assert abs(np.log(min(results)) / np.log(10) - -10) < 0.1
+        assert abs(np.log(max(results)) / np.log(10) - -1) < 0.1
+
+        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e).func
+        results_e = [sampler_e(None) for i in range(1000)]
+        assert abs(np.log(min(results_e)) - -4) < 0.1
+        assert abs(np.log(max(results_e)) - 1) < 0.1
 
     def test_resolve_dict(self):
         config = {

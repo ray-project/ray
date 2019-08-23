@@ -97,9 +97,18 @@ class RolloutWorker(EvaluatorInterface):
 
     @DeveloperAPI
     @classmethod
-    def as_remote(cls, num_cpus=None, num_gpus=None, resources=None):
+    def as_remote(cls,
+                  num_cpus=None,
+                  num_gpus=None,
+                  memory=None,
+                  object_store_memory=None,
+                  resources=None):
         return ray.remote(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources)(cls)
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources)(cls)
 
     @DeveloperAPI
     def __init__(self,
@@ -229,6 +238,10 @@ class RolloutWorker(EvaluatorInterface):
         global _global_worker
         _global_worker = self
 
+        policy_config = policy_config or {}
+        if tf and policy_config.get("eager"):
+            tf.enable_eager_execution()
+
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
@@ -238,7 +251,6 @@ class RolloutWorker(EvaluatorInterface):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
-        policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
         self.worker_index = worker_index
@@ -313,7 +325,8 @@ class RolloutWorker(EvaluatorInterface):
                 torch.manual_seed(seed)
             except ImportError:
                 logger.info("Could not seed torch")
-        if _has_tensorflow_graph(policy_dict):
+        if _has_tensorflow_graph(policy_dict) and not (tf and
+                                                       tf.executing_eagerly()):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
                     and not ray.get_gpu_ids()):
@@ -599,7 +612,7 @@ class RolloutWorker(EvaluatorInterface):
             info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
                 samples)
         if log_once("learn_out"):
-            logger.info("Training output:\n\n{}\n".format(summarize(info_out)))
+            logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
     @DeveloperAPI
@@ -738,6 +751,14 @@ class RolloutWorker(EvaluatorInterface):
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
+            if tf and tf.executing_eagerly():
+                if hasattr(cls, "as_eager"):
+                    cls = cls.as_eager()
+                elif not issubclass(cls, TFPolicy):
+                    pass  # could be some other type of policy
+                else:
+                    raise ValueError("This policy does not support eager "
+                                     "execution: {}".format(cls))
             if tf:
                 with tf.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)

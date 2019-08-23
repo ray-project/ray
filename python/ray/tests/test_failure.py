@@ -725,7 +725,7 @@ def test_connect_with_disconnected_node(shutdown_only):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 5,
-        "object_store_memory": 10**7
+        "object_store_memory": 10**8
     }],
     indirect=True)
 @pytest.mark.parametrize("num_actors", [1, 2, 5])
@@ -733,7 +733,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
     @ray.remote
     class LargeMemoryActor(object):
         def some_expensive_task(self):
-            return np.zeros(10**7 // 2, dtype=np.uint8)
+            return np.zeros(10**8 // 2, dtype=np.uint8)
 
     actors = [LargeMemoryActor.remote() for _ in range(num_actors)]
     for _ in range(10):
@@ -745,14 +745,14 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 2,
-        "object_store_memory": 10**7
+        "object_store_memory": 10**8
     }],
     indirect=True)
 def test_fill_plasma_exception(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor(object):
         def some_expensive_task(self):
-            return np.zeros(10**7 + 2, dtype=np.uint8)
+            return np.zeros(10**8 + 2, dtype=np.uint8)
 
         def test(self):
             return 1
@@ -764,4 +764,4 @@ def test_fill_plasma_exception(ray_start_cluster_head):
     ray.get(actor.test.remote())
 
     with pytest.raises(plasma.PlasmaStoreFull):
-        ray.put(np.zeros(10**7 + 2, dtype=np.uint8))
+        ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
