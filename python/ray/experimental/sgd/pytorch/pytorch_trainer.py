@@ -15,7 +15,8 @@ from ray.tune.resources import Resources
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
-from ray.experimental.sgd.pytorch import utils
+from ray.experimental.sgd.pytorch import pytorch_utils
+from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class PyTorchTrainer(object):
     def __init__(self,
                  model_creator,
                  data_creator,
-                 optimizer_creator=utils.sgd_mse_optimizer,
+                 optimizer_creator=pytorch_utils.sgd_mse_optimizer,
                  config=None,
                  num_replicas=1,
                  use_gpu=False,

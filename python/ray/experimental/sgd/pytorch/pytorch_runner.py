@@ -7,7 +7,8 @@ import torch
 import torch.utils.data
 
 import ray
-from ray.experimental.sgd.pytorch import utils
+from ray.experimental.sgd.pytorch import pytorch_utils
+from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ class PyTorchRunner(object):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
-            train_stats = utils.train(self.train_loader, self.model,
+            train_stats = pytorch_utils.train(self.train_loader, self.model,
                                       self.criterion, self.optimizer)
             train_stats["epoch"] = self.epoch
 
@@ -101,7 +102,7 @@ class PyTorchRunner(object):
     def validate(self):
         """Evaluates the model on the validation data set."""
         with self._timers["validation"]:
-            validation_stats = utils.validate(self.validation_loader,
+            validation_stats = pytorch_utils.validate(self.validation_loader,
                                               self.model, self.criterion)
 
         validation_stats.update(self.stats())

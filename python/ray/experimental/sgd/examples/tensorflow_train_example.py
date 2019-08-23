@@ -4,54 +4,58 @@ from __future__ import print_function
 
 import argparse
 import tensorflow as tf
+import numpy as np
 
 from ray import tune
 from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
     TensorFlowTrainer, TensorFlowTrainable)
 
+def linear_dataset(a=2, b=5, size = 1000):
+    x = np.arange(0, 10, 10 / size, dtype=np.float32)
+    y = a * x + b
 
-def mnist_dataset(batch_size):
-    NUM_TRAIN_SAMPLES = 60000
-    mnist = tf.keras.datasets.mnist
+    x = x.reshape((-1, 1))
+    y = y.reshape((-1, 1))
 
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_test = x_train / 255.0, x_test / 255.0
+    return x, y
 
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+
+def simple_dataset(batch_size = 20):
+    NUM_TRAIN_SAMPLES = 1000
+
+    x_train, y_train = linear_dataset(size=NUM_TRAIN_SAMPLES)
+    x_test, y_test = linear_dataset(size=400)
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train,y_train))
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
     tf.random.set_seed(22)
-    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(
-        batch_size, drop_remainder=True)
+    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(batch_size, drop_remainder=True)
     test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
 
     return train_dataset, test_dataset
 
-
-def mnist_model(config=None):
-
+def simple_model():
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Flatten(input_shape=(28, 28)),
-        tf.keras.layers.Dense(128, activation="relu"),
-        tf.keras.layers.Dropout(0.2),
-        tf.keras.layers.Dense(10, activation="softmax")
-    ])
+        tf.keras.layers.Dense(1, input_shape=(1,))
+        ])
 
     model.compile(
-        optimizer="adam",
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"])
+        optimizer = "sgd",
+        loss="mean_squared_error",
+        metrics = ["mean_squared_error"]
+        )
 
     return model
 
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer = TensorFlowTrainer(
-        model_creator=mnist_model,
-        data_creator=mnist_dataset,
+        model_creator=simple_model,
+        data_creator=simple_dataset,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        batch_size=512)
+        batch_size=128)
 
     train_stats1 = trainer.train()
     train_stats1.update(trainer.validate())
@@ -70,11 +74,11 @@ def train_example(num_replicas=1, use_gpu=False):
 
 def tune_example(num_replicas=1, use_gpu=False):
     config = {
-        "model_creator": tune.function(mnist_model),
-        "data_creator": tune.function(mnist_dataset),
+        "model_creator": tune.function(simple_model),
+        "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
-        "batch_size": 512
+        "batch_size": 128
     }
 
     analysis = tune.run(

@@ -13,17 +13,17 @@ from ray.experimental.sgd.tensorflow import (TensorFlowTrainer,
                                              TensorFlowTrainable)
 
 from ray.experimental.sgd.examples.tensorflow_train_example import (
-    mnist_model, mnist_dataset)
+    simple_model, simple_dataset)
 
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer = TensorFlowTrainer(
-        model_creator=mnist_model,
-        data_creator=mnist_dataset,
+        model_creator=simple_model,
+        data_creator=simple_dataset,
         num_replicas=num_replicas,
-        batch_size=512)
+        batch_size=128)
 
     train_stats1 = trainer.train()
     train_stats1.update(trainer.validate())
@@ -49,11 +49,11 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {
-        "model_creator": tune.function(mnist_model),
-        "data_creator": tune.function(mnist_dataset),
+        "model_creator": tune.function(simple_model),
+        "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": False,
-        "batch_size": 512
+        "batch_size": 128
     }
 
     analysis = tune.run(
@@ -75,10 +75,10 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     "num_replicas", [1, 2])
 def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1 = TensorFlowTrainer(
-        model_creator=mnist_model,
-        data_creator=mnist_dataset,
+        model_creator=simple_model,
+        data_creator=simple_dataset,
         num_replicas=num_replicas,
-        batch_size=512)
+        batch_size=128)
     trainer1.train()
 
     filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
@@ -88,10 +88,10 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1.shutdown()
 
     trainer2 = TensorFlowTrainer(
-        model_creator=mnist_model,
-        data_creator=mnist_dataset,
+        model_creator=simple_model,
+        data_creator=simple_dataset,
         num_replicas=num_replicas,
-        batch_size=512)
+        batch_size=128)
     trainer2.restore(filename)
 
     model2 = trainer2.get_model()
