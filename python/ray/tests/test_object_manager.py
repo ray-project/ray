@@ -52,11 +52,11 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def f(x):
         return
 
-    x = np.zeros(10**8, dtype=np.uint8)
+    x = np.zeros(150 * 1024 * 1024, dtype=np.uint8)
 
     @ray.remote
     def create_object():
-        return np.zeros(10**8, dtype=np.uint8)
+        return np.zeros(150 * 1024 * 1024, dtype=np.uint8)
 
     object_ids = []
 
@@ -219,7 +219,7 @@ def test_object_transfer_retry(ray_start_cluster):
         "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
         "object_manager_default_chunk_size": 1000
     })
-    object_store_memory = 10**8
+    object_store_memory = 150 * 1024 * 1024
     cluster.add_node(
         object_store_memory=object_store_memory, _internal_config=config)
     cluster.add_node(

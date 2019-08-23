@@ -183,6 +183,8 @@ class ActorClass(object):
             task.
         _num_gpus: The default number of GPUs required by the actor creation
             task.
+        _memory: The heap memory quota for this actor.
+        _object_store_memory: The object store memory quota for this actor.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
         _last_export_session_and_job: A pair of the last exported session
@@ -203,13 +205,15 @@ class ActorClass(object):
     """
 
     def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, resources):
+                 num_gpus, memory, object_store_memory, resources):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
         self._max_reconstructions = max_reconstructions
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
+        self._memory = memory
+        self._object_store_memory = object_store_memory
         self._resources = resources
         self._last_export_session_and_job = None
 
@@ -282,6 +286,8 @@ class ActorClass(object):
                 kwargs=None,
                 num_cpus=None,
                 num_gpus=None,
+                memory=None,
+                object_store_memory=None,
                 resources=None):
         """Create an actor.
 
@@ -294,6 +300,9 @@ class ActorClass(object):
             kwargs: The keyword arguments to forward to the actor constructor.
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
+            memory: Restrict the heap memory usage of this actor.
+            object_store_memory: Restrict the object store memory used by
+                this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
 
@@ -356,8 +365,9 @@ class ActorClass(object):
                     self._modified_class, self._actor_method_names)
 
             resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, self._num_gpus, self._resources, num_cpus,
-                num_gpus, resources)
+                cpus_to_use, self._num_gpus, self._memory,
+                self._object_store_memory, self._resources, num_cpus, num_gpus,
+                memory, object_store_memory, resources)
 
             # If the actor methods require CPU resources, then set the required
             # placement resources. If actor_placement_resources is empty, then
@@ -748,7 +758,8 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
+               max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -798,7 +809,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     class_id = ActorClassID.from_random()
 
     return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      resources)
+                      memory, object_store_memory, resources)
 
 
 def exit_actor():

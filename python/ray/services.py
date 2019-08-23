@@ -453,20 +453,6 @@ def wait_for_redis_to_start(redis_ip_address,
                         "configured properly.")
 
 
-def _autodetect_num_gpus():
-    """Attempt to detect the number of GPUs on this machine.
-
-    TODO(rkn): This currently assumes Nvidia GPUs and Linux.
-
-    Returns:
-        The number of GPUs if any were detected, otherwise 0.
-    """
-    proc_gpus_path = "/proc/driver/nvidia/gpus"
-    if os.path.isdir(proc_gpus_path):
-        return len(os.listdir(proc_gpus_path))
-    return 0
-
-
 def _compute_version_info():
     """Compute the versions of Python, pyarrow, and Ray.
 
@@ -532,6 +518,7 @@ def check_version_info(redis_client):
 
 def start_redis(node_ip_address,
                 redirect_files,
+                resource_spec,
                 port=None,
                 redis_shard_ports=None,
                 num_redis_shards=1,
@@ -539,7 +526,6 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 use_credis=None,
-                redis_max_memory=None,
                 include_java=False):
     """Start the Redis global state store.
 
@@ -547,6 +533,7 @@ def start_redis(node_ip_address,
         node_ip_address: The IP address of the current node. This is only used
             for recording the log filenames in Redis.
         redirect_files: The list of (stdout, stderr) file pairs.
+        resource_spec (ResourceSpec): Resources for the node.
         port (int): If provided, the primary Redis shard will be started on
             this port.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
@@ -564,11 +551,6 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        redis_max_memory: The max amount of memory (in bytes) to allow each
-            redis shard to use. Once the limit is exceeded, redis will start
-            LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables). By default, this is
-            capped at 10GB but can be set higher.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
 
@@ -654,18 +636,8 @@ def start_redis(node_ip_address,
     _put_version_info_in_redis(primary_redis_client)
 
     # Calculate the redis memory.
-    system_memory = ray.utils.get_system_memory()
-    if redis_max_memory is None:
-        redis_max_memory = min(
-            ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
-            max(
-                int(system_memory * 0.2),
-                ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
-    if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
-        raise ValueError("Attempting to cap Redis memory usage at {} bytes, "
-                         "but the minimum allowed is {} bytes.".format(
-                             redis_max_memory,
-                             ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
+    assert resource_spec.resolved()
+    redis_max_memory = resource_spec.redis_max_memory
 
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
@@ -1022,76 +994,6 @@ def start_dashboard(redis_address,
     return dashboard_url, process_info
 
 
-def check_and_update_resources(num_cpus, num_gpus, resources):
-    """Sanity check a resource dictionary and add sensible defaults.
-
-    Args:
-        num_cpus: The number of CPUs.
-        num_gpus: The number of GPUs.
-        resources: A dictionary mapping resource names to resource quantities.
-
-    Returns:
-        A new resource dictionary.
-    """
-    if resources is None:
-        resources = {}
-    resources = resources.copy()
-    assert "CPU" not in resources
-    assert "GPU" not in resources
-    if num_cpus is not None:
-        resources["CPU"] = num_cpus
-    if num_gpus is not None:
-        resources["GPU"] = num_gpus
-
-    if "CPU" not in resources:
-        # By default, use the number of hardware execution threads for the
-        # number of cores.
-        resources["CPU"] = multiprocessing.cpu_count()
-
-    # See if CUDA_VISIBLE_DEVICES has already been set.
-    gpu_ids = ray.utils.get_cuda_visible_devices()
-
-    # Check that the number of GPUs that the raylet wants doesn't
-    # excede the amount allowed by CUDA_VISIBLE_DEVICES.
-    if ("GPU" in resources and gpu_ids is not None
-            and resources["GPU"] > len(gpu_ids)):
-        raise Exception("Attempting to start raylet with {} GPUs, "
-                        "but CUDA_VISIBLE_DEVICES contains {}.".format(
-                            resources["GPU"], gpu_ids))
-
-    if "GPU" not in resources:
-        # Try to automatically detect the number of GPUs.
-        resources["GPU"] = _autodetect_num_gpus()
-        # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
-        if gpu_ids is not None:
-            resources["GPU"] = min(resources["GPU"], len(gpu_ids))
-
-    resources = {
-        resource_label: resource_quantity
-        for resource_label, resource_quantity in resources.items()
-        if resource_quantity != 0
-    }
-
-    # Check types.
-    for _, resource_quantity in resources.items():
-        assert (isinstance(resource_quantity, int)
-                or isinstance(resource_quantity, float))
-        if (isinstance(resource_quantity, float)
-                and not resource_quantity.is_integer()):
-            raise ValueError(
-                "Resource quantities must all be whole numbers. Received {}.".
-                format(resources))
-        if resource_quantity < 0:
-            raise ValueError(
-                "Resource quantities must be nonnegative. Received {}.".format(
-                    resources))
-        if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
-            raise ValueError("Resource quantities must be at most {}.".format(
-                ray_constants.MAX_RESOURCE_QUANTITY))
-
-    return resources
-
-
 def start_raylet(redis_address,
                  node_ip_address,
                  raylet_name,
@@ -1099,9 +1001,7 @@ def start_raylet(redis_address,
                  worker_path,
                  temp_dir,
                  session_dir,
-                 num_cpus=None,
-                 num_gpus=None,
-                 resources=None,
+                 resource_spec,
                  object_manager_port=None,
                  node_manager_port=None,
                  redis_password=None,
@@ -1125,9 +1025,7 @@ def start_raylet(redis_address,
             processes will execute.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
-        num_cpus: The CPUs allocated for this raylet.
-        num_gpus: The GPUs allocated for this raylet.
-        resources: The custom resources allocated for this raylet.
+        resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
         node_manager_port: The port to use for the node manager. If this is
@@ -1155,11 +1053,9 @@ def start_raylet(redis_address,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    num_initial_workers = (num_cpus if num_cpus is not None else
-                           multiprocessing.cpu_count())
-
-    static_resources = check_and_update_resources(num_cpus, num_gpus,
-                                                  resources)
+    assert resource_spec.resolved()
+    num_initial_workers = resource_spec.num_cpus
+    static_resources = resource_spec.to_resource_dict()
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
@@ -1296,70 +1192,27 @@ def build_java_worker_command(
     return command
 
 
-def determine_plasma_store_config(object_store_memory=None,
+def determine_plasma_store_config(object_store_memory,
                                   plasma_directory=None,
                                   huge_pages=False):
     """Figure out how to configure the plasma object store.
 
-    This will determine which directory to use for the plasma store (e.g.,
-    /tmp or /dev/shm) and how much memory to start the store with. On Linux,
+    This will determine which directory to use for the plasma store. On Linux,
     we will try to use /dev/shm unless the shared memory file system is too
     small, in which case we will fall back to /tmp. If any of the object store
     memory or plasma directory parameters are specified by the user, then those
     values will be preserved.
 
     Args:
-        object_store_memory (int): The user-specified object store memory
-            parameter.
+        object_store_memory (int): The objec store memory to use.
         plasma_directory (str): The user-specified plasma directory parameter.
         huge_pages (bool): The user-specified huge pages parameter.
 
     Returns:
-        A tuple of the object store memory to use and the plasma directory to
-            use. If either of these values is specified by the user, then that
+        The plasma directory to use. If it is specified by the user, then that
             value will be preserved.
     """
     system_memory = ray.utils.get_system_memory()
-
-    # Choose a default object store size.
-    if object_store_memory is None:
-        object_store_memory = int(system_memory * 0.3)
-        # Cap memory to avoid memory waste and perf issues on large nodes
-        if (object_store_memory >
-                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
-            logger.warning(
-                "Warning: Capping object memory store to {}GB. ".format(
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES // 1e9)
-                + "To increase this further, specify `object_store_memory` "
-                "when calling ray.init() or ray start.")
-            object_store_memory = (
-                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-
-        # Other applications may also be using a lot of memory on the same
-        # node. Try to detect when this is happening and log a warning or
-        # error in more severe cases.
-        avail_memory = ray.utils.estimate_available_memory()
-        object_store_fraction = object_store_memory / avail_memory
-        # Escape hatch, undocumented for now.
-        no_check = os.environ.get("RAY_DEBUG_DISABLE_MEM_CHECKS", False)
-        if object_store_fraction > 0.9 and not no_check:
-            raise ValueError(
-                "The default object store size of {} GB "
-                "will use more than 90% of the available memory on this node "
-                "({} GB). Please reduce the object store memory size "
-                "to avoid memory contention with other applications, or "
-                "shut down the applications using this memory.".format(
-                    round(object_store_memory / 1e9, 2),
-                    round(avail_memory / 1e9, 2)))
-        elif object_store_fraction > 0.5:
-            logger.warning(
-                "WARNING: The default object store size of {} GB "
-                "will use more than 50% of the available memory on this node "
-                "({} GB). Consider setting the object store memory manually "
-                "to a smaller size to avoid memory contention with other "
-                "applications.".format(
-                    round(object_store_memory / 1e9, 2),
-                    round(avail_memory / 1e9, 2)))
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
@@ -1400,7 +1253,7 @@ def determine_plasma_store_config(object_store_memory=None,
             "The file {} does not exist or is not a directory.".format(
                 plasma_directory))
 
-    return object_store_memory, plasma_directory
+    return plasma_directory
 
 
 def _start_plasma_store(plasma_store_memory,
@@ -1468,21 +1321,20 @@ def _start_plasma_store(plasma_store_memory,
     return process_info
 
 
-def start_plasma_store(stdout_file=None,
+def start_plasma_store(resource_spec,
+                       stdout_file=None,
                        stderr_file=None,
-                       object_store_memory=None,
                        plasma_directory=None,
                        huge_pages=False,
                        plasma_store_socket_name=None):
     """This method starts an object store process.
 
     Args:
+        resource_spec (ResourceSpec): Resources for the node.
         stdout_file: A file handle opened for writing to redirect stdout
             to. If no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr
             to. If no redirection should happen, then this should be None.
-        object_store_memory: The amount of memory (in bytes) to start the
-            object store with.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
@@ -1491,7 +1343,9 @@ def start_plasma_store(stdout_file=None,
     Returns:
         ProcessInfo for the process that was started.
     """
-    object_store_memory, plasma_directory = determine_plasma_store_config(
+    assert resource_spec.resolved()
+    object_store_memory = resource_spec.object_store_memory
+    plasma_directory = determine_plasma_store_config(
         object_store_memory, plasma_directory, huge_pages)
 
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
