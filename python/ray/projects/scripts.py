@@ -273,9 +273,10 @@ def _get_command_to_run(command, project_definition, args):
             "' in commmands section of the project file.")
 
     # Build argument parser dynamically to parse parameter arguments.
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog=command)
     for param in params:
-        parser.add_argument("--" + param["name"])
+        parser.add_argument("--" + param["name"], required=True,
+                            help=param.get("help"))
 
     result = parser.parse_args(list(args))
     for key, val in result.__dict__.items():
