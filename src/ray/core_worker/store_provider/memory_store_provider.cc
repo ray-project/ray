@@ -18,7 +18,13 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  return store_->Put(object_id, object);
+  Status status = store_->Put(object_id, object);
+  if (status.IsKeyError()) {
+    RAY_LOG(WARNING) << "Trying to put an object that already existed in memory: "
+                     << object_id << ".";
+    return Status::OK();
+  }
+  return status;
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(
