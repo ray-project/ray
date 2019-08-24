@@ -55,6 +55,22 @@ public abstract class ObjectStore {
   }
 
   /**
+   * Serialize and put an object to the object store, with the given object id.
+   *
+   * This method is only used for testing.
+   *
+   * @param object The object to put.
+   * @param objectId Object id.
+   */
+  public void put(Object object, ObjectId objectId) {
+    if (object instanceof NativeRayObject) {
+      throw new IllegalArgumentException(
+          "Trying to put a NativeRayObject. Please use putRaw instaed.");
+    }
+    putRaw(ObjectSerializer.serialize(object), objectId);
+  }
+
+  /**
    * Get a list of raw objects from the object store.
    *
    * @param objectIds IDs of the objects to get.
