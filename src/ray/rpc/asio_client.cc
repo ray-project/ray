@@ -26,7 +26,7 @@ Status AsioRpcClientImpl::Connect() {
   auto this_ptr = shared_from_this();
   MessageHandler<boost::asio::ip::tcp> message_handler =
       [this, this_ptr](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-             uint64_t length, const uint8_t *message) {
+                       uint64_t length, const uint8_t *message) {
         ProcessServerMessage(client, message_type, length, message);
       };
 
@@ -57,7 +57,6 @@ Status AsioRpcClientImpl::Connect() {
 void AsioRpcClientImpl::ProcessServerMessage(
     const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
     uint64_t length, const uint8_t *message_data) {
-
   if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,

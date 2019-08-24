@@ -206,8 +206,8 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 
   if (HasByReferenceArgs(task_spec)) {
     CallSendReplyCallback(
-        Status::Invalid("direct actor call only supports by value arguments"), num_returns,
-        send_reply_callback);
+        Status::Invalid("direct actor call only supports by value arguments"),
+        num_returns, send_reply_callback);
     return;
   }
 
@@ -246,7 +246,7 @@ void DirectActorGrpcTaskReceiver::CallSendReplyCallback(
     Status status, int num_returns, rpc::SendReplyCallback send_reply_callback) {
   // For Grpc, we always invoke `send_reply_callback` as Grpc unary mode requires
   // the reply.
-  send_reply_callback(status, nullptr, nullptr);      
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 DirectActorAsioTaskReceiver::DirectActorAsioTaskReceiver(
@@ -263,7 +263,7 @@ void DirectActorAsioTaskReceiver::CallSendReplyCallback(
   // which is indicated by a non-zero `num_returns`.
   if (num_returns > 0) {
     send_reply_callback(status, nullptr, nullptr);
-  }  
+  }
 }
 
 }  // namespace ray

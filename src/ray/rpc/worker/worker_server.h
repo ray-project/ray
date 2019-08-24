@@ -88,7 +88,7 @@ class WorkerTaskAsioRpcService : public AsioRpcService {
 
     server_call_methods->emplace_back(std::move(assign_task_call_method));
 
-    *message_type_enum_names = GenerateEnumNames(WorkerTaskServiceMessageType);    
+    *message_type_enum_names = GenerateEnumNames(WorkerTaskServiceMessageType);
   }
 
  private:

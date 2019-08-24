@@ -85,18 +85,19 @@ class DirectActorAsioClient : public DirectActorClient {
   /// \return if the rpc call succeeds
   ray::Status PushTask(const PushTaskRequest &request,
                        const ClientCallback<PushTaskReply> &callback) override {
-
     const TaskSpecification task_spec(request.task_spec());
     // For asio based direct actor call, we apply an optimization that we only
     // require a reply for a call when the `NumReturns` for the task is non-zero.
     // Here we compare task_spec.NumReturns() with 1 to account for the dummy object.
-    return rpc_client_.CallMethod<PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
-        DirectActorServiceMessageType::PushTaskRequestMessage,
-        DirectActorServiceMessageType::PushTaskReplyMessage, request, callback,
-        /* requires_reply= */ task_spec.NumReturns() > 1);
+    return rpc_client_
+        .CallMethod<PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
+            DirectActorServiceMessageType::PushTaskRequestMessage,
+            DirectActorServiceMessageType::PushTaskReplyMessage, request, callback,
+            /* requires_reply= */ task_spec.NumReturns() > 1);
   }
+
  private:
-  AsioRpcClient rpc_client_;  
+  AsioRpcClient rpc_client_;
 };
 
 }  // namespace rpc

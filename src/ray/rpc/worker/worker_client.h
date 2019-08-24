@@ -84,11 +84,12 @@ class WorkerTaskAsioClient : public WorkerTaskClient {
   /// \return if the rpc call succeeds
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) override {
-
-    return rpc_client_.CallMethod<AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
-        WorkerTaskServiceMessageType::AssignTaskRequestMessage,
-        WorkerTaskServiceMessageType::AssignTaskReplytMessage, request, callback);
+    return rpc_client_
+        .CallMethod<AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
+            WorkerTaskServiceMessageType::AssignTaskRequestMessage,
+            WorkerTaskServiceMessageType::AssignTaskReplytMessage, request, callback);
   }
+
  private:
   AsioRpcClient rpc_client_;
 };

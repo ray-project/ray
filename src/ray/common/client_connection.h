@@ -121,6 +121,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
 
   /// Whether the connection is closed.
   bool is_closed_ = false;
+
  private:
   /// Asynchronously flushes the write queue. While async writes are running, the flag
   /// async_write_in_flight_ will be set. This should only be called when no async writes
@@ -180,6 +181,7 @@ class ClientConnection : public ServerConnection<T> {
 
   /// Set the names for message type enums.
   void SetMessageEnumNames(const std::vector<std::string> &message_type_enum_names);
+
  private:
   /// A private constructor for a node client connection.
   ClientConnection(MessageHandler<T> &message_handler,

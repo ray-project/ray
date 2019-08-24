@@ -161,8 +161,8 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   std::unordered_map<std::string, double> required_placement_resources;
   BuildCommonTaskSpec(builder, task_id, next_task_index, function, args,
                       task_options.num_returns, task_options.resources,
-		      required_placement_resources,
-                      TaskTransportType::RAYLET, return_ids);
+                      required_placement_resources, TaskTransportType::RAYLET,
+                      return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
@@ -212,8 +212,8 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       next_task_index, actor_handle.ActorID());
   std::unordered_map<std::string, double> required_placement_resources;
   BuildCommonTaskSpec(builder, actor_task_id, next_task_index, function, args,
-                      num_returns, task_options.resources, required_placement_resources, transport_type,
-                      return_ids);
+                      num_returns, task_options.resources, required_placement_resources,
+                      transport_type, return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.

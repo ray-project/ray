@@ -120,10 +120,10 @@ void AsioRpcServer::RegisterService(AsioRpcService &service) {
 
   auto service_type = service.GetServiceType();
 
-  auto service_handler = [server_call_methods, message_type_enum_names, service_type, this](
-                             const std::shared_ptr<TcpClientConnection> &client,
-                             int64_t message_type, uint64_t length,
-                             const uint8_t *message_data) {
+  auto service_handler = [server_call_methods, message_type_enum_names, service_type,
+                          this](const std::shared_ptr<TcpClientConnection> &client,
+                                int64_t message_type, uint64_t length,
+                                const uint8_t *message_data) {
     if (message_type == static_cast<int64_t>(ServiceMessageType::DisconnectClient)) {
       RAY_LOG(INFO) << "Processing DiconnectClient message for service: "
                     << GenerateEnumName(RpcServiceType, service_type);
@@ -147,7 +147,7 @@ void AsioRpcServer::RegisterService(AsioRpcService &service) {
   };
 
   service_handlers_.emplace(service.GetServiceType(),
-      std::make_pair(service_handler, message_type_enum_names));
+                            std::make_pair(service_handler, message_type_enum_names));
 }
 
 }  // namespace rpc

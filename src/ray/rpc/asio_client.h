@@ -1,8 +1,8 @@
 #ifndef RAY_RPC_ASIO_CLIENT_H
 #define RAY_RPC_ASIO_CLIENT_H
 
-#include <boost/asio.hpp>
 #include <atomic>
+#include <boost/asio.hpp>
 #include <thread>
 #include <utility>
 
@@ -36,15 +36,15 @@ class RpcClient {
 };
 
 /// Class that represents an asio based rpc client.
-class AsioRpcClientImpl : public RpcClient, public std::enable_shared_from_this<AsioRpcClientImpl> {
+class AsioRpcClientImpl : public RpcClient,
+                          public std::enable_shared_from_this<AsioRpcClientImpl> {
  public:
   explicit AsioRpcClientImpl(rpc::RpcServiceType service_type, const std::string &address,
-                         const int port, boost::asio::io_service &io_service)
+                             const int port, boost::asio::io_service &io_service)
       : RpcClient(service_type, RpcServiceType_Name(service_type), address, port),
         io_service_(io_service),
         request_id_(0),
-        is_connected_(false) {
-  }
+        is_connected_(false) {}
 
   virtual ~AsioRpcClientImpl() {
     RAY_LOG(INFO) << "AsioRpcClientImpl " << this << "is destructed";
@@ -119,18 +119,19 @@ class AsioRpcClientImpl : public RpcClient, public std::enable_shared_from_this<
       connection_->WriteMessageAsync(
           request_type, static_cast<int64_t>(serialized_message->size()),
           reinterpret_cast<const uint8_t *>(serialized_message->data()),
-          [request_id, callback, request_type, reply_type, requires_reply,
-           this, this_ptr](const ray::Status &status) {
+          [request_id, callback, request_type, reply_type, requires_reply, this,
+           this_ptr](const ray::Status &status) {
             if (status.ok()) {
               if (requires_reply) {
                 // Send succeeds. Add the request to the records, so that
                 // we can invoke the callback after receivig the reply.
                 std::unique_lock<std::mutex> guard(callback_mutex_);
                 pending_callbacks_.emplace(
-                    request_id,
-                    [callback, reply_type, this, this_ptr](const RpcReplyMessage &reply_message) {
+                    request_id, [callback, reply_type, this,
+                                 this_ptr](const RpcReplyMessage &reply_message) {
                       const auto request_id = reply_message.request_id();
-                      auto error_code = static_cast<StatusCode>(reply_message.error_code());
+                      auto error_code =
+                          static_cast<StatusCode>(reply_message.error_code());
                       auto error_message = reply_message.error_message();
                       Status status = (error_code == StatusCode::OK)
                                           ? Status::OK()
@@ -141,9 +142,9 @@ class AsioRpcClientImpl : public RpcClient, public std::enable_shared_from_this<
 
                       callback(status, reply);
                       RAY_LOG(DEBUG) << "Calling reply callback for message "
-                                    << static_cast<int>(reply_type) << " for service "
-                                    << name_ << ", request id " << request_id
-                                    << ", status: " << status.ToString();
+                                     << static_cast<int>(reply_type) << " for service "
+                                     << name_ << ", request id " << request_id
+                                     << ", status: " << status.ToString();
                     });
               }
             } else {
@@ -161,9 +162,8 @@ class AsioRpcClientImpl : public RpcClient, public std::enable_shared_from_this<
     return Status::OK();
   }
   Status Connect();
+
  protected:
-
-
   void ProcessServerMessage(const std::shared_ptr<TcpClientConnection> &client,
                             int64_t message_type, uint64_t length,
                             const uint8_t *message_data);
@@ -199,11 +199,13 @@ class AsioRpcClientImpl : public RpcClient, public std::enable_shared_from_this<
 /// be aware that it has to maintain a shared_ptr of `AsioRpcClientImpl` and
 /// call its `Connect()` function.
 class AsioRpcClient {
- public: 
+ public:
   explicit AsioRpcClient(rpc::RpcServiceType service_type, const std::string &address,
-                             const int port, boost::asio::io_service &io_service)
-    : impl_(std::make_shared<AsioRpcClientImpl>(
-            service_type, address, port, io_service)) {  RAY_UNUSED(impl_->Connect()); }
+                         const int port, boost::asio::io_service &io_service)
+      : impl_(std::make_shared<AsioRpcClientImpl>(service_type, address, port,
+                                                  io_service)) {
+    RAY_UNUSED(impl_->Connect());
+  }
 
   /// Call a service method.
   ///
@@ -227,9 +229,10 @@ class AsioRpcClient {
                     bool requires_reply = true) {
     return impl_->CallMethod<Request, Reply, MessageType>(
         request_type, reply_type, request, callback, requires_reply);
-  }            
+  }
+
  private:
-  std::shared_ptr<AsioRpcClientImpl> impl_;       
+  std::shared_ptr<AsioRpcClientImpl> impl_;
 };
 
 }  // namespace rpc

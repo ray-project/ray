@@ -16,7 +16,6 @@ class CoreWorkerMemoryStore;
 /// actor call (see direct_actor_transport.cc).
 class CoreWorkerMemoryStore {
  public:
-
   CoreWorkerMemoryStore();
   ~CoreWorkerMemoryStore(){};
 
@@ -47,7 +46,7 @@ class CoreWorkerMemoryStore {
 
  private:
   static const std::string GetObjectExistError() {
-     return "object already exists in the memory store";
+    return "object already exists in the memory store";
   }
 
   /// Map from object ID to `RayObject`.

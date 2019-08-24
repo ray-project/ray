@@ -189,7 +189,7 @@ class CoreWorkerTest : public ::testing::Test {
   // it is guaranteed that all tasks are successfully completed.
   void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
                                bool is_direct_call);
-  
+
   // Test actor performance.
   void TestActoPerformance(const std::unordered_map<std::string, double> &resources,
                            bool is_direct_call, bool use_no_returns);
@@ -350,8 +350,8 @@ void CoreWorkerTest::TestActorTask(
 }
 
 void CoreWorkerTest::TestActoPerformance(
-    const std::unordered_map<std::string, double> &resources,
-    bool is_direct_call, bool use_no_returns) {
+    const std::unordered_map<std::string, double> &resources, bool is_direct_call,
+    bool use_no_returns) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
   std::unique_ptr<ActorHandle> actor_handle;
