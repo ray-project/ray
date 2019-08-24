@@ -193,9 +193,10 @@ def test_session_invalid_config_errored():
 
 
 def test_session_create_command():
-    result, mock_calls, _ = run_test_project(
+    result, mock_calls, test_dir = run_test_project(
         "session-tests/commands-test", start, ["first", "--a", "1", "--b", "2"])
 
+    loaded_project = ray.projects.load_project(test_dir)
     assert result.exit_code == 0
 
     exec_cluster_call = mock_calls["exec_cluster"]
