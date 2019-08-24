@@ -158,7 +158,7 @@ def stop():
     context_settings=dict(ignore_unknown_options=True, ),
     help="Start a session based on current project config")
 @click.argument("command", required=False)
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def start(command, args):
     project_definition = load_project_or_throw()
 
