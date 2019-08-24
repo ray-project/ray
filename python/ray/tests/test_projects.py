@@ -190,3 +190,17 @@ def test_session_invalid_config_errored():
     assert "validation failed" in result.output
     # check that we are displaying actional error message
     assert "ray project validate" in result.output
+
+
+def test_session_create_command():
+    result, mock_calls, _ = run_test_project(
+        "session-tests/commands-test", start, ["first", "--a", "1", "--b", "2"])
+
+    assert result.exit_code == 0
+
+    exec_cluster_call = mock_calls["exec_cluster"]
+    found_command = False
+    for _, kwargs in exec_cluster_call.call_args_list:
+        if "Starting ray job with 1 and 2" in kwargs["cmd"]:
+            found_command = True
+    assert found_command
