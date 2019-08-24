@@ -1,11 +1,13 @@
 package org.ray.runtime.task;
 
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.object.NativeRayObject;
 
 /**
  * Represents a function argument in task spec.
- * Either `id` or `data` should be null, when id is not null, this argument will be
- * passed by reference, otherwise it will be passed by value.
+ * <p>
+ * Either `id` or `data` should be null, when id is not null, this argument will be passed by
+ * reference, otherwise it will be passed by value.
  */
 public class FunctionArg {
 
@@ -16,11 +18,11 @@ public class FunctionArg {
   /**
    * Serialized data of this argument (passed by value).
    */
-  public final byte[] data;
+  public final NativeRayObject value;
 
-  private FunctionArg(ObjectId id, byte[] data) {
+  private FunctionArg(ObjectId id, NativeRayObject value) {
     this.id = id;
-    this.data = data;
+    this.value = value;
   }
 
   /**
@@ -33,8 +35,8 @@ public class FunctionArg {
   /**
    * Create a FunctionArg that will be passed by value.
    */
-  public static FunctionArg passByValue(byte[] data) {
-    return new FunctionArg(null, data);
+  public static FunctionArg passByValue(NativeRayObject value) {
+    return new FunctionArg(null, value);
   }
 
   @Override
@@ -42,7 +44,7 @@ public class FunctionArg {
     if (id != null) {
       return "<id>: " + id.toString();
     } else {
-      return "<data>: " + data.length;
+      return value.toString();
     }
   }
 }

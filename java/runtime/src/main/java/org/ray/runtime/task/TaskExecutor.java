@@ -17,6 +17,7 @@ import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.object.NativeRayObject;
+import org.ray.runtime.object.ObjectSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,7 +87,7 @@ public final class TaskExecutor {
         actor = currentActor;
 
       }
-      Object[] args = ArgumentsBuilder.unwrap(runtime.getObjectStore(), argsBytes);
+      Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.classLoader);
       // Execute the task.
       Object result;
       if (!rayFunction.isConstructor()) {
@@ -100,7 +101,7 @@ public final class TaskExecutor {
           // TODO (kfstorm): handle checkpoint in core worker.
           maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
         }
-        returnObjects.add(runtime.getObjectStore().serialize(result));
+        returnObjects.add(ObjectSerializer.serialize(result));
       } else {
         // TODO (kfstorm): handle checkpoint in core worker.
         maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());
@@ -110,8 +111,8 @@ public final class TaskExecutor {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        returnObjects.add(runtime.getObjectStore()
-            .serialize(new RayTaskException("Error executing task " + taskId, e)));
+        returnObjects.add(
+            ObjectSerializer.serialize(new RayTaskException("Error executing task " + taskId, e)));
       } else {
         actorCreationException = e;
       }

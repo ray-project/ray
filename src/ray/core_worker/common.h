@@ -28,15 +28,16 @@ class TaskArg {
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
   static TaskArg PassByReference(const ObjectID &object_id) {
-    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
+    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr, nullptr);
   }
 
   /// Create a pass-by-reference task argument.
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  static TaskArg PassByValue(const std::shared_ptr<Buffer> &data) {
-    return TaskArg(nullptr, data);
+  static TaskArg PassByValue(const std::shared_ptr<Buffer> &data,
+                             const std::shared_ptr<Buffer> &metadata) {
+    return TaskArg(nullptr, data, metadata);
   }
 
   /// Return true if this argument is passed by reference, false if passed by value.
@@ -48,20 +49,29 @@ class TaskArg {
     return *id_;
   }
 
-  /// Get the value.
-  std::shared_ptr<Buffer> GetValue() const {
+  /// Get the data of the value.
+  std::shared_ptr<Buffer> GetData() const {
     RAY_CHECK(data_ != nullptr) << "This argument isn't passed by value.";
     return data_;
   }
 
+  /// Get the metadata of the value.
+  std::shared_ptr<Buffer> GetMetadata() const {
+    RAY_CHECK(metadata_ != nullptr) << "This argument isn't passed by value.";
+    return metadata_;
+  }
+
  private:
-  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<Buffer> data)
-      : id_(id), data_(data) {}
+  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<Buffer> data,
+          const std::shared_ptr<Buffer> metadata)
+      : id_(id), data_(data), metadata_(metadata) {}
 
   /// Id of the argument, if passed by reference, otherwise nullptr.
   const std::shared_ptr<ObjectID> id_;
   /// Data of the argument, if passed by value, otherwise nullptr.
   const std::shared_ptr<Buffer> data_;
+  /// Metadata of the argument, if passed by value, otherwise nullptr.
+  const std::shared_ptr<Buffer> metadata_;
 };
 
 enum class StoreProviderType { LOCAL_PLASMA, PLASMA, MEMORY };

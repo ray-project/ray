@@ -165,32 +165,27 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, CallOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
-        functionArgs, 1, options);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
+    List<ObjectId> returnIds = taskSubmitter
+        .submitTask(functionDescriptor, functionArgs, 1, options);
     return new RayObjectImpl(returnIds.get(0));
   }
 
   private RayObject callActorFunction(RayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
-    List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
-        functionDescriptor, functionArgs, 1, null);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
+    List<ObjectId> returnIds = taskSubmitter
+        .submitActorTask(rayActor, functionDescriptor, functionArgs, 1, null);
     return new RayObjectImpl(returnIds.get(0));
   }
 
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
     }
-    RayActor actor = taskSubmitter
-        .createActor(functionDescriptor, functionArgs,
-            options);
+    RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
 

@@ -77,12 +77,12 @@ extern jclass java_language_class;
 /// getNumber of Language class
 extern jmethodID java_language_get_number;
 
-/// NativeTaskArg class
+/// FunctionArg class
 extern jclass java_function_arg_class;
-/// id field of NativeTaskArg class
+/// id field of FunctionArg class
 extern jfieldID java_function_arg_id;
-/// data field of NativeTaskArg class
-extern jfieldID java_function_arg_data;
+/// value field of FunctionArg class
+extern jfieldID java_function_arg_value;
 
 /// BaseTaskOptions class
 extern jclass java_base_task_options_class;
@@ -279,12 +279,6 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   std::shared_ptr<ray::Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
   std::shared_ptr<ray::Buffer> metadata_buffer =
       JavaByteArrayToNativeBuffer(env, java_metadata);
-  if (!data_buffer) {
-    data_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
-  }
-  if (!metadata_buffer) {
-    metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
-  }
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
 }
 

@@ -153,7 +153,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .collect(Collectors.toList()))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
-            : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.data)).build())
+            : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
+                .setMetadata(arg.value.metadata != null ? ByteString
+                    .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
             .collect(Collectors.toList()));
   }
 
@@ -228,7 +230,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
                 .map(arg -> arg.id != null ?
                     objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
-                    : new NativeRayObject(arg.data, null))
+                    : arg.value)
                 .collect(Collectors.toList());
             ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
             List<NativeRayObject> returnObjects = taskExecutor
@@ -274,7 +276,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         functionArgs.add(FunctionArg
             .passByReference(new ObjectId(arg.getObjectIds(0).toByteArray())));
       } else {
-        functionArgs.add(FunctionArg.passByValue(arg.getData().toByteArray()));
+        functionArgs.add(FunctionArg.passByValue(
+            new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));
       }
     }
     return functionArgs;

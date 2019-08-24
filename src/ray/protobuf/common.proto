@@ -74,6 +74,8 @@ message TaskArg {
   repeated bytes object_ids = 1;
   // Data for pass-by-value arguments.
   bytes data = 2;
+  // Metadata for pass-by-value arguments.
+  bytes metadata = 3;
 }
 
 // Task spec of an actor creation task.

@@ -56,19 +56,27 @@ class TaskSpecBuilder {
   /// Add a by-value argument to the task.
   ///
   /// \param data String object that contains the data.
+  /// \param metadata String object that contains the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::string &data) {
-    message_->add_args()->set_data(data);
+  TaskSpecBuilder &AddByValueArg(const std::string &data, const std::string &metadata) {
+    auto arg = message_->add_args();
+    arg->set_data(data);
+    arg->set_metadata(metadata);
     return *this;
   }
 
   /// Add a by-value argument to the task.
   ///
   /// \param data Pointer to the data.
-  /// \param size Size of the data.
+  /// \param data_size Size of the data.
+  /// \param metadata Pointer to the metadata.
+  /// \param metadata_size Size of the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const void *data, size_t size) {
-    message_->add_args()->set_data(data, size);
+  TaskSpecBuilder &AddByValueArg(const void *data, size_t data_size, const void *metadata,
+                                 size_t metadata_size) {
+    auto arg = message_->add_args();
+    arg->set_data(data, data_size);
+    arg->set_metadata(metadata, metadata_size);
     return *this;
   }
 
