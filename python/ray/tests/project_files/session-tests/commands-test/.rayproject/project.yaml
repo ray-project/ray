@@ -17,8 +17,10 @@ commands:
     params:
       - name: a
         help: "This is the first parameter"
+        choices: ["1", "2"]
       - name: b
         help: "This is the second parameter"
+        choices: ["1", "2"]
 
   - name: second
     command: echo "Some command"

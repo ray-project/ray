@@ -69,6 +69,10 @@
                 "help": {
                   "description": "Help string for the parameter",
                   "type": "string"
+                },
+                "choices": {
+                  "description": "Possible values the parameter can take",
+                  "type": "array"
                 }
               }
             }
