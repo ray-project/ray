@@ -72,6 +72,8 @@ Here is an example for a minimal project format:
         params:
           - name: "param1"
             help: "The first parameter"
+            # The following line indicates possible values this parameter can take.
+            choices: ["1", "2"]
           - name: "param2"
             help: "The second parameter"
 

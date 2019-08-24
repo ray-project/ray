@@ -277,7 +277,9 @@ def _get_command_to_run(command, project_definition, args):
     parser = argparse.ArgumentParser(prog=command)
     for param in params:
         parser.add_argument(
-            "--" + param["name"], required=True, help=param.get("help"),
+            "--" + param["name"],
+            required=True,
+            help=param.get("help"),
             choices=param.get("choices"))
 
     result = parser.parse_args(list(args))
