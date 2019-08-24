@@ -29,7 +29,8 @@ std::string store_executable;
 std::string raylet_executable;
 std::string mock_worker_executable;
 
-const std::shared_ptr<Buffer> EMPTY_METADATA = std::make_shared<LocalMemoryBuffer>(nullptr, 0);
+const std::shared_ptr<Buffer> EMPTY_METADATA =
+    std::make_shared<LocalMemoryBuffer>(nullptr, 0);
 
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
