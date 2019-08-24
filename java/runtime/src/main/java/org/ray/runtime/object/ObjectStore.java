@@ -49,7 +49,7 @@ public abstract class ObjectStore {
   public ObjectId put(Object object) {
     if (object instanceof NativeRayObject) {
       throw new IllegalArgumentException(
-          "Trying to put a NativeRayObject. Please use putRaw instaed.");
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     return putRaw(ObjectSerializer.serialize(object));
   }
@@ -65,7 +65,7 @@ public abstract class ObjectStore {
   public void put(Object object, ObjectId objectId) {
     if (object instanceof NativeRayObject) {
       throw new IllegalArgumentException(
-          "Trying to put a NativeRayObject. Please use putRaw instaed.");
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     putRaw(ObjectSerializer.serialize(object), objectId);
   }
