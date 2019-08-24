@@ -370,7 +370,8 @@ class StandardAutoscaler(object):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
-        self.provider = get_node_provider(self.config)
+        self.provider = get_node_provider(self.config["provider"],
+                                          self.config["cluster_name"])
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
