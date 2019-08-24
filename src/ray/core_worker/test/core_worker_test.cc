@@ -29,6 +29,8 @@ std::string store_executable;
 std::string raylet_executable;
 std::string mock_worker_executable;
 
+const std::shared_ptr<Buffer> EMPTY_METADATA = std::make_shared<LocalMemoryBuffer>(nullptr, 0);
+
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
 static void flushall_redis(void) {
@@ -60,7 +62,7 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
 
   RayFunction func{ray::Language::PYTHON, {"actor creation task"}};
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(buffer));
+  args.emplace_back(TaskArg::PassByValue(buffer, EMPTY_METADATA));
 
   ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources, {}};
 
@@ -233,7 +235,7 @@ void CoreWorkerTest::TestNormalTask(
       RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer2, nullptr), &object_id));
 
       std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
+      args.emplace_back(TaskArg::PassByValue(buffer1, EMPTY_METADATA));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
       RayFunction func{ray::Language::PYTHON, {}};
@@ -274,8 +276,8 @@ void CoreWorkerTest::TestActorTask(
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
-      args.emplace_back(TaskArg::PassByValue(buffer2));
+      args.emplace_back(TaskArg::PassByValue(buffer1, EMPTY_METADATA));
+      args.emplace_back(TaskArg::PassByValue(buffer2, EMPTY_METADATA));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
@@ -316,7 +318,7 @@ void CoreWorkerTest::TestActorTask(
     // Create arguments with PassByRef and PassByValue.
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByReference(object_id));
-    args.emplace_back(TaskArg::PassByValue(buffer2));
+    args.emplace_back(TaskArg::PassByValue(buffer2, EMPTY_METADATA));
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
@@ -381,7 +383,7 @@ void CoreWorkerTest::TestActorReconstruction(
 
       // Create arguments with PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
+      args.emplace_back(TaskArg::PassByValue(buffer1, EMPTY_METADATA));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
@@ -426,7 +428,7 @@ void CoreWorkerTest::TestActorFailure(
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(buffer1));
+      args.emplace_back(TaskArg::PassByValue(buffer1, EMPTY_METADATA));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
@@ -598,9 +600,9 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   // Test by-value argument.
   std::shared_ptr<LocalMemoryBuffer> buffer =
       std::make_shared<LocalMemoryBuffer>(static_cast<uint8_t *>(0), 0);
-  TaskArg by_value = TaskArg::PassByValue(buffer);
+  TaskArg by_value = TaskArg::PassByValue(buffer, EMPTY_METADATA);
   ASSERT_FALSE(by_value.IsPassedByReference());
-  auto data = by_value.GetValue();
+  auto data = by_value.GetData();
   ASSERT_TRUE(data != nullptr);
   ASSERT_EQ(*data, *buffer);
 }
@@ -613,7 +615,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction function{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(buffer));
+  args.emplace_back(TaskArg::PassByValue(buffer, EMPTY_METADATA));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
@@ -675,7 +677,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction func{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(buffer));
+  args.emplace_back(TaskArg::PassByValue(buffer, EMPTY_METADATA));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
@@ -691,7 +693,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   for (int i = 0; i < num_tasks; i++) {
     // Create arguments with PassByValue.
     std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(buffer));
+    args.emplace_back(TaskArg::PassByValue(buffer, EMPTY_METADATA));
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
