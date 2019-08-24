@@ -155,7 +155,7 @@ def stop():
 
 
 @session_cli.command(
-    context_settings=dict(ignore_unknown_options=True,),
+    context_settings=dict(ignore_unknown_options=True, ),
     help="Start a session based on current project config")
 @click.argument("command", required=False)
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
@@ -165,7 +165,8 @@ def start(command, args):
     if command:
         command_to_run = _get_command_to_run(command, project_definition, args)
     else:
-        command_to_run = _get_command_to_run("default", project_definition, args)
+        command_to_run = _get_command_to_run("default", project_definition,
+                                             args)
 
     # Check for features we don't support right now
     project_environment = project_definition["environment"]
@@ -275,8 +276,8 @@ def _get_command_to_run(command, project_definition, args):
     # Build argument parser dynamically to parse parameter arguments.
     parser = argparse.ArgumentParser(prog=command)
     for param in params:
-        parser.add_argument("--" + param["name"], required=True,
-                            help=param.get("help"))
+        parser.add_argument(
+            "--" + param["name"], required=True, help=param.get("help"))
 
     result = parser.parse_args(list(args))
     for key, val in result.__dict__.items():

@@ -155,8 +155,8 @@ def test_session_start_default_project():
 
 
 def test_session_start_docker_fail():
-    result, _, _ = run_test_project(
-        "session-tests/with-docker-fail", start, [])
+    result, _, _ = run_test_project("session-tests/with-docker-fail", start,
+                                    [])
 
     assert result.exit_code == 1
     assert ("Docker support in session is currently "
@@ -183,8 +183,8 @@ def test_session_git_repo_cloned():
 
 
 def test_session_invalid_config_errored():
-    result, _, _ = run_test_project(
-        "session-tests/invalid-config-fail", start, [])
+    result, _, _ = run_test_project("session-tests/invalid-config-fail", start,
+                                    [])
 
     assert result.exit_code == 1
     assert "validation failed" in result.output
@@ -194,7 +194,8 @@ def test_session_invalid_config_errored():
 
 def test_session_create_command():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/commands-test", start, ["first", "--a", "1", "--b", "2"])
+        "session-tests/commands-test", start,
+        ["first", "--a", "1", "--b", "2"])
 
     loaded_project = ray.projects.load_project(test_dir)
     assert result.exit_code == 0
