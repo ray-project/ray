@@ -36,7 +36,7 @@ class RpcClient {
 };
 
 /// Class that represents an asio based rpc client.
-class AsioRpcClient : public RpcClient {
+class AsioRpcClient : public RpcClient, public std::enable_shared_from_this<AsioRpcClient> {
  public:
   explicit AsioRpcClient(rpc::RpcServiceType service_type, const std::string &address,
                          const int port, boost::asio::io_service &io_service)
@@ -44,8 +44,6 @@ class AsioRpcClient : public RpcClient {
         io_service_(io_service),
         request_id_(0),
         is_connected_(false) {
-    auto status = Connect();
-    is_connected_ = status.ok();
   }
 
   virtual ~AsioRpcClient() {
@@ -115,38 +113,39 @@ class AsioRpcClient : public RpcClient {
     // in the same thread, thus we need to dispatch it to io_thread_.
     // NOTE(zhijunfu): use `WriteMessageAsync` is noticably faster than `WriteMessage`,
     // about 2X faster on task submission, and 50% faster overall.
+    auto this_ptr = this->shared_from_this();
     io_service_.dispatch([request_id, callback, request_type, reply_type,
-                          serialized_message, requires_reply, this] {
+                          serialized_message, requires_reply, this, this_ptr] {
       connection_->WriteMessageAsync(
           request_type, static_cast<int64_t>(serialized_message->size()),
           reinterpret_cast<const uint8_t *>(serialized_message->data()),
           [request_id, callback, request_type, reply_type, requires_reply,
-           this](const ray::Status &status) {
+           this, this_ptr](const ray::Status &status) {
             if (status.ok()) {
-            if (requires_reply) {
-              // Send succeeds. Add the request to the records, so that
-              // we can invoke the callback after receivig the reply.
-              std::unique_lock<std::mutex> guard(callback_mutex_);
-              pending_callbacks_.emplace(
-                  request_id,
-                  [callback, reply_type, this](const RpcReplyMessage &reply_message) {
-                    const auto request_id = reply_message.request_id();
-                    auto error_code = static_cast<StatusCode>(reply_message.error_code());
-                    auto error_message = reply_message.error_message();
-                    Status status = (error_code == StatusCode::OK)
-                                        ? Status::OK()
-                                        : Status(error_code, error_message);
+              if (requires_reply) {
+                // Send succeeds. Add the request to the records, so that
+                // we can invoke the callback after receivig the reply.
+                std::unique_lock<std::mutex> guard(callback_mutex_);
+                pending_callbacks_.emplace(
+                    request_id,
+                    [callback, reply_type, this, this_ptr](const RpcReplyMessage &reply_message) {
+                      const auto request_id = reply_message.request_id();
+                      auto error_code = static_cast<StatusCode>(reply_message.error_code());
+                      auto error_message = reply_message.error_message();
+                      Status status = (error_code == StatusCode::OK)
+                                          ? Status::OK()
+                                          : Status(error_code, error_message);
 
-                    Reply reply;
-                    reply.ParseFromString(reply_message.reply());
+                      Reply reply;
+                      reply.ParseFromString(reply_message.reply());
 
-                    callback(status, reply);
-                    RAY_LOG(DEBUG) << "Calling reply callback for message "
-                                   << static_cast<int>(reply_type) << " for service "
-                                   << name_ << ", request id " << request_id
-                                   << ", status: " << status.ToString();
-                  });
-            }
+                      callback(status, reply);
+                      RAY_LOG(DEBUG) << "Calling reply callback for message "
+                                    << static_cast<int>(reply_type) << " for service "
+                                    << name_ << ", request id " << request_id
+                                    << ", status: " << status.ToString();
+                    });
+              }
             } else {
               // There are errors, invoke the callback.
               Reply reply;
@@ -161,9 +160,9 @@ class AsioRpcClient : public RpcClient {
 
     return Status::OK();
   }
-
- protected:
   Status Connect();
+ protected:
+
 
   void ProcessServerMessage(const std::shared_ptr<TcpClientConnection> &client,
                             int64_t message_type, uint64_t length,

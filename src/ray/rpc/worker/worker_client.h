@@ -66,7 +66,7 @@ class WorkerTaskGrpcClient : public WorkerTaskClient {
 };
 
 /// Asio based RPC client for remote worker server.
-class WorkerTaskAsioClient : public WorkerTaskClient, public AsioRpcClient {
+class WorkerTaskAsioClient : public WorkerTaskClient {
  public:
   /// Constructor.
   ///
@@ -75,7 +75,8 @@ class WorkerTaskAsioClient : public WorkerTaskClient, public AsioRpcClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   WorkerTaskAsioClient(const std::string &address, const int port,
                        boost::asio::io_service &io_service)
-      : AsioRpcClient(RpcServiceType::WorkerTaskServiceType, address, port, io_service) {}
+      : rpc_client_(std::make_shared<AsioRpcClient>(
+          RpcServiceType::WorkerTaskServiceType, address, port, io_service)) { rpc_client_->Connect(); }
 
   /// Assign a task to the work.
   ///
@@ -85,10 +86,12 @@ class WorkerTaskAsioClient : public WorkerTaskClient, public AsioRpcClient {
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) override {
 
-    return CallMethod<AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
+    return rpc_client_->CallMethod<AssignTaskRequest, AssignTaskReply, WorkerTaskServiceMessageType>(
         WorkerTaskServiceMessageType::AssignTaskRequestMessage,
         WorkerTaskServiceMessageType::AssignTaskReplytMessage, request, callback);
   }
+ private:
+  std::shared_ptr<AsioRpcClient> rpc_client_;
 };
 
 }  // namespace rpc

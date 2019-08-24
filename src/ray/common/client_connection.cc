@@ -326,11 +326,6 @@ std::string ClientConnection<boost::asio::ip::tcp>::RemoteEndpointInfo() {
 
 template <class T>
 void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error) {
-  if (ServerConnection<T>::is_closed_) {
-    RAY_LOG(INFO) << "connection is closed";
-    return;
-  }
-
   if (error) {
     read_type_ = error_message_type_;
   }

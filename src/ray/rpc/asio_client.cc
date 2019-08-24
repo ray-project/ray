@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include <boost/asio.hpp>
+#include <boost/enable_shared_from_this.hpp>
 #include <thread>
 #include <utility>
 
@@ -22,8 +23,9 @@ Status AsioRpcClient::Connect() {
     // Begin listening for messages.
     client.ProcessMessages();
   };
+  auto this_ptr = shared_from_this();
   MessageHandler<boost::asio::ip::tcp> message_handler =
-      [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+      [this, this_ptr](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
              uint64_t length, const uint8_t *message) {
         ProcessServerMessage(client, message_type, length, message);
       };
@@ -48,6 +50,7 @@ Status AsioRpcClient::Connect() {
       static_cast<int64_t>(serialized_message.size()),
       reinterpret_cast<const uint8_t *>(serialized_message.data())));
 
+  is_connected_ = true;
   return Status::OK();
 }
 
