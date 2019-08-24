@@ -131,12 +131,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    if (null != manager) {
-      manager.cleanup();
-    }
     if (nativeCoreWorkerPointer != 0) {
       nativeDestroyCoreWorker(nativeCoreWorkerPointer);
       nativeCoreWorkerPointer = 0;
+    }
+    if (null != manager) {
+      manager.cleanup();
     }
   }
 
