@@ -5,8 +5,7 @@ from __future__ import print_function
 import numpy as np
 import os
 import logging
-import json
-import tensorflow as tf
+import pickle
 
 import ray
 
@@ -111,15 +110,8 @@ class TensorFlowTrainer(object):
 
         state = ray.get(self.workers[0].get_state.remote())
 
-        model = self._get_model_from_state(state)
-
-        model.save(checkpoint + ".h5")
-
-        del state["weights"]
-        del state["optimizer_weights"]
-
-        with open(checkpoint + "_state.json", "w") as f:
-            state = json.dump(state, f)
+        with open(checkpoint, "wb") as f:
+            pickle.dump(state, f)
 
         return checkpoint
 
@@ -130,13 +122,8 @@ class TensorFlowTrainer(object):
             checkpoint (str): Path to target checkpoint file.
 
         """
-        model = tf.keras.models.load_model(checkpoint + ".h5")
-        with open(checkpoint + "_state.json") as f:
-            state = json.load(f)
-
-        state["config"] = model.to_json()
-        state["weights"] = model.get_weights()
-        state["optimizer_weights"] = model.optimizer.get_weights()
+        with open(checkpoint, "rb") as f:
+            state = pickle.load(f)
 
         state_id = ray.put(state)
         ray.get([worker.set_state.remote(state_id) for worker in self.workers])
