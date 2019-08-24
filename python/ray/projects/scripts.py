@@ -164,8 +164,8 @@ def start(command, args):
 
     if command:
         command_to_run = _get_command_to_run(command, project_definition, args)
-        print("command_to_run", command_to_run)
-        return
+    else:
+        command_to_run = _get_command_to_run("default", project_definition, args)
 
     # Check for features we don't support right now
     project_environment = project_definition["environment"]
@@ -212,9 +212,9 @@ def start(command, args):
     _setup_environment(
         cluster_yaml, project_definition["environment"], cwd=working_directory)
 
-    logger.info("[4/4] Running commands")
-    _run_commands(
-        cluster_yaml, project_definition["commands"], cwd=working_directory)
+    logger.info("[4/4] Running command")
+    logger.debug("Running {}".format(command))
+    session_exec_cluster(cluster_yaml, command_to_run, cwd=working_directory)
 
 
 def session_exec_cluster(cluster_yaml, cmd, cwd=None):
@@ -283,9 +283,3 @@ def _get_command_to_run(command, project_definition, args):
         command_to_run = command_to_run.replace("{{" + key + "}}", val)
 
     return command_to_run
-
-
-def _run_commands(cluster_yaml, commands, cwd):
-    for cmd in commands:
-        logger.debug("Running {}".format(cmd["name"]))
-        session_exec_cluster(cluster_yaml, cmd["command"], cwd=cwd)
