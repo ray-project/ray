@@ -15,7 +15,7 @@
 namespace ray {
 namespace rpc {
 
-Status AsioRpcClient::Connect() {
+Status AsioRpcClientImpl::Connect() {
   boost::asio::ip::tcp::socket socket(io_service_);
   RAY_RETURN_NOT_OK(TcpConnect(socket, address_, port_));
 
@@ -54,7 +54,7 @@ Status AsioRpcClient::Connect() {
   return Status::OK();
 }
 
-void AsioRpcClient::ProcessServerMessage(
+void AsioRpcClientImpl::ProcessServerMessage(
     const std::shared_ptr<TcpClientConnection> &client, int64_t message_type,
     uint64_t length, const uint8_t *message_data) {
 
@@ -92,7 +92,7 @@ void AsioRpcClient::ProcessServerMessage(
   client->ProcessMessages();
 }
 
-void AsioRpcClient::ProcessDisconnectClientMessage(
+void AsioRpcClientImpl::ProcessDisconnectClientMessage(
     const std::shared_ptr<TcpClientConnection> &client) {
   RAY_LOG(INFO) << "Received DiconnectClient message from server " << address_ << ":"
                 << port_ << ", service: " << name_;
@@ -106,7 +106,7 @@ void AsioRpcClient::ProcessDisconnectClientMessage(
   InvokeAndClearPendingCallbacks();
 }
 
-void AsioRpcClient::InvokeAndClearPendingCallbacks() {
+void AsioRpcClientImpl::InvokeAndClearPendingCallbacks() {
   std::unique_lock<std::mutex> guard(callback_mutex_);
 
   for (const auto &entry : pending_callbacks_) {

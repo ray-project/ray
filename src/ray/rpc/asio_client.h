@@ -36,9 +36,9 @@ class RpcClient {
 };
 
 /// Class that represents an asio based rpc client.
-class AsioRpcClient : public RpcClient, public std::enable_shared_from_this<AsioRpcClient> {
+class AsioRpcClientImpl : public RpcClient, public std::enable_shared_from_this<AsioRpcClientImpl> {
  public:
-  explicit AsioRpcClient(rpc::RpcServiceType service_type, const std::string &address,
+  explicit AsioRpcClientImpl(rpc::RpcServiceType service_type, const std::string &address,
                          const int port, boost::asio::io_service &io_service)
       : RpcClient(service_type, RpcServiceType_Name(service_type), address, port),
         io_service_(io_service),
@@ -46,14 +46,14 @@ class AsioRpcClient : public RpcClient, public std::enable_shared_from_this<Asio
         is_connected_(false) {
   }
 
-  virtual ~AsioRpcClient() {
-    RAY_LOG(INFO) << "AsioRpcClient " << this << "is destructed";
+  virtual ~AsioRpcClientImpl() {
+    RAY_LOG(INFO) << "AsioRpcClientImpl " << this << "is destructed";
     is_connected_ = false;
 
     if (connection_) {
       // Close the connection so that we will no longer receive reply callbacks.
       // This is necessary since when the remote actor dies, the transport
-      // will delete the `AsioRpcClient` for that actor, thus all the member
+      // will delete the `AsioRpcClientImpl` for that actor, thus all the member
       // variables referenced in `ProcessServerMessage` become invalid, but
       // it's still possible for this callback to be invoked for `DisconnectClient`.
       // While it is OK to check connection status and just return there,
@@ -192,6 +192,44 @@ class AsioRpcClient : public RpcClient, public std::enable_shared_from_this<Asio
 
   /// Whether we have connected to server.
   std::atomic<bool> is_connected_;
+};
+
+/// Class that represents an asio based rpc client.
+/// This class wraps `AsioRpcClientImpl` so that the upper level doesn't need to
+/// be aware that it has to maintain a shared_ptr of `AsioRpcClientImpl` and
+/// call its `Connect()` function.
+class AsioRpcClient {
+ public: 
+  explicit AsioRpcClient(rpc::RpcServiceType service_type, const std::string &address,
+                             const int port, boost::asio::io_service &io_service)
+    : impl_(std::make_shared<AsioRpcClientImpl>(
+            service_type, address, port, io_service)) {  RAY_UNUSED(impl_->Connect()); }
+
+  /// Call a service method.
+  ///
+  /// \tparam Request Type of the request message.
+  /// \tparam Reply Type of the reply message.
+  /// \tparam MessageType Enum type for request/reply message.
+  ///
+  /// \param[in] request_type Enum message type for request of this method.
+  /// \param[in] reply_type Enum message type for reply of this method.
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \param[in] requires_reply Whether this RPC call requires server to send
+  ///            a reply, by default it's set to true, derived class can decide
+  ///            whether reply is required based on if `num_returns` of the task
+  ///            is non-zero.
+  ///
+  /// \return Status.
+  template <class Request, class Reply, class MessageType>
+  Status CallMethod(MessageType request_type, MessageType reply_type,
+                    const Request &request, const ClientCallback<Reply> &callback,
+                    bool requires_reply = true) {
+    return impl_->CallMethod<Request, Reply, MessageType>(
+        request_type, reply_type, request, callback, requires_reply);
+  }            
+ private:
+  std::shared_ptr<AsioRpcClientImpl> impl_;       
 };
 
 }  // namespace rpc

@@ -76,8 +76,7 @@ class DirectActorAsioClient : public DirectActorClient {
   /// \param[in] io_service The `io_service` to process reply messages.
   DirectActorAsioClient(const std::string &address, const int port,
                         boost::asio::io_service &io_service)
-      : rpc_client_(std::make_shared<AsioRpcClient>(
-          RpcServiceType::DirectActorServiceType, address, port, io_service)) {  rpc_client_->Connect(); }
+      : rpc_client_(RpcServiceType::DirectActorServiceType, address, port, io_service) {}
 
   /// Push a task.
   ///
@@ -91,13 +90,13 @@ class DirectActorAsioClient : public DirectActorClient {
     // For asio based direct actor call, we apply an optimization that we only
     // require a reply for a call when the `NumReturns` for the task is non-zero.
     // Here we compare task_spec.NumReturns() with 1 to account for the dummy object.
-    return rpc_client_->CallMethod<PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
+    return rpc_client_.CallMethod<PushTaskRequest, PushTaskReply, DirectActorServiceMessageType>(
         DirectActorServiceMessageType::PushTaskRequestMessage,
         DirectActorServiceMessageType::PushTaskReplyMessage, request, callback,
         /* requires_reply= */ task_spec.NumReturns() > 1);
   }
  private:
-  std::shared_ptr<AsioRpcClient> rpc_client_;  
+  AsioRpcClient rpc_client_;  
 };
 
 }  // namespace rpc
