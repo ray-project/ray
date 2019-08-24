@@ -11,12 +11,12 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.experimental.sgd.tensorflow.tensorflow_runner import TensorFlowRunner
+from ray.experimental.sgd.tf.tf_runner import TFRunner
 
 logger = logging.getLogger(__name__)
 
 
-class TensorFlowTrainer(object):
+class TFTrainer(object):
     def __init__(self,
                  model_creator,
                  data_creator,
@@ -38,7 +38,6 @@ class TensorFlowTrainer(object):
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
                 if true.
             batch_size (int): batch size for an update.
-            backend (string): backend used by distributed PyTorch.
         """
         self.model_creator = model_creator
         self.data_creator = data_creator
@@ -50,7 +49,7 @@ class TensorFlowTrainer(object):
 
         # Generate actor class
         Runner = ray.remote(
-            num_cpus=1, num_gpus=int(use_gpu))(TensorFlowRunner)
+            num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
 
         if num_replicas == 1:
             # Start workers
@@ -151,7 +150,7 @@ class TensorFlowTrainer(object):
         return model
 
 
-class TensorFlowTrainable(Trainable):
+class TFTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
         return Resources(
@@ -161,7 +160,7 @@ class TensorFlowTrainable(Trainable):
             extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
     def _setup(self, config):
-        self._trainer = TensorFlowTrainer(
+        self._trainer = TFTrainer(
             model_creator=config["model_creator"],
             data_creator=config["data_creator"],
             config=config,

@@ -14,7 +14,7 @@ from ray.experimental.sgd import utils
 logger = logging.getLogger(__name__)
 
 
-class TensorFlowRunner(object):
+class TFRunner(object):
     """Manages a TensorFlow model for training."""
 
     def __init__(self, model_creator, data_creator, config=None,
@@ -22,11 +22,11 @@ class TensorFlowRunner(object):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> Model): see tensorflow_trainer.py.
+            model_creator (dict -> Model): see tf_trainer.py.
             data_creator (dict -> BatchDataset, BatchDataset):
-                see tensorflow_trainer.py.
-            config (dict): see tensorflow_trainer.py.
-            batch_size (int): see tensorflow_trainer.py.
+                see tf_trainer.py.
+            config (dict): see tf_trainer.py.
+            batch_size (int): see tf_trainer.py.
         """
 
         self.model_creator = model_creator

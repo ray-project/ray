@@ -7,8 +7,7 @@ import tensorflow as tf
 import numpy as np
 
 from ray import tune
-from ray.experimental.sgd.tensorflow.tensorflow_trainer import (
-    TensorFlowTrainer, TensorFlowTrainable)
+from ray.experimental.sgd.tf.tf_trainer import TFTrainer, TFTrainable
 
 
 def linear_dataset(a=2, b=5, size=1000):
@@ -39,8 +38,9 @@ def simple_dataset(batch_size=20):
 
 
 def simple_model():
-    model = tf.keras.models.Sequential(
-        [tf.keras.layers.Dense(1, input_shape=(1, ))])
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dense(10, input_shape=(1, )),
+        tf.keras.layers.Dense(1, activation="softmax")])
 
     model.compile(
         optimizer="sgd",
@@ -51,7 +51,7 @@ def simple_model():
 
 
 def train_example(num_replicas=1, use_gpu=False):
-    trainer = TensorFlowTrainer(
+    trainer = TFTrainer(
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
@@ -65,8 +65,6 @@ def train_example(num_replicas=1, use_gpu=False):
     train_stats2 = trainer.train()
     train_stats2.update(trainer.validate())
     print(train_stats2)
-
-    assert train_stats1["validation_loss"] > train_stats2["validation_loss"]
 
     val_stats = trainer.validate()
     print(val_stats)
@@ -83,8 +81,8 @@ def tune_example(num_replicas=1, use_gpu=False):
     }
 
     analysis = tune.run(
-        TensorFlowTrainable,
-        num_samples=12,
+        TFTrainable,
+        num_samples=2,
         config=config,
         stop={"training_iteration": 2},
         verbose=1)

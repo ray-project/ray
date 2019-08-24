@@ -9,8 +9,7 @@ import numpy as np
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.experimental.sgd.tensorflow import (TensorFlowTrainer,
-                                             TensorFlowTrainable)
+from ray.experimental.sgd.tf import TFTrainer, TFTrainable
 
 from ray.experimental.sgd.examples.tensorflow_train_example import (
     simple_model, simple_dataset)
@@ -19,7 +18,7 @@ from ray.experimental.sgd.examples.tensorflow_train_example import (
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
-    trainer = TensorFlowTrainer(
+    trainer = TFTrainer(
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
@@ -57,7 +56,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     }
 
     analysis = tune.run(
-        TensorFlowTrainable,
+        TFTrainable,
         num_samples=2,
         config=config,
         stop={"training_iteration": 2},
@@ -74,7 +73,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2])
 def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
-    trainer1 = TensorFlowTrainer(
+    trainer1 = TFTrainer(
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
@@ -87,7 +86,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     model1 = trainer1.get_model()
     trainer1.shutdown()
 
-    trainer2 = TensorFlowTrainer(
+    trainer2 = TFTrainer(
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
