@@ -12,7 +12,7 @@ max_workers: 5
 # The initial number of worker nodes to launch in addition to the head
 # node. When the cluster is first brought up (or when it is refreshed with a
 # subsequent `ray up`) this number of nodes will be started.
-initial_workers: 0
+initial_workers: 1
 
 # Whether or not to autoscale aggressively. If this is enabled, if at any point
 #   we would start more workers, we start at least enough to bring us to
@@ -121,7 +121,9 @@ file_mounts: {
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands: []
+setup_commands: [
+  "pushd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && popd"
+]
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

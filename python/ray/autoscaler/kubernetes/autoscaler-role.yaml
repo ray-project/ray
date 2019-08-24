@@ -5,5 +5,5 @@ metadata:
   name: autoscaler
 rules:
 - apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list", "create", "delete"]
+  resources: ["pods", "pods/status", "pods/exec"]
+  verbs: ["get", "watch", "list", "create", "delete", "patch"]
