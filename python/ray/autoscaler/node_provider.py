@@ -101,20 +101,18 @@ def load_class(path):
     return getattr(module, class_str)
 
 
-def get_node_provider(config):
-    provider_config = config["provider"]
+def get_node_provider(provider_config, cluster_name):
     if provider_config["type"] == "external":
         provider_cls = load_class(path=provider_config["module"])
-        return provider_cls(provider_config, config["cluster_name"])
+        return provider_cls(provider_config, cluster_name)
 
     importer = NODE_PROVIDERS.get(provider_config["type"])
 
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
-    bootstrap_config, provider_cls = importer()
-    bootstrap_config(config)
-    return provider_cls(provider_config, config["cluster_name"])
+    _, provider_cls = importer()
+    return provider_cls(provider_config, cluster_name)
 
 
 def get_default_config(provider_config):

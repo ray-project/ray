@@ -81,7 +81,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
 
     confirm("This will destroy your cluster", yes)
 
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
 
         def remaining_nodes():
@@ -125,7 +125,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
     confirm("This will kill a node in your cluster", yes)
 
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
         node = random.choice(nodes)
@@ -168,7 +168,7 @@ def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
 def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
             TAG_RAY_NODE_TYPE: "head",
@@ -346,7 +346,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -439,7 +439,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=False)
 
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -473,7 +473,7 @@ def get_head_node_ip(config_file, override_cluster_name):
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
         if config.get("provider", {}).get("use_internal_ips", False) is True:
@@ -493,7 +493,7 @@ def get_worker_node_ips(config_file, override_cluster_name):
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
 
@@ -509,7 +509,7 @@ def _get_head_node(config,
                    config_file,
                    override_cluster_name,
                    create_if_needed=False):
-    provider = get_node_provider(config)
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
             TAG_RAY_NODE_TYPE: "head",

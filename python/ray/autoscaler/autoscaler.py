@@ -219,7 +219,6 @@ class LoadMetrics(object):
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
-            print(self.dynamic_resources_by_ip[ip])
             max_frac = 0.0
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
@@ -288,7 +287,9 @@ class NodeLauncher(threading.Thread):
     def _launch_node(self, config, count):
         worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"] if "auth" in config else None)
+        launch_hash = hash_launch_conf(
+            config["worker_nodes"], config["auth"]
+            if "auth" in config else None)
         self.log("Launching {} nodes.".format(count))
         self.provider.create_node(
             config["worker_nodes"], {
@@ -539,8 +540,9 @@ class StandardAutoscaler(object):
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"] if "auth" in new_config else None)
+            new_launch_hash = hash_launch_conf(
+                new_config["worker_nodes"], new_config["auth"]
+                if "auth" in new_config else None)
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
                 new_config["worker_setup_commands"],
                 new_config["worker_start_ray_commands"]

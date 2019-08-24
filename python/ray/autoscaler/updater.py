@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 NODE_START_WAIT_S = 300
 READY_CHECK_INTERVAL = 5
 CONTROL_PATH_MAX_LENGTH = 70
-K8S_RSYNC = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "kubernetes/k8s-rsync.sh")
+KUBECTL_RSYNC = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
 
 def with_interactive(cmd):
@@ -75,9 +75,8 @@ class KubernetesCommandRunner(object):
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                logger.error(
-                    self.log_prefix +
-                    "Command failed: \n\n  {}\n".format(quoted_cmd))
+                logger.error(self.log_prefix +
+                             "Command failed: \n\n  {}\n".format(quoted_cmd))
                 sys.exit(1)
             else:
                 raise
@@ -106,7 +105,7 @@ class KubernetesCommandRunner(object):
         try:
             self.process_runner.check_call(
                 [
-                    K8S_RSYNC,
+                    KUBECTL_RSYNC,
                     "-avz",
                     source,
                     "{}@{}:{}".format(self.node_id, self.namespace, target),
@@ -133,7 +132,7 @@ class KubernetesCommandRunner(object):
         try:
             self.process_runner.check_call(
                 [
-                    K8S_RSYNC,
+                    KUBECTL_RSYNC,
                     "-avz",
                     "{}@{}:{}".format(self.node_id, self.namespace, source),
                     target,
@@ -267,9 +266,8 @@ class SSHCommandRunner(object):
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                logger.error(
-                    self.log_prefix +
-                    "Command failed: \n\n  {}\n".format(quoted_cmd))
+                logger.error(self.log_prefix +
+                             "Command failed: \n\n  {}\n".format(quoted_cmd))
                 sys.exit(1)
             else:
                 raise

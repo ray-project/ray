@@ -30,6 +30,9 @@ target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 
 # Cloud-provider specific configuration.
+# NOTE: If you want the autoscaler to use a different service account
+# rather than the one it creates, set `create_autoscaler_role` to false
+# and then change the head_node serviceAccountName.
 provider:
     type: kubernetes
     namespace: ray
@@ -41,6 +44,7 @@ head_node:
     metadata:
         generateName: ray-head-
     spec:
+        serviceAccountName: autoscaler
         restartPolicy: Never
         volumes:
         - name: dshm
@@ -77,6 +81,7 @@ worker_nodes:
     metadata:
         generateName: ray-worker-
     spec:
+        serviceAccountName: default
         restartPolicy: Never
         volumes:
         - name: dshm
