@@ -43,7 +43,8 @@ class RayOutOfMemoryError(Exception):
         proc_stats = []
         for pid in pids:
             proc = psutil.Process(pid)
-            proc_stats.append(get_rss(proc.memory_info()), pid, proc.cmdline())
+            proc_stats.append((get_rss(proc.memory_info()), pid,
+                               proc.cmdline()))
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:10]:
             proc_str += "\n{}\t{}GiB\t{}".format(
