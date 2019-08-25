@@ -73,7 +73,7 @@ For the driver, you can set its object store memory quota with ``driver_object_s
 Object store shared memory
 --------------------------
 
-Object store memory is also used to map objects returned by ``ray.get`` calls in shared memory. While an object is mapped in this way, it is pinned and cannot be evicted from the object store. However, ray does not provide quota management for this kind of shared memory usage.
+Object store memory is also used to map objects returned by ``ray.get`` calls in shared memory. While an object is mapped in this way (i.e., there is a Python reference to the object), it is pinned and cannot be evicted from the object store. However, ray does not provide quota management for this kind of shared memory usage.
 
 Summary
 -------
