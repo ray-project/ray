@@ -40,7 +40,8 @@ def simple_dataset(batch_size=20):
 def simple_model():
     model = tf.keras.models.Sequential([
         tf.keras.layers.Dense(10, input_shape=(1, )),
-        tf.keras.layers.Dense(1, activation="softmax")])
+        tf.keras.layers.Dense(1, activation="softmax")
+    ])
 
     model.compile(
         optimizer="sgd",

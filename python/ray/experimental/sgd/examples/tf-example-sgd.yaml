@@ -3,9 +3,9 @@ cluster_name: sgd-tf
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 2
-initial_workers: 2
-max_workers: 2
+min_workers: 3
+initial_workers: 3
+max_workers: 3
 
 target_utilization_fraction: 0.9
 
@@ -19,14 +19,14 @@ idle_timeout_minutes: 20
 provider:
     type: aws
     region: us-east-1
-    availability_zone: us-east-1f
+    availability_zone: us-east-1e
 
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: p3.2xlarge
+    InstanceType: g3.8xlarge
     ImageId: ami-0757fc5a639fe7666
     #    InstanceMarketOptions:
     #        MarketType: spot
@@ -35,7 +35,7 @@ head_node:
 
 
 worker_nodes:
-    InstanceType: p3.2xlarge
+    InstanceType: g3.8xlarge
     ImageId: ami-0757fc5a639fe7666
     # InstanceMarketOptions:
     #     MarketType: spot
@@ -50,9 +50,12 @@ setup_commands:
     - conda install setuptools=41.0.1=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
     - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ipdb ray[rllib]
-    - pip install -U tensorflow-gpu==2.0.0-beta1
+    - pip install tensorflow==2.0.0-rc0
+    - rm -rf /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/experimental/
+    - cp -r ~/experimental/ /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/experimental/
 
 file_mounts: {
+    ~/experimental/: /Users/rliaw/Research/riselab/ray/python/ray/experimental/
 }
 
 # Custom commands that will be run on the head node after common setup.

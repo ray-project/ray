@@ -48,8 +48,7 @@ class TFTrainer(object):
         self.verbose = True
 
         # Generate actor class
-        Runner = ray.remote(
-            num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
+        Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
 
         if num_replicas == 1:
             # Start workers
@@ -91,7 +90,9 @@ class TFTrainer(object):
 
     def validate(self):
         """Evaluates the model on the validation data set."""
-        stats = ray.get(self.workers[0].validate.remote())
+        logger.info("Starting validation step.")
+        stats = ray.get([w.validate.remote() for w in self.workers])
+        stats = stats[0].copy()
         return stats
 
     def get_model(self):

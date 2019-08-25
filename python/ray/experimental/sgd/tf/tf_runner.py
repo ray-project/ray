@@ -56,7 +56,9 @@ class TFRunner(object):
         """
         assert len(urls) == world_size
         tf_config = {
-            "worker": urls,
+            "cluster": {
+                "worker": urls
+            },
             "task": {
                 "index": world_rank,
                 "type": "worker"
@@ -67,22 +69,22 @@ class TFRunner(object):
         self.strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
         )
 
+        self.train_dataset, self.test_dataset = self.data_creator(
+            self.batch_size)
+
         logger.debug("Creating model with MultiWorkerMirroredStrategy")
         with self.strategy.scope():
             self.model = self.model_creator()
-            self.train_dataset, self.test_dataset = self.data_creator(
-                self.batch_size)
 
         # For use in model.evaluate()
-        self.local_model = self.model_creator()
+        self.local_model = None
 
     def step(self):
         """Runs a training epoch and updates the model parameters."""
 
-        history = self.model.fit(self.train_dataset, verbose=0)
-
+        history = self.model.fit(
+            self.train_dataset, verbose=0, **self.config.get("fit_config", {}))
         if history is None:
-            # model.fit() returns None for MultiWorkerMirroredStrategy
             stats = {}
         else:
             stats = {"train_loss": history.history["loss"][-1]}
@@ -95,10 +97,11 @@ class TFRunner(object):
         stats = {}
 
         results = self.model.evaluate(self.test_dataset, verbose=0)
-
         if results is None:
             # Using local Model since model.evaluate() returns None
             # for MultiWorkerMirroredStrategy
+            logger.warning("Running a local model to get validation score.")
+            self.local_model = self.model_creator()
             self.local_model.set_weights(self.model.get_weights())
             results = self.local_model.evaluate(self.test_dataset, verbose=0)
             stats["validation_loss"] = results[0]
@@ -121,7 +124,6 @@ class TFRunner(object):
         self.model = self.model_creator()
         self.epoch = state["epoch"]
         self.model.set_weights(state["weights"])
-
         # This part is due to ray.get() changing scalar np.int64 object to int
         state["optimizer_weights"][0] = np.array(
             state["optimizer_weights"][0], dtype=np.int64)
