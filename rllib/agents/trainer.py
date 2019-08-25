@@ -149,14 +149,14 @@ COMMON_CONFIG = {
     # Object store memory to reserve for the trainer process. Being large
     # enough to fit a few copies of the model weights should be sufficient.
     # This is enabled by default since models are typically quite small.
-    "object_store_memory": 0,
+    "object_store_memory": 200 * 1024 * 1024,
     # Heap memory to reserve for each worker. Should generally be small unless
     # your environment is very heavyweight.
     "memory_per_worker": 0,
     # Object store memory to reserve for each worker. This only needs to be
     # large enough to fit a few sample batches at a time. This is enabled
     # by default since it almost never needs to be larger than ~200MB.
-    "object_store_memory_per_worker": 0,
+    "object_store_memory_per_worker": 200 * 1024 * 1024,
 
     # === Execution ===
     # Number of environments to evaluate vectorwise per worker.
