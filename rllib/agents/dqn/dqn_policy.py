@@ -19,6 +19,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.tf_ops import make_tf_callable
 
 tf = try_import_tf()
 
@@ -96,7 +97,8 @@ class QLoss(object):
             self.td_error = (
                 q_t_selected - tf.stop_gradient(q_t_selected_target))
             self.loss = tf.reduce_mean(
-                importance_weights * huber_loss(self.td_error))
+                tf.cast(importance_weights, tf.float32) * huber_loss(
+                    self.td_error))
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
                 "min_q": tf.reduce_min(q_t_selected),
@@ -106,7 +108,7 @@ class QLoss(object):
 
 
 class QValuePolicy(object):
-    def __init__(self, q_values, observations, num_actions, stochastic, eps,
+    def __init__(self, q_values, observations, num_actions, cur_epsilon,
                  softmax, softmax_temp, model_config):
         if softmax:
             action_dist = Categorical(q_values / softmax_temp)
@@ -126,35 +128,35 @@ class QValuePolicy(object):
             tf.multinomial(random_valid_action_logits, 1), axis=1)
 
         chose_random = tf.random_uniform(
-            tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
-        stochastic_actions = tf.where(chose_random, random_actions,
-                                      deterministic_actions)
-        self.action = tf.cond(stochastic, lambda: stochastic_actions,
-                              lambda: deterministic_actions)
+            tf.stack([batch_size]), minval=0, maxval=1,
+            dtype=tf.float32) < cur_epsilon
+        self.action = tf.where(chose_random, random_actions,
+                               deterministic_actions)
         self.action_prob = None
 
 
 class ComputeTDErrorMixin(object):
-    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
-                         importance_weights):
-        if not self.loss_initialized():
-            return np.zeros_like(rew_t)
+    def __init__(self):
+        @make_tf_callable(self.get_session(), dynamic_shape=True)
+        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
+                             importance_weights):
+            if not self.loss_initialized():
+                return tf.zeros_like(rew_t)
 
-        td_err = self.get_session().run(
-            self.q_loss.td_error,
-            feed_dict={
-                self.get_placeholder(SampleBatch.CUR_OBS): [
-                    np.array(ob) for ob in obs_t
-                ],
-                self.get_placeholder(SampleBatch.ACTIONS): act_t,
-                self.get_placeholder(SampleBatch.REWARDS): rew_t,
-                self.get_placeholder(SampleBatch.NEXT_OBS): [
-                    np.array(ob) for ob in obs_tp1
-                ],
-                self.get_placeholder(SampleBatch.DONES): done_mask,
-                self.get_placeholder(PRIO_WEIGHTS): importance_weights,
-            })
-        return td_err
+            # Do forward pass on loss to update td error attribute
+            build_q_losses(
+                self, self.model, None, {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),
+                    SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
+                    SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
+                    SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
+                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                })
+
+            return self.q_loss.td_error
+
+        self.compute_td_error = compute_td_error
 
 
 def postprocess_trajectory(policy,
@@ -174,8 +176,8 @@ def postprocess_trajectory(policy,
             entropy(clean_action_distribution.T, noisy_action_distribution.T))
         policy.pi_distance = distance_in_action_space
         if (distance_in_action_space <
-                -np.log(1 - policy.cur_epsilon +
-                        policy.cur_epsilon / policy.num_actions)):
+                -np.log(1 - policy.cur_epsilon_value +
+                        policy.cur_epsilon_value / policy.num_actions)):
             policy.parameter_noise_sigma_val *= 1.01
         else:
             policy.parameter_noise_sigma_val /= 1.01
@@ -254,9 +256,8 @@ def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
 
     # Action outputs
     qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
-                       action_space.n, policy.stochastic, policy.eps,
-                       config["soft_q"], config["softmax_temp"],
-                       config["model"])
+                       action_space.n, policy.cur_epsilon, config["soft_q"],
+                       config["softmax_temp"], config["model"])
     policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
 
     actions = policy.output_actions
@@ -302,22 +303,22 @@ def _build_parameter_noise(policy, pnet_params):
     policy.pi_distance = None
 
 
-def build_q_losses(policy, batch_tensors):
+def build_q_losses(policy, model, _, train_batch):
     config = policy.config
     # q network evaluation
     q_t, q_logits_t, q_dist_t = _compute_q_values(
-        policy, policy.q_model, batch_tensors[SampleBatch.CUR_OBS],
+        policy, policy.q_model, train_batch[SampleBatch.CUR_OBS],
         policy.observation_space, policy.action_space)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
-        policy, policy.target_q_model, batch_tensors[SampleBatch.NEXT_OBS],
+        policy, policy.target_q_model, train_batch[SampleBatch.NEXT_OBS],
         policy.observation_space, policy.action_space)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
-        tf.cast(batch_tensors[SampleBatch.ACTIONS], tf.int32),
+        tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32),
         policy.action_space.n)
     q_t_selected = tf.reduce_sum(q_t * one_hot_selection, 1)
     q_logits_t_selected = tf.reduce_sum(
@@ -328,7 +329,7 @@ def build_q_losses(policy, batch_tensors):
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
             q_dist_tp1_using_online_net = _compute_q_values(
                 policy, policy.q_model,
-                batch_tensors[SampleBatch.NEXT_OBS],
+                train_batch[SampleBatch.NEXT_OBS],
                 policy.observation_space, policy.action_space)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
@@ -345,8 +346,8 @@ def build_q_losses(policy, batch_tensors):
 
     policy.q_loss = QLoss(
         q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
-        batch_tensors[PRIO_WEIGHTS], batch_tensors[SampleBatch.REWARDS],
-        tf.cast(batch_tensors[SampleBatch.DONES],
+        train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
+        tf.cast(train_batch[SampleBatch.DONES],
                 tf.float32), config["gamma"], config["n_step"],
         config["num_atoms"], config["v_min"], config["v_max"])
 
@@ -372,14 +373,7 @@ def clip_gradients(policy, optimizer, loss):
     return grads_and_vars
 
 
-def exploration_setting_inputs(policy):
-    return {
-        policy.stochastic: True,
-        policy.eps: policy.cur_epsilon,
-    }
-
-
-def build_q_stats(policy, batch_tensors):
+def build_q_stats(policy, batch):
     return dict({
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
     }, **policy.q_loss.stats)
@@ -388,6 +382,10 @@ def build_q_stats(policy, batch_tensors):
 def setup_early_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
+
+
+def setup_mid_mixins(policy, obs_space, action_space, config):
+    ComputeTDErrorMixin.__init__(policy)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
@@ -494,10 +492,10 @@ DQNTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_feed_fn=exploration_setting_inputs,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     before_init=setup_early_mixins,
+    before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[

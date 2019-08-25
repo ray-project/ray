@@ -46,6 +46,9 @@ class WorkerContext {
   /// Job ID for this worker.
   JobID current_job_id_;
 
+  /// ID of current actor.
+  ActorID current_actor_id_;
+
  private:
   static WorkerThreadContext &GetThreadContext();
 

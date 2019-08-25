@@ -70,6 +70,8 @@ COMMON_CONFIG = {
     "ignore_worker_failures": False,
     # Log system resource metrics to results.
     "log_sys_usage": True,
+    # Enable TF eager execution (TF policies only)
+    "eager": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the
@@ -326,6 +328,14 @@ class Trainer(Trainable):
 
         config = config or {}
 
+        if tf and config.get("eager"):
+            tf.enable_eager_execution()
+            logger.info("Executing eagerly")
+
+        if tf and not tf.executing_eagerly():
+            logger.info("Tip: set 'eager': true or the --eager flag to enable "
+                        "TensorFlow eager execution")
+
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
 
@@ -464,7 +474,7 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         def get_scope():
-            if tf:
+            if tf and not tf.executing_eagerly():
                 return tf.Graph().as_default()
             else:
                 return open("/dev/null")  # fake a no-op scope
