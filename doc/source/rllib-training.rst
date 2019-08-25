@@ -259,6 +259,11 @@ You can provide callback functions to be called at points during policy evaluati
         print("trainer.train() result: {} -> {} episodes".format(
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
+    def on_postprocess_traj(info):
+        episode = info["episode"]
+        batch = info["post_batch"]  # note: you can mutate this
+        print("postprocessed {} steps".format(batch.count))
+
     ray.init()
     analysis = tune.run(
         "PG",
@@ -269,13 +274,24 @@ You can provide callback functions to be called at points during policy evaluati
                 "on_episode_step": tune.function(on_episode_step),
                 "on_episode_end": tune.function(on_episode_end),
                 "on_train_result": tune.function(on_train_result),
+                "on_postprocess_traj": tune.function(on_postprocess_traj),
             },
         },
     )
 
+Visualizing Custom Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+Rewriting Trajectories
+~~~~~~~~~~~~~~~~~~~~~~
+
+Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+ * Backdating rewards to previous time steps (e.g., based on values in ``info``).
+ * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
 Example: Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -2,11 +2,7 @@
 
 ## Why are these changes needed?
 
-<!-- Please give a short summary of the problem these changes address. -->
-
-## What do these changes do?
-
-<!-- Please give a short summary of these changes. -->
+<!-- Please give a short summary of the change and the problem this solves. -->
 
 ## Related issue number
 
