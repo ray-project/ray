@@ -49,7 +49,7 @@ To tell the Ray scheduler a task or actor requires a certain amount of available
       def __init__(self, a, b):
           pass
 
-In the above example the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``_remote()`` as follows:
+In the above example, the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``_remote()`` as follows:
 
 .. code-block:: python
 
