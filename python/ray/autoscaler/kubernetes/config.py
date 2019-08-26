@@ -20,7 +20,7 @@ def bootstrap_kubernetes(config):
     return config
 
 
-# TODO: check they're equal if exists
+# TODO: check they're equal if exists?
 def _configure_namespace(provider_config):
     if "namespace" not in provider_config:
         raise TypeError("Must specify namespace in Kubernetes config.")

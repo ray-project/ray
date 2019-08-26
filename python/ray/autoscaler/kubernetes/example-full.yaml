@@ -40,7 +40,7 @@ provider:
         apiVersion: v1
         kind: Namespace
         metadata:
-          name: ray
+            name: ray
 
     # Default service account created and used by the autoscaler if the head node
     # serviceAccountName is the default of "autoscaler." The namespace will be
