@@ -17,8 +17,12 @@ logger = logging.getLogger(__name__)
 class TFRunner(object):
     """Manages a TensorFlow model for training."""
 
-    def __init__(self, model_creator, data_creator, config=None,
-                 batch_size=16):
+    def __init__(self,
+                 model_creator,
+                 data_creator,
+                 config=None,
+                 batch_size=16,
+                 index=0):
         """Initializes the runner.
 
         Args:
@@ -27,15 +31,16 @@ class TFRunner(object):
                 see tf_trainer.py.
             config (dict): see tf_trainer.py.
             batch_size (int): see tf_trainer.py.
+            index (int): Index of worker in Trainer worker pool.
         """
 
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.config = {} if config is None else config
         self.batch_size = batch_size
-        self.verbose = True
-
         self.epoch = 0
+        self.index = index
+        self.verbose = 1 if config.get("verbose") and self.index == 0 else 0
 
     def setup(self):
         """Initializes the model."""
@@ -81,13 +86,17 @@ class TFRunner(object):
 
     def step(self):
         """Runs a training epoch and updates the model parameters."""
+        fit_default_config = {"verbose": self.verbose}
+        fit_default_config.update(self.config.get("fit_config", {}))
 
-        history = self.model.fit(
-            self.train_dataset, verbose=0, **self.config.get("fit_config", {}))
+        history = self.model.fit(self.train_dataset, **fit_default_config)
         if history is None:
             stats = {}
         else:
-            stats = {"train_loss": history.history["loss"][-1]}
+            stats = {
+                "train_loss": history.history["loss"][-1],
+                "train_acc": history.history["accuracy"][-1]
+            }
 
         self.epoch += 1
         return stats
@@ -95,18 +104,23 @@ class TFRunner(object):
     def validate(self):
         """Evaluates the model on the validation data set."""
         stats = {}
+        evaluate_config = {"verbose": self.verbose}
+        evaluate_config.update(self.config.get("evaluate_config", {}))
 
-        results = self.model.evaluate(self.test_dataset, verbose=0)
+        results = self.model.evaluate(self.test_dataset, **evaluate_config)
         if results is None:
             # Using local Model since model.evaluate() returns None
             # for MultiWorkerMirroredStrategy
             logger.warning("Running a local model to get validation score.")
             self.local_model = self.model_creator()
             self.local_model.set_weights(self.model.get_weights())
-            results = self.local_model.evaluate(self.test_dataset, verbose=0)
-            stats["validation_loss"] = results[0]
+            results = self.local_model.evaluate(self.test_dataset,
+                                                **evaluate_config)
+
+        if isinstance(results, list):
+            stats = dict(zip(results, self.model.metrics_names))
         else:
-            stats["validation_loss"] = results[0]
+            stats = {"loss": results}
 
         return stats
 

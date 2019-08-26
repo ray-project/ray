@@ -61,8 +61,12 @@ class TFTrainer(object):
         else:
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, self.config,
-                              batch_size) for i in range(num_replicas)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    self.config,
+                    batch_size,
+                    index=i) for i in range(num_replicas)
             ]
 
             # Compute URL for initializing distributed setup

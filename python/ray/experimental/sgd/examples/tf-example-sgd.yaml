@@ -3,9 +3,9 @@ cluster_name: sgd-tf
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 3
-initial_workers: 3
-max_workers: 3
+min_workers: 1
+initial_workers: 1
+max_workers: 1
 
 target_utilization_fraction: 0.9
 

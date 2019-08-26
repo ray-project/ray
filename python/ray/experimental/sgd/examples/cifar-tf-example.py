@@ -20,7 +20,7 @@ from filelock import FileLock
 import ray
 from ray.experimental.sgd.tf.tf_trainer import TFTrainer
 
-global_batch_size = 1024
+global_batch_size = 4096
 num_classes = 10
 epochs = 10
 num_predictions = 20
@@ -83,9 +83,10 @@ def data_creator(batch_size):
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
-    tf.random.set_seed(22)
-    train_dataset = train_dataset.shuffle(len(x_train)).batch(batch_size)
-    test_dataset = test_dataset.batch(batch_size)
+    # Repeat is needed to avoid
+    train_dataset = train_dataset.repeat().shuffle(
+        len(x_train)).batch(batch_size)
+    test_dataset = test_dataset.repeat().batch(batch_size)
     return train_dataset, test_dataset
 
 
@@ -136,21 +137,28 @@ def data_augmentation_creator(batch_size):
         # https://github.com/tensorflow/tensorflow/issues/24520
         output_shapes=(tf.TensorShape((None, None, None, None)),
                        tf.TensorShape((None, 10))))
+    trainset = trainset.repeat()
 
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
-    test_dataset = test_dataset.batch(batch_size)
+    test_dataset = test_dataset.repeat().batch(batch_size, drop_remainder=True)
     return trainset, test_dataset
 
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer = TFTrainer(
         model_creator=create_model,
-        data_creator=data_augmentation_creator,
+        data_creator=data_creator,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        config={"fit_config": {
-            "steps_per_epoch": 60000 // global_batch_size
-        }},
+        config={
+            "verbose": True,
+            "fit_config": {
+                "steps_per_epoch": 60000 // global_batch_size
+            },
+            "evaluate_config": {
+                "steps": 10000 // global_batch_size,
+            }
+        },
         batch_size=global_batch_size)
 
     for i in range(10):
@@ -165,8 +173,9 @@ def train_example(num_replicas=1, use_gpu=False):
 
 save_dir = os.path.join(os.getcwd(), "saved_models")
 model_name = "keras_cifar10_trained_model.h5"
-ray.init()
-model = train_example(2, use_gpu=True)
+ray.init(address="localhost:6379")
+# ray.init()
+model = train_example(4, use_gpu=True)
 
 # model = create_model()
 dataset, test_dataset = data_augmentation_creator(batch_size=global_batch_size)
