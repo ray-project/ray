@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import logging
 import os
 import sys
@@ -153,9 +154,19 @@ def stop():
         override_cluster_name=None)
 
 
-@session_cli.command(help="Start a session based on current project config")
-def start():
+@session_cli.command(
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Start a session based on current project config")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def start(command, args):
     project_definition = load_project_or_throw()
+
+    if command:
+        command_to_run = _get_command_to_run(command, project_definition, args)
+    else:
+        command_to_run = _get_command_to_run("default", project_definition,
+                                             args)
 
     # Check for features we don't support right now
     project_environment = project_definition["environment"]
@@ -202,9 +213,9 @@ def start():
     _setup_environment(
         cluster_yaml, project_definition["environment"], cwd=working_directory)
 
-    logger.info("[4/4] Running commands")
-    _run_commands(
-        cluster_yaml, project_definition["commands"], cwd=working_directory)
+    logger.info("[4/4] Running command")
+    logger.debug("Running {}".format(command))
+    session_exec_cluster(cluster_yaml, command_to_run, cwd=working_directory)
 
 
 def session_exec_cluster(cluster_yaml, cmd, cwd=None):
@@ -249,7 +260,30 @@ def _setup_environment(cluster_yaml, project_environment, cwd):
             session_exec_cluster(cluster_yaml, cmd, cwd=cwd)
 
 
-def _run_commands(cluster_yaml, commands, cwd):
-    for cmd in commands:
-        logger.debug("Running {}".format(cmd["name"]))
-        session_exec_cluster(cluster_yaml, cmd["command"], cwd=cwd)
+def _get_command_to_run(command, project_definition, args):
+    command_to_run = None
+    params = None
+
+    for command_definition in project_definition["commands"]:
+        if command_definition["name"] == command:
+            command_to_run = command_definition["command"]
+            params = command_definition.get("params", [])
+    if not command_to_run:
+        raise click.ClickException(
+            "Cannot find the command '" + command +
+            "' in commmands section of the project file.")
+
+    # Build argument parser dynamically to parse parameter arguments.
+    parser = argparse.ArgumentParser(prog=command)
+    for param in params:
+        parser.add_argument(
+            "--" + param["name"],
+            required=True,
+            help=param.get("help"),
+            choices=param.get("choices"))
+
+    result = parser.parse_args(list(args))
+    for key, val in result.__dict__.items():
+        command_to_run = command_to_run.replace("{{" + key + "}}", val)
+
+    return command_to_run
