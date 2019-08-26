@@ -3,6 +3,45 @@ Advanced Usage
 
 This page will cover some more advanced examples of using Ray's flexible programming model.
 
+Dynamic Remote Parameters
+-------------------------
+
+You can dynamically adjust resource requirements or return values of ``ray.remote`` during execution with ``._remote``.
+
+For example, here we instantiate many copies of the same actor with varying resource requirements. Note that to create these actors successfully, Ray will need to be started with sufficient CPU resources and the relevant custom resources:
+
+.. code-block:: python
+
+  @ray.remote(num_cpus=4)
+  class Counter(object):
+      def __init__(self):
+          self.value = 0
+
+      def increment(self):
+          self.value += 1
+          return self.value
+
+  a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
+  a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
+  a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
+
+You can also specify different resource requirements per actor call:
+
+.. code-block:: python
+
+  @ray.remote(num_cpus=4)
+  class Counter(object):
+      def __init__(self):
+          self.value = 0
+
+      def increment(self):
+          self.value += 1
+          return self.value
+
+  actor = Counter.remote()
+  actor.increment._remote(num_cpus=2)
+
+
 Nested Remote Functions
 -----------------------
 

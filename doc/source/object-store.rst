@@ -1,55 +1,10 @@
 Serialization and Object Store
 ==============================
 
-Plasma is an in-memory object store that is being developed as part of `Apache Arrow`_. Ray uses Plasma to efficiently transfer objects across different processes and different nodes.
+Since Ray processes do not share memory space, data transferred between workers and nodes will need to **serialized** and **deserialized**. Ray uses the `Plasma object store <object-store.html#object-store-plasma>`_ to efficiently transfer objects across different processes and different nodes.
 
-All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
-
-Note that Plasma does not support all data-types, and in certain cases it may be necessary to either write `your own serialization protocol <object-store.html#serialization>`_ or use Actors to hold objects and transfer object state (i.e., weight matrices) among Ray workers.
-
-Overview
---------
-
-Once an object is placed in the object store, it is immutable. Ray will place objects in the object store in the following situations:
-
-1. Calling ``ray.put``
-
-.. code:: python
-
-    y = 2
-    # This places `2` into the object store.
-    object_id = ray.put(y)
-
-2. The return values of a remote function.
-
-.. code:: python
-
-    @ray.remote
-    def remote_function():
-        return 1
-
-    # This places `1` into the object store.
-    object_id = remote_function.remote()
-
-
-3. Arguments to remote functions (except for simple arguments like ints or floats).
-
-.. code:: python
-
-    @ray.remote
-    def remote_function(y):
-        # Note that inside the remote function, the actual argument is provided.
-        return len(y)
-
-    argument = np.random.rand(100, 100)
-    # This implicitly places `argument` into the object store.
-    remote_function.remote(argument)
-
-Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
-
-
-Serialization
--------------
+Serialization Overview
+----------------------
 
 Objects that are serialized for transfer among Ray processes go through three stages:
 
@@ -62,6 +17,9 @@ Objects that are serialized for transfer among Ray processes go through three st
 **2. ``__dict__`` serialization**: If a direct usage of PyArrow is not possible, Ray will recursively extract the object’s ``__dict__`` and serialize that using pyarrow. This behavior is not correct in all cases.
 
 **3. Cloudpickle**:  Ray falls back to ``cloudpickle`` as a final attempt for serialization. This may be slow.
+
+Custom Serialization
+~~~~~~~~~~~~~~~~~~~~
 
 If none of these options work, we recommend registering a custom serializer.
 
@@ -112,11 +70,8 @@ There are some advantages to this form of serialization:
 - Memory is shared between processes so worker processes can all read the same
   data without having to copy it.
 
-.. _`Apache Arrow`: https://arrow.apache.org/
-
-
-Notes and limitations
----------------------
+Serialization notes and limitations
+-----------------------------------
 
 - Ray currently handles certain patterns incorrectly, according to Python
   semantics. For example, a list that contains two copies of the same list will
@@ -151,7 +106,58 @@ Notes and limitations
 
 - Whenever possible, use numpy arrays for maximum performance.
 
+
+Object Store (Plasma)
+---------------------
+
+Plasma is an in-memory object store that is being developed as part of `Apache Arrow`_. Ray uses Plasma to efficiently transfer objects across different processes and different nodes.
+
+All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
+
+.. tip:: In certain cases, it may be necessary to either write `your own serialization protocol <object-store.html#custom-serialization>`_ or use Actors to hold objects and transfer object state (i.e., weight matrices) among Ray workers.
+
+Ray will place objects in the object store in the following situations:
+
+1. Calling ``ray.put``
+
+.. code:: python
+
+    y = 2
+    # This places `2` into the object store.
+    object_id = ray.put(y)
+
+2. The return values of a remote function.
+
+.. code:: python
+
+    @ray.remote
+    def remote_function():
+        return 1
+
+    # This places `1` into the object store.
+    object_id = remote_function.remote()
+
+
+3. Arguments to remote functions (except for simple arguments like ints or floats).
+
+.. code:: python
+
+    @ray.remote
+    def remote_function(y):
+        # Note that inside the remote function, the actual argument is provided.
+        return len(y)
+
+    argument = np.random.rand(100, 100)
+    # This implicitly places `argument` into the object store.
+    remote_function.remote(argument)
+
+Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
+
+
 Advanced: Huge Pages
 --------------------
 
 On Linux, it is possible to increase the write throughput of the Plasma object store by using huge pages. See the `Configuration page <configure.html#using-the-object-store-with-huge-pages>`_ for information on how to use huge pages in Ray.
+
+
+.. _`Apache Arrow`: https://arrow.apache.org/
