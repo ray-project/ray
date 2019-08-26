@@ -52,11 +52,11 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def f(x):
         return
 
-    x = np.zeros(150 * 1024 * 1024, dtype=np.uint8)
+    x = np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     @ray.remote
     def create_object():
-        return np.zeros(150 * 1024 * 1024, dtype=np.uint8)
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     object_ids = []
 
