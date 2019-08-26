@@ -45,10 +45,6 @@ ray_autoscaler_files = [
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
-    "ray/autoscaler/kubernetes/namespace.yaml",
-    "ray/autoscaler/kubernetes/autoscaler-role.yaml",
-    "ray/autoscaler/kubernetes/autoscaler-role-binding.yaml",
-    "ray/autoscaler/kubernetes/autoscaler-service-account.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
 ]
 

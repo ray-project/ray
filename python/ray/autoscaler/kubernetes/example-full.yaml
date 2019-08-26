@@ -35,7 +35,54 @@ idle_timeout_minutes: 5
 # and then change the head_node serviceAccountName.
 provider:
     type: kubernetes
-    namespace: ray
+
+    namespace:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: ray
+
+    # Default service account created and used by the autoscaler if the head node
+    # serviceAccountName is the default of "autoscaler." The namespace will be
+    # overwritten if the user provides one other than "ray."
+    autoscaler_service_account:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+            namespace: ray
+            name: autoscaler
+
+    # Default role created and used by the autoscaler if the head node
+    # serviceAccountName is the default of "autoscaler." The namespace
+    # will be overwritten if the user provides one other than "ray."
+    autoscaler_role:
+        kind: Role
+        apiVersion: rbac.authorization.k8s.io/v1
+        metadata:
+            namespace: ray
+            name: autoscaler
+        rules:
+        - apiGroups: [""]
+          resources: ["pods", "pods/status", "pods/exec"]
+          verbs: ["get", "watch", "list", "create", "delete", "patch"]
+
+    # Default role binding created and used by the autoscaler if the head
+    # node serviceAccountName is the default of "autoscaler." The namespace
+    # will be overwritten if the user provides one other than "ray."
+    autoscaler_role_binding:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+            namespace: ray
+            name: autoscaler
+        subjects:
+        - kind: ServiceAccount
+          namespace: ray
+          name: autoscaler
+        roleRef:
+            kind: Role
+            name: autoscaler
+            apiGroup: rbac.authorization.k8s.io
 
 # Provider-specific config for the head node, e.g. instance type.
 head_node:
