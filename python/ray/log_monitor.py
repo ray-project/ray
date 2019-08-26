@@ -144,7 +144,7 @@ class LogMonitor(object):
             # file.
             if file_size > file_info.size_when_last_opened:
                 try:
-                    f = open(file_info.filename, "r")
+                    f = open(file_info.filename, "rb")
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning("Warning: The file {} was not "
