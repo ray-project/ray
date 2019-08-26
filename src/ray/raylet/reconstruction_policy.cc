@@ -53,7 +53,8 @@ void ReconstructionPolicy::SetTaskTimeout(
             // task is still required after this initial period, then we now
             // subscribe to task lease notifications.
             RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(JobID::Nil(), task_id,
-                                                                 client_id_));
+                                                                 client_id_,
+                                                                 /*done*/ nullptr));
             it->second.subscribed = true;
           }
         } else {
@@ -200,8 +201,9 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   if (it->second.created_objects.empty()) {
     // Cancel notifications for the task lease if we were subscribed to them.
     if (it->second.subscribed) {
-      RAY_CHECK_OK(
-          task_lease_pubsub_.CancelNotifications(JobID::Nil(), task_id, client_id_));
+      RAY_CHECK_OK(task_lease_pubsub_.CancelNotifications(JobID::Nil(), task_id,
+                                                          client_id_,
+                                                          /*done*/ nullptr));
     }
     listening_tasks_.erase(it);
   }

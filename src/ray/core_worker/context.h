@@ -24,6 +24,8 @@ class WorkerContext {
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
+  const ActorID &GetCurrentActorID() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
@@ -37,6 +39,9 @@ class WorkerContext {
 
   /// Job ID for this worker.
   JobID current_job_id_;
+
+  /// ID of current actor.
+  ActorID current_actor_id_;
 
  private:
   static WorkerThreadContext &GetThreadContext();

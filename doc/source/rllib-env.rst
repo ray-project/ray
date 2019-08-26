@@ -5,27 +5,33 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: rllib-envs.svg
 
-**Compatibility matrix**:
+Feature Compatibility Matrix
+----------------------------
 
-=============  =======================  ==================  ===========  ==================
-Algorithm      Discrete Actions         Continuous Actions  Multi-Agent  Recurrent Policies
-=============  =======================  ==================  ===========  ==================
-A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-PG              **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**      No
-DDPG, TD3       No                      **Yes**             **Yes**      No
-APEX-DQN        **Yes** `+parametric`_  No                  **Yes**      No
-APEX-DDPG       No                      **Yes**             **Yes**      No
-SAC             (todo)                  **Yes**             **Yes**      No
-ES              **Yes**                 **Yes**             No           No
-ARS             **Yes**                 **Yes**             No           No
-QMIX            **Yes**                 No                  **Yes**      **Yes**
-MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      **Yes**
-=============  =======================  ==================  ===========  ==================
+=============  =======================  ==================  ===========  ===========================
+Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
+=============  =======================  ==================  ===========  ===========================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
+DDPG, TD3       No                      **Yes**             **Yes**
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
+APEX-DDPG       No                      **Yes**             **Yes**
+SAC             (todo)                  **Yes**             **Yes**
+ES              **Yes**                 **Yes**             No
+ARS             **Yes**                 **Yes**             No
+QMIX            **Yes**                 No                  **Yes**      `+RNN`_
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
+=============  =======================  ==================  ===========  ===========================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+
+Configuring Environments
+------------------------
 
 You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
@@ -68,9 +74,6 @@ For a full runnable code example using the custom environment API, see `custom_e
 .. warning::
 
    The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
-
-Configuring Environments
-------------------------
 
 In the above example, note that the ``env_creator`` function takes in an ``env_config`` object. This is a dict containing options passed in through your trainer. You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_worker > 0``). This can be useful if you want to train over an ensemble of different environments, for example:
 
@@ -228,6 +231,65 @@ The `rock_paper_scissors_multiagent.py <https://github.com/ray-project/ray/blob/
 
     TensorBoard output of running the rock-paper-scissors example, where a learned policy faces off between a random selection of the same-move and beat-last-move heuristics. Here the performance of heuristic policies vs the learned policy is compared with LSTM enabled (blue) and a plain feed-forward policy (red). While the feedforward policy can easily beat the same-move heuristic by simply avoiding the last move taken, it takes a LSTM policy to distinguish between and consistently beat both policies.
 
+Variable-Sharing Between Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+    With `ModelV2 <rllib-models.html#tensorflow-models>`__, you can put layers in global variables and straightforwardly share those layer objects between models instead of using variable scopes.
+
+RLlib will create each policy's model in a separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
+
+.. code-block:: python
+
+        with tf.variable_scope(
+                tf.VariableScope(tf.AUTO_REUSE, "name_of_global_shared_scope"),
+                reuse=tf.AUTO_REUSE,
+                auxiliary_name_scope=False):
+            <create the shared layers here>
+
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__.
+
+Implementing a Centralized Critic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here are two ways to implement a centralized critic compatible with the multi-agent API:
+
+**Strategy 1: Sharing experiences in the trajectory preprocessor**:
+
+The most general way of implementing a centralized critic involves modifying the ``postprocess_trajectory`` method of a custom policy, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
+
+.. code-block:: python
+
+    def postprocess_trajectory(policy, sample_batch, other_agent_batches, episode):
+        agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
+        global_obs_batch = np.stack(
+            [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
+            axis=1)
+        # add the global obs and global critic value
+        sample_batch["global_obs"] = global_obs_batch
+        sample_batch["central_vf"] = self.sess.run(
+            self.critic_network, feed_dict={"obs": global_obs_batch})
+        return sample_batch
+
+To update the critic, you'll also have to modify the loss of the policy. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
+
+**Strategy 2: Sharing observations through the environment**:
+
+Alternatively, the env itself can be modified to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use an env wrapper and custom model. However, it is a bit less principled in that you have to change the agent observation spaces and the environment. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
+
+Grouping Agents
+~~~~~~~~~~~~~~~
+
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+
+.. literalinclude:: ../../rllib/env/multi_agent_env.py
+   :language: python
+   :start-after: __grouping_doc_begin__
+   :end-before: __grouping_doc_end__
+
+For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
+
 Hierarchical Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -260,59 +322,6 @@ This can be implemented as a multi-agent environment with three types of agents.
 In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation. The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level agents to lower-level agents as part of the lower-level agent observation.
 
 See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__.
-
-Variable-Sharing Between Policies
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. note::
-
-    With `ModelV2 <rllib-models.html#tensorflow-models>`__, you can put layers in global variables and straightforwardly share those layer objects between models instead of using variable scopes.
-
-RLlib will create each policy's model in a separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
-
-.. code-block:: python
-
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "name_of_global_shared_scope"),
-                reuse=tf.AUTO_REUSE,
-                auxiliary_name_scope=False):
-            <create the shared layers here>
-
-There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__.
-
-Implementing a Centralized Critic
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Implementing a centralized critic that takes as input the observations and actions of other concurrent agents requires the definition of custom policies. It can be done as follows:
-
-1. Querying the critic: this can be done in the ``postprocess_trajectory`` method of a custom policy, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
-
-.. code-block:: python
-
-    def postprocess_trajectory(policy, sample_batch, other_agent_batches, episode):
-        agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
-        global_obs_batch = np.stack(
-            [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
-            axis=1)
-        # add the global obs and global critic value
-        sample_batch["global_obs"] = global_obs_batch
-        sample_batch["central_vf"] = self.sess.run(
-            self.critic_network, feed_dict={"obs": global_obs_batch})
-        return sample_batch
-
-2. Updating the critic: the centralized critic loss can be added to the loss of the custom policy, the same as with any other value function. For an example of defining loss inputs, see the `PGPolicy example <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__.
-
-Grouping Agents
-~~~~~~~~~~~~~~~
-
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as `Q-Mix <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__ that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
-
-.. literalinclude:: ../../rllib/env/multi_agent_env.py
-   :language: python
-   :start-after: __grouping_doc_begin__
-   :end-before: __grouping_doc_end__
-
-For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
 
 Interfacing with External Agents
 --------------------------------

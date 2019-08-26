@@ -56,6 +56,23 @@ def uniform(*args, **kwargs):
     return sample_from(lambda _: np.random.uniform(*args, **kwargs))
 
 
+def loguniform(min_bound, max_bound, base=10):
+    """Sugar for sampling in different orders of magnitude.
+
+    Args:
+        min_bound (float): Lower boundary of the output interval (1e-4)
+        max_bound (float): Upper boundary of the output interval (1e-2)
+        base (float): Base of the log. Defaults to 10.
+        """
+    logmin = np.log(min_bound) / np.log(base)
+    logmax = np.log(max_bound) / np.log(base)
+
+    def apply_log(_):
+        return base**(np.random.uniform(logmin, logmax))
+
+    return sample_from(apply_log)
+
+
 def choice(*args, **kwargs):
     """A wrapper around np.random.choice."""
     return sample_from(lambda _: np.random.choice(*args, **kwargs))

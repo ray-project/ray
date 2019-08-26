@@ -27,22 +27,25 @@ class CoreWorkerTaskExecutionInterface {
   ///
   /// \param ray_function[in] Information about the function to execute.
   /// \param args[in] Arguments of the task.
-  /// \param task_info[in] Information of the task to execute.
   /// \param results[out] Results of the task execution.
   /// \return Status.
   using TaskExecutor = std::function<Status(
       const RayFunction &ray_function,
-      const std::vector<std::shared_ptr<RayObject>> &args, const TaskInfo &task_info,
-      int num_returns, std::vector<std::shared_ptr<RayObject>> *results)>;
+      const std::vector<std::shared_ptr<RayObject>> &args, int num_returns,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
                                    const TaskExecutor &executor);
 
-  /// Start receving and executes tasks in a infinite loop.
+  /// Start receiving and executing tasks.
   /// \return void.
   void Run();
+
+  /// Stop receiving and executing tasks.
+  /// \return void.
+  void Stop();
 
  private:
   /// Build arguments for task executor. This would loop through all the arguments
@@ -80,7 +83,7 @@ class CoreWorkerTaskExecutionInterface {
   rpc::GrpcServer worker_server_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service main_service_;
+  std::shared_ptr<boost::asio::io_service> main_service_;
 
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;

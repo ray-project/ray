@@ -25,7 +25,7 @@ def ray_start_sharded(request):
 
     # Start the Ray processes.
     ray.init(
-        object_store_memory=int(0.1 * 10**9),
+        object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
         num_redis_shards=num_redis_shards,
         redis_max_memory=10**7)
@@ -200,7 +200,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.1 * 10**9)
+    plasma_store_memory = int(0.5 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,

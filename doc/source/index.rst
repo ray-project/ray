@@ -47,7 +47,7 @@ To use Ray's actor model:
         def __init__(self):
             self.n = 0
 
-        def inc(self):
+        def increment(self):
             self.n += 1
 
         def read(self):
@@ -168,6 +168,7 @@ The following are good places to discuss Ray.
    user-profiling.rst
    inspect.rst
    configure.rst
+   memory-management.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst
@@ -179,6 +180,7 @@ The following are good places to discuss Ray.
    autoscaling.rst
    using-ray-on-a-cluster.rst
    deploy-on-kubernetes.rst
+   deploying-on-slurm.rst
 
 .. toctree::
    :maxdepth: 1
@@ -200,6 +202,7 @@ The following are good places to discuss Ray.
    :caption: RLlib
 
    rllib.rst
+   rllib-toc.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst
@@ -216,6 +219,7 @@ The following are good places to discuss Ray.
 
    distributed_training.rst
    pandas_on_ray.rst
+   projects.rst
    signals.rst
    async_api.rst
 

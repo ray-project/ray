@@ -109,7 +109,7 @@ class PopulationBasedTraining(FIFOScheduler):
     This Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
     they will be time-multiplexed as to balance training progress across the
-    population.
+    population. To run multiple trials, use `tune.run(num_samples=<int>)`.
 
     Args:
         time_attr (str): The training result attr to use for comparing time.
@@ -162,7 +162,7 @@ class PopulationBasedTraining(FIFOScheduler):
         >>>         # 10 -> 1 or 10 -> 100. Resampling will choose at random.
         >>>         "factor_2": [1, 10, 100, 1000, 10000],
         >>>     })
-        >>> run_experiments({...}, scheduler=pbt)
+        >>> tune.run({...}, num_samples=8, scheduler=pbt)
     """
 
     def __init__(self,
@@ -219,6 +219,8 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
+        if self._time_attr not in result or self._metric not in result:
+            return TrialScheduler.CONTINUE
         time = result[self._time_attr]
         state = self._trial_state[trial]
 

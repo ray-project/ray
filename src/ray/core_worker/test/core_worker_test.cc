@@ -10,7 +10,7 @@
 #include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
 #include "src/ray/util/test_util.h"
@@ -62,7 +62,7 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(buffer));
 
-  ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources};
+  ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources, {}};
 
   // Create an actor.
   RAY_CHECK_OK(worker.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -146,6 +146,7 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +
                 store_socket_name + " " + raylet_socket_name + "\"")
+        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
     RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;
@@ -283,6 +284,10 @@ void CoreWorkerTest::TestActorTask(
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
+      ASSERT_TRUE(return_ids[0].IsReturnObject());
+      ASSERT_EQ(
+          static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
+          is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
@@ -494,7 +499,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait().
+  // Test Wait() with duplicate object ids.
   std::vector<ObjectID> ids_with_duplicate;
   ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
   // add the same ids again to test `Get` with duplicate object ids.
@@ -506,6 +511,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::vector<bool> wait_results;
   RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), 5);
+  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+
+  // Test Wait() with duplicate object ids, and the required `num_objects`
+  // is less than size of `wait_ids`.
+  wait_results.clear();
+  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), 5);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
@@ -537,6 +549,29 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
+
+  // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> unready_ids(buffers.size());
+  for (size_t i = 0; i < unready_ids.size(); i++) {
+    unready_ids[i] = ObjectID::FromRandom();
+  }
+
+  auto thread_func = [&unready_ids, &provider, &buffers]() {
+    sleep(1);
+
+    for (size_t i = 0; i < unready_ids.size(); i++) {
+      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
+    }
+  };
+
+  std::thread async_thread(thread_func);
+
+  // wait for the objects to appear.
+  wait_results.clear();
+  RAY_CHECK_OK(
+      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
+  // wait for the thread to finish.
+  async_thread.join();
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
@@ -581,7 +616,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            ActorHandleID::Nil(), function.language, true,
@@ -642,7 +677,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   args.emplace_back(TaskArg::PassByValue(buffer));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /* is_direct_call */ true, resources};
+  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
   // wait for actor creation finish.

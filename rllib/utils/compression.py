@@ -24,6 +24,11 @@ except ImportError:
 
 
 @DeveloperAPI
+def compression_supported():
+    return LZ4_ENABLED
+
+
+@DeveloperAPI
 def pack(data):
     if LZ4_ENABLED:
         data = pyarrow.serialize(data).to_buffer().to_pybytes()

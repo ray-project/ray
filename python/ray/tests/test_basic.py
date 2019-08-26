@@ -319,6 +319,38 @@ def test_nested_functions(ray_start_regular):
 
     assert ray.get(f.remote()) == (1, 2)
 
+    # Test a remote function that recursively calls itself.
+
+    @ray.remote
+    def factorial(n):
+        if n == 0:
+            return 1
+        return n * ray.get(factorial.remote(n - 1))
+
+    assert ray.get(factorial.remote(0)) == 1
+    assert ray.get(factorial.remote(1)) == 1
+    assert ray.get(factorial.remote(2)) == 2
+    assert ray.get(factorial.remote(3)) == 6
+    assert ray.get(factorial.remote(4)) == 24
+    assert ray.get(factorial.remote(5)) == 120
+
+    # Test remote functions that recursively call each other.
+
+    @ray.remote
+    def factorial_even(n):
+        assert n % 2 == 0
+        if n == 0:
+            return 1
+        return n * ray.get(factorial_odd.remote(n - 1))
+
+    @ray.remote
+    def factorial_odd(n):
+        assert n % 2 == 1
+        return n * ray.get(factorial_even.remote(n - 1))
+
+    assert ray.get(factorial_even.remote(4)) == 24
+    assert ray.get(factorial_odd.remote(5)) == 120
+
 
 def test_ray_recursive_objects(ray_start_regular):
     class ClassA(object):
@@ -935,11 +967,9 @@ def test_many_fractional_resources(shutdown_only):
     stop_time = time.time() + 10
     correct_available_resources = False
     while time.time() < stop_time:
-        if ray.available_resources() == {
-                "CPU": 2.0,
-                "GPU": 2.0,
-                "Custom": 2.0,
-        }:
+        if (ray.available_resources()["CPU"] == 2.0
+                and ray.available_resources()["GPU"] == 2.0
+                and ray.available_resources()["Custom"] == 2.0):
             correct_available_resources = True
             break
     if not correct_available_resources:
@@ -2292,6 +2322,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
         MAX_RETRY_ATTEMPTS = 5
         retry_count = 0
 
+        del resources["memory"]
+        del resources["object_store_memory"]
+
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.available_resources()
@@ -2505,8 +2538,9 @@ def test_global_state_api(shutdown_only):
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
-    resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
-    assert ray.cluster_resources() == resources
+    assert ray.cluster_resources()["CPU"] == 5
+    assert ray.cluster_resources()["GPU"] == 3
+    assert ray.cluster_resources()["CustomResource"] == 1
 
     assert ray.objects() == {}
 
@@ -2649,8 +2683,11 @@ def test_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     for i in range(200):
         assert str(i) in output_lines
-    error_lines = captured["err"]
-    assert len(error_lines) == 0
+
+    # TODO(rkn): Check that no additional logs appear beyond what we expect
+    # and that there are no duplicate logs. Once we address the issue
+    # described in https://github.com/ray-project/ray/pull/5462, we should
+    # also check that nothing is logged to stderr.
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -2671,8 +2708,11 @@ def test_not_logging_to_driver(shutdown_only):
 
     output_lines = captured["out"]
     assert len(output_lines) == 0
-    error_lines = captured["err"]
-    assert len(error_lines) == 0
+
+    # TODO(rkn): Check that no additional logs appear beyond what we expect
+    # and that there are no duplicate logs. Once we address the issue
+    # described in https://github.com/ray-project/ray/pull/5462, we should
+    # also check that nothing is logged to stderr.
 
 
 @pytest.mark.skipif(
@@ -2769,7 +2809,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=10**8)
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
@@ -2987,7 +3027,7 @@ def test_shutdown_disconnect_global_state():
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**8], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
     x_id = ray.put(x)

@@ -1,8 +1,8 @@
 <!-- Thank you for your contribution! Please review https://github.com/ray-project/ray/blob/master/CONTRIBUTING.rst before opening a pull request. -->
 
-## What do these changes do?
+## Why are these changes needed?
 
-
+<!-- Please give a short summary of the change and the problem this solves. -->
 
 ## Related issue number
 

@@ -2,11 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import logging
+import random
+
+import ray
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
@@ -23,7 +25,11 @@ class SyncSamplesOptimizer(PolicyOptimizer):
     model weights are then broadcast to all remote workers.
     """
 
-    def __init__(self, workers, num_sgd_iter=1, train_batch_size=1):
+    def __init__(self,
+                 workers,
+                 num_sgd_iter=1,
+                 train_batch_size=1,
+                 sgd_minibatch_size=0):
         PolicyOptimizer.__init__(self, workers)
 
         self.update_weights_timer = TimerStat()
@@ -31,6 +37,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
         self.num_sgd_iter = num_sgd_iter
+        self.sgd_minibatch_size = sgd_minibatch_size
         self.train_batch_size = train_batch_size
         self.learner_stats = {}
 
@@ -58,7 +65,9 @@ class SyncSamplesOptimizer(PolicyOptimizer):
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
-                fetches = self.workers.local_worker().learn_on_batch(samples)
+                for minibatch in self._minibatches(samples):
+                    fetches = self.workers.local_worker().learn_on_batch(
+                        minibatch)
                 self.learner_stats = get_learner_stats(fetches)
                 if self.num_sgd_iter > 1:
                     logger.debug("{} {}".format(i, fetches))
@@ -83,3 +92,27 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 "opt_samples": round(self.grad_timer.mean_units_processed, 3),
                 "learner": self.learner_stats,
             })
+
+    def _minibatches(self, samples):
+        if not self.sgd_minibatch_size:
+            yield samples
+            return
+
+        if isinstance(samples, MultiAgentBatch):
+            raise NotImplementedError(
+                "Minibatching not implemented for multi-agent in simple mode")
+
+        if "state_in_0" in samples.data:
+            logger.warn("Not shuffling RNN data for SGD in simple mode")
+        else:
+            samples.shuffle()
+
+        i = 0
+        slices = []
+        while i < samples.count:
+            slices.append((i, i + self.sgd_minibatch_size))
+            i += self.sgd_minibatch_size
+        random.shuffle(slices)
+
+        for i, j in slices:
+            yield samples.slice(i, j)

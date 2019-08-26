@@ -75,7 +75,7 @@ class Analysis(object):
             mode (str): One of [min, max].
 
         """
-        df = self.dataframe()
+        df = self.dataframe(metric=metric, mode=mode)
         if mode == "max":
             return df.iloc[df[metric].idxmax()].logdir
         elif mode == "min":

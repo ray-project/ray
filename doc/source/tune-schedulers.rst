@@ -7,7 +7,7 @@ By default, Tune schedules trials in serial order with the ``FIFOScheduler`` cla
 
     tune.run( ... , scheduler=AsyncHyperBandScheduler())
 
-Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__. All schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
+Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://homes.cs.washington.edu/~jamieson/hyperband.html>`__. All schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
 
 Current Available Trial Schedulers:
 
@@ -119,7 +119,7 @@ An example of this can be found in `hyperband_example.py <https://github.com/ray
 HyperBand Implementation Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Implementation details may deviate slightly from theory but are focused on increasing usability. Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper. See `this post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ for context.
+Implementation details may deviate slightly from theory but are focused on increasing usability. Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper. See `this post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ for context.
 
 1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.  In many practical settings, ``R``, which represents some resource unit and often the number of training iterations, can be set reasonably large, like ``R >= 200``. For simplicity, assume ``eta = 3``. Varying ``R`` between ``R = 200`` and ``R = 1000`` creates a huge range of the number of trials needed to fill up all brackets.
 
@@ -131,12 +131,27 @@ On the other hand, holding ``R`` constant at ``R = 300`` and varying ``eta`` als
 
 The implementation takes the same configuration as the example given in the paper and exposes ``max_t``, which is not a parameter in the paper.
 
-2. The example in the `post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
+2. The example in the `post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
 
 .. image:: images/hyperband_allocation.png
 
 
 3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. This implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.
+
+HyperBand (BOHB)
+----------------
+
+.. tip:: This implementation is still experimental. Please report issues on https://github.com/ray-project/ray/issues/. Thanks!
+
+This class is a variant of HyperBand that enables the BOHB Algorithm. This implementation is true to the original HyperBand implementation and does not implement pipelining nor straggler mitigation.
+
+This is to be used in conjunction with the Tune BOHB search algorithm. See `TuneBOHB <tune-searchalg.html#BOHB>`_ for package requirements, examples, and details.
+
+An example of this in use can be found in `bohb_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_.
+
+.. autoclass:: ray.tune.schedulers.HyperBandForBOHB
+    :noindex:
+
 
 Median Stopping Rule
 --------------------

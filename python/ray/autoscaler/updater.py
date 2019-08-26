@@ -6,6 +6,7 @@ try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+import hashlib
 import logging
 import os
 import subprocess
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 READY_CHECK_INTERVAL = 5
-CONTROL_PATH_MAX_LENGTH = 70
+HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
@@ -161,8 +162,11 @@ class SSHCommandRunner(object):
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
 
-        ssh_control_path = "/tmp/{}_ray_ssh_sockets/{}".format(
-            getuser(), cluster_name)[:CONTROL_PATH_MAX_LENGTH]
+        ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
+        ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+        ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+            ssh_user_hash[:HASH_MAX_LENGTH],
+            ssh_control_hash[:HASH_MAX_LENGTH])
 
         self.log_prefix = log_prefix
         self.process_runner = process_runner

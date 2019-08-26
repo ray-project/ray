@@ -1,4 +1,19 @@
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_catalog.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_optimizers.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_filters.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_evaluators.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_eager_support.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output /ray/rllib/train.py \
     --env PongDeterministic-v0 \
     --run A3C \
@@ -387,9 +402,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/multiagent_cartpole.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output python /ray/rllib/examples/multiagent_cartpole.py --num-iters=2 --simple
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/multiagent_two_trainers.py --num-iters=2
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -429,6 +441,12 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/contrib/random_agent/random_agent.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/examples/centralized_critic.py --stop=2000
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/examples/centralized_critic_2.py --stop=2000
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/twostep_game.py --stop=2000 --run=contrib/MADDPG
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -439,6 +457,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/twostep_game.py --stop=2000 --run=APEX_QMIX
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/examples/autoregressive_action_dist.py --stop=150
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output /ray/rllib/train.py \
