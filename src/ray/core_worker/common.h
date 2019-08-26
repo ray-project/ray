@@ -92,6 +92,15 @@ class TaskArg {
     return TaskArg(nullptr, std::make_shared<RayObject>(value));
   }
 
+  /// Create a pass-by-value task argument.
+  ///
+  /// \param[in] value Value of the argument.
+  /// \return The task argument.
+  static TaskArg PassByValue(const std::shared_ptr<RayObject> &value) {
+    RAY_CHECK(value) << "Value can't be null.";
+    return TaskArg(nullptr, value);
+  }
+
   /// Return true if this argument is passed by reference, false if passed by value.
   bool IsPassedByReference() const { return id_ != nullptr; }
 
