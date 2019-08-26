@@ -9,6 +9,7 @@ import tensorflow as tf
 import numpy as np
 
 import ray
+import ray.services
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -93,10 +94,7 @@ class TFRunner(object):
         if history is None:
             stats = {}
         else:
-            stats = {
-                "train_loss": history.history["loss"][-1],
-                "train_acc": history.history["accuracy"][-1]
-            }
+            stats = {"train_" + k: v[-1] for k, v in history.history.items()}
 
         self.epoch += 1
         return stats

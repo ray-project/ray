@@ -4,11 +4,17 @@ from __future__ import print_function
 
 import argparse
 import tensorflow as tf
+from tensorflow.data import Dataset
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 import numpy as np
 
+import ray
 from ray import tune
 from ray.experimental.sgd.tf.tf_trainer import TFTrainer, TFTrainable
 
+NUM_TRAIN_SAMPLES = 1000
+NUM_TEST_SAMPLES = 400
 
 def linear_dataset(a=2, b=5, size=1000):
     x = np.arange(0, 10, 10 / size, dtype=np.float32)
@@ -21,26 +27,24 @@ def linear_dataset(a=2, b=5, size=1000):
 
 
 def simple_dataset(batch_size=20):
-    NUM_TRAIN_SAMPLES = 1000
-
     x_train, y_train = linear_dataset(size=NUM_TRAIN_SAMPLES)
-    x_test, y_test = linear_dataset(size=400)
+    x_test, y_test = linear_dataset(size=NUM_TEST_SAMPLES)
 
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+    train_dataset = Dataset.from_tensor_slices((x_train, y_train))
+    test_dataset = Dataset.from_tensor_slices((x_test, y_test))
 
-    tf.random.set_seed(22)
-    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).batch(
-        batch_size, drop_remainder=True)
-    test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
+    # tf.random.set_seed(22)
+    train_dataset = train_dataset.shuffle(
+        NUM_TRAIN_SAMPLES).repeat().batch(batch_size)
+    test_dataset = test_dataset.repeat().batch(batch_size)
 
     return train_dataset, test_dataset
 
 
 def simple_model():
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.Dense(10, input_shape=(1, )),
-        tf.keras.layers.Dense(1, activation="softmax")
+    model = Sequential([
+        Dense(10, input_shape=(1, )),
+        Dense(1, activation="softmax")
     ])
 
     model.compile(
@@ -51,13 +55,22 @@ def simple_model():
     return model
 
 
-def train_example(num_replicas=1, use_gpu=False):
+def train_example(num_replicas=1, batch_size=128, use_gpu=False):
     trainer = TFTrainer(
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        batch_size=128)
+        config={
+            "verbose": True,
+            "fit_config": {
+                "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
+            },
+            "evaluate_config": {
+                "steps": NUM_TEST_SAMPLES // batch_size,
+            }
+        },
+        batch_size=batch_size)
 
     train_stats1 = trainer.train()
     train_stats1.update(trainer.validate())
@@ -114,9 +127,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    import ray
-
-    ray.init(redis_address=args.redis_address)
+    ray.init(redis_address=args.redis_address, logging_level="debug")
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

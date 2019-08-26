@@ -4,8 +4,11 @@
 It gets to 75% validation accuracy in 25 epochs, and 79% after 50 epochs.
 (it"s still underfitting at that point, though).
 """
-
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+
+import argparse
 import tensorflow as tf
 from tensorflow import keras
 
@@ -20,9 +23,7 @@ from filelock import FileLock
 import ray
 from ray.experimental.sgd.tf.tf_trainer import TFTrainer
 
-global_batch_size = 4096
 num_classes = 10
-epochs = 3
 
 
 def fetch_keras_data():
@@ -143,7 +144,7 @@ def data_augmentation_creator(batch_size):
     return trainset, test_dataset
 
 
-def train_example(num_replicas=1, use_gpu=False):
+def train_example(num_replicas=1, batch_size=512, epochs=1, use_gpu=False):
     trainer = TFTrainer(
         model_creator=create_model,
         data_creator=data_augmentation_creator,
@@ -152,13 +153,13 @@ def train_example(num_replicas=1, use_gpu=False):
         config={
             "verbose": True,
             "fit_config": {
-                "steps_per_epoch": 60000 // global_batch_size
+                "steps_per_epoch": 60000 // batch_size
             },
             "evaluate_config": {
-                "steps": 10000 // global_batch_size,
+                "steps": 10000 // batch_size,
             }
         },
-        batch_size=global_batch_size)
+        batch_size=batch_size)
 
     for i in range(epochs):
         train_stats1 = trainer.train()
@@ -170,12 +171,47 @@ def train_example(num_replicas=1, use_gpu=False):
     return model
 
 
-save_dir = os.path.join(os.getcwd(), "saved_models")
-model_name = "keras_cifar10_trained_model.h5"
-ray.init(address="localhost:6379")
-model = train_example(4, use_gpu=True)
-dataset, test_dataset = data_augmentation_creator(batch_size=global_batch_size)
-model.fit(dataset, steps_per_epoch=60000 // global_batch_size, epochs=1)
-scores = model.evaluate(test_dataset, steps=10000 // global_batch_size)
-print("Test loss:", scores[0])
-print("Test accuracy:", scores[1])
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--redis-address",
+        required=False,
+        type=str,
+        help="the address to use for Redis")
+    parser.add_argument(
+        "--num-replicas",
+        "-n",
+        type=int,
+        default=1,
+        help="Sets number of replicas for training.")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=512,
+        help="Sets number of replicas for training.")
+    parser.add_argument(
+        "--num-epochs",
+        type=int,
+        default=1,
+        help="Sets number of replicas for training.")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Enables GPU training")
+
+    args, _ = parser.parse_known_args()
+    ray.init(redis_address=args.redis_address)
+
+    batch_size = args.batch_size
+
+    model = train_example(
+        args.num_replicas,
+        batch_size=batch_size,
+        epochs=args.num_epochs,
+        use_gpu=args.use_gpu)
+    dataset, test_dataset = data_augmentation_creator(batch_size=batch_size)
+    model.fit(dataset, steps_per_epoch=60000 // batch_size, epochs=1)
+    scores = model.evaluate(test_dataset, steps=10000 // batch_size)
+    print("Test loss:", scores[0])
+    print("Test accuracy:", scores[1])
