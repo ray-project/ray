@@ -40,8 +40,9 @@ def _configure_namespace(provider_config):
 
 def _configure_autoscaler_service_account(namespace, provider_config):
     if "autoscaler_service_account" not in provider_config:
-        logger.info(log_prefix +
-                    "no autoscaler service account provided, must already exist.")
+        logger.info(
+            log_prefix +
+            "no autoscaler service account provided, must already exist.")
         return
 
     account = provider_config["autoscaler_service_account"]
@@ -51,9 +52,8 @@ def _configure_autoscaler_service_account(namespace, provider_config):
             account["metadata"]["name"]))
     except ApiException as e:
         if e.status == 409:
-            logger.info(log_prefix +
-                        "using existing service account '{}'".format(
-                            account["metadata"]["name"]))
+            logger.info(log_prefix + "using existing service account '{}'".
+                        format(account["metadata"]["name"]))
         else:
             raise
 
@@ -67,13 +67,12 @@ def _configure_autoscaler_role(namespace, provider_config):
     role = provider_config["autoscaler_role"]
     try:
         auth_api.create_namespaced_role(namespace, role)
-        logger.info(log_prefix + "created role '{}'".format(
-            role["metadata"]["name"]))
+        logger.info(log_prefix +
+                    "created role '{}'".format(role["metadata"]["name"]))
     except ApiException as e:
         if e.status == 409:
-            logger.info(log_prefix +
-                        "using existing service role '{}'".format(
-                            role["metadata"]["name"]))
+            logger.info(log_prefix + "using existing service role '{}'".format(
+                role["metadata"]["name"]))
         else:
             raise
 
