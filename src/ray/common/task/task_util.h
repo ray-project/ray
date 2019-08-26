@@ -67,16 +67,18 @@ class TaskSpecBuilder {
 
   /// Add a by-value argument to the task.
   ///
-  /// \param data Pointer to the data.
-  /// \param data_size Size of the data.
-  /// \param metadata Pointer to the metadata.
-  /// \param metadata_size Size of the metadata.
+  /// \param data Buffer object that contains the data.
+  /// \param metadata Buffer object that contains the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const void *data, size_t data_size, const void *metadata,
-                                 size_t metadata_size) {
+  TaskSpecBuilder &AddByValueArg(const std::shared_ptr<Buffer> &data,
+                                 const std::shared_ptr<Buffer> &metadata) {
     auto arg = message_->add_args();
-    arg->set_data(data, data_size);
-    arg->set_metadata(metadata, metadata_size);
+    if (data) {
+      arg->set_data(data->Data(), data->Size());
+    }
+    if (metadata) {
+      arg->set_metadata(metadata->Data(), metadata->Size());
+    }
     return *this;
   }
 

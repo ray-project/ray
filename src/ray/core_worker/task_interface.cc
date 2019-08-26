@@ -130,8 +130,7 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     if (arg.IsPassedByReference()) {
       builder.AddByRefArg(arg.GetReference());
     } else {
-      builder.AddByValueArg(arg.GetData()->Data(), arg.GetData()->Size(),
-                            arg.GetMetadata()->Data(), arg.GetMetadata()->Size());
+      builder.AddByValueArg(arg.GetValue()->GetData(), arg.GetValue()->GetMetadata());
     }
   }
 
