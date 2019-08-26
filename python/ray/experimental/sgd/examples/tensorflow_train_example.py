@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import tensorflow as tf
 from tensorflow.data import Dataset
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -15,6 +14,7 @@ from ray.experimental.sgd.tf.tf_trainer import TFTrainer, TFTrainable
 
 NUM_TRAIN_SAMPLES = 1000
 NUM_TEST_SAMPLES = 400
+
 
 def linear_dataset(a=2, b=5, size=1000):
     x = np.arange(0, 10, 10 / size, dtype=np.float32)
@@ -34,18 +34,17 @@ def simple_dataset(batch_size=20):
     test_dataset = Dataset.from_tensor_slices((x_test, y_test))
 
     # tf.random.set_seed(22)
-    train_dataset = train_dataset.shuffle(
-        NUM_TRAIN_SAMPLES).repeat().batch(batch_size)
+    train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).repeat().batch(
+        batch_size)
     test_dataset = test_dataset.repeat().batch(batch_size)
 
     return train_dataset, test_dataset
 
 
 def simple_model():
-    model = Sequential([
-        Dense(10, input_shape=(1, )),
-        Dense(1, activation="softmax")
-    ])
+    model = Sequential(
+        [Dense(10, input_shape=(1, )),
+         Dense(1, activation="softmax")])
 
     model.compile(
         optimizer="sgd",
