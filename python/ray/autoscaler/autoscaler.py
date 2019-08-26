@@ -287,9 +287,7 @@ class NodeLauncher(threading.Thread):
     def _launch_node(self, config, count):
         worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(
-            config["worker_nodes"], config["auth"]
-            if "auth" in config else None)
+        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.log("Launching {} nodes.".format(count))
         self.provider.create_node(
             config["worker_nodes"], {
@@ -795,6 +793,7 @@ def fillout_defaults(config):
     defaults.update(config)
     merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
+    defaults["auth"] = defaults.get("auth", {})
     return defaults
 
 

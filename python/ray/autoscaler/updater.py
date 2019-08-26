@@ -99,8 +99,8 @@ class KubernetesCommandRunner(object):
                     port_forward_process.kill()
 
     def run_rsync_up(self, source, target, redirect=None):
-        if target.startswith('~'):
-            target = '/root' + target[1:]
+        if target.startswith("~"):
+            target = "/root" + target[1:]
 
         try:
             self.process_runner.check_call(
@@ -126,8 +126,8 @@ class KubernetesCommandRunner(object):
                 stderr=redirect)
 
     def run_rsync_down(self, source, target, redirect=None):
-        if target.startswith('~'):
-            target = '/root' + target[1:]
+        if target.startswith("~"):
+            target = "/root" + target[1:]
 
         try:
             self.process_runner.check_call(
@@ -153,7 +153,7 @@ class KubernetesCommandRunner(object):
                 stderr=redirect)
 
     def remote_shell_command_str(self):
-        return "{} exec -it {} bash".format(' '.join(self.kubectl),
+        return "{} exec -it {} bash".format(" ".join(self.kubectl),
                                             self.node_id)
 
 

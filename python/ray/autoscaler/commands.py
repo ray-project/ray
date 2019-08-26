@@ -137,7 +137,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 node_id=node,
                 provider_config=config["provider"],
                 provider=provider,
-                auth_config=config["auth"] if "auth" in config else None,
+                auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
                 initialization_commands=[],
@@ -184,8 +184,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         elif not no_restart:
             confirm("This will restart cluster services", yes)
 
-        launch_hash = hash_launch_conf(
-            config["head_node"], config["auth"] if "auth" in config else None)
+        launch_hash = hash_launch_conf(config["head_node"], config["auth"])
         if head_node is None or provider.node_tags(head_node).get(
                 TAG_RAY_LAUNCH_CONFIG) != launch_hash:
             if head_node is not None:
@@ -248,7 +247,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             node_id=head_node,
             provider_config=config["provider"],
             provider=provider,
-            auth_config=config["auth"] if "auth" in config else None,
+            auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             initialization_commands=config["initialization_commands"],
@@ -352,7 +351,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             node_id=head_node,
             provider_config=config["provider"],
             provider=provider,
-            auth_config=config["auth"] if "auth" in config else None,
+            auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             initialization_commands=[],
@@ -445,7 +444,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
             node_id=head_node,
             provider_config=config["provider"],
             provider=provider,
-            auth_config=config["auth"] if "auth" in config else None,
+            auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             initialization_commands=[],
