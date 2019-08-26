@@ -1,4 +1,12 @@
 # yapf: disable
+"""
+This file holds code for a Distributed Pytorch + Tune page in the docs.
+
+It ignores yapf because yapf doesn't allow comments right after code blocks,
+but we put comments right after code blocks to prevent large white spaces
+in the documentation.
+"""
+
 # __torch_tune_example__
 from __future__ import absolute_import
 from __future__ import division

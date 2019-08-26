@@ -1,3 +1,12 @@
+# flake8: noqa
+"""
+This file holds code for the TF best-practices guide in the documentation.
+
+It ignores yapf because yapf doesn't allow comments right after code blocks,
+but we put comments right after code blocks to prevent large white spaces
+in the documentation.
+"""
+
 # yapf: disable
 # __tf_model_start__
 import tensorflow as tf
