@@ -214,8 +214,14 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
   }
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
+bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) {
   std::unique_lock<std::mutex> guard(mutex_);
+
+  if (subscribed_actors_.find(actor_id) == subscribed_actors_.end()) {
+    RAY_CHECK_OK(SubscribeActorUpdates(actor_id));
+    subscribed_actors_.insert(actor_id);
+  }
+
   auto iter = actor_states_.find(actor_id);
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
 }

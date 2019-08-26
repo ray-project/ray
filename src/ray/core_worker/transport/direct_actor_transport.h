@@ -80,7 +80,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id) const;
+  bool IsActorAlive(const ActorID &actor_id);
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
