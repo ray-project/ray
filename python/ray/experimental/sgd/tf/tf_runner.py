@@ -118,7 +118,10 @@ class TFRunner(object):
                                                 **evaluate_config)
 
         if isinstance(results, list):
-            stats = dict(zip(results, self.model.metrics_names))
+            stats = {
+                "validation_" + k: v
+                for k, v in zip(self.model.metrics_names, results)
+            }
         else:
             stats = {"loss": results}
 

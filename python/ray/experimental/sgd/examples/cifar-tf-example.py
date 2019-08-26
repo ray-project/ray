@@ -22,8 +22,7 @@ from ray.experimental.sgd.tf.tf_trainer import TFTrainer
 
 global_batch_size = 4096
 num_classes = 10
-epochs = 10
-num_predictions = 20
+epochs = 3
 
 
 def fetch_keras_data():
@@ -70,7 +69,7 @@ def create_model():
     model.add(Activation("softmax"))
 
     # initiate RMSprop optimizer
-    opt = keras.optimizers.RMSprop(lr=0.0001, decay=1e-6)
+    opt = keras.optimizers.RMSprop(lr=0.001, decay=1e-6)
 
     # Let"s train the model using RMSprop
     model.compile(
@@ -140,14 +139,14 @@ def data_augmentation_creator(batch_size):
     trainset = trainset.repeat()
 
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
-    test_dataset = test_dataset.repeat().batch(batch_size, drop_remainder=True)
+    test_dataset = test_dataset.repeat().batch(batch_size)
     return trainset, test_dataset
 
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer = TFTrainer(
         model_creator=create_model,
-        data_creator=data_creator,
+        data_creator=data_augmentation_creator,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         config={
@@ -161,7 +160,7 @@ def train_example(num_replicas=1, use_gpu=False):
         },
         batch_size=global_batch_size)
 
-    for i in range(10):
+    for i in range(epochs):
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())
         print("iter {}:".format(i), train_stats1)
@@ -174,23 +173,9 @@ def train_example(num_replicas=1, use_gpu=False):
 save_dir = os.path.join(os.getcwd(), "saved_models")
 model_name = "keras_cifar10_trained_model.h5"
 ray.init(address="localhost:6379")
-# ray.init()
 model = train_example(4, use_gpu=True)
-
-# model = create_model()
 dataset, test_dataset = data_augmentation_creator(batch_size=global_batch_size)
-model.fit(dataset)
-
-# # Save model and weights
-# if not os.path.isdir(save_dir):
-#     os.makedirs(save_dir)
-# model_path = os.path.join(save_dir, model_name)
-
-# model = train_example(2)
-# model.save(model_path)
-# print("Saved trained model at %s " % model_path)
-
-# # Score trained model.
-scores = model.evaluate(test_dataset)
+model.fit(dataset, steps_per_epoch=60000 // global_batch_size, epochs=1)
+scores = model.evaluate(test_dataset, steps=10000 // global_batch_size)
 print("Test loss:", scores[0])
 print("Test accuracy:", scores[1])
