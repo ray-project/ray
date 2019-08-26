@@ -2,6 +2,7 @@
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
 #include <list>
+#include <set>
 
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
@@ -39,8 +40,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
-  /// Subscribe to all actor updates.
-  Status SubscribeActorUpdates();
+  /// Subscribe to updates of an actor.
+  Status SubscribeActorUpdates(const ActorID &actor_id);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
@@ -93,18 +94,10 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
 
-  /// Map from actor id to actor state. This currently includes all actors in the system.
-  ///
-  /// TODO(zhijunfu): this map currently keeps track of all the actors in the system,
-  /// like `actor_registry_` in raylet. Later after new GCS client interface supports
-  /// subscribing updates for a specific actor, this will be updated to only include
-  /// entries for actors that the transport submits tasks to.
+  /// Map from actor id to actor state. This only includes actors that we send tasks to.
   std::unordered_map<ActorID, ActorStateData> actor_states_;
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
-  ///
-  /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
-  /// subscribe updates for a specific actor.
   std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
@@ -113,6 +106,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 
   /// Map from actor id to the tasks that are waiting for reply.
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
+
+  /// The set of actors which are subscribed for further updates.
+  std::unordered_set<ActorID> subscribed_actors_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;

@@ -22,7 +22,6 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {
-  RAY_CHECK_OK(SubscribeActorUpdates());
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
@@ -42,6 +41,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
+
+  if (subscribed_actors_.find(actor_id) == subscribed_actors_.end()) {
+    RAY_CHECK_OK(SubscribeActorUpdates(actor_id));
+    subscribed_actors_.insert(actor_id);
+  }
+
   auto iter = actor_states_.find(actor_id);
   if (iter == actor_states_.end() ||
       iter->second.state_ == ActorTableData::RECONSTRUCTING) {
@@ -75,7 +80,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   }
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
+Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates(
+    const ActorID &actor_id) {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &actor_data) {
@@ -127,7 +133,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
                   << ", port: " << actor_data.port();
   };
 
-  return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
+  return gcs_client_.Actors().AsyncSubscribe(actor_id, actor_notification_callback,
+                                             nullptr);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
