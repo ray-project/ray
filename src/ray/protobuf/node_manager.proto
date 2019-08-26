@@ -20,3 +20,20 @@ service NodeManagerService {
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
 }
+
+// This enum is needed by asio based rpc. For each method in the rpc service,
+// a message type needs to be defined for the corresponding request in that
+// method, so that receiver side can figure out the exact request message
+// based on this type, deserialize it accordingly, and invoke the corresponding
+// method.
+enum NodeManagerServiceMessageType {
+  // `ConnectClient` and `DisconnectClient` MUST be defined and their values
+  // MUST be consistent with the ones in `ServiceMessageType` in
+  // "src/ray/protobuf/asio.proto".
+  NodeManagerConnectClient = 0;
+  NodeManagerDisconnectClient = 1;
+  // Forward task request.
+  ForwardTaskRequestMessage = 2;
+  // Forward task reply.
+  ForwardTaskReplyMessage = 3;
+}

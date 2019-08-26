@@ -9,6 +9,8 @@ enum RpcServiceType {
   WorkerTaskServiceType = 0;
   // refer to `direct_actor.proto` for details of the service.
   DirectActorServiceType = 1;
+  // refer to `node_manager.proto` for details of the service.
+  NodeManagerServiceType = 2;  
 }
 
 // The messages that MUST be defined for all the asio based RPC services.

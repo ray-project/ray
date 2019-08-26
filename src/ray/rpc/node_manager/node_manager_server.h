@@ -4,6 +4,8 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 
+#include "ray/rpc/asio_server.h"
+
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -63,6 +65,40 @@ class NodeManagerGrpcService : public GrpcService {
   /// The service handler that actually handle the requests.
   NodeManagerServiceHandler &service_handler_;
 };
+
+
+/// The `AsioRpcService` for `NodeManagerService`.
+class NodeManagerAsioRpcService : public AsioRpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  NodeManagerAsioRpcService(NodeManagerServiceHandler &service_handler)
+      : AsioRpcService(rpc::RpcServiceType::NodeManagerServiceType),
+        service_handler_(service_handler){};
+
+ protected:
+  void InitMethodHandlers(
+      std::vector<std::shared_ptr<ServiceMethod>> *server_call_methods,
+      std::vector<std::string> *message_type_enum_names) override {
+    // Initialize the Factory for `ForwardTask` requests.
+    std::shared_ptr<ServiceMethod> forward_task_call_method(
+        new ServiceMethodImpl<NodeManagerServiceHandler, ForwardTaskRequest, ForwardTaskReply,
+                              NodeManagerServiceMessageType>(
+            service_type_, NodeManagerServiceMessageType::ForwardTaskRequestMessage,
+            NodeManagerServiceMessageType::ForwardTaskReplyMessage, service_handler_,
+            &NodeManagerServiceHandler::HandleForwardTask));
+
+    server_call_methods->emplace_back(std::move(forward_task_call_method));
+
+    *message_type_enum_names = GenerateEnumNames(NodeManagerServiceMessageType);
+  }
+
+ private:
+  /// The service handler that actually handle the requests.
+  NodeManagerServiceHandler &service_handler_;
+};
+
 
 }  // namespace rpc
 }  // namespace ray

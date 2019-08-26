@@ -106,7 +106,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void RecordMetrics() const;
 
   /// Get the port of the node manager rpc server.
-  int GetServerPort() const { return node_manager_server_.GetPort(); }
+  int GetServerPort() const {
+    if (RayConfig::instance().use_asio_rpc_for_worker()) {
+      return node_manager_asio_server_->GetPort();
+    } else {
+      return node_manager_grpc_server_->GetPort();
+    }
+  }
 
  private:
   /// Methods for handling clients.
@@ -545,15 +551,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
-  /// The RPC server.
-  rpc::GrpcServer node_manager_server_;
+  /// The GRPC server.
+  std::unique_ptr<rpc::GrpcServer> node_manager_grpc_server_;
 
-  /// The node manager RPC service.
-  rpc::NodeManagerGrpcService node_manager_service_;
+  /// The node manager GRPC service.
+  std::unique_ptr<rpc::NodeManagerGrpcService> node_manager_grpc_service_;
 
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
+  /// The GRPC `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `WorkerTaskClient`s.
-  rpc::ClientCallManager client_call_manager_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  /// The asio RPC server.
+  std::unique_ptr<rpc::AsioRpcServer> node_manager_asio_server_;
+
+  /// The node manager asio RPC service.
+  std::unique_ptr<rpc::NodeManagerAsioRpcService> node_manager_asio_service_; 
 
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>

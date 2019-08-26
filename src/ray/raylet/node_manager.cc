@@ -102,10 +102,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
                      config.max_lineage_size),
-      actor_registry_(),
-      node_manager_server_("NodeManager", config.node_manager_port),
-      node_manager_service_(io_service, *this),
-      client_call_manager_(io_service) {
+      actor_registry_() {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -122,8 +119,25 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
-  node_manager_server_.RegisterService(node_manager_service_);
-  node_manager_server_.Run();
+  if (RayConfig::instance().use_asio_rpc_for_worker()) {
+    node_manager_asio_server_ = std::unique_ptr<rpc::AsioRpcServer>(
+        new rpc::AsioRpcServer("NodeManager", config.node_manager_port, io_service));
+    node_manager_asio_service_ = std::unique_ptr<rpc::NodeManagerAsioRpcService>(
+        new rpc::NodeManagerAsioRpcService(*this));
+    
+    node_manager_asio_server_->RegisterService(*node_manager_asio_service_);
+    node_manager_asio_server_->Run();    
+  } else {
+    node_manager_grpc_server_ = std::unique_ptr<rpc::GrpcServer>(
+        new rpc::GrpcServer("NodeManager", config.node_manager_port));
+    node_manager_grpc_service_ = std::unique_ptr<rpc::NodeManagerGrpcService>(
+        new rpc::NodeManagerGrpcService(io_service, *this));
+    client_call_manager_ = std::unique_ptr<rpc::ClientCallManager>(
+        new rpc::ClientCallManager(io_service));
+
+    node_manager_grpc_server_->RegisterService(*node_manager_grpc_service_);
+    node_manager_grpc_server_->Run();
+  }
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -389,9 +403,16 @@ void NodeManager::ClientAdded(const GcsNodeInfo &node_info) {
   }
 
   // Initialize a rpc client to the new node manager.
-  std::unique_ptr<rpc::NodeManagerClient> client(
-      new rpc::NodeManagerClient(node_info.node_manager_address(),
-                                 node_info.node_manager_port(), client_call_manager_));
+  std::unique_ptr<rpc::NodeManagerClient> client;
+  if (RayConfig::instance().use_asio_rpc_for_worker()) {
+    client = std::unique_ptr<rpc::NodeManagerAsioClient>(
+        new rpc::NodeManagerAsioClient(node_info.node_manager_address(),
+        node_info.node_manager_port(), io_service_));
+  } else {
+    client = std::unique_ptr<rpc::NodeManagerGrpcClient>(
+        new rpc::NodeManagerGrpcClient(node_info.node_manager_address(),
+        node_info.node_manager_port(), *client_call_manager_));
+  }
   remote_node_manager_clients_.emplace(client_id, std::move(client));
 
   // Fetch resource info for the remote client and update cluster resource map.
@@ -832,7 +853,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
           ? std::make_shared<Worker>(worker_id, message->worker_pid(), language,
                                      message->port(), client, io_service_)
           : std::make_shared<Worker>(worker_id, message->worker_pid(), language,
-                                     message->port(), client, client_call_manager_);
+                                     message->port(), client, *client_call_manager_);
 
   Status status;
   if (message->is_worker()) {
