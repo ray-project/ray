@@ -145,18 +145,38 @@ RLlib Quick Start
 
 .. _`RLlib`: rllib.html
 
-Contact
--------
-The following are good places to discuss Ray.
 
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
+More Information
+----------------
+
+- `Tutorial`_
+- `Blog`_
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `RLlib paper`_
+- `Tune paper`_
+
+.. _`Tutorial`: https://github.com/ray-project/tutorial
+.. _`Blog`: https://ray-project.github.io/
+.. _`Ray paper`: https://arxiv.org/abs/1712.05889
+.. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
+.. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`Tune paper`: https://arxiv.org/abs/1807.05118
+
+Getting Involved
+----------------
+
+- `ray-dev@googlegroups.com`_: For discussions about development or any general
+  questions.
+- `StackOverflow`_: For questions about how to use Ray.
+- `GitHub Issues`_: For reporting bugs and feature requests.
+- `Pull Requests`_: For submitting code contributions.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
+
 
 
 .. toctree::
