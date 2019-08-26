@@ -48,7 +48,7 @@ class Cluster(object):
         All nodes are by default started with the following settings:
             cleanup=True,
             num_cpus=1,
-            object_store_memory=100 * (2**20) # 100 MB
+            object_store_memory=150 * 1024 * 1024  # 150 MiB
 
         Args:
             node_args: Keyword arguments used in `start_ray_head` and
@@ -63,7 +63,10 @@ class Cluster(object):
             default_node_kwargs = {}
         ray_params = ray.parameter.RayParams(**default_node_kwargs)
         ray_params.update_if_absent(
-            num_cpus=1, num_gpus=0, object_store_memory=100 * (2**20))
+            num_cpus=1,
+            num_gpus=0,
+            object_store_memory=150 * 1024 * 1024  # 150 MiB
+        )
         # Overwrite any node-specific parameters.
         ray_params.update(**node_args)
 

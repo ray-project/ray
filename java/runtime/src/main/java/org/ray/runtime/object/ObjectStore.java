@@ -69,6 +69,18 @@ public abstract class ObjectStore {
   }
 
   /**
+   * Serialize and put an object to the object store, with the given object id.
+   *
+   * This method is only used for testing.
+   *
+   * @param object The object to put.
+   * @param objectId Object id.
+   */
+  public void put(Object object, ObjectId objectId) {
+    putRaw(serialize(object), objectId);
+  }
+
+  /**
    * Get a list of raw objects from the object store.
    *
    * @param objectIds IDs of the objects to get.
@@ -156,7 +168,8 @@ public abstract class ObjectStore {
    * Delete a list of objects from the object store.
    *
    * @param objectIds IDs of the objects to delete.
-   * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
+   * @param localOnly Whether only delete the objects in local node, or all nodes in the
+   *     cluster.
    * @param deleteCreatingTasks Whether also delete the tasks that created these objects.
    */
   public abstract void delete(List<ObjectId> objectIds, boolean localOnly,

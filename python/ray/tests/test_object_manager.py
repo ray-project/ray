@@ -52,11 +52,11 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def f(x):
         return
 
-    x = np.zeros(10**8, dtype=np.uint8)
+    x = np.zeros(150 * 1024 * 1024, dtype=np.uint8)
 
     @ray.remote
     def create_object():
-        return np.zeros(10**8, dtype=np.uint8)
+        return np.zeros(150 * 1024 * 1024, dtype=np.uint8)
 
     object_ids = []
 
@@ -212,7 +212,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
         # sooner. Also, force the receiving object manager to retry the Pull
         # sooner. We make the chunk size smaller in order to make it easier to
         # test objects with multiple chunks.
-        dict([("object_store_memory", 10**8)] + list(
+        dict([("object_store_memory", 150 * 1024 * 1024)] + list(
             generate_internal_config_map(
                 object_manager_repeated_push_delay_ms=4 * 1000,
                 object_manager_pull_timeout_ms=1000,

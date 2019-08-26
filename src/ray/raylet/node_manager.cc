@@ -1537,14 +1537,14 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         // was already created. Look up the actor's registered location in case
         // we missed the creation notification.
         const ActorID &actor_id = spec.ActorId();
-        auto lookup_callback = [this, actor_id](Status status,
-                                                const std::vector<ActorTableData> &data) {
-          if (!data.empty()) {
-            // The actor has been created. We only need the last entry, because
-            // it represents the latest state of this actor.
-            HandleActorStateTransition(actor_id, ActorRegistration(data.back()));
-          }
-        };
+        auto lookup_callback =
+            [this, actor_id](Status status, const boost::optional<ActorTableData> &data) {
+              if (data) {
+                // The actor has been created. We only need the last entry, because
+                // it represents the latest state of this actor.
+                HandleActorStateTransition(actor_id, ActorRegistration(*data));
+              }
+            };
         RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(actor_id, lookup_callback));
         actor_creation_dummy_object = spec.ActorCreationDummyObjectId();
       } else {

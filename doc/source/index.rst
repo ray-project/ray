@@ -168,6 +168,7 @@ The following are good places to discuss Ray.
    user-profiling.rst
    inspect.rst
    configure.rst
+   memory-management.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst
@@ -218,6 +219,7 @@ The following are good places to discuss Ray.
 
    distributed_training.rst
    pandas_on_ray.rst
+   projects.rst
    signals.rst
    async_api.rst
 

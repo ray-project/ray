@@ -10,6 +10,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.debug import log_once
 from ray.rllib.utils.tf_ops import scope_vars
 
 tf = try_import_tf()
@@ -46,9 +47,6 @@ def make_v1_wrapper(legacy_model_cls):
                 ]
             else:
                 self.initial_state = []
-
-            # Tracks branches created so far
-            self.branches_created = set()
 
             # Tracks update ops
             self._update_ops = None
@@ -118,42 +116,40 @@ def make_v1_wrapper(legacy_model_cls):
         def value_function(self):
             assert self.cur_instance, "must call forward first"
 
-            with self._branch_variable_scope("value_function"):
-                # Simple case: sharing the feature layer
-                if self.model_config["vf_share_layers"]:
-                    return tf.reshape(
-                        linear(self.cur_instance.last_layer, 1,
-                               "value_function", normc_initializer(1.0)), [-1])
-
-                # Create a new separate model with no RNN state, etc.
-                branch_model_config = self.model_config.copy()
-                branch_model_config["free_log_std"] = False
-                if branch_model_config["use_lstm"]:
-                    branch_model_config["use_lstm"] = False
-                    logger.warning(
-                        "It is not recommended to use a LSTM model with "
-                        "vf_share_layers=False (consider setting it to True). "
-                        "If you want to not share layers, you can implement "
-                        "a custom LSTM model that overrides the "
-                        "value_function() method.")
-                branch_instance = self.legacy_model_cls(
-                    self.cur_instance.input_dict,
-                    self.obs_space,
-                    self.action_space,
-                    1,
-                    branch_model_config,
-                    state_in=None,
-                    seq_lens=None)
-                return tf.reshape(branch_instance.outputs, [-1])
-
-        def _branch_variable_scope(self, branch_type):
-            if branch_type in self.branches_created:
-                reuse = True
-            else:
-                self.branches_created.add(branch_type)
-                reuse = tf.AUTO_REUSE
-
             with tf.variable_scope(self.variable_scope):
-                return tf.variable_scope(branch_type, reuse=reuse)
+                with tf.variable_scope("value_function", reuse=tf.AUTO_REUSE):
+                    # Simple case: sharing the feature layer
+                    if self.model_config["vf_share_layers"]:
+                        return tf.reshape(
+                            linear(self.cur_instance.last_layer, 1,
+                                   "value_function", normc_initializer(1.0)),
+                            [-1])
+
+                    # Create a new separate model with no RNN state, etc.
+                    branch_model_config = self.model_config.copy()
+                    branch_model_config["free_log_std"] = False
+                    if branch_model_config["use_lstm"]:
+                        branch_model_config["use_lstm"] = False
+                        if log_once("vf_warn"):
+                            logger.warning(
+                                "It is not recommended to use a LSTM model "
+                                "with vf_share_layers=False (consider setting "
+                                "it to True). If you want to not share "
+                                "layers, you can implement a custom LSTM "
+                                "model that overrides the value_function() "
+                                "method.")
+                    branch_instance = self.legacy_model_cls(
+                        self.cur_instance.input_dict,
+                        self.obs_space,
+                        self.action_space,
+                        1,
+                        branch_model_config,
+                        state_in=None,
+                        seq_lens=None)
+                    return tf.reshape(branch_instance.outputs, [-1])
+
+        @override(ModelV2)
+        def last_output(self):
+            return self.cur_instance.outputs
 
     return ModelV1Wrapper
