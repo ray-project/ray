@@ -32,8 +32,6 @@ def simple_dataset(batch_size=20):
 
     train_dataset = Dataset.from_tensor_slices((x_train, y_train))
     test_dataset = Dataset.from_tensor_slices((x_test, y_test))
-
-    # tf.random.set_seed(22)
     train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).repeat().batch(
         batch_size)
     test_dataset = test_dataset.repeat().batch(batch_size)
