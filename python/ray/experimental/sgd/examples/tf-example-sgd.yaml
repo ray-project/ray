@@ -51,11 +51,8 @@ setup_commands:
     - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ipdb ray[rllib]
     - pip install tensorflow==2.0.0-rc0
-    - rm -rf /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/experimental/
-    - cp -r ~/experimental/ /home/ubuntu/anaconda3/lib/python3.6/site-packages/ray/experimental/
 
 file_mounts: {
-    ~/experimental/: /Users/rliaw/Research/riselab/ray/python/ray/experimental/
 }
 
 # Custom commands that will be run on the head node after common setup.
