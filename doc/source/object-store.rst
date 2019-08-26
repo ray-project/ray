@@ -1,16 +1,16 @@
-Object Store (Plasma)
-=====================
+Serialization and Object Store
+==============================
 
 Plasma is an in-memory object store that is being developed as part of `Apache Arrow`_. Ray uses Plasma to efficiently transfer objects across different processes and different nodes.
 
 All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
 
-Note that Plasma does not support all data-types, and in certain cases it may be necessary to either write your own serialization protocol or use Actors to hold objects and transfer object state (i.e., weight matrices) among Ray workers.
+Note that Plasma does not support all data-types, and in certain cases it may be necessary to either write `your own serialization protocol <object-store.html#serialization>`_ or use Actors to hold objects and transfer object state (i.e., weight matrices) among Ray workers.
 
 Overview
 --------
 
-Ray will place objects in a node object store in the following situations:
+Once an object is placed in the object store, it is immutable. Ray will place objects in the object store in the following situations:
 
 1. Calling ``ray.put``
 
@@ -32,8 +32,7 @@ Ray will place objects in a node object store in the following situations:
     object_id = remote_function.remote()
 
 
-3. Arguments to remote functions (except for simple arguments like ints or
-   floats).
+3. Arguments to remote functions (except for simple arguments like ints or floats).
 
 .. code:: python
 
@@ -42,25 +41,70 @@ Ray will place objects in a node object store in the following situations:
         # Note that inside the remote function, the actual argument is provided.
         return len(y)
 
-    argument = [1, 2, 3, 4]
+    argument = np.random.rand(100, 100)
     # This implicitly places `argument` into the object store.
     remote_function.remote(argument)
 
-In the single node setting, all Ray workers can read the same object in the object store without copying (zero-copy reads). Once an object is placed in the object store, it is immutable. Any writes to the read-only object will result in a copy into the local process memory.
-
-Distributed Setting
-~~~~~~~~~~~~~~~~~~~
-
-Each node has its own object store. When data is put into a node object store, it
-does not get automatically broadcasted; it remains local until requested by another
-task on another node.
+Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
 
 
-Numpy Arrays
-------------
+Serialization
+-------------
+
+Objects that are serialized for transfer among Ray processes go through three stages:
+
+**1. Serialize using pyarrow**: Below is the set of Python objects that Ray can serialize using ``pyarrow``:
+
+1. Primitive types: ints, floats, longs, bools, strings, unicode, and numpy arrays.
+
+2. Any list, dictionary, or tuple whose elements can be serialized by Ray.
+
+**2. ``__dict__`` serialization**: If a direct usage of PyArrow is not possible, Ray will recursively extract the object’s ``__dict__`` and serialize that using pyarrow. This behavior is not correct in all cases.
+
+**3. Cloudpickle**:  Ray falls back to ``cloudpickle`` as a final attempt for serialization. This may be slow.
+
+If none of these options work, we recommend registering a custom serializer.
+
+.. autofunction:: ray.register_custom_serializer
+  :noindex:
+
+Below is an example of using ``ray.register_custom_serializer``:
+
+.. code-block:: python
+
+      import ray
+
+      ray.init()
+
+      class Foo(object):
+          def __init__(self, value):
+              self.value = value
+
+      def custom_serializer(obj):
+          return obj.value
+
+      def custom_deserializer(value):
+          object = Foo()
+          object.value = value
+          return object
+
+      ray.register_custom_serializer(
+          Foo, serializer=custom_serializer, deserializer=custom_deserializer)
+
+      object_id = ray.put(Foo(100))
+      assert ray.get(object_id).value == 100
+
+
+If you find cases where Ray serialization doesn't work or does something unexpected, please `let us know`_ so we can fix it.
+
+.. _`let us know`: https://github.com/ray-project/ray/issues
+
+
+Serialization: Numpy Arrays
+---------------------------
 
 Ray optimizes for numpy arrays by using the `Apache Arrow`_ data format.
-Each numpy array object holds a pointer to the relevant array held in shared memory.
+The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will result in a copy into the local process memory.
 
 There are some advantages to this form of serialization:
 
@@ -68,39 +112,13 @@ There are some advantages to this form of serialization:
 - Memory is shared between processes so worker processes can all read the same
   data without having to copy it.
 
-**Nested Numpy Arrays:** When we deserialize a list of numpy arrays from the object store, we still create a Python list of numpy array objects. However, rather than copy each numpy array,
-
 .. _`Apache Arrow`: https://arrow.apache.org/
-
-Comparison to Pickle
-~~~~~~~~~~~~~~~~~~~~
-
-Pickle is standard Python serialization library. However, for numerical workloads, pickling and unpickling can be inefficient.
-
-For example, if multiple processes want to access a Python list of numpy arrays, each process must unpickle the list and create its own new copies of the arrays. This can lead to high memory overheads, even when all processes are read-only and could easily share memory.
-
-
-Supported Datatypes
--------------------
-
-Ray does not currently support serialization of arbitrary Python objects.  The
-set of Python objects that Ray can serialize using Arrow includes the following.
-
-1. Primitive types: ints, floats, longs, bools, strings, unicode, and numpy
-   arrays.
-2. Any list, dictionary, or tuple whose elements can be serialized by Ray.
-
-For a more general object, Ray will first attempt to serialize the object by
-unpacking the object as a dictionary of its fields. This behavior is not
-correct in all cases. If Ray cannot serialize the object as a dictionary of its
-fields, Ray will fall back to using pickle. However, using pickle will likely
-be inefficient.
 
 
 Notes and limitations
 ---------------------
 
-- We currently handle certain patterns incorrectly, according to Python
+- Ray currently handles certain patterns incorrectly, according to Python
   semantics. For example, a list that contains two copies of the same list will
   be serialized as if the two lists were distinct.
 
@@ -132,36 +150,6 @@ Notes and limitations
     This object exceeds the maximum recursion depth. It may contain itself recursively.
 
 - Whenever possible, use numpy arrays for maximum performance.
-
-Last Resort Workaround
-~~~~~~~~~~~~~~~~~~~~~~
-
-If you find cases where Ray serialization doesn't work or does something
-unexpected, please `let us know`_ so we can fix it. In the meantime, you may
-have to resort to writing custom serialization and deserialization code (e.g.,
-calling pickle by hand).
-
-.. _`let us know`: https://github.com/ray-project/ray/issues
-
-.. code-block:: python
-
-  import pickle
-
-  @ray.remote
-  def f(complicated_object):
-      # Deserialize the object manually.
-      obj = pickle.loads(complicated_object)
-      return "Successfully passed {} into f.".format(obj)
-
-  # Define a complicated object.
-  l = []
-  l.append(l)
-
-  # Manually serialize the object and pass it in as a string.
-  ray.get(f.remote(pickle.dumps(l)))  # prints 'Successfully passed [[...]] into f.'
-
-**Note:** If you have trouble with pickle, you may have better luck with
-cloudpickle.
 
 Advanced: Huge Pages
 --------------------

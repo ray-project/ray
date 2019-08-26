@@ -27,6 +27,8 @@ View the `codebase on GitHub`_.
 Quick Start
 -----------
 
+Execute Python functions in parallel.
+
 .. code-block:: python
 
     import ray
@@ -62,6 +64,7 @@ To use Ray's actor model:
     futures = [c.read.remote() for c in counters]
     print(ray.get(futures))
 
+Visit the `Walkthrough <walkthrough.html>`_ page a more comprehensive overview of Ray features.
 
 Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
 
