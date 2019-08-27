@@ -103,37 +103,6 @@ Ray can be built from the repository as follows.
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
-Alternatively, Ray can be built from the repository without cloning using pip.
-
-.. code-block:: bash
-
-    pip install git+https://github.com/ray-project/ray.git#subdirectory=python
-
-Cleaning the source tree
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-The source tree can be cleaned by running
-
-.. code-block:: bash
-
-  git clean -f -f -x -d
-
-in the ``ray/`` directory. Warning: this command will delete all untracked files
-and directories and will reset the repository to its checked out state.
-For a shallower working directory cleanup, you may want to try:
-
-.. code-block:: bash
-
-  rm -rf ./build
-
-under ``ray/``. Incremental builds should work as follows:
-
-.. code-block:: bash
-
-  pushd ./build && make && popd
-
-under ``ray/``.
-
 Docker Source Images
 --------------------
 
