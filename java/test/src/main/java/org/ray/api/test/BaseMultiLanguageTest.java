@@ -1,5 +1,6 @@
 package org.ray.api.test;
 
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.File;
@@ -9,7 +10,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
-import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
@@ -77,7 +77,7 @@ public abstract class BaseMultiLanguageTest {
     );
     String numWorkersPerProcessJava = System
         .getProperty("ray.raylet.config.num_workers_per_process_java");
-    if (!StringUtil.isNullOrEmpty(numWorkersPerProcessJava)) {
+    if (!Strings.isNullOrEmpty(numWorkersPerProcessJava)) {
       startCommand = ImmutableList.<String>builder().addAll(startCommand)
           .add("--java-num-workers-per-process=" + numWorkersPerProcessJava).build();
     }

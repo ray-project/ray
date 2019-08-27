@@ -2,9 +2,12 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.io.FileUtils;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
@@ -48,10 +51,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
 
     RayConfig globalRayConfig = RayConfig.create();
-    File logDirFile = new File(globalRayConfig.logDir);
-    if (!logDirFile.exists()) {
-      //noinspection ResultOfMethodCallIgnored
-      logDirFile.mkdirs();
+    try {
+      FileUtils.forceMkdir(new File(globalRayConfig.logDir));
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to create the log directory.", e);
     }
     nativeSetup(globalRayConfig.logDir);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
