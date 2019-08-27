@@ -178,7 +178,11 @@ class LogMonitor(object):
             max_num_lines_to_read = 100
             for _ in range(max_num_lines_to_read):
                 try:
-                    next_line = file_info.file_handle.readline().decode()
+                    next_line = file_info.file_handle.readline()
+                    # Replace any characters not in UTF-8 with
+                    # a replacement character, see
+                    # https://stackoverflow.com/a/38565489/10891801
+                    next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
                     if next_line[-1] == "\n":
