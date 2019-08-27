@@ -178,10 +178,10 @@ class LogMonitor(object):
             max_num_lines_to_read = 100
             for _ in range(max_num_lines_to_read):
                 try:
-                    next_line = file_info.file_handle.readline()
-                    if next_line == b"":
+                    next_line = file_info.file_handle.readline().decode()
+                    if next_line == "":
                         break
-                    if next_line[-1] == b"\n":
+                    if next_line[-1] == "\n":
                         next_line = next_line[:-1]
                     lines_to_publish.append(next_line)
                 except Exception:
@@ -193,9 +193,9 @@ class LogMonitor(object):
 
             if file_info.file_position == 0:
                 if (len(lines_to_publish) > 0 and
-                        lines_to_publish[0].startswith(b"Ray worker pid: ")):
+                        lines_to_publish[0].startswith("Ray worker pid: ")):
                     file_info.worker_pid = int(
-                        lines_to_publish[0].split(b" ")[-1])
+                        lines_to_publish[0].split(" ")[-1])
                     lines_to_publish = lines_to_publish[1:]
                 elif "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
@@ -209,7 +209,7 @@ class LogMonitor(object):
                     json.dumps({
                         "ip": self.ip,
                         "pid": file_info.worker_pid,
-                        "lines": [line.decode() for line in lines_to_publish]
+                        "lines": lines_to_publish
                     }))
                 anything_published = True
 
