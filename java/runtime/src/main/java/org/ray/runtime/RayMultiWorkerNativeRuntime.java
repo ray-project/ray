@@ -95,7 +95,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     }
   }
 
-  private RayNativeRuntime getCurrentRuntime() {
+  public RayNativeRuntime getCurrentRuntime() {
     RayNativeRuntime currentRuntime = currentThreadRuntime.get();
     Preconditions.checkNotNull(currentRuntime,
         "RayRuntime is not set on current thread."

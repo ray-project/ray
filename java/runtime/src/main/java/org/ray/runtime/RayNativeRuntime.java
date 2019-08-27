@@ -51,7 +51,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // Copy the file from resources to a temp dir, and load the native library.
         File file = File.createTempFile(fileName, "");
         file.deleteOnExit();
-        InputStream in = AbstractRayRuntime.class.getResourceAsStream("/" + fileName);
+        InputStream in = RayNativeRuntime.class.getResourceAsStream("/" + fileName);
         Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
         Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
         System.load(file.getAbsolutePath());

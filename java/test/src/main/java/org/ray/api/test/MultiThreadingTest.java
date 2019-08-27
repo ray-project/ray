@@ -54,19 +54,22 @@ public class MultiThreadingTest extends BaseTest {
     }
 
     @RayRemote
-    public ActorId getCurrentActorId() {
-      final ActorId[] result = new ActorId[1];
-      Thread thread = new Thread(() -> {
-        result[0] = Ray.getRuntimeContext().getCurrentActorId();
-      });
+    public ActorId getCurrentActorId() throws Exception {
+      final Object[] result = new Object[1];
+      Thread thread = new Thread(Ray.asyncClosure(() -> {
+        try {
+          result[0] = Ray.getRuntimeContext().getCurrentActorId();
+        } catch (Exception e) {
+          result[0] = e;
+        }
+      }));
       thread.start();
-      try {
-        thread.join();
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
+      thread.join();
+      if (result[0] instanceof Exception) {
+        throw (Exception) result[0];
       }
       Assert.assertEquals(result[0], actorId);
-      return result[0];
+      return (ActorId) result[0];
     }
   }
 

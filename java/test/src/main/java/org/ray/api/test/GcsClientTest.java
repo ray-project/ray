@@ -2,11 +2,9 @@ package org.ray.api.test;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import org.ray.api.Ray;
 import org.ray.api.TestUtils;
 import org.ray.api.id.JobId;
 import org.ray.api.runtimecontext.NodeInfo;
-import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.gcs.GcsClient;
 import org.testng.Assert;
@@ -29,10 +27,10 @@ public class GcsClientTest extends BaseTest {
   @Test
   public void testGetAllNodeInfo() {
     TestUtils.skipTestUnderSingleProcess();
-    RayConfig config = ((AbstractRayRuntime)Ray.internal()).getRayConfig();
+    RayConfig config = TestUtils.getRuntime().getRayConfig();
 
     Preconditions.checkNotNull(config);
-    GcsClient gcsClient = ((AbstractRayRuntime)Ray.internal()).getGcsClient();
+    GcsClient gcsClient = TestUtils.getRuntime().getGcsClient();
     List<NodeInfo> allNodeInfo = gcsClient.getAllNodeInfo();
     Assert.assertEquals(allNodeInfo.size(), 1);
     Assert.assertEquals(allNodeInfo.get(0).nodeAddress, config.nodeIp);
@@ -43,11 +41,11 @@ public class GcsClientTest extends BaseTest {
   @Test
   public void testNextJob() {
     TestUtils.skipTestUnderSingleProcess();
-    RayConfig config = ((AbstractRayRuntime)Ray.internal()).getRayConfig();
+    RayConfig config = TestUtils.getRuntime().getRayConfig();
     // The value of job id of this driver in cluster should be `1L`.
     Assert.assertEquals(config.getJobId(), JobId.fromInt(1));
 
-    GcsClient gcsClient = ((AbstractRayRuntime)Ray.internal()).getGcsClient();
+    GcsClient gcsClient = TestUtils.getRuntime().getGcsClient();
     for (int i  = 2; i < 100; ++i) {
       Assert.assertEquals(gcsClient.nextJobId(), JobId.fromInt(i));
     }
