@@ -33,16 +33,12 @@ class WorkerPool {
   /// and add them to the pool.
   ///
   /// \param num_worker_processes The number of worker processes to start, per language.
-  /// \param num_workers_per_process_by_lang The number of workers per process per
-  /// language.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   WorkerPool(int num_worker_processes,
-             const std::unordered_map<Language, int, std::hash<int>>
-                 &num_workers_per_process_by_lang,
              int maximum_startup_concurrency,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);

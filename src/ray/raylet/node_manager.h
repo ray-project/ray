@@ -43,8 +43,6 @@ struct NodeManagerConfig {
   int node_manager_port;
   /// The initial number of workers to create.
   int num_initial_workers;
-  /// The number of workers per process per language.
-  std::unordered_map<Language, int, std::hash<int>> num_workers_per_process_by_lang;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;

@@ -31,7 +31,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   /**
    * The number of workers per worker process.
    */
-  private final int workerCount;
+  private final int numWorkers;
   /**
    * The worker threads.
    */
@@ -50,13 +50,13 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
         rayConfig.runMode == RunMode.CLUSTER && rayConfig.workerMode == WorkerType.WORKER);
     Preconditions.checkState(rayConfig.numWorkersPerProcess > 0,
         "numWorkersPerProcess must be greater than 0.");
-    workerCount = rayConfig.numWorkersPerProcess;
-    runtimes = new RayNativeRuntime[workerCount];
-    threads = new Thread[workerCount];
+    numWorkers = rayConfig.numWorkersPerProcess;
+    runtimes = new RayNativeRuntime[numWorkers];
+    threads = new Thread[numWorkers];
 
-    LOGGER.info("Starting {} workers.", workerCount);
+    LOGGER.info("Starting {} workers.", numWorkers);
 
-    for (int i = 0; i < workerCount; i++) {
+    for (int i = 0; i < numWorkers; i++) {
       final int workerIndex = i;
       threads[i] = new Thread(() -> {
         RayNativeRuntime runtime = new RayNativeRuntime(rayConfig);
@@ -68,10 +68,10 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   public void run() {
-    for (int i = 0; i < workerCount; i++) {
+    for (int i = 0; i < numWorkers; i++) {
       threads[i].start();
     }
-    for (int i = 0; i < workerCount; i++) {
+    for (int i = 0; i < numWorkers; i++) {
       try {
         threads[i].join();
       } catch (InterruptedException e) {
@@ -82,10 +82,10 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public void shutdown() {
-    for (int i = 0; i < workerCount; i++) {
+    for (int i = 0; i < numWorkers; i++) {
       runtimes[i].shutdown();
     }
-    for (int i = 0; i < workerCount; i++) {
+    for (int i = 0; i < numWorkers; i++) {
       try {
         runtimes[i].shutdown();
         threads[i].join();

@@ -40,12 +40,9 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with
-/// (num_worker_processes * num_workers_per_process_by_lang[language]) workers for each
-/// language.
-WorkerPool::WorkerPool(int num_worker_processes,
-                       const std::unordered_map<Language, int, std::hash<int>>
-                           &num_workers_per_process_by_lang,
-                       int maximum_startup_concurrency,
+/// (num_worker_processes * states_by_lang_[language].num_workers_per_process) workers for
+/// each language.
+WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : maximum_startup_concurrency_(maximum_startup_concurrency),
@@ -57,12 +54,18 @@ WorkerPool::WorkerPool(int num_worker_processes,
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
-    // If num workers per process was not expicitly set, use 1 as default.
-    auto it = num_workers_per_process_by_lang.find(entry.first);
-    if (it == num_workers_per_process_by_lang.end()) {
-      state.num_workers_per_process = 1;
-    } else {
-      state.num_workers_per_process = it->second;
+    switch (entry.first) {
+    case Language::PYTHON:
+      state.num_workers_per_process =
+          RayConfig::instance().num_workers_per_process_python();
+      break;
+    case Language::JAVA:
+      state.num_workers_per_process =
+          RayConfig::instance().num_workers_per_process_java();
+      break;
+    default:
+      RAY_LOG(FATAL) << "The number of workers per process for "
+                     << Language_Name(entry.first) << " worker is not set.";
     }
     RAY_CHECK(state.num_workers_per_process > 0)
         << "Number of workers per process of language " << Language_Name(entry.first)
