@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 TIMEOUT_RESOURCE_UPDATE = 1  # seconds
 
 
-def wait_until(condition, timeout):
+def retry_until(condition, timeout):
     # Helper method to retry a condition till it is true or a timeout elapses.
     # Returns true if the condition was true before the timeout,
     # False if the timeout elapses.
@@ -31,7 +31,7 @@ def wait_until(condition, timeout):
 def resource_condition(resource_name,
                        expected_capacity,
                        resource_getter=ray.available_resources):
-    # This method generates a lambda which can be used with the wait_until
+    # This method generates a lambda which can be used with the retry_until
     # method for checking a resource's availability and capacity. The
     # resource_getter argument is a callable which returns a dictionary,
     # usually ray.available_resources or ray.cluster_resources.
@@ -69,8 +69,8 @@ def test_dynamic_res_creation(ray_start_regular):
                                                  ray.available_resources)
     cluster_res_condition = resource_condition(res_name, res_capacity,
                                                ray.cluster_resources)
-    assert wait_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
-    assert wait_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
 
 def test_dynamic_res_deletion(shutdown_only):
@@ -114,7 +114,7 @@ def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
 
     available_res_condition = resource_condition(res_name, res_capacity,
                                                  ray.available_resources)
-    assert wait_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
     successful, unsuccessful = ray.wait([oid], timeout=1)
     assert successful  # The task completed
@@ -150,7 +150,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
 
     node_res_condition = resource_condition(res_name, new_capacity,
                                             node_resource_getter)
-    assert wait_until(node_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(node_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
 
 def test_dynamic_res_creation_clientid(ray_start_cluster):
@@ -177,7 +177,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
     node_resource_getter = node_resource_getter_generator(target_node_id)
     node_res_condition = resource_condition(res_name, res_capacity,
                                             node_resource_getter)
-    assert wait_until(node_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(node_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
 
 def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
@@ -215,7 +215,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
             node_resource_getter = node_resource_getter_generator(nid)
             node_res_condition = resource_condition(res_name, res_capacity,
                                                     node_resource_getter)
-            was_successful = wait_until(node_res_condition,
+            was_successful = retry_until(node_res_condition,
                                         TIMEOUT_RESOURCE_UPDATE)
             resources_created.append(was_successful)
         success = all(resources_created)
@@ -324,7 +324,7 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
 
     cluster_res_condition = resource_condition(res_name, res_capacity,
                                                ray.cluster_resources)
-    assert wait_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
     # Delete the resource
     ray.get(delete_res.remote(res_name, target_node_id))
@@ -375,7 +375,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
 
     cluster_res_condition = resource_condition(res_name, res_capacity,
                                                ray.cluster_resources)
-    assert wait_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
     # Task to hold the resource till the driver signals to finish
     @ray.remote
@@ -420,7 +420,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
 
     available_res_condition = resource_condition(res_name, updated_capacity,
                                                  ray.available_resources)
-    assert wait_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
 
 def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
@@ -460,7 +460,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
 
     cluster_res_condition = resource_condition(res_name, res_capacity,
                                                ray.cluster_resources)
-    assert wait_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
     # Task to hold the resource till the driver signals to finish
     @ray.remote
@@ -505,7 +505,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
 
     available_res_condition = resource_condition(res_name, updated_capacity,
                                                  ray.available_resources)
-    assert wait_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(available_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
 
 def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
@@ -548,7 +548,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
 
     cluster_res_condition = resource_condition(res_name, res_capacity,
                                                ray.cluster_resources)
-    assert wait_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
+    assert retry_until(cluster_res_condition, TIMEOUT_RESOURCE_UPDATE)
 
     # Task to hold the resource till the driver signals to finish
     @ray.remote
@@ -655,5 +655,5 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
     def assert_available_resources():
         return 1 == ray.available_resources()["CPU"]
 
-    result = wait_until(assert_available_resources, TIMEOUT_RESOURCE_UPDATE)
+    result = retry_until(assert_available_resources, TIMEOUT_RESOURCE_UPDATE)
     assert result is True
