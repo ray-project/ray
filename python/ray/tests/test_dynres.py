@@ -43,6 +43,14 @@ def resource_condition(resource_name,
 
     return lambda: condition(resource_name, expected_capacity, resource_getter)
 
+def node_resource_getter_generator(target_node_id):
+    def node_resource_getter(target_node_id):
+        target_node = next(
+            node for node in ray.nodes() if node["NodeID"] == target_node_id)
+        resources = target_node["Resources"]
+        return resources
+
+    return lambda: node_resource_getter(target_node_id)
 
 def test_dynamic_res_creation(ray_start_regular):
     # This test creates a resource locally (without specifying the client_id)
@@ -136,11 +144,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
     new_capacity = res_capacity + 1
     ray.get(set_res.remote(res_name, new_capacity, target_node_id))
 
-    def node_resource_getter():
-        target_node = next(
-            node for node in ray.nodes() if node["NodeID"] == target_node_id)
-        resources = target_node["Resources"]
-        return resources
+    node_resource_getter = node_resource_getter_generator(target_node_id)
 
     node_res_condition = resource_condition(res_name, new_capacity,
                                             node_resource_getter)
@@ -168,12 +172,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
 
     ray.get(set_res.remote(res_name, res_capacity, target_node_id))
 
-    def node_resource_getter():
-        target_node = next(
-            node for node in ray.nodes() if node["NodeID"] == target_node_id)
-        resources = target_node["Resources"]
-        return resources
-
+    node_resource_getter = node_resource_getter_generator(target_node_id)
     node_res_condition = resource_condition(res_name, res_capacity,
                                             node_resource_getter)
     assert wait_until(node_res_condition, TIMEOUT_RESOURCE_UPDATE)
@@ -211,13 +210,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     while time.time() - start_time < TIMEOUT and not success:
         resources_created = []
         for nid in target_node_ids:
-
-            def node_resource_getter():
-                target_node = next(
-                    node for node in ray.nodes() if node["NodeID"] == nid)
-                resources = target_node["Resources"]
-                return resources
-
+            node_resource_getter = node_resource_getter_generator(nid)
             node_res_condition = resource_condition(res_name, res_capacity,
                                                     node_resource_getter)
             was_successful = wait_until(node_res_condition,
