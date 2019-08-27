@@ -43,6 +43,7 @@ def resource_condition(resource_name,
 
     return lambda: condition(resource_name, expected_capacity, resource_getter)
 
+
 def node_resource_getter_generator(target_node_id):
     def node_resource_getter(target_node_id):
         target_node = next(
@@ -51,6 +52,7 @@ def node_resource_getter_generator(target_node_id):
         return resources
 
     return lambda: node_resource_getter(target_node_id)
+
 
 def test_dynamic_res_creation(ray_start_regular):
     # This test creates a resource locally (without specifying the client_id)
