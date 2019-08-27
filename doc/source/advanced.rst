@@ -25,21 +25,31 @@ For example, here we instantiate many copies of the same actor with varying reso
   a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
   a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
 
-You can also specify different resource requirements per actor call:
+You can specify different resource requirements for tasks (but not for actor methods):
 
 .. code-block:: python
 
-  @ray.remote(num_cpus=4)
-  class Counter(object):
-      def __init__(self):
-          self.value = 0
+    @ray.remote
+    def g():
+        return ray.get_gpu_ids()
 
-      def increment(self):
-          self.value += 1
-          return self.value
+    object_gpu_ids = g.remote()
+    assert ray.get(object_gpu_ids) == [0]
 
-  actor = Counter.remote()
-  actor.increment._remote(num_cpus=2)
+    dynamic_object_gpu_ids = g._remote(args=[], num_cpus=1, num_gpus=1)
+    assert ray.get(dynamic_object_gpu_ids) == [0]
+
+And vary the number of return values for tasks (and actor methods too):
+
+.. code-block:: python
+
+    @ray.remote
+    def f(n):
+        return list(range(n))
+
+    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    assert ray.get(id1) == 0
+    assert ray.get(id2) == 1
 
 
 Nested Remote Functions
