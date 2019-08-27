@@ -154,7 +154,7 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    timeout = 5
+    timeout = 8
     num_workers_nodes = 3
     num_nodes_total = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
