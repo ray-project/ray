@@ -3,7 +3,6 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -21,16 +20,30 @@ import org.ray.runtime.generated.Common.WorkerType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * This is a proxy runtime for multi-worker support. It holds multiple {@link RayNativeRuntime}
+ * instances and redirect calls to the correct one based on thread context.
+ */
 public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayMultiWorkerNativeRuntime.class);
 
+  /**
+   * The number of workers per worker process.
+   */
   private final int workerCount;
+  /**
+   * The worker threads.
+   */
   private final Thread[] threads;
+  /**
+   * The {@link RayNativeRuntime} instances of workers.
+   */
   private final RayNativeRuntime[] runtimes;
+  /**
+   * The {@link RayNativeRuntime} instance of current thread.
+   */
   private final ThreadLocal<RayNativeRuntime> currentThreadRuntime = new ThreadLocal<>();
-
-  private CountDownLatch shutdownCountDownLatch = new CountDownLatch(1);
 
   public RayMultiWorkerNativeRuntime(RayConfig rayConfig) {
     Preconditions.checkState(
@@ -44,10 +57,10 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     LOGGER.info("Starting {} workers.", workerCount);
 
     for (int i = 0; i < workerCount; i++) {
-      int finalI = i;
+      final int workerIndex = i;
       threads[i] = new Thread(() -> {
         RayNativeRuntime runtime = new RayNativeRuntime(rayConfig);
-        runtimes[finalI] = runtime;
+        runtimes[workerIndex] = runtime;
         currentThreadRuntime.set(runtime);
         runtime.run();
       });
@@ -69,7 +82,9 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public void shutdown() {
-    shutdownCountDownLatch.countDown();
+    for (int i = 0; i < workerCount; i++) {
+      runtimes[i].shutdown();
+    }
     for (int i = 0; i < workerCount; i++) {
       try {
         runtimes[i].shutdown();
@@ -83,7 +98,9 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   private RayNativeRuntime getCurrentRuntime() {
     RayNativeRuntime currentRuntime = currentThreadRuntime.get();
     Preconditions.checkNotNull(currentRuntime,
-        "RayRuntime is not set on current thread. If the task runs with multiple threads, please ensure Ray.asyncClosure is called when starting new threads.");
+        "RayRuntime is not set on current thread."
+            + " If you want to use Ray API in your own threads,"
+            + " please wrap your `Runnable`s or `Callable`s with `Ray.asyncClosure`.");
     return currentRuntime;
   }
 

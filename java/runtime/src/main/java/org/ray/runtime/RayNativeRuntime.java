@@ -51,6 +51,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
 
     RayConfig globalRayConfig = RayConfig.create();
+    resetLibraryPath(globalRayConfig);
+
     try {
       FileUtils.forceMkdir(new File(globalRayConfig.logDir));
     } catch (IOException e) {
@@ -60,13 +62,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
-  /**
-   * The synchronized keyword is applied together with the static keyword. That ensures
-   * thread-safety thread-safety when creating multiple RayNativeRuntime instances concurrently.
-   * Anyway, the {@link RayConfig#libraryPath} field is unlikely to change between runtime
-   * instances.
-   */
-  private static synchronized void resetLibraryPath(RayConfig rayConfig) {
+  private static void resetLibraryPath(RayConfig rayConfig) {
     if (rayConfig.libraryPath.isEmpty()) {
       return;
     }

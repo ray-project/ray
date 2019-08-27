@@ -23,7 +23,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
       if (rayConfig.runMode == RunMode.SINGLE_PROCESS) {
         runtime = new RayDevRuntime(rayConfig);
       } else {
-        if (rayConfig.workerMode == WorkerType.DRIVER || rayConfig.numWorkersPerProcess == 1) {
+        if (rayConfig.workerMode == WorkerType.DRIVER) {
           runtime = new RayNativeRuntime(rayConfig);
         } else {
           runtime = new RayMultiWorkerNativeRuntime(rayConfig);
