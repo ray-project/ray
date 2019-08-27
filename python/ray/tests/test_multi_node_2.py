@@ -22,7 +22,7 @@ def eventually(fn, timeout):
         try:
             fn()
             error = None
-        except ValueError as e:
+        except Exception as e:
             time.sleep(0.1)
             print("Retrying", e)
             error = e
@@ -171,14 +171,14 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     timeout = 5
     num_workers_nodes = 4
-    num_nodes_total = int(num_workers_nodes + 1)
+    n_nodes = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
     cluster.wait_for_nodes()
     monitor = setup_monitor(cluster.redis_address)
 
     eventually(
         lambda: verify_load_metrics(
-            monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
+            monitor, (0.0, {"CPU": 0.0}, {"CPU": n_nodes})),
         timeout=timeout)
 
     @ray.remote
@@ -187,19 +187,19 @@ def test_heartbeats_cluster(ray_start_cluster_head):
             time.sleep(timeout)
             return True
 
-    test_actors = [Actor.remote() for i in range(num_nodes_total)]
+    test_actors = [Actor.remote() for i in range(n_nodes)]
 
-    [actor.work.remote(timeout) for actor in test_actors]
+    work_handles = [actor.work.remote(timeout) for actor in test_actors]
 
     eventually(
         lambda: verify_load_metrics(
-            monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
+            monitor, (0.0, {"CPU": n_nodes}, {"CPU": n_nodes})),
         timeout=timeout)
 
     ray.get(work_handles)
     eventually(
         lambda: verify_load_metrics(
-            monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
+            monitor, (0.0, {"CPU": 0.0}, {"CPU": n_nodes})),
         timeout=timeout)
     ray.shutdown()
 
