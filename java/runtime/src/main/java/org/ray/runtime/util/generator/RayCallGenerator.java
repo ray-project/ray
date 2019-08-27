@@ -1,11 +1,9 @@
 package org.ray.runtime.util.generator;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.commons.io.FileUtils;
+import org.ray.runtime.util.FileUtil;
 
 /**
  * A util class that generates `RayCall.java`, which provides type-safe interfaces for `Ray.call`
@@ -269,7 +267,7 @@ public class RayCallGenerator extends BaseGenerator {
   public static void main(String[] args) throws IOException {
     String path = System.getProperty("user.dir")
         + "/api/src/main/java/org/ray/api/RayCall.java";
-    FileUtils.write(new File(path), new RayCallGenerator().build(), Charset.defaultCharset());
+    FileUtil.overrideFile(path, new RayCallGenerator().build());
   }
 }
 

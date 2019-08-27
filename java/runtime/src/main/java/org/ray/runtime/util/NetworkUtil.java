@@ -1,6 +1,5 @@
 package org.ray.runtime.util;
 
-import com.google.common.base.Strings;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.Inet6Address;
@@ -23,7 +22,7 @@ public class NetworkUtil {
         if (!current.isUp() || current.isLoopback() || current.isVirtual()) {
           continue;
         }
-        if (!Strings.isNullOrEmpty(interfaceName) && !interfaceName
+        if (!StringUtil.isNullOrEmpty(interfaceName) && !interfaceName
             .equals(current.getDisplayName())) {
           continue;
         }

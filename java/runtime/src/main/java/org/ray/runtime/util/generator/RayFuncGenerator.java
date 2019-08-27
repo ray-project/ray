@@ -1,9 +1,7 @@
 package org.ray.runtime.util.generator;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
-import org.apache.commons.io.FileUtils;
+import org.ray.runtime.util.FileUtil;
 
 /**
  * A util class that generates all the RayFuncX classes under org.ray.api.function package.
@@ -60,12 +58,10 @@ public class RayFuncGenerator extends BaseGenerator {
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       // Functions that have return.
       String content = generator.generate(i, true);
-      FileUtils.write(new File(root + "RayFunc" + i + ".java"), content,
-          Charset.defaultCharset());
+      FileUtil.overrideFile(root + "RayFunc" + i + ".java", content);
       // Functions that don't have return.
       content = generator.generate(i, false);
-      FileUtils.write(new File(root + "RayFuncVoid" + i + ".java"), content,
-          Charset.defaultCharset());
+      FileUtil.overrideFile(root + "RayFuncVoid" + i + ".java", content);
     }
   }
 
