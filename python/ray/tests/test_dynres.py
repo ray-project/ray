@@ -216,7 +216,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
             node_res_condition = resource_condition(res_name, res_capacity,
                                                     node_resource_getter)
             was_successful = retry_until(node_res_condition,
-                                        TIMEOUT_RESOURCE_UPDATE)
+                                         TIMEOUT_RESOURCE_UPDATE)
             resources_created.append(was_successful)
         success = all(resources_created)
     assert success
