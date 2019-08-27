@@ -23,11 +23,12 @@ class WorkerPoolMock : public WorkerPool {
                "--foo=RAY_WORKER_PLACEHOLDER_NUM_WORKERS"}}}) {}
 
   explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
-      : WorkerPool(0,
-                   {{Language::PYTHON, NUM_WORKERS_PER_PROCESS},
-                    {Language::JAVA, NUM_WORKERS_PER_PROCESS}},
-                   MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
-        last_worker_pid_(0) {}
+      : WorkerPool(0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+        last_worker_pid_(0) {
+    for (auto &entry : states_by_lang_) {
+      entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
+    }
+  }
 
   ~WorkerPoolMock() {
     // Avoid killing real processes

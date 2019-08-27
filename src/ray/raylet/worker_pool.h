@@ -38,8 +38,7 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_worker_processes,
-             int maximum_startup_concurrency,
+  WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
