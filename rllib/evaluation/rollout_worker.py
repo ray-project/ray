@@ -239,7 +239,8 @@ class RolloutWorker(EvaluatorInterface):
         _global_worker = self
 
         policy_config = policy_config or {}
-        if tf and policy_config.get("eager"):
+        if (tf and policy_config.get("eager")
+                and not policy_config.get("no_eager_on_workers")):
             tf.enable_eager_execution()
 
         if log_level:
