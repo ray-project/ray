@@ -75,7 +75,7 @@ Read more about `launching clusters <autoscaling.html>`_.
 Tune Quick Start
 ----------------
 
-`Tune`_ is a library for hyperparameter tuning at any scale. With Tune, you can launch a multi-node distributed asynchronous hyperparameter sweep in less than 10 lines of code. Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+`Tune`_ is a library for hyperparameter tuning at any scale. With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code. Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 
 .. note::
 

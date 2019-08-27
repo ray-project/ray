@@ -75,7 +75,7 @@ Tune Quick Start
 
 `Tune`_ is a library for hyperparameter tuning at any scale.
 
-- Launch a multi-node distributed asynchronous hyperparameter sweep in less than 10 lines of code.
+- Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
 - Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 - Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
 - Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.

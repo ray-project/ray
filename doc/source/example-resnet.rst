@@ -1,7 +1,7 @@
 ResNet
 ======
 
-This code adapts the `TensorFlow ResNet example`_ to do data parallel training
+This code uses ResNet to do data parallel training
 across multiple GPUs using Ray. View the `code for this example`_.
 
 To run the example, you will need to install `TensorFlow`_ (at
@@ -99,6 +99,5 @@ object store.
       mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
       weight_id = ray.put(mean_weights)
 
-.. _`TensorFlow ResNet example`: https://github.com/tensorflow/models/tree/master/resnet
 .. _`TensorFlow`: https://www.tensorflow.org/install/
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/resnet
