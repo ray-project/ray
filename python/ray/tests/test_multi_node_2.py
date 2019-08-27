@@ -73,6 +73,15 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
         monitor.process_messages()
         resource_usage = monitor.load_metrics.get_resource_usage()
 
+        if "memory" in resource_usage[1]:
+            del resource_usage[1]["memory"]
+        if "object_store_memory" in resource_usage[2]:
+            del resource_usage[1]["object_store_memory"]
+        if "memory" in resource_usage[2]:
+            del resource_usage[2]["memory"]
+        if "object_store_memory" in resource_usage[2]:
+            del resource_usage[2]["object_store_memory"]
+
         if expected_resource_usage is None:
             if all(x for x in resource_usage[1:]):
                 break

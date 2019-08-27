@@ -82,11 +82,6 @@ class DynamicTFPolicy(TFPolicy):
         Attributes:
             config: config of the policy
             model: model instance, if any
-            model_out: output tensors of the model
-            action_dist: action distribution of the model, if any
-            state_in: state input tensors, if any
-            state_out: state output tensors, if any
-            seq_lens: tensor of sequence lengths
         """
         self.config = config
         self._loss_fn = loss_fn
@@ -113,13 +108,13 @@ class DynamicTFPolicy(TFPolicy):
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
 
-        self.input_dict = {
+        self._input_dict = {
             SampleBatch.CUR_OBS: obs,
             SampleBatch.PREV_ACTIONS: prev_actions,
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
-        self.seq_lens = tf.placeholder(
+        self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
         # Setup model
@@ -127,11 +122,10 @@ class DynamicTFPolicy(TFPolicy):
             if not make_model:
                 raise ValueError(
                     "make_model is required if action_sampler_fn is given")
-            self.dist_class = None
+            self._dist_class = None
         else:
-            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+            self._dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
-            self.logit_dim = logit_dim
 
         if existing_model:
             self.model = existing_model
@@ -146,30 +140,30 @@ class DynamicTFPolicy(TFPolicy):
                 framework="tf")
 
         if existing_inputs:
-            self.state_in = [
+            self._state_in = [
                 v for k, v in existing_inputs.items()
                 if k.startswith("state_in_")
             ]
-            if self.state_in:
-                self.seq_lens = existing_inputs["seq_lens"]
+            if self._state_in:
+                self._seq_lens = existing_inputs["seq_lens"]
         else:
-            self.state_in = [
+            self._state_in = [
                 tf.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
                 for s in self.model.get_initial_state()
             ]
-        self.model_out, self.state_out = self.model(
-            self.input_dict, self.state_in, self.seq_lens)
+
+        model_out, self._state_out = self.model(self._input_dict,
+                                                self._state_in, self._seq_lens)
 
         # Setup action sampler
         if action_sampler_fn:
-            self.action_dist = None
             action_sampler, action_logp = action_sampler_fn(
-                self, self.model, self.input_dict, obs_space, action_space,
+                self, self.model, self._input_dict, obs_space, action_space,
                 config)
         else:
-            self.action_dist = self.dist_class(self.model_out, self.model)
-            action_sampler = self.action_dist.sample()
-            action_logp = self.action_dist.sampled_action_logp()
+            action_dist = self._dist_class(model_out, self.model)
+            action_sampler = action_dist.sample()
+            action_logp = action_dist.sampled_action_logp()
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -188,11 +182,11 @@ class DynamicTFPolicy(TFPolicy):
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
-            state_inputs=self.state_in,
-            state_outputs=self.state_out,
+            state_inputs=self._state_in,
+            state_outputs=self._state_out,
             prev_action_input=prev_actions,
             prev_reward_input=prev_rewards,
-            seq_lens=self.seq_lens,
+            seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req)
 
@@ -200,13 +194,6 @@ class DynamicTFPolicy(TFPolicy):
         before_loss_init(self, obs_space, action_space, config)
         if not existing_inputs:
             self._initialize_loss()
-
-    def get_obs_input_dict(self):
-        """Returns the obs input dict used to build policy models.
-
-        This dict includes the obs, prev actions, prev rewards, etc. tensors.
-        """
-        return self.input_dict
 
     @override(TFPolicy)
     def copy(self, existing_inputs):
@@ -260,6 +247,12 @@ class DynamicTFPolicy(TFPolicy):
         else:
             return []
 
+    def is_recurrent(self):
+        return len(self._state_in) > 0
+
+    def num_state_tensors(self):
+        return len(self._state_in)
+
     def _initialize_loss(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()
@@ -280,9 +273,11 @@ class DynamicTFPolicy(TFPolicy):
                 SampleBatch.PREV_REWARDS: fake_array(self._prev_reward_input),
             })
         state_init = self.get_initial_state()
+        state_batches = []
         for i, h in enumerate(state_init):
             dummy_batch["state_in_{}".format(i)] = np.expand_dims(h, 0)
             dummy_batch["state_out_{}".format(i)] = np.expand_dims(h, 0)
+            state_batches.append(np.expand_dims(h, 0))
         if state_init:
             dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
         for k, v in self.extra_compute_action_fetches().items():
@@ -290,11 +285,16 @@ class DynamicTFPolicy(TFPolicy):
 
         # postprocessing might depend on variable init, so run it first here
         self._sess.run(tf.global_variables_initializer())
+
         postprocessed_batch = self.postprocess_trajectory(
             SampleBatch(dummy_batch))
 
+        # model forward pass for the loss (needed after postprocess to
+        # overwrite any tensor state from that call)
+        self.model(self._input_dict, self._state_in, self._seq_lens)
+
         if self._obs_include_prev_action_reward:
-            batch_tensors = UsageTrackingDict({
+            train_batch = UsageTrackingDict({
                 SampleBatch.PREV_ACTIONS: self._prev_action_input,
                 SampleBatch.PREV_REWARDS: self._prev_reward_input,
                 SampleBatch.CUR_OBS: self._obs_input,
@@ -305,7 +305,7 @@ class DynamicTFPolicy(TFPolicy):
                 (SampleBatch.CUR_OBS, self._obs_input),
             ]
         else:
-            batch_tensors = UsageTrackingDict({
+            train_batch = UsageTrackingDict({
                 SampleBatch.CUR_OBS: self._obs_input,
             })
             loss_inputs = [
@@ -313,35 +313,42 @@ class DynamicTFPolicy(TFPolicy):
             ]
 
         for k, v in postprocessed_batch.items():
-            if k in batch_tensors:
+            if k in train_batch:
                 continue
             elif v.dtype == np.object:
                 continue  # can't handle arbitrary objects in TF
+            elif k == "seq_lens" or k.startswith("state_in_"):
+                continue
             shape = (None, ) + v.shape[1:]
             dtype = np.float32 if v.dtype == np.float64 else v.dtype
             placeholder = tf.placeholder(dtype, shape=shape, name=k)
-            batch_tensors[k] = placeholder
+            train_batch[k] = placeholder
+
+        for i, si in enumerate(self._state_in):
+            train_batch["state_in_{}".format(i)] = si
+        train_batch["seq_lens"] = self._seq_lens
 
         if log_once("loss_init"):
             logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
-                    summarize(batch_tensors)))
+                    summarize(train_batch)))
 
-        self._loss_input_dict = batch_tensors
-        loss = self._do_loss_init(batch_tensors)
-        for k in sorted(batch_tensors.accessed_keys):
-            loss_inputs.append((k, batch_tensors[k]))
+        self._loss_input_dict = train_batch
+        loss = self._do_loss_init(train_batch)
+        for k in sorted(train_batch.accessed_keys):
+            if k != "seq_lens" and not k.startswith("state_in_"):
+                loss_inputs.append((k, train_batch[k]))
 
         TFPolicy._initialize_loss(self, loss, loss_inputs)
         if self._grad_stats_fn:
             self._stats_fetches.update(
-                self._grad_stats_fn(self, batch_tensors, self._grads))
+                self._grad_stats_fn(self, train_batch, self._grads))
         self._sess.run(tf.global_variables_initializer())
 
-    def _do_loss_init(self, batch_tensors):
-        loss = self._loss_fn(self, batch_tensors)
+    def _do_loss_init(self, train_batch):
+        loss = self._loss_fn(self, self.model, self._dist_class, train_batch)
         if self._stats_fn:
-            self._stats_fetches.update(self._stats_fn(self, batch_tensors))
+            self._stats_fetches.update(self._stats_fn(self, train_batch))
         # override the update ops to be those of the model
         self._update_ops = self.model.update_ops()
         return loss

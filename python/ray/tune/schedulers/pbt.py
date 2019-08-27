@@ -219,6 +219,8 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
+        if self._time_attr not in result or self._metric not in result:
+            return TrialScheduler.CONTINUE
         time = result[self._time_attr]
         state = self._trial_state[trial]
 

@@ -19,7 +19,8 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip
+from ray.rllib.utils.tf_ops import huber_loss, minimize_and_clip, \
+    make_tf_callable
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -91,14 +92,6 @@ def postprocess_trajectory(policy,
     if policy.config["parameter_noise"]:
         policy.adjust_param_noise_sigma(sample_batch)
     return _postprocess_dqn(policy, sample_batch)
-
-
-def exploration_setting_inputs(policy):
-    return {
-        policy.stochastic: True,
-        policy.noise_scale: policy.cur_noise_scale,
-        policy.pure_exploration_phase: policy.cur_pure_exploration_phase,
-    }
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
@@ -193,24 +186,24 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     return actions, None
 
 
-def actor_critic_loss(policy, batch_tensors):
-    model_out_t, _ = policy.model({
-        "obs": batch_tensors[SampleBatch.CUR_OBS],
+def actor_critic_loss(policy, model, _, train_batch):
+    model_out_t, _ = model({
+        "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
-    model_out_tp1, _ = policy.model({
-        "obs": batch_tensors[SampleBatch.NEXT_OBS],
+    model_out_tp1, _ = model({
+        "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
     target_model_out_tp1, _ = policy.target_model({
-        "obs": batch_tensors[SampleBatch.NEXT_OBS],
+        "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
-    policy_t = policy.model.get_policy_output(model_out_t)
-    policy_tp1 = policy.model.get_policy_output(model_out_tp1)
+    policy_t = model.get_policy_output(model_out_t)
+    policy_tp1 = model.get_policy_output(model_out_tp1)
 
     if policy.config["smooth_target_policy"]:
         target_noise_clip = policy.config["target_noise_clip"]
@@ -226,14 +219,13 @@ def actor_critic_loss(policy, batch_tensors):
         policy_tp1_smoothed = policy_tp1
 
     # q network evaluation
-    q_t = policy.model.get_q_values(model_out_t,
-                                    batch_tensors[SampleBatch.ACTIONS])
+    q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
     if policy.config["twin_q"]:
-        twin_q_t = policy.model.get_twin_q_values(
-            model_out_t, batch_tensors[SampleBatch.ACTIONS])
+        twin_q_t = model.get_twin_q_values(model_out_t,
+                                           train_batch[SampleBatch.ACTIONS])
 
     # Q-values for current policy (no noise) in given current state
-    q_t_det_policy = policy.model.get_q_values(model_out_t, policy_t)
+    q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
     # target q network evaluation
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
@@ -248,12 +240,12 @@ def actor_critic_loss(policy, batch_tensors):
         q_tp1 = tf.minimum(q_tp1, twin_q_tp1)
 
     q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
-    q_tp1_best_masked = (1.0 - tf.cast(batch_tensors[SampleBatch.DONES],
-                                       tf.float32)) * q_tp1_best
+    q_tp1_best_masked = (
+        1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)) * q_tp1_best
 
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
-        batch_tensors[SampleBatch.REWARDS] +
+        train_batch[SampleBatch.REWARDS] +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # compute the error (potentially clipped)
@@ -273,15 +265,17 @@ def actor_critic_loss(policy, batch_tensors):
         else:
             errors = 0.5 * tf.square(td_error)
 
-    critic_loss = policy.model.custom_loss(
-        tf.reduce_mean(batch_tensors[PRIO_WEIGHTS] * errors), batch_tensors)
+    critic_loss = model.custom_loss(
+        tf.reduce_mean(
+            tf.cast(train_batch[PRIO_WEIGHTS], tf.float32) * errors),
+        train_batch)
     actor_loss = -tf.reduce_mean(q_t_det_policy)
 
     if policy.config["l2_reg"] is not None:
-        for var in policy.model.policy_variables():
+        for var in model.policy_variables():
             if "bias" not in var.name:
                 actor_loss += policy.config["l2_reg"] * tf.nn.l2_loss(var)
-        for var in policy.model.q_variables():
+        for var in model.q_variables():
             if "bias" not in var.name:
                 critic_loss += policy.config["l2_reg"] * tf.nn.l2_loss(var)
 
@@ -299,19 +293,19 @@ def actor_critic_loss(policy, batch_tensors):
 def gradients(policy, optimizer, loss):
     if policy.config["grad_norm_clipping"] is not None:
         actor_grads_and_vars = minimize_and_clip(
-            policy._actor_optimizer,
+            optimizer,
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
             clip_val=policy.config["grad_norm_clipping"])
         critic_grads_and_vars = minimize_and_clip(
-            policy._critic_optimizer,
+            optimizer,
             policy.critic_loss,
             var_list=policy.model.q_variables(),
             clip_val=policy.config["grad_norm_clipping"])
     else:
-        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
+        actor_grads_and_vars = optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
-        critic_grads_and_vars = policy._critic_optimizer.compute_gradients(
+        critic_grads_and_vars = optimizer.compute_gradients(
             policy.critic_loss, var_list=policy.model.q_variables())
     # save these for later use in build_apply_op
     policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
@@ -345,7 +339,7 @@ def apply_gradients(policy, optimizer, grads_and_vars):
         return tf.group(actor_op, critic_op)
 
 
-def stats(policy, batch_tensors):
+def stats(policy, train_batch):
     return {
         "td_error": tf.reduce_mean(policy.td_error),
         "actor_loss": tf.reduce_mean(policy.actor_loss),
@@ -360,16 +354,32 @@ class ExplorationStateMixin(object):
     def __init__(self, obs_space, action_space, config):
         self.cur_noise_scale = 1.0
         self.cur_pure_exploration_phase = False
-        self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
-        self.pure_exploration_phase = tf.placeholder(
-            tf.bool, (), name="pure_exploration_phase")
+        self.stochastic = tf.get_variable(
+            initializer=tf.constant_initializer(True),
+            name="stochastic",
+            shape=(),
+            trainable=False,
+            dtype=tf.bool)
+        self.noise_scale = tf.get_variable(
+            initializer=tf.constant_initializer(self.cur_noise_scale),
+            name="noise_scale",
+            shape=(),
+            trainable=False,
+            dtype=tf.float32)
+        self.pure_exploration_phase = tf.get_variable(
+            initializer=tf.constant_initializer(
+                self.cur_pure_exploration_phase),
+            name="pure_exploration_phase",
+            shape=(),
+            trainable=False,
+            dtype=tf.bool)
 
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
             self.get_session().run(self.model.add_noise_op)
 
     def adjust_param_noise_sigma(self, sample_batch):
+        assert not tf.executing_eagerly(), "eager not supported with p noise"
         # adjust the sigma of parameter space noise
         states, noisy_actions = [
             list(x) for x in sample_batch.columns(
@@ -396,9 +406,12 @@ class ExplorationStateMixin(object):
         # is a carry-over from DQN, which uses epsilon-greedy exploration
         # rather than adding action noise to the output of a policy network.
         self.cur_noise_scale = epsilon
+        self.noise_scale.load(self.cur_noise_scale, self.get_session())
 
     def set_pure_exploration_phase(self, pure_exploration_phase):
         self.cur_pure_exploration_phase = pure_exploration_phase
+        self.pure_exploration_phase.load(self.cur_pure_exploration_phase,
+                                         self.get_session())
 
     @override(Policy)
     def get_state(self):
@@ -416,30 +429,27 @@ class ExplorationStateMixin(object):
 
 class TargetNetworkMixin(object):
     def __init__(self, config):
-        # update_target_fn will be called periodically to copy Q network to
-        # target Q network
-        self.tau_value = config.get("tau")
-        self.tau = tf.placeholder(tf.float32, (), name="tau")
-        update_target_expr = []
-        model_vars = self.model.trainable_variables()
-        target_model_vars = self.target_model.trainable_variables()
-        assert len(model_vars) == len(target_model_vars), \
-            (model_vars, target_model_vars)
-        for var, var_target in zip(model_vars, target_model_vars):
-            update_target_expr.append(
-                var_target.assign(self.tau * var +
-                                  (1.0 - self.tau) * var_target))
-            logger.debug("Update target op {}".format(var_target))
-        self.update_target_expr = tf.group(*update_target_expr)
+        @make_tf_callable(self.get_session())
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            update_target_expr = []
+            model_vars = self.model.trainable_variables()
+            target_model_vars = self.target_model.trainable_variables()
+            assert len(model_vars) == len(target_model_vars), \
+                (model_vars, target_model_vars)
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target))
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
 
         # Hard initial update
+        self._do_update = update_target_fn
         self.update_target(tau=1.0)
 
     # support both hard and soft sync
     def update_target(self, tau=None):
-        tau = tau or self.tau_value
-        return self.get_session().run(
-            self.update_target_expr, feed_dict={self.tau: tau})
+        self._do_update(np.float32(tau or self.config.get("tau")))
 
 
 class ActorCriticOptimizerMixin(object):
@@ -455,31 +465,36 @@ class ActorCriticOptimizerMixin(object):
 
 
 class ComputeTDErrorMixin(object):
-    def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
-                         importance_weights):
-        if not self.loss_initialized():
-            return np.zeros_like(rew_t)
+    def __init__(self):
+        @make_tf_callable(self.get_session(), dynamic_shape=True)
+        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
+                             importance_weights):
+            if not self.loss_initialized():
+                return tf.zeros_like(rew_t)
 
-        td_err = self.get_session().run(
-            self.td_error,
-            feed_dict={
-                self.get_placeholder(SampleBatch.CUR_OBS): [
-                    np.array(ob) for ob in obs_t
-                ],
-                self.get_placeholder(SampleBatch.ACTIONS): act_t,
-                self.get_placeholder(SampleBatch.REWARDS): rew_t,
-                self.get_placeholder(SampleBatch.NEXT_OBS): [
-                    np.array(ob) for ob in obs_tp1
-                ],
-                self.get_placeholder(SampleBatch.DONES): done_mask,
-                self.get_placeholder(PRIO_WEIGHTS): importance_weights
-            })
-        return td_err
+            # Do forward pass on loss to update td error attribute
+            actor_critic_loss(
+                self, self.model, None, {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),
+                    SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
+                    SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
+                    SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
+                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                })
+
+            return self.td_error
+
+        self.compute_td_error = compute_td_error
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
     ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
     ActorCriticOptimizerMixin.__init__(policy, config)
+
+
+def setup_mid_mixins(policy, obs_space, action_space, config):
+    ComputeTDErrorMixin.__init__(policy)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
@@ -491,7 +506,6 @@ DDPGTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_model,
     postprocess_fn=postprocess_trajectory,
-    extra_action_feed_fn=exploration_setting_inputs,
     action_sampler_fn=build_action_output,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
@@ -503,5 +517,6 @@ DDPGTFPolicy = build_tf_policy(
         ComputeTDErrorMixin
     ],
     before_init=setup_early_mixins,
+    before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False)
