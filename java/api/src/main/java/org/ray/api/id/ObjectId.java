@@ -12,7 +12,7 @@ public class ObjectId extends BaseId implements Serializable {
 
   public static final int LENGTH = 20;
 
-  public static final ObjectId NIL = genNil();
+  private static final int FLAGS_LENGTH = 2;
 
   /**
    * Create an ObjectId from a ByteBuffer.
@@ -22,20 +22,16 @@ public class ObjectId extends BaseId implements Serializable {
   }
 
   /**
-   * Generate a nil ObjectId.
-   */
-  private static ObjectId genNil() {
-    byte[] b = new byte[LENGTH];
-    Arrays.fill(b, (byte) 0xFF);
-    return new ObjectId(b);
-  }
-
-  /**
    * Generate an ObjectId with random value.
    */
   public static ObjectId fromRandom() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
+    // Fill all bits of flags to zero to set the following flag values:
+    // Is task: false
+    // Object type: put
+    // Transport type: raylet
+    Arrays.fill(b, TaskId.LENGTH, TaskId.LENGTH + FLAGS_LENGTH, (byte) 0);
     return new ObjectId(b);
   }
 
