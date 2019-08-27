@@ -3130,9 +3130,9 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
             break
 
     with open(log_file_paths[0], "wb") as f:
-        f.write(b'\xe5abc\nline2\nline3\n')
-        f.write(b'\xe5abc\nline2\nline3\n')
-        f.write(b'\xe5abc\nline2\nline3\n')
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
         f.flush()
 
     # Wait till the log monitor reads the file.
