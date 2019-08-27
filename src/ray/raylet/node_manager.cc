@@ -1851,7 +1851,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
-    if(actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING) {
+    if (actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING) {
       RAY_LOG(WARNING) << "Actor not in reconstructing state, most likely it "
                        << "died before creation handler could run. Actor state is "
                        << actor_entry->second.GetState();
