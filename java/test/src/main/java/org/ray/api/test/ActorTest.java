@@ -32,7 +32,11 @@ public class ActorTest extends BaseTest {
       return value;
     }
 
-    public int increase(int delta) {
+    public void increase(int delta) {
+      value += delta;
+    }
+
+    public int increaseAndGet(int delta) {
       value += delta;
       return value;
     }
@@ -45,7 +49,8 @@ public class ActorTest extends BaseTest {
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
-    Assert.assertEquals(Integer.valueOf(11), Ray.call(Counter::increase, actor, 10).get());
+    Ray.call(Counter::increase, actor, 1);
+    Assert.assertEquals(Integer.valueOf(3), Ray.call(Counter::increaseAndGet, actor, 1).get());
   }
 
   @RayRemote
@@ -64,19 +69,19 @@ public class ActorTest extends BaseTest {
 
   @RayRemote
   public static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
-    RayObject<Integer> res = Ray.call(Counter::increase, actor, delta);
+    RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor, delta);
     return res.get();
   }
 
   @RayRemote
   public static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
-    RayObject<Integer> res = Ray.call(Counter::increase, actor, delta);
+    RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor, delta);
     return res.get();
   }
 
   @RayRemote
   public static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
-    RayObject<Integer> res = Ray.call(Counter::increase, actor.get(0), delta);
+    RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor.get(0), delta);
     return res.get();
   }
 
@@ -96,9 +101,9 @@ public class ActorTest extends BaseTest {
   public void testForkingActorHandle() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
-    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increase, counter, 1).get());
+    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increaseAndGet, counter, 1).get());
     RayActor<Counter> counter2 = ((NativeRayActor) counter).fork();
-    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increase, counter2, 2).get());
+    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increaseAndGet, counter2, 2).get());
   }
 
   @Test

@@ -13,13 +13,15 @@ tf = try_import_tf()
 
 
 # The basic policy gradients loss
-def policy_gradient_loss(policy, batch_tensors):
-    actions = batch_tensors[SampleBatch.ACTIONS]
-    advantages = batch_tensors[Postprocessing.ADVANTAGES]
-    return -tf.reduce_mean(policy.action_dist.logp(actions) * advantages)
+def policy_gradient_loss(policy, model, dist_class, train_batch):
+    logits, _ = model.from_batch(train_batch)
+    action_dist = dist_class(logits, model)
+    return -tf.reduce_mean(
+        action_dist.logp(train_batch[SampleBatch.ACTIONS]) *
+        train_batch[Postprocessing.ADVANTAGES])
 
 
-# This adds the "advantages" column to the sample batch.
+# This adds the "advantages" column to the sampletrain_batch.
 def postprocess_advantages(policy,
                            sample_batch,
                            other_agent_batches=None,

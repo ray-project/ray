@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import collections
 from concurrent.futures import ThreadPoolExecutor
+import glob
 import json
 import logging
 from multiprocessing import Process
@@ -967,11 +968,9 @@ def test_many_fractional_resources(shutdown_only):
     stop_time = time.time() + 10
     correct_available_resources = False
     while time.time() < stop_time:
-        if ray.available_resources() == {
-                "CPU": 2.0,
-                "GPU": 2.0,
-                "Custom": 2.0,
-        }:
+        if (ray.available_resources()["CPU"] == 2.0
+                and ray.available_resources()["GPU"] == 2.0
+                and ray.available_resources()["Custom"] == 2.0):
             correct_available_resources = True
             break
     if not correct_available_resources:
@@ -2324,6 +2323,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
         MAX_RETRY_ATTEMPTS = 5
         retry_count = 0
 
+        del resources["memory"]
+        del resources["object_store_memory"]
+
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.available_resources()
@@ -2537,8 +2539,9 @@ def test_global_state_api(shutdown_only):
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
-    resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
-    assert ray.cluster_resources() == resources
+    assert ray.cluster_resources()["CPU"] == 5
+    assert ray.cluster_resources()["GPU"] == 3
+    assert ray.cluster_resources()["CustomResource"] == 1
 
     assert ray.objects() == {}
 
@@ -2807,7 +2810,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=10**8)
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
@@ -3025,7 +3028,7 @@ def test_shutdown_disconnect_global_state():
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**8], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
     x_id = ray.put(x)
@@ -3111,3 +3114,29 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_invalid_unicode_in_worker_log(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    logs_dir = os.path.join(info["session_dir"], "logs")
+
+    # Wait till first worker log file is created.
+    while True:
+        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        if len(log_file_paths) == 0:
+            time.sleep(0.2)
+        else:
+            break
+
+    with open(log_file_paths[0], "wb") as f:
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.flush()
+
+    # Wait till the log monitor reads the file.
+    time.sleep(1.0)
+
+    # Make sure that nothing has died.
+    assert ray.services.remaining_processes_alive()

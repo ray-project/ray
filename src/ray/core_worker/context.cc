@@ -6,10 +6,7 @@ namespace ray {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   WorkerThreadContext()
-      : current_task_id_(TaskID::ForFakeTask()),
-        current_actor_id_(ActorID::Nil()),
-        task_index_(0),
-        put_index_(0) {}
+      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_index_(0) {}
 
   int GetNextTaskIndex() { return ++task_index_; }
 
@@ -21,8 +18,6 @@ struct WorkerThreadContext {
     return current_task_;
   }
 
-  const ActorID &GetCurrentActorID() const { return current_actor_id_; }
-
   void SetCurrentTaskId(const TaskID &task_id) {
     current_task_id_ = task_id;
     task_index_ = 0;
@@ -32,21 +27,11 @@ struct WorkerThreadContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
-    if (task_spec.IsActorCreationTask()) {
-      RAY_CHECK(current_actor_id_.IsNil());
-      current_actor_id_ = task_spec.ActorCreationId();
-    }
-    if (task_spec.IsActorTask()) {
-      RAY_CHECK(current_actor_id_ == task_spec.ActorId());
-    }
   }
 
  private:
   /// The task ID for current task.
   TaskID current_task_id_;
-
-  /// ID of current actor.
-  ActorID current_actor_id_;
 
   /// The current task.
   std::shared_ptr<const TaskSpecification> current_task_;
@@ -65,7 +50,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                     : WorkerID::FromRandom()),
-      current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()) {
+      current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
+      current_actor_id_(ActorID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -91,14 +77,19 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   current_job_id_ = task_spec.JobId();
   GetThreadContext().SetCurrentTask(task_spec);
+  if (task_spec.IsActorCreationTask()) {
+    RAY_CHECK(current_actor_id_.IsNil());
+    current_actor_id_ = task_spec.ActorCreationId();
+  }
+  if (task_spec.IsActorTask()) {
+    RAY_CHECK(current_actor_id_ == task_spec.ActorId());
+  }
 }
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
-const ActorID &WorkerContext::GetCurrentActorID() const {
-  return GetThreadContext().GetCurrentActorID();
-}
+const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {

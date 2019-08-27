@@ -28,9 +28,9 @@ struct ActorStateData {
 
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(boost::asio::io_service &io_service,
-                                     gcs::RedisGcsClient &gcs_client,
-                                     CoreWorkerObjectInterface &object_interface);
+  CoreWorkerDirectActorTaskSubmitter(
+      boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+      std::unique_ptr<CoreWorkerStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
@@ -42,15 +42,17 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Subscribe to all actor updates.
   Status SubscribeActorUpdates();
 
-  /// Helper function to push a task to an actor.
+  /// Push a task to a remote actor via the given client.
+  /// Note, this function doesn't return any error status code. If an error occurs while
+  /// sending the request, this task will be treated as failed.
   ///
   /// \param[in] client The RPC client to send tasks to an actor.
   /// \param[in] request The request to send.
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
-  /// \return Status.
-  Status PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request,
-                  const TaskID &task_id, int num_returns);
+  /// \return Void.
+  void PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request,
+                const TaskID &task_id, int num_returns);
 
   /// Treat a task as failed.
   ///

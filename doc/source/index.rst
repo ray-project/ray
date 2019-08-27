@@ -196,6 +196,7 @@ Getting Involved
    inspect.rst
    object-store.rst
    configure.rst
+   memory-management.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst
@@ -246,6 +247,7 @@ Getting Involved
 
    distributed_training.rst
    pandas_on_ray.rst
+   projects.rst
    signals.rst
    async_api.rst
 
