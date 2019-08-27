@@ -197,7 +197,7 @@ class ResourceSpec(
         logger.info(
             "Starting Ray with {} GiB memory available for workers and up to "
             "{} GiB for objects. You can adjust these settings "
-            "with ray.remote(memory=<bytes>, "
+            "with ray.init(memory=<bytes>, "
             "object_store_memory=<bytes>).".format(
                 round(
                     ray_constants.round_to_memory_units(

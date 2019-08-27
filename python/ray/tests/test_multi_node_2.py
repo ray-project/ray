@@ -15,6 +15,21 @@ from ray.tests.conftest import generate_internal_config_map
 logger = logging.getLogger(__name__)
 
 
+def eventually(fn, timeout):
+    start = time.time()
+    error = None
+    while time.time() - start < timeout:
+        try:
+            fn()
+            error = None
+        except ValueError as e:
+            time.sleep(0.1)
+            print("Retrying", e)
+            error = e
+    if error:
+        raise error
+
+
 def test_cluster():
     """Basic test for adding and removing nodes in cluster."""
     g = Cluster(initialize_head=False)
@@ -154,14 +169,17 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    timeout = 5
+    timeout = 15
     num_workers_nodes = 4
     num_nodes_total = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
     cluster.wait_for_nodes()
     monitor = setup_monitor(cluster.redis_address)
 
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
+    eventually(
+        lambda: verify_load_metrics(
+            monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
+        timeout=timeout)
 
     @ray.remote
     class Actor(object):
@@ -171,16 +189,13 @@ def test_heartbeats_cluster(ray_start_cluster_head):
 
     test_actors = [Actor.remote() for i in range(num_nodes_total)]
 
-    work_handles = [actor.work.remote(timeout * 2) for actor in test_actors]
+    [actor.work.remote(timeout) for actor in test_actors]
 
-    verify_load_metrics(monitor, (num_nodes_total, {
-        "CPU": num_nodes_total
-    }, {
-        "CPU": num_nodes_total
-    }))
+    eventually(
+        lambda: verify_load_metrics(
+            monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
+        timeout=timeout)
 
-    ray.get(work_handles)
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
     ray.shutdown()
 
 
