@@ -144,7 +144,8 @@ int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscri
 
 RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
+  RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end())
+      << " callback_index " << callback_index << " num_callbacks_ " << num_callbacks_;
   return callback_items_[callback_index];
 }
 
