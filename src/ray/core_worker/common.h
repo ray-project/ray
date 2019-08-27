@@ -65,6 +65,10 @@ class RayObject {
   bool HasMetadata() const { return metadata_ != nullptr; }
 
  private:
+  // TODO (kfstorm): Currently both a null pointer and a pointer points to a buffer with
+  // zero size means empty data/metadata. We'd better pick one and treat the other as
+  // invalid.
+
   /// Data of the ray object.
   std::shared_ptr<Buffer> data_;
   /// Metadata of the ray object.
