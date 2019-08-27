@@ -12,8 +12,6 @@ public class ObjectId extends BaseId implements Serializable {
 
   public static final int LENGTH = 20;
 
-  private static final int FLAGS_LENGTH = 2;
-
   /**
    * Create an ObjectId from a ByteBuffer.
    */
@@ -25,13 +23,13 @@ public class ObjectId extends BaseId implements Serializable {
    * Generate an ObjectId with random value.
    */
   public static ObjectId fromRandom() {
+    // This is tightly coupled with ObjectID definition in C++. If that changes,
+    // this must be changed as well.
+    // The following logic should be kept consistent with `ObjectID::FromRandom` in
+    // C++.
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
-    // Fill all bits of flags to zero to set the following flag values:
-    // Is task: false
-    // Object type: put
-    // Transport type: raylet
-    Arrays.fill(b, TaskId.LENGTH, TaskId.LENGTH + FLAGS_LENGTH, (byte) 0);
+    Arrays.fill(b, TaskId.LENGTH, LENGTH, (byte) 0);
     return new ObjectId(b);
   }
 
