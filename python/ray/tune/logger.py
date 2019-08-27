@@ -156,8 +156,8 @@ class TFLogger(Logger):
                 logger.warning("Not importing TensorFlow for test purposes")
                 tf = None
             else:
-                import tensorflow
-                tf = tensorflow
+                import tensorflow.compat.v1 as tf
+                tf.disable_v2_behavior()
                 use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
                                  distutils.version.LooseVersion("1.5.0"))
         except ImportError:
