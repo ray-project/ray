@@ -169,7 +169,7 @@ def test_heartbeats_cluster(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    timeout = 15
+    timeout = 5
     num_workers_nodes = 4
     num_nodes_total = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
@@ -196,6 +196,11 @@ def test_heartbeats_cluster(ray_start_cluster_head):
             monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
         timeout=timeout)
 
+    ray.get(work_handles)
+    eventually(
+        lambda: verify_load_metrics(
+            monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total})),
+        timeout=timeout)
     ray.shutdown()
 
 
