@@ -427,9 +427,7 @@ class Worker(object):
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
-    def retrieve_and_deserialize(self,
-                                 object_ids,
-                                 error_timeout=10):
+    def retrieve_and_deserialize(self, object_ids, error_timeout=10):
         print("GET", object_ids[0])
         data_metadata_pairs = self.core_worker.get_objects(
             object_ids, self.current_task_id)
