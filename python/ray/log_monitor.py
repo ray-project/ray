@@ -96,7 +96,14 @@ class LogMonitor(object):
                 # by it.
                 target = os.path.join(
                     self.logs_dir, "old", os.path.basename(file_info.filename))
-                shutil.move(file_info.filename, target)
+                try:
+                    shutil.move(file_info.filename, target)
+                except (IOError, OSError) as e:
+                    if e.errno == errno.ENOENT:
+                        logger.warning("Warning: The file {} was not "
+                                       "found.".format(file_info.filename))
+                    else:
+                        raise e
             else:
                 self.closed_file_infos.append(file_info)
         self.can_open_more_files = True
