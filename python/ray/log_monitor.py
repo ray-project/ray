@@ -8,6 +8,7 @@ import glob
 import json
 import logging
 import os
+import shutil
 import time
 import traceback
 
@@ -86,12 +87,22 @@ class LogMonitor(object):
             file_info.file_handle.close()
             file_info.file_handle = None
             try:
-                # Test if the worker process is still alive
+                # Test if the worker process that generated the log file
+                # is still alive.
                 os.kill(file_info.worker_pid, 0)
-            except:
-                
-            if
-            self.closed_file_infos.append(file_info)
+            except os.OSError:
+                # The process is not alive any more, so move the log file
+                # out of the log directory so glob.glob will not be slowed
+                # by it.
+                target = os.path.join(self.logs_dir, "old")
+                try:
+                    shutil.move(file_info.filename, target)
+                except IOError:
+                    # Create the target directory if it doesn't exist yet.
+                    os.makedirs(target)
+                    shutil.move(file_info.filename, target)
+            else:
+                self.closed_file_infos.append(file_info)
         self.can_open_more_files = True
 
     def update_log_filenames(self):
