@@ -43,7 +43,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/experimental/sgd/examples/tune_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/examples/tune_example.py --num-replicas=2
+    python /ray/python/ray/experimental/sgd/examples/tune_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/examples/tune_example.py --num-replicas=2
