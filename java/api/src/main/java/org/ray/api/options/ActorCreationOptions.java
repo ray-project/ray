@@ -47,10 +47,12 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setIsDirectCall(boolean isDirectCall) {
-      this.isDirectCall = isDirectCall;
-      return this;
-    }
+    // Since direct call is not fully supported yet, users are not allowed to set the option to true.
+    // TODO (kfstorm): uncomment when direct call is ready.
+//    public Builder setIsDirectCall(boolean isDirectCall) {
+//      this.isDirectCall = isDirectCall;
+//      return this;
+//    }
 
     public Builder setJvmOptions(String jvmOptions) {
       this.jvmOptions = jvmOptions;

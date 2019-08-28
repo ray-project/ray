@@ -47,7 +47,7 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
-    // No lineage cache when direct actor call is enabled.
+    // By design. No lineage cache when direct actor call is enabled.
     TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
