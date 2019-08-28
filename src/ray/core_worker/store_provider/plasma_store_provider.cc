@@ -156,8 +156,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(std::unordered_set<ObjectID> &object_
                                            std::unordered_set<ObjectID> *ready) {
   WaitResultPair result_pair;
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms, false, task_id,
-                                     &result_pair));
+  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms, false,
+                                         task_id, &result_pair));
 
   for (const auto &entry : result_pair.first) {
     ready->insert(entry);
