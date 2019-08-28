@@ -494,27 +494,23 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait() with duplicate object ids.
-  std::vector<ObjectID> ids_with_duplicate;
-  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
-  // add the same ids again to test `Get` with duplicate object ids.
-  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_ids(ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_results;
 
-  std::vector<ObjectID> wait_ids(ids_with_duplicate);
-  ObjectID non_existent_id = ObjectID::FromRandom();
-  wait_ids.push_back(non_existent_id);
-
-  std::vector<bool> wait_results;
+  ObjectID nonexistent_id = ObjectID::FromRandom();
+  wait_ids.insert(nonexistent_id);
   RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 5);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+  ASSERT_EQ(wait_results.size(), 4);
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Wait() with duplicate object ids, and the required `num_objects`
   // is less than size of `wait_ids`.
+  wait_ids.clear();
+  wait_ids.insert(ids.begin(), ids.end());
   wait_results.clear();
   RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 5);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+  ASSERT_EQ(wait_results.size(), 4);
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Get().
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
@@ -562,10 +558,13 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   // wait for the objects to appear.
   wait_results.clear();
+  wait_ids.clear();
+  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   RAY_CHECK_OK(
-      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
+      provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
   // wait for the thread to finish.
   async_thread.join();
+  ASSERT_EQ(wait_results.size(), unready_ids.size());
 }
 
 class ZeroNodeTest : public CoreWorkerTest {

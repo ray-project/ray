@@ -50,6 +50,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(std::unordered_set<ObjectID> &object_
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i]) {
       ready->insert(id_vector[i]);
+      object_ids.erase(id_vector[i]);
     }
   }
 
