@@ -25,6 +25,8 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation
 Quick Start
 -----------
 
+Execute Python functions in parallel.
+
 .. code-block:: python
 
     import ray
@@ -81,16 +83,14 @@ Tune Quick Start
 - Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
 - Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
-.. note::
+To run this example, you will need to install the following:
 
-    To run this example, you will need to install the following:
+.. code-block:: bash
 
-    .. code-block:: bash
-
-        $ pip install ray torch torchvision filelock
+    $ pip install ray torch torchvision filelock
 
 
-This example runs a parallel asynchronous grid search to train a CNN using PyTorch and Tune.
+This example runs a parallel grid search to train a Convolutional Neural Network using PyTorch.
 
 .. code-block:: python
 
