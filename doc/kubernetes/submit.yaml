@@ -71,10 +71,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: MY_CPU_REQUEST
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.cpu
           resources:
             requests:
               cpu: 2
@@ -107,7 +103,7 @@ spec:
         - name: ray-worker
           image: rayproject/examples
           command: ["/bin/bash", "-c", "--"]
-          args: ["ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 --block"]
+          args: ["ray start --node-ip-address=$MY_POD_IP --redis-address=$(python -c 'import socket;import sys; sys.stdout.write(socket.gethostbyname(\"ray-head\"));sys.stdout.flush()'):6379 --object-manager-port=12345 --node-manager-port=12346 --block"]
           ports:
             - containerPort: 12345
             - containerPort: 12346
@@ -116,10 +112,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: MY_CPU_REQUEST
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.cpu
           resources:
             requests:
               cpu: 2
