@@ -28,9 +28,9 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
-                                                  const size_t data_size,
-                                                  const ObjectID &object_id,
-                                                  std::shared_ptr<Buffer> *data) {
+                                             const size_t data_size,
+                                             const ObjectID &object_id,
+                                             std::shared_ptr<Buffer> *data) {
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
@@ -171,8 +171,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(std::unordered_set<ObjectID> &object_
                                            std::unordered_set<ObjectID> *ready) {
   WaitResultPair result_pair;
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms, /*wait_local=*/false, task_id,
-                                     &result_pair));
+  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms,
+                                         /*wait_local=*/false, task_id, &result_pair));
 
   for (const auto &entry : result_pair.first) {
     ready->insert(entry);

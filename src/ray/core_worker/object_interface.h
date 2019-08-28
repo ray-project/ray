@@ -102,8 +102,7 @@ class CoreWorkerObjectInterface {
   /// \param[in/out] results A set that holds objects that are ready.
   /// \return Status.
   Status WaitFromMultipleStoreProviders(
-      EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
-          &ids_per_provider,
+      EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
       int64_t timeout_ms, int num_objects, std::unordered_set<ObjectID> *results);
 
   /// Create a new store provider for the specified type on demand.

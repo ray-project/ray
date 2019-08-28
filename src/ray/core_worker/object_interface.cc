@@ -155,6 +155,15 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     return Status::Invalid("Duplicated object IDs not supported in wait.");
   }
 
+  // TODO(edoakes): this logic is not ideal, and will have to be addressed
+  // before we enable direct actor calls in the Python code. If we are waiting
+  // on a list of objects mixed between multiple store providers, we could
+  // easily end up in the situation where we're blocked waiting on one store
+  // provider while another actually has enough objects ready to fulfill
+  // 'num_objects'. This is partially addressed by trying them all once with
+  // a timeout of 0, but that does not address the situation where objects
+  // become available on the second store provider while waiting on the first.
+
   std::unordered_set<ObjectID> ready;
   // Wait from all the store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
