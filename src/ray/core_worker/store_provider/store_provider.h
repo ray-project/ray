@@ -96,9 +96,9 @@ class CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  virtual Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+  virtual Status Wait(std::unordered_set<ObjectID> &object_ids, int num_objects,
                       int64_t timeout_ms, const TaskID &task_id,
-                      std::vector<bool> *results) = 0;
+                      std::unordered_set<ObjectID> *ready) = 0;
 
   /// Delete a list of objects from the object store.
   ///
