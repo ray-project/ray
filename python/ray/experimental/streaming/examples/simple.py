@@ -52,8 +52,9 @@ if __name__ == "__main__":
                 .inspect(print)     # Prints the contents of the
     # stream to stdout
     start = time.time()
-    env_handle = env.execute()
-    ray.get(env_handle)  # Stay alive until execution finishes
+    dataflow = env.execute()
+    # Wait until execution finishes
+    ray.get(dataflow.termination_status())
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

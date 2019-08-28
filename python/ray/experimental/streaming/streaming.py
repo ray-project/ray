@@ -8,6 +8,7 @@ import uuid
 
 import networkx as nx
 
+import ray
 from ray.experimental.streaming.communication import DataChannel, DataInput
 from ray.experimental.streaming.communication import DataOutput, QueueConfig
 from ray.experimental.streaming.operator import Operator, OpType
@@ -16,6 +17,9 @@ import ray.experimental.streaming.operator_instance as operator_instance
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
+# Source types
+source_types = [OpType.Source, OpType.ReadTextFile]
 
 
 # Generates UUIDs
@@ -58,6 +62,100 @@ class Config(object):
         # ...
 
 
+# A handle to the physical dataflow that is being executed
+# It is returned by Environment.execute()
+class PhysicalDataflow(object):
+    """A physical dataflow handle.
+
+    This class provides access to the physical dataflow, including
+    access to operator states, progress tracking, etc.
+    """
+
+    def __init__(self):
+        # A mapping from operator ids/names to the list
+        # of actor handles executing the operators
+        self.actor_handles = {}
+        # A mapping from operator ids to operator metadata
+        self.operator_metadata = {}
+        # Handle of the actor monitoring the
+        # progress of the dataflow execution
+        self.monitoring_actor = None
+        # A mapping from operator names to ids
+        self.names_to_ids = {}
+
+    # Adds operator metadata to the dictionary and checks for duplicates
+    def __register_name(self, operator_id, name):
+        id = self.names_to_ids.setdefault(name, operator_id)
+        # Each operator must have a unique name and id
+        assert id == operator_id, (id, operator_id)
+
+    # Adds an actor handle to the dictionary
+    def _register_handle(self, actor_id, handle):
+        operator_id, instance_id = actor_id
+        entry = self.actor_handles.setdefault(operator_id, [None] * 1)
+        # Expand list if needed
+        slots_to_add = instance_id - len(entry) + 1
+        if slots_to_add > 0:
+            for _ in range(slots_to_add):
+                entry.append(None)
+        # Local ids of operator instances are in 0..number_of_instances
+        entry[instance_id] = handle
+
+    # Adds operator metadata to the dictionary
+    def _register_metadata(self, operator_id, metadata):
+        self.operator_metadata.setdefault(operator_id, metadata)
+        self.__register_name(operator_id, metadata.name)
+
+    # Returns the handles of the actors executing the instances of the
+    # operator or None if operator id or name does not exist
+    def actor_handles(self, operator_id_or_name):
+        self.actor_handles.get(operator_id_or_name)
+
+    # Returns the id of the operator or None if the name does not exist
+    def operator_id(self, operator_name):
+        return self.names_to_ids.get(operator_name)
+
+    # Returns all dataflow operator ids
+    def operator_ids(self):
+        keys_and_names = set(self.actor_handles.keys())
+        names = set(self.names_to_ids.keys())
+        return list(keys_and_names - names)
+
+    # Returns all dataflow operator names
+    def operator_names(self):
+        return list(self.names_to_ids.keys())
+
+    # Returns the name of the operator
+    def name_of(self, operator_id):
+        return self.operator_metadata[operator_id].name
+
+    # Returns a list of futures representing the local
+    # state of each actor executing the given operator.
+    # This is equivalent to manually retrieving the actor handles
+    # via actor_handles() and then call state() on each handle
+    def state_of(self, operator_id_or_name):
+        state = []  # One state object per operator instance
+        actor_handles = self.actor_handles.get(operator_id_or_name)
+        assert actor_handles is not None
+        for actor_handle in actor_handles:
+            state.append(actor_handle.state.remote())
+        return state
+
+    # Returns a list of futures representing the logged
+    # rates for all actors executing the given operator
+    def logs_of(self, operator_id_or_name):
+        logs = []  # One log object per operator instance
+        actor_handles = self.actor_handles.get(operator_id_or_name)
+        assert actor_handles is not None
+        for actor_handle in actor_handles:
+            logs.append(actor_handle.logs.remote())
+        return logs
+
+    # Returns a future representing the execution's status upon termination
+    def termination_status(self):
+        return self.monitoring_actor.all_exit_signals.remote()
+
+
 # The execution environment for a streaming job
 class Environment(object):
     """A streaming environment.
@@ -89,6 +187,8 @@ class Environment(object):
         self.topo_cleaned = False
         # Handles to all actors in the physical dataflow
         self.actor_handles = []
+        # A handle to the running dataflow
+        self.physical_dataflow = PhysicalDataflow()
 
     # Constructs and deploys a Ray actor of a specific type
     # TODO (john): Actor placement information should be specified in
@@ -109,64 +209,66 @@ class Environment(object):
         # Record the physical dataflow graph (for debugging purposes)
         self.__add_channel(actor_id, input, output)
         # Select actor to construct
+        actor_handle = None
         if operator.type == OpType.Source:
-            source = operator_instance.Source.remote(actor_id, operator, input,
-                                                     output)
-            source.register_handle.remote(source)
-            return source.start.remote()
+            actor_handle = operator_instance.Source.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.Map:
-            map = operator_instance.Map.remote(actor_id, operator, input,
-                                               output)
-            map.register_handle.remote(map)
-            return map.start.remote()
+            actor_handle = operator_instance.Map.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.FlatMap:
-            flatmap = operator_instance.FlatMap.remote(actor_id, operator,
-                                                       input, output)
-            flatmap.register_handle.remote(flatmap)
-            return flatmap.start.remote()
+            actor_handle = operator_instance.FlatMap.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.Filter:
-            filter = operator_instance.Filter.remote(actor_id, operator, input,
-                                                     output)
-            filter.register_handle.remote(filter)
-            return filter.start.remote()
+            actor_handle = operator_instance.Filter.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.Reduce:
-            reduce = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                     output)
-            reduce.register_handle.remote(reduce)
-            return reduce.start.remote()
+            actor_handle = operator_instance.Reduce.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.TimeWindow:
             pass
         elif operator.type == OpType.KeyBy:
-            keyby = operator_instance.KeyBy.remote(actor_id, operator, input,
-                                                   output)
-            keyby.register_handle.remote(keyby)
-            return keyby.start.remote()
+            actor_handle = operator_instance.KeyBy.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.Sum:
-            sum = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                  output)
+            actor_handle = operator_instance.Reduce.remote(
+                actor_id, operator, input, output)
             # Register target handle at state actor
             state_actor = operator.state_actor
             if state_actor is not None:
-                state_actor.register_target.remote(sum)
-            # Register own handle
-            sum.register_handle.remote(sum)
-            return sum.start.remote()
+                state_actor.register_target.remote(actor_handle)
         elif operator.type == OpType.Sink:
             pass
         elif operator.type == OpType.Inspect:
-            inspect = operator_instance.Inspect.remote(actor_id, operator,
-                                                       input, output)
-            inspect.register_handle.remote(inspect)
-            return inspect.start.remote()
+            actor_handle = operator_instance.Inspect.remote(
+                actor_id, operator, input, output)
         elif operator.type == OpType.ReadTextFile:
             # TODO (john): Colocate the source with the input file
-            read = operator_instance.ReadTextFile.remote(
+            actor_handle = operator_instance.ReadTextFile.remote(
                 actor_id, operator, input, output)
-            read.register_handle.remote(read)
-            return read.start.remote()
         else:  # TODO (john): Add support for other types of operators
             sys.exit("Unrecognized or unsupported {} operator type.".format(
                 operator.type))
+
+        assert actor_handle is not None
+        # Register current actor handle as destination to upstream
+        # actors so that upstream actors can invoke tasks on it
+        for channel in input.input_channels:
+            operator_id, _ = channel.src_actor_id
+            upstream_actor_handles = self.physical_dataflow.actor_handles[
+                operator_id]
+            for handle in upstream_actor_handles:
+                destination_handle = ray.put(actor_handle)
+                # Make sure the handle is registered before proceeding
+                ray.get(
+                    handle._register_destination_handle.remote(
+                        destination_handle, channel.id))
+        # Register own handle (used by actor for scheduling itself)
+        ray.get(actor_handle._register_handle.remote(actor_handle))
+        # Register operator to the physical dataflow
+        self.physical_dataflow._register_handle(actor_id, actor_handle)
+        self.physical_dataflow._register_metadata(operator.id, operator)
+        return actor_handle
 
     # Constructs and deploys a Ray actor for each instance of
     # the given operator
@@ -317,6 +419,7 @@ class Environment(object):
         # logical dataflow from sources to sinks. At each step, data
         # producers wait for acknowledge from consumers before starting
         # generating data.
+        all_handles = []
         upstream_channels = {}
         for node in nx.topological_sort(self.logical_topo):
             operator = self.operators[node]
@@ -325,11 +428,36 @@ class Environment(object):
             # Instantiate Ray actors
             handles = self.__generate_actors(operator, upstream_channels,
                                              downstream_channels)
+            all_handles.extend(handles)
             if handles:
                 self.actor_handles.extend(handles)
             upstream_channels.update(downstream_channels)
+
+        # Start and register monitoring actor to the physical dataflow
+        logger.info("Starting progress monitor.")
+        monitoring_actor_handle = operator_instance.ProgressMonitor.remote(
+            all_handles)
+        self.physical_dataflow.monitoring_actor = monitoring_actor_handle
+
+        # Start spinning actors
+        logger.info("Starting spinning actors.")
+        for actor_handles in self.physical_dataflow.actor_handles.values():
+            for handle in actor_handles:
+                _ = handle.start.remote()
+
+        # Update dictionary in physical topology so that users
+        # can lookup operators using either an id or a name
+        operator_ids = self.physical_dataflow.actor_handles.items()
+        operator_names = {}  # name -> actor handles
+        for operator_id, handles in operator_ids:
+            metadata = self.physical_dataflow.operator_metadata[operator_id]
+            operator_name = metadata.name
+            operator_names.setdefault(operator_name, handles)
+        self.physical_dataflow.actor_handles.update(operator_names)
+
+        # Return handle to physical dataflow
         logger.debug("Running...")
-        return self.actor_handles
+        return self.physical_dataflow
 
     # Prints the logical dataflow graph
     def print_logical_graph(self):

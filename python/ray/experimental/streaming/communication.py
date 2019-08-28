@@ -5,6 +5,7 @@ from __future__ import print_function
 import hashlib
 import logging
 import sys
+import uuid
 
 from ray.experimental.streaming.operator import PStrategy
 from ray.experimental.streaming.batched_queue import BatchedQueue
@@ -14,6 +15,11 @@ logging.basicConfig(level=logging.INFO)
 
 # Forward and broadcast stream partitioning strategies
 forward_broadcast_strategies = [PStrategy.Forward, PStrategy.Broadcast]
+
+
+# Generates UUIDs
+def _generate_uuid():
+    return str(uuid.uuid4())
 
 
 # Used to choose output channel in case of hash-based shuffling
@@ -44,16 +50,32 @@ class DataChannel(object):
     def __init__(self, env, src_operator_id, dst_operator_id, src_instance_id,
                  dst_instance_id):
         self.env = env
+        # Actor handles
+        self.source_actor = None
+        self.destination_actor = None
+        # IDs
         self.src_operator_id = src_operator_id
         self.dst_operator_id = dst_operator_id
         self.src_instance_id = src_instance_id
         self.dst_instance_id = dst_instance_id
+        self.src_actor_id = (self.src_operator_id, self.src_instance_id)
+        self.dst_actor_id = (self.dst_operator_id, self.dst_instance_id)
+        self.id = _generate_uuid()
+
         self.queue = BatchedQueue(
             max_size=self.env.config.queue_config.max_size,
             max_batch_size=self.env.config.queue_config.max_batch_size,
             max_batch_time=self.env.config.queue_config.max_batch_time,
             prefetch_depth=self.env.config.queue_config.prefetch_depth,
             background_flush=self.env.config.queue_config.background_flush)
+
+    # Registers source actor handle (for recovery purposes)
+    def _register_source_actor(self, actor_handle):
+        self.source_actor = actor_handle
+
+    # Registers destination actor handle (to schedule tasks at destination)
+    def _register_destination_actor(self, actor_handle):
+        self.destination_actor = actor_handle
 
     def __repr__(self):
         return "({},{},{},{})".format(

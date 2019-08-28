@@ -8,6 +8,7 @@ import time
 import types
 
 import ray
+import ray.experimental.signal as signal
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
@@ -22,6 +23,60 @@ logger.setLevel("DEBUG")
 
 def _identity(element):
     return element
+
+
+# Signal denoting that a streaming actor finished processing
+# and returned after all its input channels have been closed
+class ActorExit(signal.Signal):
+    def __init__(self, value=None):
+        self.value = value
+
+
+# Signal denoting that a streaming data source has started emitting records
+class ActorStart(signal.Signal):
+    def __init__(self, value=None):
+        self.value = value
+
+
+# A monitoring actor used to keep track of the execution's progress
+@ray.remote
+class ProgressMonitor(object):
+    """An actor used to track the progress of the dataflow execution.
+
+    Attributes:
+        running_actors list(actor handles): A list of handles to all actors
+        executing the physical dataflow.
+    """
+
+    def __init__(self, running_actors):
+        self.running_actors = running_actors  # Actor handles
+        self.start_signals = []
+        self.exit_signals = []
+        logger.debug("Running actors: {}".format(self.running_actors))
+
+    # Returns when the dataflow execution is over
+    def all_exit_signals(self):
+        while True:
+            # Block until the ActorExit signal has been
+            # received from each actor executing the dataflow
+            signals = signal.receive(self.running_actors)
+            for _, received_signal in signals:
+                if isinstance(received_signal, ActorExit):
+                    self.exit_signals.append(received_signal)
+            if len(self.exit_signals) == len(self.running_actors):
+                return
+
+    # Returns after receiving all ActorStart signals for a list of actors
+    def start_signals(self, actor_handles):
+        while True:
+            # Block until the ActorStart signal has been
+            # received from each actor in the given list
+            signals = signal.receive(actor_handles)
+            for _, received_signal in signals:
+                if isinstance(received_signal, ActorStart):
+                    self.start_signals.append(received_signal)
+            if len(self.start_signals) == len(actor_handles):
+                return
 
 
 # TODO (john): Specify the interface of state keepers
@@ -62,10 +117,6 @@ class OperatorInstance(object):
                 channel.queue.enable_writes()
         # TODO (john): Add more channel types here
 
-    # Registers actor's handle so that the actor can schedule itself
-    def register_handle(self, actor_handle):
-        self.this_actor = actor_handle
-
     # Used for index-based key extraction, e.g. for tuples
     def index_based_selector(self, record):
         return record[self.key_index]
@@ -73,6 +124,33 @@ class OperatorInstance(object):
     # Used for attribute-based key extraction, e.g. for classes
     def attribute_based_selector(self, record):
         return vars(record)[self.key_attribute]
+
+    # Registers actor's handle so that the actor can schedule itself
+    def _register_handle(self, actor_handle):
+        self.this_actor = actor_handle
+
+    # Registers the handle of a destination actor to an output channel
+    def _register_destination_handle(self, actor_handle, channel_id):
+        for channel in self.output.forward_channels:
+            if channel.id == channel_id:
+                channel._register_destination_actor(actor_handle)
+                return
+        for channels in self.output.shuffle_channels:
+            for channel in channels:
+                if channel.id == channel_id:
+                    channel._register_destination_actor(actor_handle)
+                    return
+        for channels in self.output.shuffle_key_channels:
+            for channel in channels:
+                if channel.id == channel_id:
+                    channel._register_destination_actor(actor_handle)
+                    return
+        for channels in self.output.round_robin_channels:
+            for channel in channels:
+                if channel.id == channel_id:
+                    channel._register_destination_actor(actor_handle)
+                    return
+        # TODO (john): Add more channel types here
 
     # Starts the actor
     def start(self):
@@ -102,6 +180,7 @@ class ReadTextFile(OperatorInstance):
 
     # Read input file line by line
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         while True:
             record = self.reader.readline()
             # Reader returns empty string ('') on EOF
@@ -109,6 +188,7 @@ class ReadTextFile(OperatorInstance):
                 # Flush any remaining records to plasma and close the file
                 self.output._flush(close=True)
                 self.reader.close()
+                signal.send(ActorExit(self.instance_id))
                 return
             self.output._push(
                 record[:-1])  # Push after removing newline characters
@@ -135,6 +215,7 @@ class Map(OperatorInstance):
     # Applies the mapper each record of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         start = time.time()
         elements = 0
         while True:
@@ -143,6 +224,7 @@ class Map(OperatorInstance):
                 self.output._flush(close=True)
                 logger.debug("[map {}] read/writes per second: {}".format(
                     self.instance_id, elements / (time.time() - start)))
+                signal.send(ActorExit(self.instance_id))
                 return
             self.output._push(self.map_fn(record))
             elements += 1
@@ -169,10 +251,12 @@ class FlatMap(OperatorInstance):
     # Applies the splitter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         while True:
             record = self.input._pull()
             if record is None:
                 self.output._flush(close=True)
+                signal.send(ActorExit(self.instance_id))
                 return
             self.output._push_all(self.flatmap_fn(record))
 
@@ -198,10 +282,12 @@ class Filter(OperatorInstance):
     # Applies the filter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         while True:
             record = self.input._pull()
             if record is None:  # Close channel and return
                 self.output._flush(close=True)
+                signal.send(ActorExit(self.instance_id))
                 return
             if self.filter_fn(record):
                 self.output._push(record)
@@ -223,14 +309,17 @@ class Inspect(OperatorInstance):
         OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
         self.inspect_fn = operator_metadata.logic
 
-        # Applies the inspect logic (e.g. print) to the records of
-        # the input stream(s)
-        # and leaves stream unaffected by simply pushing the records to
-        # the output stream(s)
+    # Applies the inspect logic (e.g. print) to the records of
+    # the input stream(s)
+    # and leaves stream unaffected by simply pushing the records to
+    # the output stream(s)
+    def start(self):
+        signal.send(ActorStart(self.instance_id))
         while True:
             record = self.input._pull()
             if record is None:
                 self.output._flush(close=True)
+                signal.send(ActorExit(self.instance_id))
                 return
             self.output._push(record)
             self.inspect_fn(record)
@@ -272,11 +361,13 @@ class Reduce(OperatorInstance):
     # value for that key to produce a new value.
     # Outputs the result as (key,new value)
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         while True:
             record = self.input._pull()
             if record is None:
                 self.output._flush(close=True)
                 del self.state
+                signal.send(ActorExit(self.instance_id))
                 return
             key, rest = record
             new_value = self.attribute_selector(rest)
@@ -321,10 +412,12 @@ class KeyBy(OperatorInstance):
 
     # The actual partitioning is done by the output gate
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         while True:
             record = self.input._pull()
             if record is None:
                 self.output._flush(close=True)
+                signal.send(ActorExit(self.instance_id))
                 return
             key = self.key_selector(record)
             self.output._push((key, record))
@@ -341,6 +434,7 @@ class Source(OperatorInstance):
 
     # Starts the source by calling get_next() repeatedly
     def start(self):
+        signal.send(ActorStart(self.instance_id))
         start = time.time()
         elements = 0
         while True:
@@ -349,6 +443,7 @@ class Source(OperatorInstance):
                 self.output._flush(close=True)
                 logger.debug("[writer {}] puts per second: {}".format(
                     self.instance_id, elements / (time.time() - start)))
+                signal.send(ActorExit(self.instance_id))
                 return
             self.output._push(next)
             elements += 1
