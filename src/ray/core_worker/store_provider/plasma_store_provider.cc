@@ -162,6 +162,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(std::unordered_set<ObjectID> &object_
 
   for (const auto &entry : result_pair.first) {
     ready->insert(entry);
+    object_ids.erase(entry);
   }
 
   return Status::OK();
