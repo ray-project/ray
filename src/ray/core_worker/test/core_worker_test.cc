@@ -499,7 +499,8 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   ObjectID nonexistent_id = ObjectID::FromRandom();
   wait_ids.insert(nonexistent_id);
-  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), ids.size());
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
@@ -540,8 +541,11 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> ready_ids(buffers.size());
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
+    ready_ids[i] = ObjectID::FromRandom();
+    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
     unready_ids[i] = ObjectID::FromRandom();
   }
 
@@ -555,15 +559,50 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::thread async_thread(thread_func);
 
-  // wait for the objects to appear.
-  wait_results.clear();
   wait_ids.clear();
+  wait_ids.insert(ready_ids.begin(), ready_ids.end());
   wait_ids.insert(unready_ids.begin(), unready_ids.end());
+  wait_results.clear();
+
+  // Check that only the ready ids are returned when timeout ends before thread runs.
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ready_ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(ready_ids.size(), wait_results.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
+  }
+
+  wait_ids.clear();
+  wait_ids.insert(ready_ids.begin(), ready_ids.end());
+  wait_ids.insert(unready_ids.begin(), unready_ids.end());
+  wait_results.clear();
+  // Check that enough objects are returned after the thread inserts at least one object.
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ready_ids.size() + 1, 5000, RandomTaskId(), &wait_results));
+  ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+
+  wait_ids.clear();
+  wait_ids.insert(ready_ids.begin(), ready_ids.end());
+  wait_ids.insert(unready_ids.begin(), unready_ids.end());
+  wait_results.clear();
+  // Check that all objects are returned after the thread completes.
   RAY_CHECK_OK(
       provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
-  // wait for the thread to finish.
+  ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
+  }
+
   async_thread.join();
-  ASSERT_EQ(wait_results.size(), unready_ids.size());
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
