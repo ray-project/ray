@@ -98,7 +98,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     }
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
-        entry.second, timeout_ms, worker_context_.GetCurrentTaskID(), &result_map));
+        entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
+        &result_map));
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =
