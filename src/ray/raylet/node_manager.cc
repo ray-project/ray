@@ -1897,7 +1897,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
         /*success_callback=*/
-        [this, task_spec, resumed_from_checkpoint, port](
+        [this, task_spec, resumed_from_checkpoint, port, &worker, actor_id](
             ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
             const TaskTableData &parent_task_data) {
           // This was an actor creation task. Convert the worker to an actor.
@@ -1915,8 +1915,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                                           resumed_from_checkpoint, port);
         },
         /*failure_callback=*/
-        [this, task_spec, resumed_from_checkpoint, port](ray::gcs::RedisGcsClient *client,
-                                                         const TaskID &parent_task_id) {
+        [this, task_spec, resumed_from_checkpoint, port, &worker, actor_id](
+            ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id) {
           // This was an actor creation task. Convert the worker to an actor.
           worker.AssignActorId(actor_id);
           // The parent task was not in the GCS task table. It should most likely be in
