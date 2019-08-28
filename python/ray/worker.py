@@ -398,9 +398,8 @@ class Worker(object):
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
-                    logger.warning(
-                        "Waiting {} secs for space to free up "
-                        "in the object store.".format(delay))
+                    logger.warning("Waiting {} secs for space to free up "
+                                   "in the object store.".format(delay))
                     time.sleep(delay)
                     delay *= 2
                 else:
@@ -411,8 +410,7 @@ class Worker(object):
         """Prints object store debug string to stdout."""
         msg = "\n" + self.plasma_client.debug_string()
         msg = msg.replace("\n", "\nplasma: ")
-        logger.warning(
-            "Local object store memory usage:\n{}\n".format(msg))
+        logger.warning("Local object store memory usage:\n{}\n".format(msg))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
