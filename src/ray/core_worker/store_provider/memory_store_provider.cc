@@ -37,7 +37,7 @@ Status CoreWorkerMemoryStoreProvider::Seal(const ObjectID &object_id) {
 Status CoreWorkerMemoryStoreProvider::Get(
     std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
-  const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_RETURN_NOT_OK(
       store_->Get(id_vector, id_vector.size(), timeout_ms, true, &result_objects));
@@ -51,18 +51,21 @@ Status CoreWorkerMemoryStoreProvider::Get(
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerMemoryStoreProvider::Wait(std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
-                                           std::vector<bool> *results) {
-  (*results).resize(object_ids.size(), false);
-
+                                           std::unordered_set<ObjectID> *ready) {
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
+  RAY_CHECK(object_ids.size() == id_vector.size());
   RAY_RETURN_NOT_OK(
-      store_->Get(object_ids, num_objects, timeout_ms, false, &result_objects));
-  RAY_CHECK(result_objects.size() == object_ids.size());
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    (*results)[i] = (result_objects[i] != nullptr);
+      store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects));
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i]) {
+      ready->insert(id_vector[i]);
+      object_ids.erase(id_vector[i]);
+    }
   }
 
   return Status::OK();
