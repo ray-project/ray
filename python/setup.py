@@ -70,7 +70,6 @@ extras = {
     ],
     "debug": ["psutil", "setproctitle", "py-spy"],
     "dashboard": ["psutil", "aiohttp"],
-    "autoscaler": ["kubernetes"],
 }
 
 
