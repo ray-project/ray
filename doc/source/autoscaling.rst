@@ -52,6 +52,29 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
     # Teardown the cluster
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
+Quick start (Kubernetes)
+------------------------
+
+The autoscaler can also be used to start Ray clusters on an existing (shared) Kubernetes cluster. First, install the Kubernetes API Python client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
+
+The provided `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ cluster config file will create a small cluster of one pod for the head node configured to autoscale up to two worker nodes, with all pods requiring 1 CPU and 0.5GiB of memory. You should be able to use this config as soon as you have ``kubectl`` configured locally, and you can refer to it for the details of configuration options.
+
+Try it out by running these commands from your computer with access to the Kubernetes cluster. Once the cluster is started, you can then
+``kubectl exec`` into the head node and run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+
+.. code-block:: bash
+
+    # Create or update the cluster. When the command finishes, it will print
+    # out the command that can be used to SSH into the cluster head node.
+    $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
+    # Reconfigure autoscaling behavior without interrupting running jobs
+    $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml \
+        --max-workers=N --no-restart
+
+    # Teardown the cluster
+    $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
 Quick start (Private Cluster)
 -----------------------------
 
@@ -180,7 +203,7 @@ Customizing cluster setup
 
 You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.
 
-.. note:: After you have customized the nodes, it is also a good idea to create a new machine image and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
+.. note:: After you have customized the nodes, it is also a good idea to create a new machine image (or docker container if using Kubernetes) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
