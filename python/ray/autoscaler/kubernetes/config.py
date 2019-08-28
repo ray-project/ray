@@ -4,8 +4,6 @@ from __future__ import print_function
 
 import logging
 
-from kubernetes.client.rest import ApiException
-
 from ray.autoscaler.kubernetes import auth_api, core_api, log_prefix
 
 logger = logging.getLogger(__name__)
@@ -133,8 +131,9 @@ def _configure_autoscaler_role_binding(namespace, provider_config):
         if "namespace" not in subject:
             subject["namespace"] = namespace
         elif subject["namespace"] != namespace:
-            raise InvalidNamespaceError(binding_field + " subject '{}'"
-                                        .format(subject["name"]), namespace)
+            raise InvalidNamespaceError(
+                binding_field + " subject '{}'".format(subject["name"]),
+                namespace)
 
     name = binding["metadata"]["name"]
     field_selector = "metadata.name={}".format(name)
