@@ -499,17 +499,16 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   ObjectID nonexistent_id = ObjectID::FromRandom();
   wait_ids.insert(nonexistent_id);
-  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 4);
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
-  // Test Wait() with duplicate object ids, and the required `num_objects`
-  // is less than size of `wait_ids`.
+  // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
   wait_ids.clear();
   wait_ids.insert(ids.begin(), ids.end());
   wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 4);
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Get().
