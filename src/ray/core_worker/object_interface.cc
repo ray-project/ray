@@ -141,7 +141,6 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   }
 
   std::unordered_set<ObjectID> ready;
-  std::cout << "before: " << ready.size() << std::endl;
   // Wait from all the store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
@@ -149,7 +148,6 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                                    /*timeout_ms=*/0, num_objects,
                                                    &ready));
 
-  std::cout << "after: " << ready.size() << std::endl;
   if (ready.size() < num_objects) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
