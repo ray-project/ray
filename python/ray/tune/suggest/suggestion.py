@@ -98,6 +98,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 spec,
                 output_path,
                 self._parser,
+                evaluated_params=list(suggested_config),
                 experiment_tag=tag,
                 trial_id=trial_id)
 

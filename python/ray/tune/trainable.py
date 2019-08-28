@@ -462,19 +462,22 @@ class Trainable(object):
 
         raise NotImplementedError
 
-    def _save(self, checkpoint_dir):
+    def _save(self, tmp_checkpoint_dir):
         """Subclasses should override this to implement save().
 
+        Do not rely on absolute paths in the implementation of `_save` and
+        `_restore`. Use `validate_save_restore(use_object_store=True)`
+        to catch _save/_restore errors before execution.
+
         Args:
-            checkpoint_dir (str): The directory where the checkpoint
-                file must be stored. In a Tune run, this defaults to
-                `<self.logdir>/checkpoint_<ITER>` (which is the same as
-                `local_dir/exp_name/trial_name/checkpoint_<ITER>`).
+            tmp_checkpoint_dir (str): The directory where the checkpoint
+                file must be stored. In a Tune run, if the trial is paused,
+                the provided path may be temporary and moved.
 
         Returns:
             checkpoint (str | dict): If string, the return value is
-                expected to be the checkpoint path or prefix to be passed to
-                `_restore()`. If dict, the return value will be automatically
+                expected to be passed to `_restore()`. If dict, the
+                return value will be automatically
                 serialized by Tune and passed to `_restore()`.
 
         Examples:
@@ -491,7 +494,8 @@ class Trainable(object):
 
         Args:
             checkpoint (str | dict): Value as returned by `_save`.
-                If a string, then it is the checkpoint path.
+                If a string, then it is the checkpoint path returned
+                by `_save`.
         """
 
         raise NotImplementedError
@@ -514,7 +518,11 @@ class Trainable(object):
         self._result_logger.on_result(result)
 
     def _stop(self):
-        """Subclasses should override this for any cleanup on stop."""
+        """Subclasses should override this for any cleanup on stop.
+
+        If any Ray actors are launched in the Trainable (i.e., with a RLlib
+        trainer), be sure to kill the Ray actors here.
+        """
         pass
 
     def _export_model(self, export_formats, export_dir):
