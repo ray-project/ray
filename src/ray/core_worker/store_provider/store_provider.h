@@ -75,12 +75,13 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Put(const RayObject &object, const ObjectID &object_id) = 0;
 
-  /// Get a list of objects from the object store.
+  /// Get a set of objects from the object store. Successfully fetched objects will be
+  /// removed from the input set of IDs and added to the results map.
   ///
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] task_id ID for the current task.
-  /// \param[out] results Result list of objects data.
+  /// \param[out] results Map of objects to write results into.
   /// \return Status.
   virtual Status Get(
       std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
