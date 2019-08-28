@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import collections
 from concurrent.futures import ThreadPoolExecutor
+import glob
 import json
 import logging
 from multiprocessing import Process
@@ -3113,3 +3114,29 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_invalid_unicode_in_worker_log(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    logs_dir = os.path.join(info["session_dir"], "logs")
+
+    # Wait till first worker log file is created.
+    while True:
+        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        if len(log_file_paths) == 0:
+            time.sleep(0.2)
+        else:
+            break
+
+    with open(log_file_paths[0], "wb") as f:
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.flush()
+
+    # Wait till the log monitor reads the file.
+    time.sleep(1.0)
+
+    # Make sure that nothing has died.
+    assert ray.services.remaining_processes_alive()

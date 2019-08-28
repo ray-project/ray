@@ -12,8 +12,6 @@ public class ObjectId extends BaseId implements Serializable {
 
   public static final int LENGTH = 20;
 
-  public static final ObjectId NIL = genNil();
-
   /**
    * Create an ObjectId from a ByteBuffer.
    */
@@ -22,20 +20,16 @@ public class ObjectId extends BaseId implements Serializable {
   }
 
   /**
-   * Generate a nil ObjectId.
-   */
-  private static ObjectId genNil() {
-    byte[] b = new byte[LENGTH];
-    Arrays.fill(b, (byte) 0xFF);
-    return new ObjectId(b);
-  }
-
-  /**
    * Generate an ObjectId with random value.
    */
   public static ObjectId fromRandom() {
+    // This is tightly coupled with ObjectID definition in C++. If that changes,
+    // this must be changed as well.
+    // The following logic should be kept consistent with `ObjectID::FromRandom` in
+    // C++.
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);
+    Arrays.fill(b, TaskId.LENGTH, LENGTH, (byte) 0);
     return new ObjectId(b);
   }
 
