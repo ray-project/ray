@@ -6,7 +6,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/raylet/raylet_client.h"
 
@@ -23,24 +22,54 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
+  /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
+  /// See `CoreWorkerStoreProvider::Create` for semantics.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data) override;
 
+  /// See `CoreWorkerStoreProvider::Seal` for semantics.
   Status Seal(const ObjectID &object_id) override;
 
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-             std::vector<std::shared_ptr<RayObject>> *results) override;
+  /// See `CoreWorkerStoreProvider::Get` for semantics.
+  Status Get(std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
+  /// See `CoreWorkerStoreProvider::Wait` for semantics.
   Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::vector<bool> *results) override;
 
+  /// See `CoreWorkerStoreProvider::Delete` for semantics.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
  private:
+  /// Ask the raylet to fetch a set of objects and then attempt to get them
+  /// from the local plasma store. Successfully fetched objects will be removed
+  /// from the input set of IDs and added to the results map.
+  ///
+  /// \param[in/out] ids IDs of the objects to get.
+  /// \param[in] batch_ids IDs of the objects to get.
+  /// \param[in] plasma_batch_ids IDs of the objects to get (used for plasma call).
+  /// \param[in] timeout_ms Timeout in milliseconds.
+  /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
+  /// reconstruct objects.
+  /// \param[in] task_id The current TaskID.
+  /// \param[out] results Map of objects to write results into. This method will only
+  /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
+  /// map.
+  /// \param[out] got_exception Whether any of the fetched objects contained an
+  /// exception.
+  /// \return Status.
+  Status FetchAndGetFromPlasmaStore(
+      std::unordered_set<ObjectID> &ids, const std::vector<ObjectID> &batch_ids,
+      const std::vector<plasma::ObjectID> &plasma_batch_ids, int64_t timeout_ms,
+      bool fetch_only, const TaskID &task_id,
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+      bool *got_exception);
+
   /// Whether the buffer represents an exception object.
   ///
   /// \param[in] object Object data.
@@ -52,11 +81,12 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   ///
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.
-  static void WarnIfAttemptedTooManyTimes(
-      int num_attempts, const std::unordered_map<ObjectID, int> &remaining);
+  static void WarnIfAttemptedTooManyTimes(int num_attempts,
+                                          const std::unordered_set<ObjectID> &remaining);
 
-  CoreWorkerLocalPlasmaStoreProvider local_store_provider_;
   std::unique_ptr<RayletClient> &raylet_client_;
+  plasma::PlasmaClient store_client_;
+  std::mutex store_client_mutex_;
 };
 
 }  // namespace ray
