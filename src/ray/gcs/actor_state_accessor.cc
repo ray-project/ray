@@ -118,6 +118,7 @@ Status ActorStateAccessor::DoAsyncSubscribe(
   };
 
   if (actor_id.IsNil()) {
+    // If the actor_id is Nil should subscribe to all actors.
     return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), on_subscribe, done);
   } else {
     return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, on_subscribe, done);

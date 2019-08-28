@@ -9,10 +9,10 @@ namespace ray {
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
-/// \param job_id The ID of job that need to register or update.
-/// \param is_dead Whether the job is dead.
+/// \param job_id The ID of job that need to be registered or updated.
+/// \param is_dead Whether the driver of this job is dead.
 /// \param timestamp The UNIX timestamp of corresponding to this event.
-/// \param node_manager_address Address of node this job was started on.
+/// \param node_manager_address Address of the node this job was started on.
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
 std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
