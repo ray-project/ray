@@ -13,6 +13,14 @@ namespace ray {
 namespace gcs {
 
 class ActorStateAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
+ public:
+  ActorStateAccessorTest() {
+    static InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                                  ray::RayLog::ShutDownRayLog,
+                                                  "GcsActorTest", ray::RayLogLevel::DEBUG,
+                                                  /*log_dir=*/"");
+  }
+
  protected:
   virtual void GenTestData() {
     for (size_t i = 0; i < 100; ++i) {
