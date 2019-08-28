@@ -5,6 +5,55 @@ cluster_name: minimal
 # node. This takes precedence over min_workers. min_workers default to 0.
 max_workers: 1
 
-# Node provider specific configuration.
+# Kubernetes resources that need to be configured for the autoscaler to be
+# able to manage the Ray cluster. If any of the provided resources don't
+# exist, the autoscaler will attempt to create them. If this fails, you may
+# not have the required permissions and will have to request them to be
+# created by your cluster administrator.
 provider:
     type: kubernetes
+
+    # Namespace to use for all resources created.
+    namespace:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+            name: ray
+
+    # ServiceAccount created by the autoscaler for the head node pod that it
+    # runs in. If this field isn't provided, the head pod config below must
+    # contain a user-created service account with the proper permissions.
+    autoscaler_service_account:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+            name: autoscaler
+
+    # Role created by the autoscaler for the head node pod that it runs in.
+    # If this field isn't provided, the role referenced in
+    # autoscaler_role_binding must exist and have at least these permissions.
+    autoscaler_role:
+        kind: Role
+        apiVersion: rbac.authorization.k8s.io/v1
+        metadata:
+            name: autoscaler
+        rules:
+        - apiGroups: [""]
+          resources: ["pods", "pods/status", "pods/exec"]
+          verbs: ["get", "watch", "list", "create", "delete", "patch"]
+
+    # RoleBinding created by the autoscaler for the head node pod that it runs
+    # in. If this field isn't provided, the head pod config below must contain
+    # a user-created service account with the proper permissions.
+    autoscaler_role_binding:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+            name: autoscaler
+        subjects:
+        - kind: ServiceAccount
+          name: autoscaler
+        roleRef:
+            kind: Role
+            name: autoscaler
+            apiGroup: rbac.authorization.k8s.io

@@ -29,28 +29,33 @@ target_utilization_fraction: 0.8
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 
-# Cloud-provider specific configuration.
+# Kubernetes resources that need to be configured for the autoscaler to be
+# able to manage the Ray cluster. If any of the provided resources don't
+# exist, the autoscaler will attempt to create them. If this fails, you may
+# not have the required permissions and will have to request them to be
+# created by your cluster administrator.
 provider:
     type: kubernetes
 
+    # Namespace to use for all resources created.
     namespace:
         apiVersion: v1
         kind: Namespace
         metadata:
             name: ray
 
-    # Default service account created and used by the autoscaler if the head node
-    # serviceAccountName is the default of "autoscaler." The namespace will be
-    # overwritten if the user provides one other than "ray."
+    # ServiceAccount created by the autoscaler for the head node pod that it
+    # runs in. If this field isn't provided, the head pod config below must
+    # contain a user-created service account with the proper permissions.
     autoscaler_service_account:
         apiVersion: v1
         kind: ServiceAccount
         metadata:
             name: autoscaler
 
-    # Default role created and used by the autoscaler if the head node
-    # serviceAccountName is the default of "autoscaler." The namespace
-    # will be overwritten if the user provides one other than "ray."
+    # Role created by the autoscaler for the head node pod that it runs in.
+    # If this field isn't provided, the role referenced in
+    # autoscaler_role_binding must exist and have at least these permissions.
     autoscaler_role:
         kind: Role
         apiVersion: rbac.authorization.k8s.io/v1
@@ -61,9 +66,9 @@ provider:
           resources: ["pods", "pods/status", "pods/exec"]
           verbs: ["get", "watch", "list", "create", "delete", "patch"]
 
-    # Default role binding created and used by the autoscaler if the head
-    # node serviceAccountName is the default of "autoscaler." The namespace
-    # will be overwritten if the user provides one other than "ray."
+    # RoleBinding created by the autoscaler for the head node pod that it runs
+    # in. If this field isn't provided, the head pod config below must contain
+    # a user-created service account with the proper permissions.
     autoscaler_role_binding:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
@@ -77,72 +82,122 @@ provider:
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
 
-# Provider-specific config for the head node, e.g. instance type.
+# Kubernetes pod config for the head node pod. If you are going to modify
+# these fields or provide your own config, please read the field comments
+# for requirements and consequences of doing so.
 head_node:
     apiVersion: v1
     kind: Pod
     metadata:
+        # You are free to change this.
         generateName: ray-head-
     spec:
+        # Change this if you altered the autoscaler_service_account above
+        # or want to provide your own.
         serviceAccountName: autoscaler
+
+        # Restarting the head node automatically is not currently supported.
+        # If the head node goes down, `ray up` must be run again.
         restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
         volumes:
         - name: dshm
           emptyDir:
               medium: Memory
+
         containers:
         - name: ray-node
+          # You are free (and encouraged) to use your own container image,
+          # but it should have the following installed:
+          #   - rsync (used for `ray rsync` commands and file mounts)
+          #   - screen (used for `ray attach`)
+          #   - kubectl (used by the autoscaler to manage worker pods)
           image: rayproject/autoscaler
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
           ports:
-              - containerPort: 6379
-              - containerPort: 6380
-              - containerPort: 6381
-              - containerPort: 12345
-              - containerPort: 12346
+              - containerPort: 6379 # Redis port.
+              - containerPort: 6380 # Redis port.
+              - containerPort: 6381 # Redis port.
+              - containerPort: 12345 # Ray internal communication.
+              - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
           volumeMounts:
               - mountPath: /dev/shm
                 name: dshm
           resources:
               requests:
-                  cpu: 100m
+                  cpu: 1000m
                   memory: 512Mi
           env:
+              # This is used in the head_start_ray_commands below so that
+              # Ray can spawn the correct number of processes. Omitting this
+              # may lead to degraded performance.
               - name: MY_CPU_REQUEST
                 valueFrom:
                     resourceFieldRef:
                         resource: requests.cpu
 
-# Provider-specific config for worker nodes, e.g. instance type.
+# Kubernetes pod config for worker node pods. If you are going to modify
+# these fields or provide your own config, please read the field comments
+# for requirements and consequences of doing so.
 worker_nodes:
     apiVersion: v1
     kind: Pod
     metadata:
+        # You are free to change this.
         generateName: ray-worker-
     spec:
         serviceAccountName: default
+
+        # Worker nodes will be managed automatically by the head node, so
+        # do not change the restart policy.
         restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
         volumes:
         - name: dshm
           emptyDir:
               medium: Memory
+
         containers:
         - name: ray-node
+          # You are free (and encouraged) to use your own container image,
+          # but it should have the following installed:
+          #   - rsync (used for `ray rsync` commands and file mounts)
           image: rayproject/autoscaler
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
           ports:
-              - containerPort: 12345
-              - containerPort: 12346
+              - containerPort: 12345 # Ray internal communication.
+              - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
           volumeMounts:
               - mountPath: /dev/shm
                 name: dshm
           resources:
               requests:
-                  cpu: 100m
-                  memory: 100Mi
+                  cpu: 1000m
+                  memory: 512Mi
           env:
+              # This is used in the head_start_ray_commands below so that
+              # Ray can spawn the correct number of processes. Omitting this
+              # may lead to degraded performance.
               - name: MY_CPU_REQUEST
                 valueFrom:
                     resourceFieldRef:
@@ -161,9 +216,7 @@ file_mounts: {
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands: [
-  "pushd ray && git fetch && git checkout k8s && git reset --hard origin/k8s && popd"
-]
+setup_commands: []
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
