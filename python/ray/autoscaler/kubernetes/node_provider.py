@@ -6,6 +6,7 @@ import logging
 
 from ray.autoscaler.kubernetes import core_api, log_prefix
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ def to_label_selector(tags):
 class KubernetesNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
+        self.cluster_name = cluster_name
         self.namespace = provider_config["namespace"]["metadata"]["name"]
 
     def non_terminated_nodes(self, tag_filters):
@@ -34,11 +36,13 @@ class KubernetesNodeProvider(NodeProvider):
             "status.phase!=Succeeded",
         ])
 
+        tag_filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         label_selector = to_label_selector(tag_filters)
         pod_list = core_api.list_namespaced_pod(
             self.namespace,
             field_selector=field_selector,
             label_selector=label_selector)
+
         return [pod.metadata.name for pod in pod_list.items]
 
     def is_running(self, node_id):
@@ -66,13 +70,7 @@ class KubernetesNodeProvider(NodeProvider):
 
     def create_node(self, node_config, tags, count):
         pod_spec = node_config.copy()
-
-        # Allow users to add tags and override values of existing
-        # tags with their own. This only applies to the resource type
-        # "instance". All other resource types are appended to the list of
-        # tag specs.
-        # TODO
-
+        tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         pod_spec["metadata"]["namespace"] = self.namespace
         pod_spec["metadata"]["labels"] = tags
         logger.info(log_prefix + "calling create_namespaced_pod "

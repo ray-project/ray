@@ -30,9 +30,6 @@ target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 
 # Cloud-provider specific configuration.
-# NOTE: If you want the autoscaler to use a different service account
-# rather than the one it creates, set `create_autoscaler_role` to false
-# and then change the head_node serviceAccountName.
 provider:
     type: kubernetes
 
@@ -40,7 +37,7 @@ provider:
         apiVersion: v1
         kind: Namespace
         metadata:
-            name: test-namespace
+            name: ray
 
     # Default service account created and used by the autoscaler if the head node
     # serviceAccountName is the default of "autoscaler." The namespace will be

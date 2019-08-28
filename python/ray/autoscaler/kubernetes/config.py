@@ -21,6 +21,23 @@ class InvalidNamespaceError(ValueError):
         return self.message
 
 
+def using_existing_msg(resource_type, name):
+    return "using existing {} '{}'".format(resource_type, name)
+
+
+def not_found_msg(resource_type, name):
+    return "{} '{}' not found, attempting to create it".format(
+        resource_type, name)
+
+
+def created_msg(resource_type, name):
+    return "successfully created {} '{}'".format(resource_type, name)
+
+
+def not_provided_msg(resource_type):
+    return "no {} config provided, must already exist".format(resource_type)
+
+
 def bootstrap_kubernetes(config):
     config["provider"]["use_internal_ips"] = True
     namespace = _configure_namespace(config["provider"])
@@ -30,98 +47,104 @@ def bootstrap_kubernetes(config):
     return config
 
 
-# TODO: check they're equal if exists
 def _configure_namespace(provider_config):
-    if "namespace" not in provider_config:
+    namespace_field = "namespace"
+    if namespace_field not in provider_config:
         raise ValueError("Must specify namespace in Kubernetes config.")
 
-    name = provider_config["namespace"]["metadata"]["name"]
-    try:
-        core_api.create_namespace(provider_config["namespace"])
-        logger.info(log_prefix + "created namespace '{}'".format(name))
-    except ApiException as e:
-        if e.status == 409:
-            logger.info(log_prefix +
-                        "using existing namespace '{}'".format(name))
-        else:
-            raise
+    name = provider_config[namespace_field]["metadata"]["name"]
+    field_selector = "metadata.name={}".format(name)
+    namespaces = core_api.list_namespace(field_selector=field_selector).items
+    if len(namespaces) > 0:
+        assert len(namespaces) == 1
+        logger.info(log_prefix + using_existing_msg(namespace_field, name))
+        return name
+
+    logger.info(log_prefix + not_found_msg(namespace_field, name))
+    core_api.create_namespace(provider_config[namespace_field])
+    logger.info(log_prefix + created_msg(namespace_field, name))
     return name
 
 
 def _configure_autoscaler_service_account(namespace, provider_config):
-    if "autoscaler_service_account" not in provider_config:
-        logger.info(
-            log_prefix +
-            "no autoscaler ServiceAccount provided, must already exist.")
+    account_field = "autoscaler_service_account"
+    if account_field not in provider_config:
+        logger.info(log_prefix + not_provided_msg(account_field))
         return
 
-    account = provider_config["autoscaler_service_account"]
+    account = provider_config[account_field]
     if "namespace" not in account["metadata"]:
         account["metadata"]["namespace"] = namespace
     elif account["metadata"]["namespace"] != namespace:
-        raise InvalidNamespaceError("autoscaler_service_account", namespace)
-    try:
-        core_api.create_namespaced_service_account(namespace, account)
-        logger.info(log_prefix + "created service account '{}'".format(
-            account["metadata"]["name"]))
-    except ApiException as e:
-        if e.status == 409:
-            logger.info(log_prefix + "using existing service account '{}'".
-                        format(account["metadata"]["name"]))
-        else:
-            raise
+        raise InvalidNamespaceError(account_field, namespace)
+
+    name = account["metadata"]["name"]
+    field_selector = "metadata.name={}".format(name)
+    accounts = core_api.list_namespaced_service_account(
+        namespace, field_selector=field_selector).items
+    if len(accounts) > 0:
+        assert len(accounts) == 1
+        logger.info(log_prefix + using_existing_msg(account_field, name))
+        return
+
+    logger.info(log_prefix + not_found_msg(account_field, name))
+    core_api.create_namespaced_service_account(namespace, account)
+    logger.info(log_prefix + created_msg(account_field, name))
 
 
 def _configure_autoscaler_role(namespace, provider_config):
-    if "autoscaler_role" not in provider_config:
-        logger.info(log_prefix +
-                    "no autoscaler role provided, must already exist.")
+    role_field = "autoscaler_role"
+    if role_field not in provider_config:
+        logger.info(log_prefix + not_provided_msg(role_field))
         return
 
-    role = provider_config["autoscaler_role"]
+    role = provider_config[role_field]
     if "namespace" not in role["metadata"]:
         role["metadata"]["namespace"] = namespace
     elif role["metadata"]["namespace"] != namespace:
-        raise InvalidNamespaceError("autoscaler_role", namespace)
-    try:
-        auth_api.create_namespaced_role(namespace, role)
-        logger.info(log_prefix +
-                    "created role '{}'".format(role["metadata"]["name"]))
-    except ApiException as e:
-        if e.status == 409:
-            logger.info(log_prefix + "using existing service role '{}'".format(
-                role["metadata"]["name"]))
-        else:
-            raise
+        raise InvalidNamespaceError(role_field, namespace)
+
+    name = role["metadata"]["name"]
+    field_selector = "metadata.name={}".format(name)
+    accounts = auth_api.list_namespaced_role(
+        namespace, field_selector=field_selector).items
+    if len(accounts) > 0:
+        assert len(accounts) == 1
+        logger.info(log_prefix + using_existing_msg(role_field, name))
+        return
+
+    logger.info(log_prefix + not_found_msg(role_field, name))
+    auth_api.create_namespaced_role(namespace, role)
+    logger.info(log_prefix + created_msg(role_field, name))
 
 
 def _configure_autoscaler_role_binding(namespace, provider_config):
-    if "autoscaler_role_binding" not in provider_config:
-        logger.info(log_prefix +
-                    "no autoscaler role binding provided, must already exist.")
+    binding_field = "autoscaler_role_binding"
+    if binding_field not in provider_config:
+        logger.info(log_prefix + not_provided_msg(binding_field))
         return
 
-    binding = provider_config["autoscaler_role_binding"]
+    binding = provider_config[binding_field]
     if "namespace" not in binding["metadata"]:
         binding["metadata"]["namespace"] = namespace
     elif binding["metadata"]["namespace"] != namespace:
-        raise InvalidNamespaceError("autoscaler_role", namespace)
-
+        raise InvalidNamespaceError(binding_field, namespace)
     for subject in binding["subjects"]:
         if "namespace" not in subject:
             subject["namespace"] = namespace
         elif subject["namespace"] != namespace:
-            raise InvalidNamespaceError("autoscaler_role_binding subject '{}'"
+            raise InvalidNamespaceError(binding_field + " subject '{}'"
                                         .format(subject["name"]), namespace)
 
-    try:
-        auth_api.create_namespaced_role_binding(namespace, binding)
-        logger.info(log_prefix + "created role binding '{}'".format(
-            binding["metadata"]["name"]))
-    except ApiException as e:
-        if e.status == 409:
-            logger.info(log_prefix +
-                        "using existing service role binding '{}'".format(
-                            binding["metadata"]["name"]))
-        else:
-            raise
+    name = binding["metadata"]["name"]
+    field_selector = "metadata.name={}".format(name)
+    accounts = auth_api.list_namespaced_role_binding(
+        namespace, field_selector=field_selector).items
+    if len(accounts) > 0:
+        assert len(accounts) == 1
+        logger.info(log_prefix + using_existing_msg(binding_field, name))
+        return
+
+    logger.info(log_prefix + not_found_msg(binding_field, name))
+    auth_api.create_namespaced_role_binding(namespace, binding)
+    logger.info(log_prefix + created_msg(binding_field, name))
