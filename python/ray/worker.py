@@ -398,12 +398,21 @@ class Worker(object):
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
-                    logger.debug(
-                        "Waiting {} secs for plasma to drain.".format(delay))
+                    logger.warning(
+                        "Waiting {} secs for space to free up "
+                        "in the object store.".format(delay))
                     time.sleep(delay)
                     delay *= 2
                 else:
+                    self._dump_object_store_memory_usage()
                     raise plasma_exc
+
+    def dump_object_store_memory_usage(self):
+        """Prints object store debug string to stdout."""
+        msg = "\n" + self.plasma_client.debug_string()
+        msg = msg.replace("\n", "\nplasma: ")
+        logger.warning(
+            "Local object store memory usage:\n{}\n".format(msg))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -2329,6 +2338,8 @@ def get(object_ids):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
+                if isinstance(value, ray.exceptions.UnreconstructableError):
+                    worker.dump_object_store_memory_usage()
                 raise value
 
         # Run post processors.
