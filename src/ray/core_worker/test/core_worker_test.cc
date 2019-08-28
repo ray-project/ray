@@ -816,7 +816,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
-  results.clear();
   RAY_CHECK_OK(core_worker.Objects().Get(ids, 0, &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
@@ -881,7 +880,6 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
 
-  results.clear();
   RAY_CHECK_OK(worker1.Objects().Get(ids, 0, &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
