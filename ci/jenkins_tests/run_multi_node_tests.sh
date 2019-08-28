@@ -52,4 +52,4 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/doc/examples/doc_code/torch_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/doc/examples/doc_code/torch_example.py
+    python /ray/doc/examples/doc_code/tf_example.py
