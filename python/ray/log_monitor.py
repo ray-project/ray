@@ -96,12 +96,7 @@ class LogMonitor(object):
                 # by it.
                 target = os.path.join(
                     self.logs_dir, "old", os.path.basename(file_info.filename))
-                try:
-                    shutil.move(file_info.filename, target)
-                except IOError:
-                    # Create the target directory if it doesn't exist yet.
-                    os.makedirs(os.path.dirname(target))
-                    shutil.move(file_info.filename, target)
+                shutil.move(file_info.filename, target)
             else:
                 self.closed_file_infos.append(file_info)
         self.can_open_more_files = True
