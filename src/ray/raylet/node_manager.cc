@@ -1890,8 +1890,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   }
 
   if (task_spec.IsActorCreationTask()) {
-    // This was an actor creation task. Convert the worker to an actor.
-    worker.AssignActorId(actor_id);
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     RAY_CHECK(actor_handle_id.IsNil());
@@ -1902,6 +1900,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
         [this, task_spec, resumed_from_checkpoint, port](
             ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
             const TaskTableData &parent_task_data) {
+          // This was an actor creation task. Convert the worker to an actor.
+          worker.AssignActorId(actor_id);
           // The task was in the GCS task table. Use the stored task spec to
           // get the parent actor id.
           Task parent_task(parent_task_data.task());
@@ -1917,6 +1917,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
         /*failure_callback=*/
         [this, task_spec, resumed_from_checkpoint, port](ray::gcs::RedisGcsClient *client,
                                                          const TaskID &parent_task_id) {
+          // This was an actor creation task. Convert the worker to an actor.
+          worker.AssignActorId(actor_id);
           // The parent task was not in the GCS task table. It should most likely be in
           // the
           // lineage cache.
