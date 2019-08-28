@@ -44,6 +44,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(std::unordered_set<ObjectID> &object_
                                            std::unordered_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
+  RAY_CHECK(object_ids.size() == id_vector.size());
   RAY_RETURN_NOT_OK(
       store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects));
 
