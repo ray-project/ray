@@ -199,7 +199,8 @@ class PlasmaEventHandler:
         del self._waiting_dict[fut.object_id]
 
     def _complete_future(self, fut):
-        obj = self._worker.retrieve_and_deserialize([fut.object_id], 0)[0]
+        obj = self._worker.retrieve_and_deserialize(
+            [ray.ObjectID(fut.object_id.binary())], 0)[0]
         fut.set_result(obj)
 
     def as_future(self, object_id, check_ready=True):

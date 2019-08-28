@@ -308,6 +308,7 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
+                print("PUT", object_id)
                 if isinstance(value, bytes):
                     # If the object is a byte array, skip serializing it and
                     # use a special metadata to indicate it's raw binary. So
@@ -428,8 +429,12 @@ class Worker(object):
 
     def retrieve_and_deserialize(self,
                                  object_ids,
-                                 data_metadata_pairs,
                                  error_timeout=10):
+        print("GET", object_ids[0])
+        data_metadata_pairs = self.core_worker.get_objects(
+            object_ids, self.current_task_id)
+        assert len(data_metadata_pairs) == len(object_ids)
+
         start_time = time.time()
         serialization_context = self.get_serialization_context(
             self.current_job_id)
@@ -518,15 +523,9 @@ class Worker(object):
         if self.mode == LOCAL_MODE:
             return self.local_mode_manager.get_objects(object_ids)
 
-        data_metadata_pairs = self.core_worker.get_objects(
-            object_ids, self.current_task_id)
-        assert len(data_metadata_pairs) == len(object_ids)
-
-        final_results = self.retrieve_and_deserialize(object_ids,
-                                                      data_metadata_pairs)
-
-        assert len(final_results) == len(object_ids)
-        return final_results
+        results = self.retrieve_and_deserialize(object_ids)
+        assert len(results) == len(object_ids)
+        return results
 
     def submit_task(self,
                     function_descriptor,
