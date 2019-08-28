@@ -23,8 +23,8 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
   /// See `CoreWorkerStoreProvider::Get` for semantics.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-             std::vector<std::shared_ptr<RayObject>> *results) override;
+  Status Get(std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
   /// See `CoreWorkerStoreProvider::Wait` for semantics.
   /// Note that `num_objects` must equal to number of items in `object_ids`.

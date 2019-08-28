@@ -82,9 +82,9 @@ class CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  virtual Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-                     const TaskID &task_id,
-                     std::vector<std::shared_ptr<RayObject>> *results) = 0;
+  virtual Status Get(
+      std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) = 0;
 
   /// Wait for a list of objects to appear in the object store.
   ///

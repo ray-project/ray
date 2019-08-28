@@ -6,7 +6,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/raylet/raylet_client.h"
 
@@ -35,8 +34,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-             std::vector<std::shared_ptr<RayObject>> *results) override;
+  Status Get(std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
   /// Wait for a list of objects to appear in the object store.
   ///
@@ -62,6 +61,13 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
                 bool delete_creating_tasks = false) override;
 
  private:
+  /// TODO
+  bool GetFromPlasmaStore(
+      std::unordered_set<ObjectID> &ids, const std::vector<ObjectID> &batch_ids,
+      const std::vector<plasma::ObjectID> &plasma_batch_ids, int64_t timeout_ms,
+      bool fetch_only, const TaskID &task_id,
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results);
+
   /// Whether the buffer represents an exception object.
   ///
   /// \param[in] object Object data.
@@ -73,14 +79,12 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   ///
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.
-  static void WarnIfAttemptedTooManyTimes(
-      int num_attempts, const std::unordered_map<ObjectID, int> &remaining);
+  static void WarnIfAttemptedTooManyTimes(int num_attempts,
+                                          const std::unordered_set<ObjectID> &remaining);
 
-  /// local plasma store provider.
-  CoreWorkerLocalPlasmaStoreProvider local_store_provider_;
-
-  /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
+  plasma::PlasmaClient store_client_;
+  std::mutex store_client_mutex_;
 };
 
 }  // namespace ray
