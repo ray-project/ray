@@ -3140,3 +3140,38 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Make sure that nothing has died.
     assert ray.services.remaining_processes_alive()
+
+
+def test_move_log_files_to_old(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    logs_dir = os.path.join(info["session_dir"], "logs")
+
+    @ray.remote
+    class Actor(object):
+        def f(self):
+            print("function f finished")
+
+    # First create a temporary actor.
+    a = Actor.remote()
+    ray.get(a.f.remote())
+
+    done = False
+    while not done:
+        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        for log_file_path in log_file_paths:
+            with open(log_file_path, "r") as f:
+                if "function f finished\n" in f.readlines():
+                    done = True
+        time.sleep(0.2)
+
+    # Now kill the actor so its log file gets moved to logs/old/.
+    del a
+
+    while True:
+        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        if len(log_file_paths) > 0:
+            break
+
+    # Make sure that nothing has died.
+    assert ray.services.remaining_processes_alive()
