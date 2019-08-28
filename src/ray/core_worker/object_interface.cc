@@ -147,7 +147,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                                    /*timeout_ms=*/0, num_objects,
                                                    &ready));
 
-  if (ready.size() < num_objects) {
+  if (ready.size() < static_cast<size_t>(num_objects)) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
     RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,
@@ -155,7 +155,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                                      num_objects, &ready));
   }
 
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {
       (*results)[i] = true;
     }
@@ -181,7 +181,7 @@ Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
           std::max(static_cast<int64_t>(0), remaining_timeout_ms - duration);
     }
 
-    if (ready->size() >= num_objects) {
+    if (ready->size() >= static_cast<size_t>(num_objects)) {
       break;
     }
   }
