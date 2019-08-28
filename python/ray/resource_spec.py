@@ -183,7 +183,7 @@ class ResourceSpec(
         if memory is None:
             memory = (avail_memory - object_store_memory - (redis_max_memory
                                                             if is_head else 0))
-            if memory < 500e6 and memory < 0.05 * system_memory:
+            if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
                     "usage, the amount of memory on this node available for "

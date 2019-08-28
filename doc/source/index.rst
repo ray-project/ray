@@ -168,6 +168,7 @@ The following are good places to discuss Ray.
    user-profiling.rst
    inspect.rst
    configure.rst
+   memory-management.rst
    advanced.rst
    troubleshooting.rst
    package-ref.rst

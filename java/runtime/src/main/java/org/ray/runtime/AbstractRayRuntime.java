@@ -1,6 +1,7 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.ray.api.RayActor;
@@ -32,7 +33,6 @@ import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskExecutor;
 import org.ray.runtime.task.TaskSubmitter;
-import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -202,7 +202,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, /*isDirectActorCall*/false);
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
+      Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
     RayActor actor = taskSubmitter
         .createActor(functionDescriptor, functionArgs,
