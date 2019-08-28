@@ -21,9 +21,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
   friend class JobStateAccessor;
   friend class SubscriptionExecutorTest;
-  friend void TestLogSubscribeAll(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
-  friend void TestLogSubscribeId(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
-  friend void TestLogSubscribeCancel(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
+  friend class LogSubscribeTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
