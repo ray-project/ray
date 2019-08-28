@@ -8,7 +8,7 @@
 
 namespace ray {
 
-/// Binary representation of ray object.
+/// Binary representation of a ray object.
 class RayObject {
  public:
   /// Create a ray object instance.
@@ -75,13 +75,14 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Put(const RayObject &object, const ObjectID &object_id) = 0;
 
-  /// Get a set of objects from the object store. Successfully fetched objects will be
+  /// Get a set of objects from the object store. Successfully retrieved objects will be
   /// removed from the input set of IDs and added to the results map.
   ///
-  /// \param[in] ids IDs of the objects to get.
+  /// \param[in/out] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] task_id ID for the current task.
-  /// \param[out] results Map of objects to write results into.
+  /// \param[out] results Map of objects to write results into. Get will only add to this
+  /// map, not clear or remove from it, so the caller can pass in a non-empty map.
   /// \return Status.
   virtual Status Get(
       std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
