@@ -139,7 +139,8 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   (*results).resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
-    return Status::Invalid("Number of objects to wait for must be between 1 and the number of ids.");
+    return Status::Invalid(
+        "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
@@ -147,7 +148,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   GroupObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
   size_t total_count = 0;
-  for (const auto& entry : object_ids_per_store_provider) {
+  for (const auto &entry : object_ids_per_store_provider) {
     total_count += entry.second.size();
   }
   if (total_count != ids.size()) {
@@ -162,7 +163,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                                    /*timeout_ms=*/0, num_objects,
                                                    &ready));
 
-  if (ready.size() < num_objects) {
+  if (ready.size() < static_cast<size_t>(num_objects)) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
     RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,
@@ -170,7 +171,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                                      num_objects, &ready));
   }
 
-  for (int i = 0; i < ids.size(); i++) {
+  for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {
       (*results)[i] = true;
     }
@@ -180,23 +181,22 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
 }
 
 Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
-    EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
-        &ids_per_provider,
+    EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
     int64_t timeout_ms, int num_objects, std::unordered_set<ObjectID> *ready) {
-
   auto remaining_timeout_ms = timeout_ms;
   for (auto &entry : ids_per_provider) {
     auto start_time = current_time_ms();
     int required_objects = std::min(static_cast<int>(entry.second.size()), num_objects);
-    RAY_RETURN_NOT_OK(store_providers_[entry.first]->Wait(entry.second, required_objects,
-                                            remaining_timeout_ms, worker_context_.GetCurrentTaskID(), ready));
+    RAY_RETURN_NOT_OK(store_providers_[entry.first]->Wait(
+        entry.second, required_objects, remaining_timeout_ms,
+        worker_context_.GetCurrentTaskID(), ready));
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =
           std::max(static_cast<int64_t>(0), remaining_timeout_ms - duration);
     }
 
-    if (ready->size() >= num_objects) {
+    if (ready->size() >= static_cast<size_t>(num_objects)) {
       break;
     }
   }
