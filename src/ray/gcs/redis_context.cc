@@ -139,6 +139,8 @@ int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscri
   std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.emplace(num_callbacks_,
                           CallbackItem(function, is_subscription, start_time));
+  RAY_LOG(DEBUG) << "Add callback, index is " << num_callbacks_ << ", is subscription "
+                 << is_subscription;
   return num_callbacks_++;
 }
 
@@ -152,6 +154,7 @@ RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_i
 void RedisCallbackManager::remove(int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.erase(callback_index);
+  RAY_LOG(DEBUG) << "Remove callback, index is " << callback_index;
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)                     \
