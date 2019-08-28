@@ -110,8 +110,9 @@ class UnreconstructableError(RayError):
             "cannot be reconstructed. Try increasing the object store "
             "memory available with ray.init(object_store_memory=<bytes>) "
             "or setting object store limits with "
-            "ray.remote(object_store_memory=<bytes>).".format(
-                self.object_id.hex()))
+            "ray.remote(object_store_memory=<bytes>). See also: {}".format(
+                self.object_id.hex(),
+                "https://ray.readthedocs.io/en/latest/memory-management.html"))
 
 
 RAY_EXCEPTION_TYPES = [
