@@ -41,14 +41,19 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// from the local plasma store. Successfully fetched objects will be removed
   /// from the input set of IDs and added to the results map.
   ///
-  /// \param[in] ids IDs of the objects to get.
+  /// \param[in/out] ids IDs of the objects to get.
   /// \param[in] batch_ids IDs of the objects to get.
   /// \param[in] plasma_batch_ids IDs of the objects to get (used for plasma call).
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
-  /// reconstruct objects. \param[in] task_id The current TaskID. \param[out] results Map
-  /// of objects to write results into. \param[out] got_exception Whether any of the
-  /// fetched objects contained an exception. \return Status.
+  /// reconstruct objects.
+  /// \param[in] task_id The current TaskID.
+  /// \param[out] results Map of objects to write results into. This method will only
+  /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
+  /// map.
+  /// \param[out] got_exception Whether any of the fetched objects contained an
+  /// exception.
+  /// \return Status.
   Status FetchAndGetFromPlasmaStore(
       std::unordered_set<ObjectID> &ids, const std::vector<ObjectID> &batch_ids,
       const std::vector<plasma::ObjectID> &plasma_batch_ids, int64_t timeout_ms,
