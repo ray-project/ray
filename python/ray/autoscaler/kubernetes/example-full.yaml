@@ -40,7 +40,7 @@ provider:
         apiVersion: v1
         kind: Namespace
         metadata:
-            name: ray
+            name: test-namespace
 
     # Default service account created and used by the autoscaler if the head node
     # serviceAccountName is the default of "autoscaler." The namespace will be
@@ -49,7 +49,6 @@ provider:
         apiVersion: v1
         kind: ServiceAccount
         metadata:
-            namespace: ray
             name: autoscaler
 
     # Default role created and used by the autoscaler if the head node
@@ -59,7 +58,6 @@ provider:
         kind: Role
         apiVersion: rbac.authorization.k8s.io/v1
         metadata:
-            namespace: ray
             name: autoscaler
         rules:
         - apiGroups: [""]
@@ -73,11 +71,9 @@ provider:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
         metadata:
-            namespace: ray
             name: autoscaler
         subjects:
         - kind: ServiceAccount
-          namespace: ray
           name: autoscaler
         roleRef:
             kind: Role

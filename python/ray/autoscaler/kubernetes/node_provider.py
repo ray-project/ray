@@ -73,6 +73,7 @@ class KubernetesNodeProvider(NodeProvider):
         # tag specs.
         # TODO
 
+        pod_spec["metadata"]["namespace"] = self.namespace
         pod_spec["metadata"]["labels"] = tags
         logger.info(log_prefix + "calling create_namespaced_pod "
                     "(count={}).".format(count))
