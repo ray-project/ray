@@ -38,7 +38,7 @@ Then, start a Ray cluster `via autoscaler <autoscaling.html>`_ or `manually <usi
 
 In your training program, insert the following:
 
-.. code-block::
+.. code-block:: python
 
     torch.distributed.init_process_group(backend='YOUR BACKEND',
                                          init_method='env://')
@@ -49,7 +49,7 @@ In your training program, insert the following:
 
 Then, separately, on each machine:
 
-.. code-block::
+.. code-block:: bash
 
     # Node 1: *(IP: 192.168.1.1, and has a free port: 1234)*
     $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
