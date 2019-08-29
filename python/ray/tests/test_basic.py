@@ -3143,7 +3143,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     assert ray.services.remaining_processes_alive()
 
 
-@pytest.mark.skip(reason="This test is too expensive to run.")
+# @pytest.mark.skip(reason="This test is too expensive to run.")
 def test_move_log_files_to_old(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -3160,12 +3160,18 @@ def test_move_log_files_to_old(shutdown_only):
     ]
     ray.get([a.f.remote() for a in actors])
 
+    # Make sure no log files are in the "old" directory before the actors
+    # are killed.
+    assert len(glob.glob("{}/old/worker*.out".format(logs_dir))) == 0
+
     # Now kill the actors so the files get moved to logs/old/.
     [a.__ray_terminate__.remote() for a in actors]
 
     while True:
         log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
         if len(log_file_paths) > 0:
+            with open(log_file_paths[0], "r") as f:
+                assert "function f finished\n" in f.readlines()
             break
 
     # Make sure that nothing has died.
