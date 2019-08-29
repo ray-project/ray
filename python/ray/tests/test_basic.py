@@ -3143,7 +3143,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     assert ray.services.remaining_processes_alive()
 
 
-# @pytest.mark.skip(reason="This test is too expensive to run.")
+@pytest.mark.skip(reason="This test is too expensive to run.")
 def test_move_log_files_to_old(shutdown_only):
     info = ray.init(num_cpus=1)
 
