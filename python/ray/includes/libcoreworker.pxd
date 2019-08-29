@@ -41,6 +41,7 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options, void* execution_callback)
+        void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()

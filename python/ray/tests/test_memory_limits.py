@@ -2,12 +2,11 @@ import numpy as np
 import unittest
 
 import ray
-import pyarrow
 
 MB = 1024 * 1024
 
 OBJECT_EVICTED = ray.exceptions.UnreconstructableError
-OBJECT_TOO_LARGE = pyarrow._plasma.PlasmaStoreFull
+OBJECT_TOO_LARGE = ray.exceptions.ObjectStoreFullError
 
 
 @ray.remote

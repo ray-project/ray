@@ -47,12 +47,15 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
-  gcs_client_->Disconnect();
   io_service_.stop();
   io_thread_.join();
   if (task_execution_interface_) {
     task_execution_interface_->Stop();
   }
+}
+
+void CoreWorker::Disconnect() {
+  gcs_client_->Disconnect();
   if (raylet_client_) {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }

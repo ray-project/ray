@@ -43,6 +43,9 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                        << object_id << ".";
       return Status::OK();
     }
+    if (plasma::IsPlasmaStoreFull(status)) {
+      return Status::ObjectStoreFull(status.message());
+    }
     RAY_ARROW_RETURN_NOT_OK(status);
   }
   *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));

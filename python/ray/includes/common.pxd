@@ -50,6 +50,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus RedisError()
 
+        @staticmethod
+        CRayStatus ObjectStoreFull()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -59,6 +62,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
         c_bool IsRedisError()
+        c_bool IsObjectStoreFull()
 
         c_string ToString()
         c_string CodeAsString()

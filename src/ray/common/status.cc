@@ -68,6 +68,9 @@ std::string Status::CodeAsString() const {
   case StatusCode::RedisError:
     type = "RedisError";
     break;
+   case StatusCode::ObjectStoreFull:
+    type = "ObjectStoreFull";
+    break;
   default:
     type = "Unknown";
     break;

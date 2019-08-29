@@ -76,7 +76,8 @@ enum class StatusCode : char {
   IOError = 5,
   UnknownError = 9,
   NotImplemented = 10,
-  RedisError = 11
+  RedisError = 11,
+  ObjectStoreFull = 12
 };
 
 #if defined(__clang__)
@@ -132,6 +133,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::RedisError, msg);
   }
 
+  static Status ObjectStoreFull(const std::string &msg) {
+    return Status(StatusCode::ObjectStoreFull, msg);
+  }
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
@@ -143,6 +148,7 @@ class RAY_EXPORT Status {
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
+  bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

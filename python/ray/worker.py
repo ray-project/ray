@@ -308,7 +308,6 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                print("PUT", object_id)
                 if isinstance(value, bytes):
                     # If the object is a byte array, skip serializing it and
                     # use a special metadata to indicate it's raw binary. So
@@ -377,8 +376,8 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            plasma.PlasmaStoreFull: This is raised if the attempt to store the
-                object fails because the object store is full even after
+            ray.ObjectStoreFullError: This is raised if the attempt to store
+                the object fails because the object store is full even after
                 multiple retries.
         """
         # Make sure that the value is not an object ID.
@@ -390,29 +389,6 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
-            try:
-                self._try_store_and_register(object_id, value)
-                break
-            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
-                if attempt:
-                    logger.debug(
-                        "Waiting {} secs for plasma to drain.".format(delay))
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    raise plasma_exc
-
-    def _try_store_and_register(self, object_id, value):
-        """Wraps `store_and_register` with cases for existence and pickling.
-
-        Args:
-            object_id (object_id.ObjectID): The object ID of the value to be
-                put.
-            value: The value to put in the object store.
-        """
         try:
             self.store_and_register(object_id, value)
         except TypeError:
@@ -428,7 +404,6 @@ class Worker(object):
             self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, error_timeout=10):
-        print("GET", object_ids[0])
         data_metadata_pairs = self.core_worker.get_objects(
             object_ids, self.current_task_id)
         assert len(data_metadata_pairs) == len(object_ids)

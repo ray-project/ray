@@ -90,6 +90,22 @@ class RayletError(RayError):
         return "The Raylet died with this message: {}".format(self.client_exc)
 
 
+class ObjectStoreFullError(RayError):
+    """Indicates that the object store is full.
+
+    This is raised if the attempt to store the object fails
+    because the object store is full even after multiple retries.
+    """
+
+    def __init__(self, object_id, message):
+        self.object_id = object_id
+        self.message = message
+
+    def __str__(self):
+        return ("Failed to put object {} in object store "
+                "because it is full: {}".format(self.object_id, self.message))
+
+
 class UnreconstructableError(RayError):
     """Indicates that an object is lost and cannot be reconstructed.
 
