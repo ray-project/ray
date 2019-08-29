@@ -325,6 +325,21 @@ void NodeManager::Heartbeat() {
   for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
     heartbeat_data->add_resource_load_label(resource_pair.first);
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
+    std::cerr << "Load " << resource_pair.first << " " << resource_pair.second
+              << std::endl;
+  }
+
+  for (const auto &task : local_queues_.GetTasks(TaskState::PLACEABLE)) {
+    auto const &task_resources = worker->GetTaskResourceIds();
+    if (!local_available_resources_.Contains(task_resources)) {
+      const TaskSpecification &spec = task.GetTaskSpecification();
+      if (spec.IsActorCreationTask()) {
+        std::cerr << "actor creation pending... " << std::endl;
+      }
+      // All the tasks in it.second have the same resource shape, so
+      // once the first task is not feasible, we can break out of this loop
+      break;
+    }
   }
 
   ray::Status status = heartbeat_table.Add(
@@ -708,7 +723,7 @@ void NodeManager::DispatchTasks(
       if (!local_available_resources_.Contains(task_resources)) {
         const TaskSpecification &spec = task.GetTaskSpecification();
         if (spec.IsActorCreationTask()) {
-          std::cout << "actor creation pending... " << std::endl;
+          std::cerr << "actor creation pending... " << std::endl;
         }
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
