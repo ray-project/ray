@@ -5,6 +5,9 @@ This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
+.. important:: For the multi-node setting, you must first run `ray start` on the command line before ``ray.init`` in Python. On a single machine, you can run ``ray.init()`` without `ray start`.
+
+
 Cluster Resources
 -----------------
 
@@ -142,7 +145,6 @@ Using the Object Store with Huge Pages
 Plasma is a high-performance shared memory object store originally developed in
 Ray and now being developed in `Apache Arrow`_. See the `relevant
 documentation`_.
-
 
 On Linux, it is possible to increase the write throughput of the Plasma object
 store by using huge pages. You first need to create a file system and activate
