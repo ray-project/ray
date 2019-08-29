@@ -28,6 +28,7 @@ import pickle
 import pytest
 
 import ray
+import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
 
@@ -3142,6 +3143,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     assert ray.services.remaining_processes_alive()
 
 
+@pytest.mark.skip(reason="This test is too expensive to run.")
 def test_move_log_files_to_old(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -3153,23 +3155,14 @@ def test_move_log_files_to_old(shutdown_only):
             print("function f finished")
 
     # First create a temporary actor.
-    a = Actor.remote()
-    ray.get(a.f.remote())
+    actors = [Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)]
+    ray.get([a.f.remote() for a in actors])
 
-    done = False
-    while not done:
-        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
-        for log_file_path in log_file_paths:
-            with open(log_file_path, "r") as f:
-                if "function f finished\n" in f.readlines():
-                    done = True
-        time.sleep(0.2)
-
-    # Now kill the actor so its log file gets moved to logs/old/.
-    del a
+    # Now kill the actors so the files get moved to logs/old/.
+    [a.__ray_terminate__.remote() for a in actors]
 
     while True:
-        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
         if len(log_file_paths) > 0:
             break
 
