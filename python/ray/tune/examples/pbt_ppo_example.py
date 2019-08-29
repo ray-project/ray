@@ -51,9 +51,9 @@ if __name__ == "__main__":
         name="pbt_humanoid_test",
         scheduler=pbt,
         **{
-            "env": "Humanoid-v1",
             "num_samples": 8,
             "config": {
+                "env": "Humanoid-v1",
                 "kl_coeff": 1.0,
                 "num_workers": 8,
                 "num_gpus": 1,
