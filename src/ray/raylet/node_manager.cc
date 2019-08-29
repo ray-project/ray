@@ -706,6 +706,10 @@ void NodeManager::DispatchTasks(
     for (const auto &task_id : it.second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
       if (!local_available_resources_.Contains(task_resources)) {
+        const TaskSpecification &spec = task.GetTaskSpecification();
+        if (spec.IsActorCreationTask()) {
+          std::cout << "actor creation pending... " << std::endl;
+        }
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
         break;
@@ -1330,12 +1334,12 @@ void NodeManager::ScheduleTasks(
       std::string type = "infeasible_task";
       std::ostringstream error_message;
       error_message
-          << "The task with ID " << task.GetTaskSpecification().TaskId()
-          << " is infeasible and cannot currently be executed. It requires "
+          << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
+          << " is infeasible and cannot currently be scheduled. It requires "
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement. Check the client table to view node resources.";
+          << " for placement.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().JobId(), type, error_message.str(),
           current_time_ms()));
