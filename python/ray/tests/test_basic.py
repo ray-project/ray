@@ -3155,7 +3155,9 @@ def test_move_log_files_to_old(shutdown_only):
             print("function f finished")
 
     # First create a temporary actor.
-    actors = [Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)]
+    actors = [
+        Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)
+    ]
     ray.get([a.f.remote() for a in actors])
 
     # Now kill the actors so the files get moved to logs/old/.
