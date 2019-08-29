@@ -11,7 +11,7 @@ import ray
 import ray.experimental.signal as signal
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
+logger.setLevel("INFO")
 
 #
 # Each Ray actor corresponds to an operator instance in the physical dataflow
