@@ -1851,7 +1851,14 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
-    RAY_CHECK(actor_entry->second.GetState() == ActorTableData::RECONSTRUCTING);
+    // TODO: The following is a workaround for the issue described in
+    // https://github.com/ray-project/ray/issues/5524, please see the issue
+    // description for more information.
+    if (actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING) {
+      RAY_LOG(WARNING) << "Actor not in reconstructing state, most likely it "
+                       << "died before creation handler could run. Actor state is "
+                       << actor_entry->second.GetState();
+    }
     // Copy the static fields from the current actor entry.
     actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
     // We are reconstructing the actor, so subtract its
