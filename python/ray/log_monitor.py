@@ -94,8 +94,8 @@ class LogMonitor(object):
                 # The process is not alive any more, so move the log file
                 # out of the log directory so glob.glob will not be slowed
                 # by it.
-                target = os.path.join(
-                    self.logs_dir, "old", os.path.basename(file_info.filename))
+                target = os.path.join(self.logs_dir, "old",
+                                      os.path.basename(file_info.filename))
                 try:
                     shutil.move(file_info.filename, target)
                 except (IOError, OSError) as e:
