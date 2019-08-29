@@ -1,17 +1,17 @@
-Tune: Scalable Hyperparameter Search
+Tune: Scalable Hyperparameter Tuning
 ====================================
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a scalable framework for hyperparameter search and model training with a focus on deep learning and deep reinforcement learning.
+Tune is a library for hyperparameter tuning at any scale.
 
-  * Scale to running on a large distributed cluster without changing your code.
-  * Launch a multi-node Tune experiment in less than 10 lines of code.
+  * Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
   * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
   * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
+  * Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
 .. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
 .. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
