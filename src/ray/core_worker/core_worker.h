@@ -30,6 +30,9 @@ class CoreWorker {
 
   ~CoreWorker();
 
+  /// Gracefully disconnect this worker from the raylet and gcs.
+  void Disconnect();
+
   /// Type of this worker.
   WorkerType GetWorkerType() const { return worker_type_; }
 
