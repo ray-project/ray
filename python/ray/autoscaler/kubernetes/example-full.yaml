@@ -17,7 +17,7 @@ initial_workers: 0
 # Whether or not to autoscale aggressively. If this is enabled, if at any point
 #   we would start more workers, we start at least enough to bring us to
 #   initial_workers.
-autoscaling_mode: aggressive
+autoscaling_mode: default
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -82,14 +82,11 @@ provider:
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
 
-# Kubernetes pod config for the head node pod. If you are going to modify
-# these fields or provide your own config, please read the field comments
-# for requirements and consequences of doing so.
+# Kubernetes pod config for the head node pod.
 head_node:
     apiVersion: v1
     kind: Pod
     metadata:
-        # You are free to change this.
         generateName: ray-head-
     spec:
         # Change this if you altered the autoscaler_service_account above
@@ -146,14 +143,11 @@ head_node:
                     resourceFieldRef:
                         resource: requests.cpu
 
-# Kubernetes pod config for worker node pods. If you are going to modify
-# these fields or provide your own config, please read the field comments
-# for requirements and consequences of doing so.
+# Kubernetes pod config for worker node pods.
 worker_nodes:
     apiVersion: v1
     kind: Pod
     metadata:
-        # You are free to change this.
         generateName: ray-worker-
     spec:
         serviceAccountName: default

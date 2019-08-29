@@ -113,9 +113,10 @@ class KubernetesCommandRunner(object):
                 ],
                 stdout=redirect,
                 stderr=redirect)
-        except Exception:
+        except Exception as e:
             logger.warning(self.log_prefix +
-                           "rsync failed. Falling back to 'kubectl cp'")
+                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
+                           .format(e))
             self.process_runner.check_call(
                 [
                     self.kubectl,
@@ -140,9 +141,10 @@ class KubernetesCommandRunner(object):
                 ],
                 stdout=redirect,
                 stderr=redirect)
-        except Exception:
+        except Exception as e:
             logger.warning(self.log_prefix +
-                           "rsync failed. Falling back to 'kubectl cp'")
+                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
+                           .format(e))
             self.process_runner.check_call(
                 [
                     self.kubectl,

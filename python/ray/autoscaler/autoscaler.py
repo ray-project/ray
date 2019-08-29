@@ -544,9 +544,8 @@ class StandardAutoscaler(object):
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(
-                new_config["worker_nodes"], new_config["auth"]
-                if "auth" in new_config else None)
+            new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
+                                               new_config["auth"])
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
                 new_config["worker_setup_commands"],
                 new_config["worker_start_ray_commands"]
@@ -625,7 +624,7 @@ class StandardAutoscaler(object):
             node_id=node_id,
             provider_config=self.config["provider"],
             provider=self.provider,
-            auth_config=self.config["auth"] if "auth" in self.config else None,
+            auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts={},
             initialization_commands=[],
@@ -660,7 +659,7 @@ class StandardAutoscaler(object):
             node_id=node_id,
             provider_config=self.config["provider"],
             provider=self.provider,
-            auth_config=self.config["auth"] if "auth" in self.config else None,
+            auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
