@@ -65,7 +65,8 @@ class VisionNetwork(TFModelV2):
 
         # Build the value layers
         if vf_share_layers:
-            last_layer = tf.squeeze(last_layer, axis=[1, 2])
+            last_layer = tf.keras.layers.Lambda(
+                lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
             value_out = tf.keras.layers.Dense(
                 1,
                 name="value_out",
@@ -95,7 +96,8 @@ class VisionNetwork(TFModelV2):
                 activation=None,
                 padding="same",
                 name="conv_value_out")(last_layer)
-            value_out = tf.squeeze(last_layer, axis=[1, 2])
+            value_out = tf.keras.layers.Lambda(
+                lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
         self.base_model = tf.keras.Model(inputs, [conv_out, value_out])
         self.register_variables(self.base_model.variables)

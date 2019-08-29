@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import collections
 from concurrent.futures import ThreadPoolExecutor
+import glob
 import json
 import logging
 from multiprocessing import Process
@@ -27,6 +28,7 @@ import pickle
 import pytest
 
 import ray
+import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
 
@@ -3113,3 +3115,64 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_invalid_unicode_in_worker_log(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    logs_dir = os.path.join(info["session_dir"], "logs")
+
+    # Wait till first worker log file is created.
+    while True:
+        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        if len(log_file_paths) == 0:
+            time.sleep(0.2)
+        else:
+            break
+
+    with open(log_file_paths[0], "wb") as f:
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.write(b"\xe5abc\nline2\nline3\n")
+        f.flush()
+
+    # Wait till the log monitor reads the file.
+    time.sleep(1.0)
+
+    # Make sure that nothing has died.
+    assert ray.services.remaining_processes_alive()
+
+
+@pytest.mark.skip(reason="This test is too expensive to run.")
+def test_move_log_files_to_old(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    logs_dir = os.path.join(info["session_dir"], "logs")
+
+    @ray.remote
+    class Actor(object):
+        def f(self):
+            print("function f finished")
+
+    # First create a temporary actor.
+    actors = [
+        Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)
+    ]
+    ray.get([a.f.remote() for a in actors])
+
+    # Make sure no log files are in the "old" directory before the actors
+    # are killed.
+    assert len(glob.glob("{}/old/worker*.out".format(logs_dir))) == 0
+
+    # Now kill the actors so the files get moved to logs/old/.
+    [a.__ray_terminate__.remote() for a in actors]
+
+    while True:
+        log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
+        if len(log_file_paths) > 0:
+            with open(log_file_paths[0], "r") as f:
+                assert "function f finished\n" in f.readlines()
+            break
+
+    # Make sure that nothing has died.
+    assert ray.services.remaining_processes_alive()

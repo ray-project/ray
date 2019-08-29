@@ -1,4 +1,4 @@
-Tune: Scalable Hyperparameter Search
+Tune: Scalable Hyperparameter Tuning
 ====================================
 
 Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
