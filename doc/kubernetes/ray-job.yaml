@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: ray-job
+  namespace: ray
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: ray-head
+          image: rayproject/autoscaler
+          command: [ "/bin/bash", "-c", "--" ]
+          args:
+            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
+              ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 && 
+              python example.py"
+          ports:
+            - containerPort: 12345
+            - containerPort: 12346
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_CPU_REQUEST
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
