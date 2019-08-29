@@ -945,8 +945,9 @@ class GlobalState(object):
                 None, then this method retrieves the errors for all jobs.
 
         Returns:
-            A dictionary mapping driver ID to a list of the error messages for
-                that driver.
+            A list of the error messages for the specified driver if one was
+                given, or a dictionary mapping each driver ID to a list of error
+                messages for the corresponding driver otherwise.
         """
         self._check_connected()
 
@@ -1190,14 +1191,18 @@ def errors(include_cluster_errors=True):
 
     Args:
         include_cluster_errors: True if we should include error messages for
-            all drivers, and false if we should only include error messages for
+            all drivers, and False if we should only include error messages for
             this specific driver.
 
     Returns:
-        Error messages pushed from the cluster.
+        Error messages pushed from the cluster. This will be a single list if
+            include_cluster_errors is False, or a dictionary mapping each driver
+            ID to a list of error messages if include_cluster_errors is True.
+
     """
-    worker = ray.worker.global_worker
-    error_messages = state.error_messages(job_id=worker.current_job_id)
-    if include_cluster_errors:
-        error_messages += state.error_messages(job_id=ray.JobID.nil())
+    if not include_cluster_errors:
+        worker = ray.worker.global_worker
+        error_messages = state.error_messages(job_id=worker.current_job_id)
+    else:
+        error_messages = state.error_messages(job_id=None)
     return error_messages
