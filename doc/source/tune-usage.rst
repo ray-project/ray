@@ -140,12 +140,9 @@ You may want to get a summary of multiple experiments that point to the same ``l
 
 See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
 
-Training Features
------------------
 
 Tune Search Space (Default)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+---------------------------
 
 You can use ``tune.grid_search`` to specify an axis of a grid search. By default, Tune also supports sampling parameters from user-specified lambda functions, which can be used independently or in combination with grid search.
 
@@ -177,7 +174,7 @@ The following shows grid search over two nested parameters combined with random 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
 Custom Trial Names
-~~~~~~~~~~~~~~~~~~
+------------------
 
 To specify custom trial names, you can pass use the ``trial_name_creator`` argument
 to `tune.run`.  This takes a function with the following signature, and
@@ -205,7 +202,7 @@ be sure to wrap it with `tune.function`:
 An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 Sampling Multiple Times
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated `num_samples` of times.
 
@@ -230,7 +227,7 @@ E.g. in the above, ``num_samples=10`` repeats the 3x3 grid search 10 times, for 
 
 
 Using GPUs (Resource Allocation)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------------
 
 Tune will allocate the specified GPU and CPU ``resources_per_trial`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 

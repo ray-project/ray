@@ -1,23 +1,24 @@
+# yapf: disable
 """
-This file holds code for a Training guide for PytorchSGD in the documentation.
+This file holds code for a Distributed Pytorch + Tune page in the docs.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
 in the documentation.
 """
 
-# yapf: disable
-# __torch_train_example__
+# __torch_tune_example__
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import numpy as np
 import torch
 import torch.nn as nn
 
-from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
+import ray
+from ray import tune
+from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainable
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -43,7 +44,7 @@ def model_creator(config):
 def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
     criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
     return criterion, optimizer
 
 
@@ -52,25 +53,32 @@ def data_creator(config):
     return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
 
-def train_example(num_replicas=1, use_gpu=False):
-    trainer1 = PyTorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        num_replicas=num_replicas,
-        use_gpu=use_gpu,
-        batch_size=512,
-        backend="gloo")
-    trainer1.train()
-    trainer1.shutdown()
-    print("success!")
+def tune_example(num_replicas=1, use_gpu=False):
+    config = {
+        "model_creator": tune.function(model_creator),
+        "data_creator": tune.function(data_creator),
+        "optimizer_creator": tune.function(optimizer_creator),
+        "num_replicas": num_replicas,
+        "use_gpu": use_gpu,
+        "batch_size": 512,
+        "backend": "gloo"
+    }
+
+    analysis = tune.run(
+        PyTorchTrainable,
+        num_samples=12,
+        config=config,
+        stop={"training_iteration": 2},
+        verbose=1)
+
+    return analysis.get_best_config(metric="validation_loss", mode="min")
 
 
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--redis-address",
-        required=False,
         type=str,
         help="the address to use for Redis")
     parser.add_argument(
@@ -89,7 +97,5 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    import ray
-
     ray.init(redis_address=args.redis_address)
-    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
