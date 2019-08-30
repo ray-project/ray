@@ -946,8 +946,8 @@ class GlobalState(object):
 
         Returns:
             A list of the error messages for the specified driver if one was
-                given, or a dictionary mapping each driver ID to a list of error
-                messages for the corresponding driver otherwise.
+                given, or a dictionary mapping each driver ID to a list of
+                error messages for the corresponding driver otherwise.
         """
         self._check_connected()
 
@@ -1196,9 +1196,9 @@ def errors(include_cluster_errors=True):
 
     Returns:
         Error messages pushed from the cluster. This will be a single list if
-            include_cluster_errors is False, or a dictionary mapping each driver
-            ID to a list of error messages if include_cluster_errors is True.
-
+            include_cluster_errors is False, or a dictionary mapping each
+            driver ID to a list of error messages if include_cluster_errors is
+            True.
     """
     if not include_cluster_errors:
         worker = ray.worker.global_worker
