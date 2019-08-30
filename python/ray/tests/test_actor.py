@@ -362,6 +362,25 @@ def test_actor_class_name(ray_start_regular):
     assert actor_class_info[b"module"] == b"ray.tests.test_actor"
 
 
+def test_actor_inheritance(ray_start_regular):
+    class NonActorBase(object):
+        def __init__(self):
+            pass
+
+    # Test that an actor class can inherit from a non-actor class.
+    @ray.remote
+    class ActorBase(NonActorBase):
+        def __init__(self):
+            pass
+
+    # Test that you can't inherit from an actor class.
+    with pytest.raises(TypeError):
+
+        class Derived(ActorBase):
+            def __init__(self):
+                pass
+
+
 def test_multiple_return_values(ray_start_regular):
     @ray.remote
     class Foo(object):
@@ -679,8 +698,8 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
     assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
     assert ray.get(actor.g.remote()) == list(range(1, 6))
-    assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == list(
-        range(1, 6))
+    assert ray.get(actor.h.remote([f.remote(i)
+                                   for i in range(5)])) == list(range(1, 6))
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
@@ -751,8 +770,8 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
         return ray.get([actor.get_value.remote() for _ in range(n)])
 
     assert ray.get(f.remote(3, 1)) == [3]
-    assert ray.get(
-        [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
+    assert ray.get([f.remote(i, 20)
+                    for i in range(10)]) == [20 * [i] for i in range(10)]
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
@@ -1699,8 +1718,8 @@ def _test_nondeterministic_reconstruction(
     enqueue_tasks = []
     for fork in range(num_forks):
         enqueue_tasks.append(
-            enqueue.remote(actor,
-                           [(fork, i) for i in range(num_items_per_fork)]))
+            enqueue.remote(actor, [(fork, i)
+                                   for i in range(num_items_per_fork)]))
     # Wait for the forks to complete their tasks.
     enqueue_tasks = ray.get(enqueue_tasks)
     enqueue_tasks = [fork_ids[0] for fork_ids in enqueue_tasks]

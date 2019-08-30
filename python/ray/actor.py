@@ -223,7 +223,8 @@ class ActorClass(object):
         self.init_actor_class(*args)
 
     def init_actor_class(self, modified_class, class_id, max_reconstructions,
-                   num_cpus, num_gpus, memory, object_store_memory, resources):
+                         num_cpus, num_gpus, memory, object_store_memory,
+                         resources):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
