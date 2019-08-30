@@ -20,3 +20,5 @@ atari-impala:
             [0, 0.0005],
             [20000000, 0.000000000001],
         ]
+        object_store_memory: 0
+        object_store_memory_per_worker: 0
