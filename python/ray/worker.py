@@ -2343,6 +2343,8 @@ def get(object_ids):
 def put(value, weakref=False):
     """Store an object in the object store.
 
+    The object may not be evicted while a reference to the returned ID exists.
+
     Args:
         value: The Python object to be stored.
         weakref: If set, allows the object to be evicted while a reference
