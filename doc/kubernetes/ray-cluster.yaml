@@ -2,8 +2,8 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: ray-head
   namespace: ray
+  name: ray-head
 spec:
   ports:
     # Redis ports.
@@ -30,8 +30,8 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ray-head
   namespace: ray
+  name: ray-head
 spec:
   # Do not change this - Ray currently only supports one head node per cluster.
   replicas: 1
@@ -97,8 +97,8 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ray-worker
   namespace: ray
+  name: ray-worker
 spec:
   # Change this to scale the number of worker nodes started in the Ray cluster.
   replicas: 3

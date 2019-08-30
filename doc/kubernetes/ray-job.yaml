@@ -1,8 +1,8 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: ray-job
   namespace: ray
+  generateName: ray-test-job-
 spec:
   template:
     spec:
@@ -12,7 +12,7 @@ spec:
           image: rayproject/autoscaler
           command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
+            - "wget https://raw.githubusercontent.com/ray-project/ray/ae40bf730a85e14d9accece1cb0840c827ee07f5/doc/kubernetes/example.py &&
               ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 && 
               python example.py"
           ports:
@@ -29,5 +29,5 @@ spec:
                   resource: requests.cpu
           resources:
             requests:
-              cpu: 500m
+              cpu: 100m
               memory: 512Mi
