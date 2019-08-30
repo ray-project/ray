@@ -398,12 +398,19 @@ class Worker(object):
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
-                    logger.debug(
-                        "Waiting {} secs for plasma to drain.".format(delay))
+                    logger.warning("Waiting {} seconds for space to free up "
+                                   "in the object store.".format(delay))
                     time.sleep(delay)
                     delay *= 2
                 else:
+                    self.dump_object_store_memory_usage()
                     raise plasma_exc
+
+    def dump_object_store_memory_usage(self):
+        """Prints object store debug string to stdout."""
+        msg = "\n" + self.plasma_client.debug_string()
+        msg = msg.replace("\n", "\nplasma: ")
+        logger.warning("Local object store memory usage:\n{}\n".format(msg))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -1007,14 +1014,13 @@ class Worker(object):
             self.plasma_client.set_client_options(client_name,
                                                   object_store_memory)
         except pyarrow._plasma.PlasmaStoreFull:
+            self.dump_object_store_memory_usage()
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
                 "plasma store may have insufficient memory remaining "
                 "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage). The current "
-                "object store memory status is:\n\n{}".format(
-                    object_store_memory, client_name,
-                    self.plasma_client.debug_string()))
+                "permanently reserved for shared usage).".format(
+                    object_store_memory, client_name))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1788,7 +1794,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 # Delay it a bit to see if we can suppress it
                 task_error_queue.put((error_message, time.time()))
             else:
-                logger.error(error_message)
+                logger.warn(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
@@ -2329,6 +2335,8 @@ def get(object_ids):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
+                if isinstance(value, ray.exceptions.UnreconstructableError):
+                    worker.dump_object_store_memory_usage()
                 raise value
 
         # Run post processors.

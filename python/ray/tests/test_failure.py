@@ -527,6 +527,27 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
+def test_warning_for_resource_deadlock(shutdown_only):
+    # Check that we get warning messages for infeasible tasks.
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Foo(object):
+        def f(self):
+            return 0
+
+    @ray.remote
+    def f():
+        # Creating both actors is not possible.
+        actors = [Foo.remote() for _ in range(2)]
+        for a in actors:
+            ray.get(a.f.remote())
+
+    # Run in a task to check we handle the blocked task case correctly
+    f.remote()
+    wait_for_errors(ray_constants.RESOURCE_DEADLOCK_ERROR, 1, timeout=30)
+
+
 def test_warning_for_infeasible_tasks(ray_start_regular):
     # Check that we get warning messages for infeasible tasks.
 
