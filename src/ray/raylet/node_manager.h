@@ -492,6 +492,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                          rpc::ForwardTaskReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Push an error to the driver if this node is full of actors and so we are
+  /// unable to schedule new tasks or actors at all.
+  void WarnResourceDeadlock();
+
   // GCS client ID for this node.
   ClientID client_id_;
   boost::asio::io_service &io_service_;

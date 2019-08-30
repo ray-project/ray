@@ -1794,7 +1794,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 # Delay it a bit to see if we can suppress it
                 task_error_queue.put((error_message, time.time()))
             else:
-                logger.error(error_message)
+                logger.warn(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
