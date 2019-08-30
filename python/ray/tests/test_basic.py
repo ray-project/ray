@@ -3045,8 +3045,15 @@ def test_put_pins_object(ray_start_object_store_memory):
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError) as e:
+    with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(x_copy)
+
+    # weakref put
+    y_id = ray.put("HI", weakref=True)
+    for _ in range(10):
+        ray.put(np.zeros(10 * 1024 * 1024))
+    with pytest.raises(ray.exceptions.UnreconstructableError):
+        ray.get(y_id)
 
 
 @pytest.mark.parametrize(
