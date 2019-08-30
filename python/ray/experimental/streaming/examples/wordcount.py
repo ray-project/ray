@@ -63,7 +63,7 @@ class Wikipedia(object):
 # Splits input line into words and
 # outputs records of the form (word,1)
 def splitter(line):
-    return [(w,1) for w in line.split()]
+    return [(word, 1) for word in line.split()]
 
 
 # Returns the first attribute of a tuple
