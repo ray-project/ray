@@ -2361,6 +2361,11 @@ def put(value):
             )
             worker.put_object(object_id, value)
         worker.task_context.put_index += 1
+        # Pin the object buffer with the returned id. This avoids put returns
+        # from getting evicted out from under the id.
+        object_id.set_buffer_ref(
+            worker.plasma_client.get_buffers(
+                [pyarrow.plasma.ObjectID(object_id.binary())]))
         return object_id
 
 
