@@ -105,7 +105,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
       }
     }
 
-    RAY_LOG(INFO) << "received notification on actor, state="
+    RAY_LOG(DEBUG) << "received notification on actor, state="
                   << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
                   << ", ip address: " << actor_data.ip_address()
                   << ", port: " << actor_data.port();
