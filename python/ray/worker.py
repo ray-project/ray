@@ -2340,11 +2340,18 @@ def get(object_ids):
         return values
 
 
-def put(value):
+def put(value, weakref=False):
     """Store an object in the object store.
+
+    The object may not be evicted while a reference to the returned ID exists.
+    Note that this pinning only applies to the particular object ID returned
+    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
+        weakref: If set, allows the object to be evicted while a reference
+            to the returned ID exists. You might want to set this if putting
+            a lot of objects that you might not need in the future.
 
     Returns:
         The object ID assigned to this value.
@@ -2359,8 +2366,23 @@ def put(value):
                 worker.current_task_id,
                 worker.task_context.put_index,
             )
-            worker.put_object(object_id, value)
+            try:
+                worker.put_object(object_id, value)
+            except pyarrow.plasma.PlasmaStoreFull:
+                logger.info(
+                    "Put failed since the value was either too large or the "
+                    "store was full of pinned objects. If you are putting "
+                    "and holding references to a lot of object ids, consider "
+                    "ray.put(value, weakref=True) to allow object data to "
+                    "be evicted early.")
+                raise
         worker.task_context.put_index += 1
+        # Pin the object buffer with the returned id. This avoids put returns
+        # from getting evicted out from under the id.
+        if not weakref and not worker.mode == LOCAL_MODE:
+            object_id.set_buffer_ref(
+                worker.plasma_client.get_buffers(
+                    [pyarrow.plasma.ObjectID(object_id.binary())]))
         return object_id
 
 
