@@ -3055,6 +3055,14 @@ def test_put_pins_object(ray_start_object_store_memory):
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(y_id)
 
+    @ray.remote
+    def check_no_buffer_ref(x):
+        assert x[0].get_buffer_ref() is None
+
+    z_id = ray.put("HI")
+    assert z_id.get_buffer_ref() is not None
+    ray.get(check_no_buffer_ref.remote([z_id]))
+
 
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
