@@ -398,7 +398,7 @@ class Worker(object):
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
-                    logger.warning("Waiting {} secs for space to free up "
+                    logger.warning("Waiting {} seconds for space to free up "
                                    "in the object store.".format(delay))
                     time.sleep(delay)
                     delay *= 2
