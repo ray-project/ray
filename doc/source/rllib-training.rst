@@ -209,9 +209,12 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 .. code-block:: python
 
-    # Get reference to model of the policy
-    model = trainer.get_policy().model
-    ...  # Do whatever you want to the model
+    >>> from ray.rllib.agents.dqn import DQNTrainer
+    >>> trainer = DQNTrainer(env="CartPole-v0")
+    >>> trainer.get_policy().model
+    <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
+    >>> trainer.get_policy().model.variables()
+    [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
