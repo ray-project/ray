@@ -356,6 +356,12 @@ void NodeManager::WarnResourceDeadlock() {
       continue;
     }
     // Progress is being made, don't warn.
+    resource_deadlock_warned_ = false;
+    return;
+  }
+
+  // suppress duplicates warning messages
+  if (resource_deadlock_warned_) {
     return;
   }
 
@@ -401,6 +407,7 @@ void NodeManager::WarnResourceDeadlock() {
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
         current_time_ms()));
+    resource_deadlock_warned_ = true;
   }
 }
 
