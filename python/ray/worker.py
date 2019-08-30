@@ -904,9 +904,10 @@ class Worker(object):
         try:
             logger.debug("Setting plasma memory limit to {} for {}".format(
                 object_store_memory, client_name))
-            self.plasma_client.set_client_options(client_name,
-                                                  object_store_memory)
-        except pyarrow._plasma.PlasmaStoreFull:
+            #self.plasma_client.set_client_options(client_name,
+                                                  #object_store_memory)
+            self.core_worker.set_memory_limit(object_store_memory)
+        except Exception as e:
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
                 "plasma store may have insufficient memory remaining "
@@ -914,7 +915,7 @@ class Worker(object):
                 "permanently reserved for shared usage). The current "
                 "object store memory status is:\n\n{}".format(
                     object_store_memory, client_name,
-                    self.plasma_client.debug_string()))
+                    e))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):

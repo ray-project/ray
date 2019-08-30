@@ -13,6 +13,11 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
+Status CoreWorkerPlasmaStoreProvider::SetMemoryLimit(int64_t limit_bytes) {
+  RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions("test_client_name", limit_bytes));
+  return Status::OK();
+}
+
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   std::shared_ptr<Buffer> data;

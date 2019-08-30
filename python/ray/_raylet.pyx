@@ -530,6 +530,10 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
 
+    def set_memory_limit(self, int64_t limit_bytes):
+        with nogil:
+            check_status(self.core_worker.get().Objects().SetMemoryLimit(limit_bytes))
+
     def disconnect(self):
         with nogil:
             self.core_worker.get().Disconnect()

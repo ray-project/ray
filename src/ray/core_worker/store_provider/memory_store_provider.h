@@ -19,6 +19,8 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerMemoryStoreProvider(std::shared_ptr<CoreWorkerMemoryStore> store);
 
+  Status SetMemoryLimit(int64_t limit_bytes) override;
+
   /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 

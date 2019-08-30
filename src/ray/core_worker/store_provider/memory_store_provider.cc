@@ -16,6 +16,10 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
   RAY_CHECK(store != nullptr);
 }
 
+Status CoreWorkerMemoryStoreProvider::SetMemoryLimit(int64_t limit_bytes) {
+  return Status::NotImplemented("Memory limits not implemented for in-memory store.");
+}
+
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   return store_->Put(object_id, object);

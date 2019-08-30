@@ -68,6 +68,8 @@ class CoreWorkerStoreProvider {
 
   virtual ~CoreWorkerStoreProvider() {}
 
+  virtual Status SetMemoryLimit(int64_t limit_bytes) = 0;
+
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] object The ray object.

@@ -22,6 +22,7 @@ from ray.includes.libraylet cimport CRayletClient
 
 cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
     cdef cppclass CObjectInterface "CoreWorkerObjectInterface":
+        CRayStatus SetMemoryLimit(int64_t limit)
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,

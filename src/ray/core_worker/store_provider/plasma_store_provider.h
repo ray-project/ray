@@ -22,6 +22,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
+  Status SetMemoryLimit(int64_t limit_bytes);
+
   /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 

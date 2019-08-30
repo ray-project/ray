@@ -22,6 +22,11 @@ class CoreWorkerObjectInterface {
                             std::unique_ptr<RayletClient> &raylet_client,
                             const std::string &store_socket);
 
+  /// Set the maximum amount of memory that can be used by operations on this
+  /// object interface.
+  /// \param[in] limit The memory limit in bytes.
+  Status SetMemoryLimit(int64_t limit_bytes);
+
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.

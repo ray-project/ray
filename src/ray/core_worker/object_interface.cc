@@ -46,6 +46,11 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
   AddStoreProvider(StoreProviderType::MEMORY);
 }
 
+Status CoreWorkerObjectInterface::SetMemoryLimit(int64_t limit_bytes) {
+  // Currently only the Plasma store support memory limits.
+  return store_providers_[StoreProviderType::PLASMA]->SetMemoryLimit(limit_bytes);
+}
+
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
   ObjectID put_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                      worker_context_.GetNextPutIndex(),

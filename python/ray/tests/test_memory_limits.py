@@ -76,7 +76,6 @@ class TestMemoryLimits(unittest.TestCase):
             print("Raised exception", type(e), e)
             raise e
         finally:
-            print(ray.worker.global_worker.plasma_client.debug_string())
             ray.shutdown()
 
 
