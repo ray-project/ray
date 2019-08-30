@@ -3068,7 +3068,7 @@ def test_put_pins_object(ray_start_object_store_memory):
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
-    x_id = ray.put(x)
+    x_id = ray.put(x, weakref=True)
 
     # Remove the object from the object table to simulate Redis LRU eviction.
     removed = False
