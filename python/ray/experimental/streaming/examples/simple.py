@@ -24,9 +24,7 @@ def splitter(line):
 
 
 def filter_fn(word):
-    if "f" in word:
-        return True
-    return False
+    return True if "f" in word else False
 
 
 if __name__ == "__main__":

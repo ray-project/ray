@@ -29,11 +29,7 @@ class Record(object):
 # Splits input line into words and outputs objects of type Record
 # each one consisting of a key (word) and a tuple (word,1)
 def splitter(line):
-    records = []
-    words = line.split()
-    for w in words:
-        records.append(Record((w, 1)))
-    return records
+    return [Record((w,1)) for w in line.split()]
 
 
 # Receives an object of type Record and returns the actual tuple
