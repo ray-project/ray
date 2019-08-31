@@ -20,7 +20,7 @@ This section will cover the two main components of using Tune:
     tune.run(Trainable)
 
 1. using the `Trainable API <tune-usage.html#training-api>`__ and
-2. running Tune via `tune.run <tune-usage.html#specifying-experiments>`__.
+2. running Tune via `tune.run <tune-usage.html#launching-tune>`__.
 
 You can checkout out our `examples page <tune-examples.html>`__ for more code examples.
 
