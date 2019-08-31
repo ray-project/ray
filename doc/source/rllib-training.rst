@@ -286,11 +286,11 @@ You can provide callback functions to be called at points during policy evaluati
         config={
             "env": "CartPole-v0",
             "callbacks": {
-                "on_episode_start": tune.function(on_episode_start),
-                "on_episode_step": tune.function(on_episode_step),
-                "on_episode_end": tune.function(on_episode_end),
-                "on_train_result": tune.function(on_train_result),
-                "on_postprocess_traj": tune.function(on_postprocess_traj),
+                "on_episode_start": on_episode_start,
+                "on_episode_step": on_episode_step,
+                "on_episode_end": on_episode_end,
+                "on_train_result": on_train_result,
+                "on_postprocess_traj": on_postprocess_traj,
             },
         },
     )
@@ -377,7 +377,7 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         config={
             "env": YourEnv,
             "callbacks": {
-                "on_train_result": tune.function(on_train_result),
+                "on_train_result": on_train_result,
             },
         },
     )
