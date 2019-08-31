@@ -167,6 +167,8 @@ The following shows grid search over two nested parameters combined with random 
         }
     )
 
+.. note::	
+    Use ``tune.sample_from(...)`` to sample from a function during trial variant generation.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
