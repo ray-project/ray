@@ -162,9 +162,7 @@ def _resolve_lambda_vars(spec, lambda_vars):
                 error = e
             except Exception:
                 raise ValueError(
-                    "Failed to evaluate expression: {}: {}".format(path, fn) +
-                    ". If you meant to pass this as a function literal, use "
-                    "tune.function() to escape it.")
+                    "Failed to evaluate expression: {}: {}".format(path, fn))
             else:
                 _assign_value(spec, path, value)
                 resolved[path] = value

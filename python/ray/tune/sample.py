@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 class sample_from(object):
     """Specify that tune should sample configuration values from this function.
 
-    The use of function arguments in tune configs must be disambiguated by
-    either wrapped the function in tune.sample_from() or tune.function().
-
     Arguments:
         func: An callable function to draw a sample from.
     """
