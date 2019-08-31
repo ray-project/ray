@@ -202,6 +202,22 @@ You can also access just the "master" copy of the trainer state through ``traine
     # Same as above
     trainer.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
 
+Accessing Model State
+~~~~~~~~~~~~~~~~~~~~~
+
+Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
+
+.. code-block:: python
+
+    >>> from ray.rllib.agents.dqn import DQNTrainer
+    >>> trainer = DQNTrainer(env="CartPole-v0")
+    >>> trainer.get_policy().model
+    <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
+    >>> trainer.get_policy().model.variables()
+    [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
+
+This is especially useful when used with `custom model classes <rllib-models.html>`__.
+
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
 Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
