@@ -1,11 +1,11 @@
-Tune: Scalable Hyperparameter Tuning
-====================================
+Tune: A Python Library for Scalable Hyperparameter Tuning
+=========================================================
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a library for hyperparameter tuning at any scale.
+Tune is a Python library for hyperparameter tuning at any scale. Core features:
 
   * Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
   * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
