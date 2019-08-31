@@ -45,6 +45,10 @@ class Cluster(object):
             if connect:
                 self.connect()
 
+    @property
+    def address(self):
+        return self.redis_address
+
     def connect(self):
         """Connect the driver to the cluster."""
         assert self.redis_address is not None
