@@ -169,6 +169,25 @@ class ActorMethod(object):
         return invocation(args, kwargs)
 
 
+class ActorMetaClass(type):
+    """Metaclass used to prevent users from inheriting from an ActorClass."""
+
+    def __new__(cls, name, bases, attr):
+        for base in bases:
+            if type(base) is ActorMetaClass:
+                raise Exception("Attempted to define subclass '{}' of Ray "
+                                "actor class '{}'. Inheriting from actor "
+                                "classes is not currently supported. You can "
+                                "instead inherit from a non-actor base class "
+                                "and make the derived class an actor class "
+                                "(with @ray.remote).".format(
+                                    name, base.__name__))
+            return super(ActorMetaClass, cls).__new__(cls, name, bases, attr)
+
+
+# six.add_metaclass is necessary for Python 2 and 3 support as the metaclass
+# syntax is different between them..
+@six.add_metaclass(ActorMetaClass)
 class ActorClass(object):
     """An actor class.
 
@@ -204,27 +223,8 @@ class ActorClass(object):
             each actor method.
     """
 
-    def __init__(self, *args):
-        # TODO(edoakes): solve this properly by instead making @ray.remote
-        # return a newly-defined class with a common ray actor metaclass.
-        if (len(args) == 3 and isinstance(args[0], str)
-                and isinstance(args[1], tuple) and isinstance(args[2], dict)):
-            actor_class = None
-            for parent in args[1]:
-                print(parent)
-                if isinstance(parent, ActorClass):
-                    actor_class = parent
-            raise TypeError("Attempted to define subclass '{}' of Ray actor "
-                            "class '{}'. Inheriting from actor classes is not "
-                            "currently supported. You can instead inherit "
-                            "from a non-actor base class and make the derived "
-                            "class an actor class (with @ray.remote).".format(
-                                args[0], actor_class._class_name))
-        self.init_actor_class(*args)
-
-    def init_actor_class(self, modified_class, class_id, max_reconstructions,
-                         num_cpus, num_gpus, memory, object_store_memory,
-                         resources):
+    def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
+                 num_gpus, memory, object_store_memory, resources):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
