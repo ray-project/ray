@@ -625,7 +625,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 
 def test_redis_module_failure(ray_start_regular):
     address_info = ray_start_regular
-    address = address_info["address"]
+    address = address_info["redis_address"]
     address = address.split(":")
     assert len(address) == 2
 

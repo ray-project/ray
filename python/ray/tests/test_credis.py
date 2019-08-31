@@ -23,8 +23,8 @@ class CredisTest(unittest.TestCase):
         ray.shutdown()
 
     def test_credis_started(self):
-        assert "address" in self.config
-        primary = parse_client(self.config["address"])
+        assert "redis_address" in self.config
+        primary = parse_client(self.config["redis_address"])
         assert primary.ping() is True
         member = primary.lrange("RedisShards", 0, -1)[0]
         shard = parse_client(member.decode())
