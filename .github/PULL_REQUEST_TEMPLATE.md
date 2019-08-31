@@ -12,7 +12,6 @@
 
 - [ ] I've run `scripts/format.sh` to lint the changes in this PR.
 
-
-## Docs Check (Committer || Reviewer):
+## Docs Maintenance:
 
 - [ ] I've verified that changes in this PR are appropriately reflected in the docs https://ray.readthedocs.io/en/latest/
