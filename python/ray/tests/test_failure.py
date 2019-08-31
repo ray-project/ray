@@ -632,13 +632,11 @@ def test_redis_module_failure(ray_start_regular):
     def run_failure_test(expecting_message, *command):
         with pytest.raises(
                 Exception, match=".*{}.*".format(expecting_message)):
-            client = redis.StrictRedis(
-                host=address[0], port=int(address[1]))
+            client = redis.StrictRedis(host=address[0], port=int(address[1]))
             client.execute_command(*command)
 
     def run_one_command(*command):
-        client = redis.StrictRedis(
-            host=address[0], port=int(address[1]))
+        client = redis.StrictRedis(host=address[0], port=int(address[1]))
         client.execute_command(*command)
 
     run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
