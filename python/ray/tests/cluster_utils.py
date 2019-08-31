@@ -33,7 +33,7 @@ class Cluster(object):
         """
         self.head_node = None
         self.worker_nodes = set()
-        self.redis_address = None
+        self.address = None
         self.connected = False
         self._shutdown_at_exit = shutdown_at_exit
         if not initialize_head and connect:
@@ -47,15 +47,15 @@ class Cluster(object):
 
     @property
     def address(self):
-        return self.redis_address
+        return self.address
 
     def connect(self):
         """Connect the driver to the cluster."""
-        assert self.redis_address is not None
+        assert self.address is not None
         assert not self.connected
         output_info = ray.init(
             ignore_reinit_error=True,
-            redis_address=self.redis_address,
+            address=self.address,
             redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
@@ -86,11 +86,11 @@ class Cluster(object):
             node = ray.node.Node(
                 ray_params, head=True, shutdown_at_exit=self._shutdown_at_exit)
             self.head_node = node
-            self.redis_address = self.head_node.redis_address
+            self.address = self.head_node.address
             self.redis_password = node_args.get("redis_password")
             self.webui_url = self.head_node.webui_url
         else:
-            ray_params.update_if_absent(redis_address=self.redis_address)
+            ray_params.update_if_absent(address=self.address)
             node = ray.node.Node(
                 ray_params,
                 head=False,
@@ -138,7 +138,7 @@ class Cluster(object):
             Exception: An exception is raised if the timeout expires before the
                 node appears in the client table.
         """
-        ip_address, port = self.redis_address.split(":")
+        ip_address, port = self.address.split(":")
         redis_client = redis.StrictRedis(
             host=ip_address, port=int(port), password=self.redis_password)
 
@@ -171,7 +171,7 @@ class Cluster(object):
             Exception: An exception is raised if we time out while waiting for
                 nodes to join.
         """
-        ip_address, port = self.redis_address.split(":")
+        ip_address, port = self.address.split(":")
         redis_client = redis.StrictRedis(
             host=ip_address, port=int(port), password=self.redis_password)
 

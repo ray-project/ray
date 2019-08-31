@@ -357,7 +357,7 @@ import time
 import ray
 from ray import tune
 
-ray.init(redis_address="{redis_address}")
+ray.init(address="{address}")
 
 
 tune.run(
@@ -372,7 +372,7 @@ tune.run(
     dict(experiment=kwargs),
     raise_on_failed_trial=False)
 """.format(
-        redis_address=cluster.redis_address, checkpoint_dir=dirpath)
+        address=cluster.address, checkpoint_dir=dirpath)
     run_string_as_driver_nonblocking(script)
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
@@ -446,7 +446,7 @@ import time
 import ray
 from ray import tune
 
-ray.init(redis_address="{redis_address}")
+ray.init(address="{address}")
 
 {fail_class_code}
 
@@ -460,7 +460,7 @@ tune.run(
     max_failures=1,
     raise_on_failed_trial=False)
 """.format(
-        redis_address=cluster.redis_address,
+        address=cluster.address,
         checkpoint_dir=dirpath,
         fail_class_code=reformatted,
         fail_class=_Mock.__name__)
