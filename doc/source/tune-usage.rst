@@ -13,14 +13,21 @@ More information about Tune's `search algorithms can be found here <tune-searcha
 Experiment Configuration
 ------------------------
 
-This section will cover the main steps needed to modify your code to run Tune: using the `Training API <tune-usage.html#training-api>`__ and  `executing your Tune experiment <tune-usage.html#specifying-experiments>`__.
+This section will cover the two main components of using Tune:
+
+.. code-block:: python
+
+    tune.run(Trainable)
+
+1. using the `Trainable API <tune-usage.html#training-api>`__ and
+2. running Tune via `tune.run <tune-usage.html#specifying-experiments>`__.
 
 You can checkout out our `examples page <tune-examples.html>`__ for more code examples.
 
 Training API
 ~~~~~~~~~~~~
 
-Training can be done with either the **Trainable Class API** or **function-based API**.
+Training can be done with either the Trainable **Class API** or **function-based API**.
 
 **Python classes** passed into Tune will need to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__. Here is an example:
 
@@ -36,7 +43,7 @@ Training can be done with either the **Trainable Class API** or **function-based
             result_dict = {"accuracy": 0.5, "f1": 0.1, ...}
             return result_dict
 
-**Python functions** will need to have the following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping.:
+**Python functions** will need to have the following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping:
 
 .. code-block:: python
 
@@ -59,22 +66,51 @@ Both the Trainable and function-based API will have `autofilled metrics <tune-us
 .. note::
     If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
 
-.. note::
-    See previous versions of the documentation for the ``reporter`` API.
+.. note:: See previous versions of the documentation for the ``reporter`` API.
 
 
-Launching an Experiment
-~~~~~~~~~~~~~~~~~~~~~~~
+Launching Tune
+~~~~~~~~~~~~~~
 
-Tune provides a ``run`` function that generates and runs the trials.
+Use ``tune.run`` to generate and execute your hyperparameter sweep:
 
 .. code-block:: python
 
-    tune.run(
-        trainable,
-        name="example-experiment",
-        num_samples=10,
-    )
+    tune.run(trainable)
+
+    # Run a total of 10 evaluations of the Trainable. Tune runs in parallel and automatically determines concurrency.
+    tune.run(trainable, num_samples=10)
+
+Tune automatically sets the trial concurrency to N, where N is the number of CPUs (cores) on your machine. You can override this with ``resources_per_trial``:
+
+.. code-block:: python
+
+    # If you have 4 CPUs on your machine, this will run 2 concurrent trials at a time.
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2})
+
+    # If you have 4 CPUs on your machine, this will run 1 trial at a time.
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
+
+Tune can also automatically detect GPUs on your machine. To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``. Trials will only be executed if all resources are satisifed:
+
+.. code-block:: python
+
+    # If you have 4 CPUs on your machine and 1 GPU, this will run 1 trial at a time.
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2, "gpu": 1})
+
+
+To attach to a Ray cluster or use ``ray.init`` manual resource overrides, simply run ``ray.init`` before ``tune.run``:
+
+.. code-block:: python
+
+    # Setup a local ray cluster and override resources. This will run 50 trials in parallel:
+    ray.init(num_cpus=100)
+    tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2})
+
+    # Connect to an existing distributed Ray cluster
+    ray.init(address=<ray_redis_address>)
+    tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
+
 
 This function will report status on the command line until all Trials stop:
 
