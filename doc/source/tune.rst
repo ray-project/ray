@@ -1,5 +1,5 @@
-Tune: A Python Library for Scalable Hyperparameter Tuning
-=========================================================
+Tune: A Scalable Hyperparameter Tuning Library
+==============================================
 
 .. image:: images/tune.png
     :scale: 30%
