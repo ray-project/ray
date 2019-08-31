@@ -207,16 +207,7 @@ def _is_resolved(v):
 
 
 def _try_resolve(v):
-    if isinstance(v, types.FunctionType):
-        raise DeprecationWarning(
-            "Function values are ambiguous in Tune "
-            "configuations. Either wrap the function with "
-            "`tune.function(func)` to specify a function literal, or "
-            "`tune.sample_from(func)` to tell Tune to "
-            "sample values from the function during variant generation: "
-            "{}".format(v))
-        return False, v
-    elif isinstance(v, sample_from):
+    if isinstance(v, sample_from):
         # Function to sample from
         return False, v.func
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
