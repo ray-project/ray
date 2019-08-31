@@ -175,7 +175,7 @@ class ActorMetaClass(type):
     def __new__(cls, name, bases, attr):
         for base in bases:
             if type(base) is ActorMetaClass:
-                raise Exception("Attempted to define subclass '{}' of Ray "
+                raise TypeError("Attempted to define subclass '{}' of Ray "
                                 "actor class '{}'. Inheriting from actor "
                                 "classes is not currently supported. You can "
                                 "instead inherit from a non-actor base class "
