@@ -378,7 +378,7 @@ def test_actor_inheritance(ray_start_regular):
         ActorBase()
 
     # Test that you can't inherit from an actor class.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
 
         class Derived(ActorBase):
             def __init__(self):
