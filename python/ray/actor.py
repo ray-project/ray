@@ -186,7 +186,7 @@ class ActorMetaClass(type):
 
 
 # six.add_metaclass is necessary for Python 2 and 3 support as the metaclass
-# syntax is different between them..
+# syntax is different between them.
 @six.add_metaclass(ActorMetaClass)
 class ActorClass(object):
     """An actor class.
