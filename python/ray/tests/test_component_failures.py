@@ -83,7 +83,7 @@ def test_dying_driver_get(ray_start_regular):
 import ray
 ray.init("{}")
 ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
-""".format(address_info["address"], x_id.hex())
+""".format(address_info["redis_address"], x_id.hex())
 
     p = run_string_as_driver_nonblocking(driver)
     # Make sure the driver is running.
@@ -166,7 +166,7 @@ def test_dying_driver_wait(ray_start_regular):
 import ray
 ray.init("{}")
 ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
-""".format(address_info["address"], x_id.hex())
+""".format(address_info["redis_address"], x_id.hex())
 
     p = run_string_as_driver_nonblocking(driver)
     # Make sure the driver is running.
