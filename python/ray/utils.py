@@ -614,3 +614,49 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)
+
+
+def try_to_symlink_directory(directory_path, symlink_path):
+    """Attempt to create a symlink to an existing directory.
+
+    If the directory doesn't exist, the symlink path exists, or the symlink
+    failed to be created, a warning will be logged and the symlink will not
+    be created. If a symlink exists in the path, it will be attempted to be
+    removed and replaced.
+
+    Args:
+        directory_path: The path of the existing directory.
+        symlink_path: The path of the symlink to create.
+    """
+    logger = logging.getLogger("ray")
+    directory_path = os.path.expanduser(directory_path)
+    symlink_path = os.path.expanduser(symlink_path)
+    if not os.path.exists(directory_path):
+        logger.warning("Attempted to create symlink to directory '{}', but "
+                       "the directory doesn't exist.".format(directory_path))
+        return
+    elif not os.path.isdir(directory_path):
+        logger.warning("Attempted to create symlink to directory '{}', but "
+                       "the '{}' isn't a directory.".format(
+                           directory_path, directory_path))
+        return
+
+    if os.path.exists(symlink_path):
+        if os.path.islink(symlink_path):
+            try:
+                os.remove(symlink_path)
+            except OSError as e:
+                logger.warning("Failed to remove existing symlink '{}': {}"
+                               .format(symlink_path, e))
+                return
+        else:
+            logger.warning("Attempted to create symlink '{}' to directory '{}'"
+                           ", but the symlink path exists and isn't a symlink."
+                           .format(symlink_path, directory_path))
+            return
+
+    try:
+        os.symlink(directory_path, symlink_path)
+    except OSError as e:
+        logger.warning("Failed to create symlink '{}' to directory '{}': {}"
+                       .format(symlink_path, directory_path, e))
