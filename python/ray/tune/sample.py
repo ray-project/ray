@@ -26,8 +26,9 @@ class sample_from(object):
 
 
 def function(func):
-    logger.warn("DeprecationWarning: wrapping {} with tune.function() is no "
-                "longer needed".format(func))
+    logger.warning(
+        "DeprecationWarning: wrapping {} with tune.function() is no "
+        "longer needed".format(func))
     return func
 
 
