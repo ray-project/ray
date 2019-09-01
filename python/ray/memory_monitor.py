@@ -141,7 +141,7 @@ class MemoryMonitor(object):
                             self.worker_name, round(heap_size / (1024**3), 4),
                             round(self.heap_limit / (1024**3), 4)))
                 elif heap_size > 0.8 * self.heap_limit:
-                    logger.warn(
+                    logger.warning(
                         "Heap memory usage for {} is {} / {} GiB limit".format(
                             self.worker_name, round(heap_size / (1024**3), 4),
                             round(self.heap_limit / (1024**3), 4)))
