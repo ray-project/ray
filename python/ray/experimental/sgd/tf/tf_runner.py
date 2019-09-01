@@ -23,7 +23,7 @@ class TFRunner(object):
                  data_creator,
                  config=None,
                  batch_size=16,
-                 index=0):
+                 verbose=False):
         """Initializes the runner.
 
         Args:
@@ -32,7 +32,7 @@ class TFRunner(object):
                 see tf_trainer.py.
             config (dict): see tf_trainer.py.
             batch_size (int): see tf_trainer.py.
-            index (int): Index of worker in Trainer worker pool.
+            verbose (bool): Outputs training data if true.
         """
 
         self.model_creator = model_creator
@@ -41,7 +41,7 @@ class TFRunner(object):
         self.batch_size = batch_size
         self.epoch = 0
         self.index = index
-        self.verbose = 1 if config.get("verbose") and self.index == 0 else 0
+        self.verbose = verbose
 
     def setup(self):
         """Initializes the model."""

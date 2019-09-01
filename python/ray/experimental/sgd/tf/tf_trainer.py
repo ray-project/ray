@@ -23,6 +23,7 @@ class TFTrainer(object):
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
+                 verbose=False,
                  batch_size=512):
         """Sets up the TensorFlow trainer.
 
@@ -37,6 +38,7 @@ class TFTrainer(object):
                 training.
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
                 if true.
+            verbose (bool): Prints output of one model if true.
             batch_size (int): batch size for an update.
         """
         self.model_creator = model_creator
@@ -45,7 +47,7 @@ class TFTrainer(object):
         self.batch_size = batch_size
         self.use_gpu = use_gpu
         self.num_replicas = num_replicas
-        self.verbose = True
+        self.verbose = verbose
 
         # Generate actor class
         Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
@@ -53,8 +55,12 @@ class TFTrainer(object):
         if num_replicas == 1:
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, self.config,
-                              batch_size)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    config=self.config,
+                    batch_size=batch_size,
+                    verbose=self.verbose)
             ]
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
@@ -64,9 +70,10 @@ class TFTrainer(object):
                 Runner.remote(
                     model_creator,
                     data_creator,
-                    self.config,
-                    batch_size,
-                    index=i) for i in range(num_replicas)
+                    config=self.config,
+                    batch_size=batch_size,
+                    verbose=self.verbose and i == 0
+                ) for i in range(num_replicas)
             ]
 
             # Compute URL for initializing distributed setup
