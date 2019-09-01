@@ -16,6 +16,16 @@ from ray.experimental.sgd.examples.tensorflow_train_example import (
     simple_model, simple_dataset)
 
 
+SIMPLE_CONFIG = {
+    "fit_config": {
+        "steps_per_epoch": 3,
+    },
+    "evaluate_config": {
+        "steps": 3,
+    }
+}
+
+
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
@@ -23,14 +33,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
-        config={
-            "fit_config": {
-                "steps_per_epoch": 3,
-            },
-            "evaluate_config": {
-                "steps": 3,
-            }
-        },
+        config=SIMPLE_CONFIG,
         batch_size=128)
 
     train_stats1 = trainer.train()
@@ -49,14 +52,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": False,
-        "trainer_config": {
-            "fit_config": {
-                "steps_per_epoch": 3,
-            },
-            "evaluate_config": {
-                "steps": 3,
-            }
-        },
+        "trainer_config": SIMPLE_CONFIG,
         "batch_size": 128
     }
 
@@ -75,6 +71,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
+        config=SIMPLE_CONFIG,
         batch_size=128)
     trainer1.train()
 
@@ -89,6 +86,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
+        config=SIMPLE_CONFIG,
         batch_size=128)
     trainer2.restore(filename)
 
