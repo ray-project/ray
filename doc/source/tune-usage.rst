@@ -317,7 +317,7 @@ When running a hyperparameter search, Tune can automatically and periodically sa
 
 To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
-For PyTorch model training, this would look something like this `PyTorhc example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch_trainable.py>`__:
+For PyTorch model training, this would look something like this `PyTorch example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch_trainable.py>`__:
 
 .. code-block:: python
 
