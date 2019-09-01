@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(redis_address=args.redis_address, logging_level="debug")
+    ray.init(redis_address=args.redis_address)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
