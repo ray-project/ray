@@ -25,8 +25,9 @@ Trainable API
 
 Training can be done with either the Trainable **Class API** or **function-based API**.
 
-**Tune Class API**: This will require users to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__. Here is an example:
+**Tune Class API**: This will require users to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
 
+Here is an example:
 
 .. code-block:: python
 
@@ -38,6 +39,10 @@ Training can be done with either the Trainable **Class API** or **function-based
             # run training code
             result_dict = {"accuracy": 0.5, "f1": 0.1, ...}
             return result_dict
+
+
+.. autoclass::  ray.tune.Trainable
+    :noindex:
 
 **Tune function-based API**: User-defined functions will need to have following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping:
 

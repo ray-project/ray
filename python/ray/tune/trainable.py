@@ -40,14 +40,11 @@ class Trainable(object):
     Calling ``save()`` should save the training state of a trainable to disk,
     and ``restore(path)`` should restore a trainable to the given state.
 
-    Generally you only need to implement ``_train``, ``_save``, and
-    ``_restore`` here when subclassing Trainable.
+    Generally you only need to implement ``_setup``, ``_train``,
+    ``_save``, and ``_restore`` when subclassing Trainable.
 
-    Note that, if you don't require checkpoint/restore functionality, then
-    instead of implementing this class you can also get away with supplying
-    just a ``my_train(config)`` function to the config.
-    The function will be automatically converted to this interface
-    (sans checkpoint functionality).
+    Other implementation methods that may be helpful to override are
+    ``_log_result``, ``_stop``, and ``_export_model``.
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
