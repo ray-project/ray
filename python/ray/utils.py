@@ -618,6 +618,7 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
 
 def try_to_symlink_directory(directory_path, symlink_path):
     """Attempt to create a symlink to an existing directory.
+
     If the directory doesn't exist, the symlink path exists, or the symlink
     failed to be created, a warning will be logged and the symlink will not
     be created. If a symlink exists in the path, it will be attempted to be
