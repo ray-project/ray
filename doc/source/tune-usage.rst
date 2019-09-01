@@ -185,6 +185,22 @@ You can use ``tune.grid_search`` to specify an axis of a grid search. By default
 .. note::
     If you specify an explicit Search Algorithm such as any SuggestionAlgorithm, you may not be able to specify lambdas or grid search with this interface, as the search algorithm may require a different search space declaration.
 
+
+Use ``tune.sample_from(<func>)`` to sample a value for a hyperparameter. The ``func`` should take in a ``spec`` object, which has a ``config`` namespace from which you can access other hyperparameters. This is useful for conditional distributions:
+
+.. code-block:: python
+
+    tune.run(
+        ...,
+        config={
+            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
+            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal())
+        }
+    )
+
+Tune provides a couple utilities for specifying custom functions, wrapping popular numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See the `Package Reference <tune-package-ref.html#ray.tune.uniform>`_ for more details.
+
+
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
 .. code-block:: python
@@ -202,11 +218,6 @@ The following shows grid search over two nested parameters combined with random 
             ],
         }
     )
-
-.. note::	
-    Use ``tune.sample_from(...)`` to sample from a function during trial variant generation.
-
-For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
 Custom Trial Names
 ------------------
