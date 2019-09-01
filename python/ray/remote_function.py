@@ -140,17 +140,21 @@ class RemoteFunction(object):
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
-            args = ray.signature.extend_args(self._function_signature, args,
-                                             kwargs)
+            list_args = [[None, arg] for arg in args]
+            list_args += [[keyword, arg] for keyword, arg in kwargs.items()]
+            list_args = sum(list_args, [])
 
+            # args = ray.signature.extend_args(self._function_signature, args,
+            #                                  kwargs)
             if worker.mode == ray.worker.LOCAL_MODE:
+                # TODO
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args,
                     num_return_vals)
             else:
                 object_ids = worker.submit_task(
                     self._function_descriptor,
-                    args,
+                    list_args,
                     num_return_vals=num_return_vals,
                     resources=resources)
 

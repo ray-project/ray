@@ -866,7 +866,19 @@ class Worker(object):
                 else:
                     arguments[object_indices[i]] = value
 
-        return arguments
+        return self._to_args_kwargs(arguments)
+
+    def _to_args_kwargs(self, list_args):
+        assert len(list_args) % 2 == 0, "Unexpected argument formatting."
+        args = []
+        kwargs = {}
+        for i in range(len(list_args) // 2):
+            if list_args[2 * i] is None:
+                args.append(list_args[2 * i + 1])
+            else:
+                kwargs[list_args[2 * i]] = list_args[2 * i + 1]
+
+        return args, kwargs
 
     def _store_outputs_in_object_store(self, object_ids, outputs):
         """Store the outputs of a remote function in the local object store.
@@ -932,7 +944,7 @@ class Worker(object):
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
-        args = task.arguments()
+        serialized_args = task.arguments()
         return_object_ids = task.returns()
         if task.is_actor_task() or task.is_actor_creation_task():
             dummy_return_id = return_object_ids.pop()
@@ -945,8 +957,9 @@ class Worker(object):
                 self.reraise_actor_init_error()
                 self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments"):
-                arguments = self._get_arguments_for_execution(
-                    function_name, args)
+                function_args, function_kwargs = (
+                    self._get_arguments_for_execution(function_name,
+                                                      serialized_args))
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
@@ -958,7 +971,8 @@ class Worker(object):
             self._current_task = task
             with profiling.profile("task:execute"):
                 if task.is_normal_task():
-                    outputs = function_executor(*arguments)
+                    outputs = function_executor(*function_args,
+                                                **function_kwargs)
                 else:
                     if task.is_actor_task():
                         key = task.actor_id()
@@ -978,8 +992,9 @@ class Worker(object):
                                 ray_constants.from_memory_units(
                                     task.required_resources()[
                                         "object_store_memory"])))
-                    outputs = function_executor(dummy_return_id,
-                                                self.actors[key], *arguments)
+                    outputs = function_executor(
+                        dummy_return_id, self.actors[key], *function_args,
+                        **function_kwargs)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.

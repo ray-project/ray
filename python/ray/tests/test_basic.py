@@ -732,6 +732,41 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+def test_star_kwargs(shutdown_only):
+    @ray.remote
+    def keyword_starkwargs(a, b, **kwargs):
+        return a, b, kwargs
+
+    @ray.remote
+    def keyword_fct4(a, x="hello", **kwargs):
+        return x, kwargs
+
+
+    @ray.remote
+    def keyword_fct4(a, *args, x="hello", **kwargs):
+        return a, b, kwargs
+
+    @ray.remote
+    def keyword_fct4(*args, x="hello", y="hello"):
+        return a, b, kwargs
+
+    @ray.remote
+    def keyword_fct4(a="hello", b="hello", *args, **kwargs):
+        return a, b, kwargs
+
+    @ray.remote
+    def keyword_fct4(a="hello", b="hello", *, **kwargs):
+        return a, b, kwargs
+
+    @ray.remote
+    def keyword_fct4(*, a="hello", b="hello", **kwargs):
+        return a, b, kwargs
+
+    @ray.remote
+    def keyword_fct4(**kwargs):
+        return a, b, kwargs
+
+
 def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct1(*a):
