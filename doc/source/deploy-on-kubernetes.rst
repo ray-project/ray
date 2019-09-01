@@ -57,7 +57,7 @@ Start an IPython interpreter, e.g., ``ipython``
 
   # Note that if you run this script on a non-head node, then you must replace
   # "localhost" with socket.gethostbyname("ray-head").
-  ray.init(redis_address="localhost:6379")
+  ray.init(address="localhost:6379")
 
   @ray.remote
   def f(x):

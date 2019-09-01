@@ -25,7 +25,7 @@ Connecting to an existing Ray cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To connect to an existing Ray cluster, simply pass the argument address of the
-Redis server as the ``redis_address=`` keyword argument into ``ray.init``. In
+Redis server as the ``address=`` keyword argument into ``ray.init``. In
 this case, no new processes will be started when ``ray.init`` is called, and
 similarly the processes will continue running when the script exits. In this
 case, all processes except workers that correspond to actors are shared between

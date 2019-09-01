@@ -28,8 +28,8 @@ class TestRedisPassword(object):
             return 1
 
         info = ray.init(redis_password=password)
-        redis_address = info["redis_address"]
-        redis_ip, redis_port = redis_address.split(":")
+        address = info["redis_address"]
+        redis_ip, redis_port = address.split(":")
 
         # Check that we can run a task
         object_id = f.remote()

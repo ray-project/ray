@@ -86,7 +86,7 @@ def test_dynamic_res_updation_clientid(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     target_node_id = ray.nodes()[1]["NodeID"]
 
@@ -120,7 +120,7 @@ def test_dynamic_res_creation_clientid(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     target_node_id = ray.nodes()[1]["NodeID"]
 
@@ -150,7 +150,7 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     target_node_ids = [node["NodeID"] for node in ray.nodes()]
 
@@ -191,7 +191,7 @@ def test_dynamic_res_deletion_clientid(ray_start_cluster):
         # target node
         cluster.add_node(resources={res_name: res_capacity})
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     target_node_id = ray.nodes()[1]["NodeID"]
 
@@ -223,7 +223,7 @@ def test_dynamic_res_creation_scheduler_consistency(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     node_ids = [node["NodeID"] for node in ray.nodes()]
 
@@ -260,7 +260,7 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     node_ids = [node["NodeID"] for node in ray.nodes()]
 
@@ -313,7 +313,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     node_ids = [node["NodeID"] for node in ray.nodes()]
     target_node_id = node_ids[1]
@@ -392,7 +392,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     node_ids = [node["NodeID"] for node in ray.nodes()]
     target_node_id = node_ids[1]
@@ -469,7 +469,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     node_ids = [node["NodeID"] for node in ray.nodes()]
     target_node_id = node_ids[1]
@@ -538,7 +538,7 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node()
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     node_ids = [node["NodeID"] for node in ray.nodes()]
     target_node_id = node_ids[1]
