@@ -72,8 +72,8 @@ class TFTrainer(object):
                     data_creator,
                     config=self.config,
                     batch_size=batch_size,
-                    verbose=self.verbose and i == 0
-                ) for i in range(num_replicas)
+                    verbose=self.verbose and i == 0)
+                for i in range(num_replicas)
             ]
 
             # Compute URL for initializing distributed setup

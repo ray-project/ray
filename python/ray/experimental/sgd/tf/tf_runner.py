@@ -5,8 +5,7 @@ from __future__ import print_function
 import logging
 import json
 import os
-import tensorflow as tf
-from tf.distribute.experimental import MultiWorkerMirroredStrategy
+from tensorflow.distribute.experimental import MultiWorkerMirroredStrategy
 import numpy as np
 
 import ray
@@ -40,7 +39,6 @@ class TFRunner(object):
         self.config = {} if config is None else config
         self.batch_size = batch_size
         self.epoch = 0
-        self.index = index
         self.verbose = verbose
 
     def setup(self):
@@ -72,8 +70,7 @@ class TFRunner(object):
         }
         os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
-        self.strategy = MultiWorkerMirroredStrategy(
-        )
+        self.strategy = MultiWorkerMirroredStrategy()
 
         self.train_dataset, self.test_dataset = self.data_creator(
             self.batch_size)

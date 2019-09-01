@@ -6,6 +6,7 @@ import os
 import pytest
 import tempfile
 import numpy as np
+import shutil
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
@@ -22,25 +23,21 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator=simple_model,
         data_creator=simple_dataset,
         num_replicas=num_replicas,
+        config={
+            "fit_config": {
+                "steps_per_epoch": 3,
+            },
+            "evaluate_config": {
+                "steps": 3,
+            }
+        },
         batch_size=128)
 
     train_stats1 = trainer.train()
     train_stats1.update(trainer.validate())
-    print(train_stats1)
 
     train_stats2 = trainer.train()
     train_stats2.update(trainer.validate())
-    print(train_stats2)
-
-    if "train_loss" in train_stats1 and "train_loss" in train_stats2:
-        print(train_stats1["train_loss"], train_stats2["train_loss"])
-        assert train_stats1["train_loss"] > train_stats2["train_loss"]
-
-    print(
-        train_stats1["validation_loss"],
-        train_stats2["validation_loss"],
-    )
-    assert train_stats1["validation_loss"] > train_stats2["validation_loss"]
 
 
 @pytest.mark.parametrize(  # noqa: F811
@@ -52,22 +49,23 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": False,
+        "config": {
+            "fit_config": {
+                "steps_per_epoch": 3,
+            },
+            "evaluate_config": {
+                "steps": 3,
+            }
+        },
         "batch_size": 128
     }
 
-    analysis = tune.run(
+    tune.run(
         TFTrainable,
         num_samples=2,
         config=config,
         stop={"training_iteration": 2},
         verbose=1)
-
-    # checks loss decreasing for every trials
-    for path, df in analysis.trial_dataframes.items():
-        validation_loss1 = df.loc[0, "validation_loss"]
-        validation_loss2 = df.loc[1, "validation_loss"]
-
-        assert validation_loss2 <= validation_loss1
 
 
 @pytest.mark.parametrize(  # noqa: F811
@@ -80,7 +78,8 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         batch_size=128)
     trainer1.train()
 
-    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
+    tmpdir = tempfile.mkdtemp()
+    filename = os.path.join(tmpdir, "checkpoint")
     trainer1.save(filename)
 
     model1 = trainer1.get_model()
@@ -96,7 +95,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     model2 = trainer2.get_model()
     trainer2.shutdown()
 
-    os.remove(filename)
+    shutil.rmtree(tmpdir)
 
     model1_config = model1.get_config()
     model2_config = model2.get_config()

@@ -40,9 +40,7 @@ def simple_dataset(batch_size=20):
 
 
 def simple_model():
-    model = Sequential(
-        [Dense(10, input_shape=(1, )),
-         Dense(1, activation="softmax")])
+    model = Sequential([Dense(10, input_shape=(1, )), Dense(1)])
 
     model.compile(
         optimizer="sgd",
