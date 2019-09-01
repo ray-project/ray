@@ -1,7 +1,9 @@
-Distributed Training TF (Experimental)
-======================================
+TensorFlow Distributed Training API (Experimental)
+==================================================
 
 Ray's ``TFTrainer`` simplifies distributed model training for Tensorflow. The ``TFTrainer`` is a wrapper around ``MultiWorkerMirroredStrategy`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to write custom logic of setting environments and starting separate processes.
+
+.. important:: This API has only been tested with TensorFlow2.0rc.
 
 ----------
 
