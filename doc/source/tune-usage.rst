@@ -20,12 +20,12 @@ The Tune training API [``tune.run(Trainable)``] has two concepts:
 1. The `Trainable <tune-usage.html#training-api>`__ API, and
 2. `tune.run <tune-usage.html#launching-tune>`__.
 
+Training can be done with either the Trainable **Class API** or **function-based API**.
+
 Trainable API
 ~~~~~~~~~~~~~
 
-Training can be done with either the Trainable **Class API** or **function-based API**.
-
-**Tune Class API**: This will require users to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
+The class-based API will require users to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
 
 Here is an example:
 
@@ -44,7 +44,10 @@ Here is an example:
 .. autoclass::  ray.tune.Trainable
     :noindex:
 
-**Tune function-based API**: User-defined functions will need to have following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping:
+Tune function-based API
+~~~~~~~~~~~~~~~~~~~~~~~
+
+User-defined functions will need to have following signature and call ``tune.track.log``, which will allow you to report metrics used for scheduling, search, or early stopping:
 
 .. code-block:: python
 
