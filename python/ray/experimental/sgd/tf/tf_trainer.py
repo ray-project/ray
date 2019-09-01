@@ -175,7 +175,7 @@ class TFTrainable(Trainable):
         self._trainer = TFTrainer(
             model_creator=config["model_creator"],
             data_creator=config["data_creator"],
-            config=config,
+            config=config.get("trainer_config", {}),
             num_replicas=config["num_replicas"],
             use_gpu=config["use_gpu"],
             batch_size=config["batch_size"])

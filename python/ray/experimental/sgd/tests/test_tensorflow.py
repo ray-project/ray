@@ -49,7 +49,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": False,
-        "config": {
+        "trainer_config": {
             "fit_config": {
                 "steps_per_epoch": 3,
             },
