@@ -1235,7 +1235,7 @@ def test_wait_cluster(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
     cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"RemoteResource": 1})
     def f():
@@ -1263,7 +1263,7 @@ def test_object_transfer_dump(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f(x):
@@ -1534,7 +1534,7 @@ def test_free_objects_multi_node(ray_start_cluster):
             num_cpus=1,
             resources={"Custom{}".format(i): 1},
             _internal_config=config)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     class RawActor(object):
         def get(self):
@@ -1996,7 +1996,7 @@ def test_zero_cpus_actor(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=2)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -2069,7 +2069,7 @@ def test_multiple_raylets(ray_start_cluster):
     cluster.add_node(num_cpus=11, num_gpus=0)
     cluster.add_node(num_cpus=5, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
     # Define a bunch of remote functions that all return the socket name of
@@ -2191,7 +2191,7 @@ def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
     cluster.add_node(num_cpus=3, resources={"CustomResource": 1})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f():
@@ -2235,7 +2235,7 @@ def test_two_custom_resources(ray_start_cluster):
             "CustomResource1": 3,
             "CustomResource2": 4
         })
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
@@ -2468,7 +2468,7 @@ def test_load_balancing(ray_start_cluster):
     num_cpus = 7
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_cpus)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f():
@@ -2486,7 +2486,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     num_nodes = 3
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f(x):

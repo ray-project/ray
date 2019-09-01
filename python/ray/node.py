@@ -202,6 +202,11 @@ class Node(object):
         return self._node_ip_address
 
     @property
+    def address(self):
+        """Get the cluster address."""
+        return self._redis_address
+
+    @property
     def redis_address(self):
         """Get the cluster Redis address."""
         return self._redis_address

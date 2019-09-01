@@ -1298,8 +1298,8 @@ def _initialize_serialization(job_id, worker=global_worker):
         class_id="ray.signature.FunctionSignature")
 
 
-def init(redis_address=None,
-         address=None,
+def init(address=None,
+         redis_address=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -1346,14 +1346,14 @@ def init(redis_address=None,
 
     .. code-block:: python
 
-        ray.init(redis_address="123.45.67.89:6379")
+        ray.init(address="123.45.67.89:6379")
 
     Args:
-        redis_address (str): The address of the Redis server to connect to. If
+        address (str): The address of the Ray cluster to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
-        address (str): Same as redis_address.
+        redis_address (str): Deprecated; same as address.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
