@@ -61,14 +61,13 @@ In your training program, insert the following, and **customize** for each worke
 And on each machine, launch a separate process that contains the index of the worker and information about all other nodes of the cluster.
 
 
-PyTorchTrainer Example
-----------------------
+TFTrainer Example
+-----------------
 
-Below is an example of using Ray's PyTorchTrainer. Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a worker.
+Below is an example of using Ray's TFTrainer. Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a worker.
 
 .. literalinclude:: ../../python/ray/experimental/sgd/examples/tensorflow_train_example.py
    :language: python
-   :start-after: __torch_train_example__
 
 
 Package Reference
