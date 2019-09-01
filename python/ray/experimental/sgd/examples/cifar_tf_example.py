@@ -193,8 +193,8 @@ if __name__ == "__main__":
             data_augmentation_creator if args.augment_data else data_creator),
         num_replicas=args.num_replicas,
         use_gpu=args.use_gpu,
+        verbose=True,
         config={
-            "verbose": True,
             "fit_config": {
                 "steps_per_epoch": num_train_steps,
             },

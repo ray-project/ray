@@ -28,18 +28,18 @@ class TFTrainer(object):
         """Sets up the TensorFlow trainer.
 
         Args:
-            model_creator (dict -> Model): creates the model
+            model_creator (dict -> Model): Creates the model
                 using the config.
-            data_creator (dict -> BatchDataset, BatchDataset): creates
+            data_creator (dict -> tf.Dataset, tf.Dataset): Creates
                 the training and validation data sets using the config.
             config (dict): configuration passed to 'model_creator',
                 'data_creator', and 'optimizer_creator'.
-            num_replicas (int): the number of workers used in distributed
-                training.
-            use_gpu (bool): Sets resource allocation for workers to 1 GPU
-                if true.
+            num_replicas (int): Sets number of workers used in distributed
+                training. Workers will be placed arbitrarily across the
+                cluster.
+            use_gpu (bool): Enables all workers to use GPU.
             verbose (bool): Prints output of one model if true.
-            batch_size (int): batch size for an update.
+            batch_size (int): Batch size to be split across all workers.
         """
         self.model_creator = model_creator
         self.data_creator = data_creator

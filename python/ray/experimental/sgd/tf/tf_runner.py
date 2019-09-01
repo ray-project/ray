@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import tensorflow as tf
+from tf.distribute.experimental import MultiWorkerMirroredStrategy
 import numpy as np
 
 import ray
@@ -28,8 +29,7 @@ class TFRunner(object):
 
         Args:
             model_creator (dict -> Model): see tf_trainer.py.
-            data_creator (dict -> BatchDataset, BatchDataset):
-                see tf_trainer.py.
+            data_creator (dict -> tf.Dataset, tf.Dataset): see tf_trainer.py.
             config (dict): see tf_trainer.py.
             batch_size (int): see tf_trainer.py.
             verbose (bool): Outputs training data if true.
@@ -72,7 +72,7 @@ class TFRunner(object):
         }
         os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
-        self.strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        self.strategy = MultiWorkerMirroredStrategy(
         )
 
         self.train_dataset, self.test_dataset = self.data_creator(
