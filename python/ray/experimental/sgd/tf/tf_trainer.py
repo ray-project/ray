@@ -28,12 +28,15 @@ class TFTrainer(object):
         """Sets up the TensorFlow trainer.
 
         Args:
-            model_creator (dict -> Model): Creates the model
-                using the config.
+            model_creator (dict -> Model): This function takes in the `config`
+                dict and returns a compiled TF model.
             data_creator (dict -> tf.Dataset, tf.Dataset): Creates
                 the training and validation data sets using the config.
+                `config` dict is passed into the function.
             config (dict): configuration passed to 'model_creator',
-                'data_creator', and 'optimizer_creator'.
+                'data_creator'. Also contains `fit_config`, which is passed
+                into `model.fit(data, **fit_config)` and
+                `evaluate_config` which is passed into `model.evaluate`.
             num_replicas (int): Sets number of workers used in distributed
                 training. Workers will be placed arbitrarily across the
                 cluster.

@@ -46,7 +46,7 @@ def fetch_keras_data():
 input_shape = x_train.shape[1:]
 
 
-def create_model():
+def create_model(config):
     model = Sequential()
     model.add(Conv2D(32, (3, 3), padding="same", input_shape=input_shape))
     model.add(Activation("relu"))
@@ -78,7 +78,8 @@ def create_model():
     return model
 
 
-def data_creator(batch_size):
+def data_creator(config):
+    batch_size = config["batch_size"]
     (x_train, y_train), (x_test, y_test) = fetch_keras_data()
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
@@ -129,7 +130,8 @@ def _make_generator(x_train, y_train, batch_size):
     return datagen.flow(x_train, y_train, batch_size=batch_size)
 
 
-def data_augmentation_creator(batch_size):
+def data_augmentation_creator(config):
+    batch_size = config["batch_size"]
     (x_train, y_train), (x_test, y_test) = fetch_keras_data()
     trainset = tf.data.Dataset.from_generator(
         lambda: _make_generator(x_train, y_train, batch_size),

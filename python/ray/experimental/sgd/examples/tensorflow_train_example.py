@@ -16,6 +16,17 @@ NUM_TRAIN_SAMPLES = 1000
 NUM_TEST_SAMPLES = 400
 
 
+def create_config(batch_size):
+    return {
+            "fit_config": {
+                "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
+            },
+            "evaluate_config": {
+                "steps": NUM_TEST_SAMPLES // batch_size,
+            }
+        }
+
+
 def linear_dataset(a=2, b=5, size=1000):
     x = np.arange(0, 10, 10 / size, dtype=np.float32)
     y = a * x + b
@@ -26,7 +37,8 @@ def linear_dataset(a=2, b=5, size=1000):
     return x, y
 
 
-def simple_dataset(batch_size=20):
+def simple_dataset(config):
+    batch_size = config["batch_size"]
     x_train, y_train = linear_dataset(size=NUM_TRAIN_SAMPLES)
     x_test, y_test = linear_dataset(size=NUM_TEST_SAMPLES)
 
@@ -39,7 +51,7 @@ def simple_dataset(batch_size=20):
     return train_dataset, test_dataset
 
 
-def simple_model():
+def simple_model(config):
     model = Sequential([Dense(10, input_shape=(1, )), Dense(1)])
 
     model.compile(
@@ -56,15 +68,8 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
         data_creator=simple_dataset,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        config={
-            "verbose": True,
-            "fit_config": {
-                "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
-            },
-            "evaluate_config": {
-                "steps": NUM_TEST_SAMPLES // batch_size,
-            }
-        },
+        verbose=True,
+        config=create_config(batch_size),
         batch_size=batch_size)
 
     train_stats1 = trainer.train()
@@ -86,6 +91,7 @@ def tune_example(num_replicas=1, use_gpu=False):
         "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
+        "trainer_config": create_config(batch_size),
         "batch_size": 128
     }
 

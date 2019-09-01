@@ -43,12 +43,12 @@ class TFRunner(object):
 
     def setup(self):
         """Initializes the model."""
-        logger.debug("Creating model")
-        self.model = self.model_creator()
-
         logger.debug("Creating dataset")
-        self.train_dataset, self.test_dataset = self.data_creator(
-            self.batch_size)
+        self.train_dataset, self.test_dataset = self.data_creator(self.config)
+
+        logger.debug("Creating model")
+        self.model = self.model_creator(self.config)
+
 
     def setup_distributed(self, urls, world_rank, world_size):
         """Sets up TensorFLow distributed environment and initializes the model.
@@ -72,12 +72,11 @@ class TFRunner(object):
 
         self.strategy = MultiWorkerMirroredStrategy()
 
-        self.train_dataset, self.test_dataset = self.data_creator(
-            self.batch_size)
+        self.train_dataset, self.test_dataset = self.data_creator(self.config)
 
         logger.debug("Creating model with MultiWorkerMirroredStrategy")
         with self.strategy.scope():
-            self.model = self.model_creator()
+            self.model = self.model_creator(self.config)
 
         # For use in model.evaluate()
         self.local_model = None
