@@ -99,8 +99,12 @@ class BinaryAutoregressiveOutput(ActionDistribution):
         return a1_dist.entropy() + a2_dist.entropy()
 
     def kl(self, other):
-        # TODO: implement this properly
-        return tf.zeros_like(self.entropy())
+        a1_dist = self._a1_distribution()
+        a1_terms = a1_dist.kl(other._a1_distribution())
+
+        a1 = a1_dist.sample()
+        a2_terms = self._a2_distribution(a1).kl(other._a2_distribution(a1))
+        return a1_terms + a2_terms
 
     def _a1_distribution(self):
         BATCH = tf.shape(self.inputs)[0]

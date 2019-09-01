@@ -57,7 +57,7 @@ spec:
           image: rayproject/examples
           command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "wget https://raw.githubusercontent.com/ray-project/ray/master/kubernetes/example.py &&
+            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
               ray start --head --redis-port=6379 --redis-shard-ports=6380,6381 --object-manager-port=12345 --node-manager-port=12346 --node-ip-address=$MY_POD_IP &&
               python example.py"
           ports:

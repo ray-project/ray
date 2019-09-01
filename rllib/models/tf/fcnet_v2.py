@@ -10,9 +10,7 @@ tf = try_import_tf()
 
 
 class FullyConnectedNetwork(TFModelV2):
-    """Generic fully connected network implemented in ModelV2 API.
-
-    TODO(ekl): should make this the default fcnet in the future."""
+    """Generic fully connected network implemented in ModelV2 API."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
@@ -65,7 +63,7 @@ class FullyConnectedNetwork(TFModelV2):
             for size in hiddens:
                 last_layer = tf.keras.layers.Dense(
                     size,
-                    name="value_fc_{}".format(i),
+                    name="fc_value_{}".format(i),
                     activation=activation,
                     kernel_initializer=normc_initializer(1.0))(last_layer)
                 i += 1

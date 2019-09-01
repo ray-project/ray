@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import glob
 import os
+import numpy as np
 import shutil
 import sys
 import tempfile
@@ -44,7 +45,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0, object_store_memory=int(1e8))
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
         ray.shutdown()
@@ -971,8 +972,8 @@ class RunExperimentTest(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
-                "trial_name_creator": tune.function(
-                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
+                "trial_name_creator":
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id)
             }
         })
         self.assertEquals(
@@ -1112,7 +1113,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 "training_iteration": 1
             },
             upload_dir=tmpdir2,
-            sync_to_cloud=tune.function(sync_func)).trials
+            sync_to_cloud=sync_func).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
@@ -1133,7 +1134,7 @@ class TestSyncFunctionality(unittest.TestCase):
             stop={
                 "training_iteration": 1
             },
-            sync_to_driver=tune.function(sync_func_driver)).trials
+            sync_to_driver=sync_func_driver).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -1146,7 +1147,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 stop={
                     "training_iteration": 1
                 },
-                sync_to_driver=tune.function(sync_func_driver)).trials
+                sync_to_driver=sync_func_driver).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -1165,8 +1166,8 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_driver": tune.function(sync_func),
-                    "sync_to_cloud": tune.function(sync_func)
+                    "sync_to_driver": sync_func,
+                    "sync_to_cloud": sync_func
                 }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
@@ -1297,6 +1298,17 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def testLogUniform(self):
+        sampler = tune.loguniform(1e-10, 1e-1).func
+        results = [sampler(None) for i in range(1000)]
+        assert abs(np.log(min(results)) / np.log(10) - -10) < 0.1
+        assert abs(np.log(max(results)) / np.log(10) - -1) < 0.1
+
+        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e).func
+        results_e = [sampler_e(None) for i in range(1000)]
+        assert abs(np.log(min(results_e)) - -4) < 0.1
+        assert abs(np.log(max(results_e)) - 1) < 0.1
 
     def test_resolve_dict(self):
         config = {
@@ -2261,11 +2273,9 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial(
             "__fake",
-            config={
-                "callbacks": {
-                    "on_episode_start": tune.function(lambda i: i),
-                }
-            },
+            config={"callbacks": {
+                "on_episode_start": lambda i: i,
+            }},
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)

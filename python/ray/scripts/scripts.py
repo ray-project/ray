@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -114,6 +115,12 @@ def cli(logging_level, logging_format):
     type=int,
     help="the port to use for starting the node manager")
 @click.option(
+    "--memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to make available to workers. "
+    "By default, this is set to the available memory on the node.")
+@click.option(
     "--object-store-memory",
     required=False,
     type=int,
@@ -219,7 +226,7 @@ def cli(logging_level, logging_format):
     help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port,
+          redis_shard_ports, object_manager_port, node_manager_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
           head, include_webui, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
@@ -252,6 +259,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
+        memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
         redirect_worker_output=redirect_worker_output,
@@ -384,7 +392,16 @@ def start(node_ip_address, redis_address, address, redis_port,
     if block:
         import time
         while True:
-            time.sleep(30)
+            time.sleep(1)
+            deceased = node.dead_processes()
+            if len(deceased) > 0:
+                logger.error("Ray processes died unexpectedly:")
+                for process_type, process in deceased:
+                    logger.error("\t{} died with exit code {}".format(
+                        process_type, process.returncode))
+                logger.error("Killing remaining processes and exiting...")
+                node.kill_all_processes(check_alive=False, allow_graceful=True)
+                sys.exit(1)
 
 
 @cli.command()

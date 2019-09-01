@@ -1,3 +1,13 @@
+"""
+This file holds code for a Training guide for PytorchSGD in the documentation.
+
+It ignores yapf because yapf doesn't allow comments right after code blocks,
+but we put comments right after code blocks to prevent large white spaces
+in the documentation.
+"""
+
+# yapf: disable
+# __torch_train_example__
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -7,9 +17,11 @@ import torch.nn as nn
 import numpy as np
 
 import argparse
-from ray import tune
-from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
-                                                          PyTorchTrainable)
+import numpy as np
+import torch
+import torch.nn as nn
+
+from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -58,27 +70,6 @@ def train_example(num_replicas=1, use_gpu=False):
     print("success!")
 
 
-def tune_example(num_replicas=1, use_gpu=False):
-    config = {
-        "model_creator": tune.function(model_creator),
-        "data_creator": tune.function(data_creator),
-        "optimizer_creator": tune.function(optimizer_creator),
-        "num_replicas": num_replicas,
-        "use_gpu": use_gpu,
-        "batch_size": 512,
-        "backend": "gloo"
-    }
-
-    analysis = tune.run(
-        PyTorchTrainable,
-        num_samples=12,
-        config=config,
-        stop={"training_iteration": 2},
-        verbose=1)
-
-    return analysis.get_best_config(metric="validation_loss", mode="min")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -105,8 +96,4 @@ if __name__ == "__main__":
     import ray
 
     ray.init(redis_address=args.redis_address)
-
-    if args.tune:
-        tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
-    else:
-        train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

@@ -2,13 +2,7 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 import org.ray.api.id.JobId;
@@ -23,6 +17,7 @@ import org.ray.runtime.raylet.NativeRayletClient;
 import org.ray.runtime.runner.RunManager;
 import org.ray.runtime.task.NativeTaskSubmitter;
 import org.ray.runtime.task.TaskExecutor;
+import org.ray.runtime.util.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,23 +36,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private long nativeCoreWorkerPointer;
 
   static {
-    try {
-      LOGGER.debug("Loading native libraries.");
-      // Load native libraries.
-      String[] libraries = new String[]{"core_worker_library_java"};
-      for (String library : libraries) {
-        String fileName = System.mapLibraryName(library);
-        // Copy the file from resources to a temp dir, and load the native library.
-        File file = File.createTempFile(fileName, "");
-        file.deleteOnExit();
-        InputStream in = AbstractRayRuntime.class.getResourceAsStream("/" + fileName);
-        Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
-        Files.copy(in, Paths.get(file.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
-        System.load(file.getAbsolutePath());
+    LOGGER.debug("Loading native libraries.");
+    // Load native libraries.
+    String[] libraries = new String[]{"core_worker_library_java"};
+    for (String library : libraries) {
+      String fileName = System.mapLibraryName(library);
+      try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
+        System.load(libFile.getFile().getAbsolutePath());
       }
       LOGGER.debug("Native libraries loaded.");
-    } catch (IOException e) {
-      throw new RuntimeException("Couldn't load native libraries.", e);
     }
     nativeSetup(RayConfig.create().logDir);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
@@ -131,12 +118,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    if (null != manager) {
-      manager.cleanup();
-    }
     if (nativeCoreWorkerPointer != 0) {
       nativeDestroyCoreWorker(nativeCoreWorkerPointer);
       nativeCoreWorkerPointer = 0;
+    }
+    if (null != manager) {
+      manager.cleanup();
     }
   }
 
