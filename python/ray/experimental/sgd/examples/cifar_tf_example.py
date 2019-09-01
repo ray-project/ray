@@ -144,33 +144,6 @@ def data_augmentation_creator(batch_size):
     return trainset, test_dataset
 
 
-def train_example(num_replicas=1, batch_size=512, epochs=1, use_gpu=False):
-    trainer = TFTrainer(
-        model_creator=create_model,
-        data_creator=data_augmentation_creator,
-        num_replicas=num_replicas,
-        use_gpu=use_gpu,
-        config={
-            "verbose": True,
-            "fit_config": {
-                "steps_per_epoch": 60000 // batch_size
-            },
-            "evaluate_config": {
-                "steps": 10000 // batch_size,
-            }
-        },
-        batch_size=batch_size)
-
-    for i in range(epochs):
-        train_stats1 = trainer.train()
-        train_stats1.update(trainer.validate())
-        print("iter {}:".format(i), train_stats1)
-
-    model = trainer.get_model()
-    trainer.shutdown()
-    return model
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -190,28 +163,57 @@ if __name__ == "__main__":
         default=512,
         help="Sets number of replicas for training.")
     parser.add_argument(
-        "--num-epochs",
-        type=int,
-        default=1,
-        help="Sets number of replicas for training.")
-    parser.add_argument(
         "--use-gpu",
         action="store_true",
         default=False,
         help="Enables GPU training")
+    parser.add_argument(
+        "--augment-data",
+        action="store_true",
+        default=False,
+        help="Sets data augmentation.")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing. Assume False for users.")
 
     args, _ = parser.parse_known_args()
     ray.init(redis_address=args.redis_address)
-
+    data_size = 60000
+    test_size = 10000
     batch_size = args.batch_size
 
-    model = train_example(
-        args.num_replicas,
-        batch_size=batch_size,
-        epochs=args.num_epochs,
-        use_gpu=args.use_gpu)
+    num_train_steps = 10 if args.smoke_test else data_size // batch_size
+    num_eval_steps = 10 if args.smoke_test else test_size // batch_size
+
+    trainer = TFTrainer(
+        model_creator=create_model,
+        data_creator=(
+            data_augmentation_creator if args.augment_data else data_creator),
+        num_replicas=args.num_replicas,
+        use_gpu=args.use_gpu,
+        config={
+            "verbose": True,
+            "fit_config": {
+                "steps_per_epoch": num_train_steps,
+            },
+            "evaluate_config": {
+                "steps": num_eval_steps,
+            }
+        },
+        batch_size=batch_size)
+
+    for i in range(3):
+        # Trains num epochs
+        train_stats1 = trainer.train()
+        train_stats1.update(trainer.validate())
+        print("iter {}:".format(i), train_stats1)
+
+    model = trainer.get_model()
+    trainer.shutdown()
     dataset, test_dataset = data_augmentation_creator(batch_size=batch_size)
-    model.fit(dataset, steps_per_epoch=60000 // batch_size, epochs=1)
-    scores = model.evaluate(test_dataset, steps=10000 // batch_size)
+    model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
+    scores = model.evaluate(test_dataset, steps=num_eval_steps)
     print("Test loss:", scores[0])
     print("Test accuracy:", scores[1])
