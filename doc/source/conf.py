@@ -14,6 +14,7 @@
 
 import sys
 import os
+import urllib
 import shlex
 
 # These lines added to enable Sphinx to work without installing Ray.
@@ -330,4 +331,18 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = 'bysource'
 
-# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
+FEEDBACK_FORM_FMT = "https://docs.google.com/forms/d/1T5QGnYb_QnQoMO7T_eatq02miPTY40WVe3cgGphNAdY/viewform?entry.1952574704&entry.241692674={pageid}"
+
+def feedback_form_url(project, page):
+    """Create a URL for feedback on a particular page in a project."""
+    return FEEDBACK_FORM_FMT.format(pageid=urllib.parse.quote("{}: {}".format(project, page)))
+
+def update_context(app, pagename, templatename, context, doctree):  # pylint: disable=unused-argument
+    """
+    Update the page rendering context to include ``feedback_form_url``.
+    """
+    context['feedback_form_url'] = feedback_form_url(app.config.project, pagename)
+
+def setup(app):
+    """Sphinx extension: run sphinx-apidoc."""
+    app.connect('html-page-context', update_context)

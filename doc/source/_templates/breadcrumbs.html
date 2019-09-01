@@ -1,0 +1,16 @@
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    {% block breadcrumbs %}
+      <li><a href="{{ pathto(master_doc) }}" class="icon icon-home"></a> &raquo;</li>
+        {% for doc in parents %}
+          <li><a href="{{ doc.link|e }}">{{ doc.title }}</a> &raquo;</li>
+        {% endfor %}
+      <li>{{ title }}</li>
+    {% endblock %}
+    <li class="wy-breadcrumbs-aside">
+      <a href="{{ feedback_form_url }}" target="_blank">{{ feedback_form_link_text|default('Give Doc Feedback', true) }}</a>
+    </li>
+  </ul>
+<hr/>
