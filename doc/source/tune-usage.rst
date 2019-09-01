@@ -314,19 +314,20 @@ For PyTorch model training, this would look something like this `PyTorhc example
 .. code-block:: python
 
     class MyTrainableClass(Trainable):
-        def _save(self, checkpoint_dir):
-            checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+        def _save(self, tmp_checkpoint_dir):
+            checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             torch.save(self.model.state_dict(), checkpoint_path)
-            return checkpoint_path
+            return tmp_checkpoint_dir
 
-        def _restore(self, checkpoint_path):
+        def _restore(self, tmp_checkpoint_dir):
+            checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             self.model.load_state_dict(torch.load(checkpoint_path))
 
 Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
 
 .. caution:: Do not rely on absolute paths in the implementation of ``_save`` and ``_restore``. This is to enable saving checkpoints to memory and allowing for trial migrations in fault-tolerant workloads.
 
-To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
+To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore``:
 
  .. code-block:: python
 
