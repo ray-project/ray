@@ -34,7 +34,8 @@ def function(func):
 def uniform(*args, **kwargs):
     """Wraps tune.sample_from around ``np.random.uniform``.
 
-    tune.uniform(1, 10) => tune.sample_from(lambda _: np.random.uniform(1, 10)
+    ``tune.uniform(1, 10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.uniform(1, 10))``
 
     """
     return sample_from(lambda _: np.random.uniform(*args, **kwargs))
@@ -60,7 +61,8 @@ def loguniform(min_bound, max_bound, base=10):
 def choice(*args, **kwargs):
     """Wraps tune.sample_from around ``np.random.choice``.
 
-    tune.choice(10) => tune.sample_from(lambda _: np.random.choice(10)
+    ``tune.choice(10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.choice(10))``
 
     """
     return sample_from(lambda _: np.random.choice(*args, **kwargs))
@@ -69,7 +71,8 @@ def choice(*args, **kwargs):
 def randint(*args, **kwargs):
     """Wraps tune.sample_from around ``np.random.randint``.
 
-    tune.randint(10) => tune.sample_from(lambda _: np.random.randint(10)
+    ``tune.randint(10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.randint(10))``
 
     """
     return sample_from(lambda _: np.random.randint(*args, **kwargs))
@@ -78,7 +81,8 @@ def randint(*args, **kwargs):
 def randn(*args, **kwargs):
     """Wraps tune.sample_from around ``np.random.randn``.
 
-    tune.randn(10) => tune.sample_from(lambda _: np.random.randn(10)
+    ``tune.randn(10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.randn(10))``
 
     """
     return sample_from(lambda _: np.random.randn(*args, **kwargs))

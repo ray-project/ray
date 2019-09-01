@@ -475,10 +475,9 @@ class Trainable(object):
                 the provided path may be temporary and moved.
 
         Returns:
-            checkpoint (str | dict): If string, the return value is
-                expected to be suffixed by `tmp_checkpoint_dir`. If dict, the
-                return value will be automatically
-                serialized by Tune and passed to `_restore()`.
+            A dict or string. If string, the return value is expected to be
+            suffixed by `tmp_checkpoint_dir`. If dict, the return value will
+            be automatically serialized by Tune and passed to `_restore()`.
 
         Examples:
             >>> print(trainable1._save("/tmp/checkpoint_1"))
@@ -498,7 +497,7 @@ class Trainable(object):
          If the trial is PAUSED, its checkpoint directory will be temporary,
 
         Args:
-            checkpoint (str | dict): If dict, the return value is as
+            checkpoint (str|dict): If dict, the return value is as
                 returned by `_save`. If a string, then it is a checkpoint path
                 that may be different than that returned by `_save`.
         """

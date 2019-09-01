@@ -309,25 +309,24 @@ When running a hyperparameter search, Tune can automatically and periodically sa
 
 To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
-For TensorFlow model training, this would look something like this `tensorflow example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
+For PyTorch model training, this would look something like this `PyTorhc example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch_trainable.py>`__:
 
 .. code-block:: python
 
     class MyTrainableClass(Trainable):
-        def _setup(self, config):
-            self.saver = tf.train.Saver()
-            self.sess = ...
-
-        def _train(self):
-            return {"mean_accuracy: self.sess.run(...)}
-
         def _save(self, checkpoint_dir):
-            return self.saver.save(self.sess, os.path.join(checkpoint_dir, save))
+            checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+            torch.save(self.model.state_dict(), checkpoint_path)
+            return checkpoint_path
 
-        def _restore(self, checkpoint_prefix):
-            self.saver.restore(self.sess, checkpoint_prefix)
+        def _restore(self, checkpoint_path):
+            self.model.load_state_dict(torch.load(checkpoint_path))
 
-Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``. To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
+Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
+
+.. caution:: Do not rely on absolute paths in the implementation of ``_save`` and ``_restore``. This is to enable saving checkpoints to memory and allowing for trial migrations in fault-tolerant workloads.
+
+To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore`` as follows:
 
  .. code-block:: python
 
