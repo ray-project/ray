@@ -84,7 +84,7 @@ def create(project_name, cluster_yaml, requirements):
     os.makedirs(PROJECT_DIR)
 
     if cluster_yaml is None:
-        logger.warn("Using default autoscaler yaml")
+        logger.warning("Using default autoscaler yaml")
 
         with open(CLUSTER_TEMPLATE) as f:
             template = f.read().replace(r"{{name}}", project_name)
@@ -94,7 +94,7 @@ def create(project_name, cluster_yaml, requirements):
         cluster_yaml = CLUSTER_YAML
 
     if requirements is None:
-        logger.warn("Using default requirements.txt")
+        logger.warning("Using default requirements.txt")
         # no templating required, just copy the file
         copyfile(REQUIREMENTS_TXT_TEMPLATE, REQUIREMENTS_TXT)
 
