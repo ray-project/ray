@@ -10,17 +10,14 @@ Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined
 
 More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__.
 
-Experiment Configuration
-------------------------
-
-This section will cover the two main components of using Tune:
+The Tune API mainly revolves around two concepts:
 
 .. code-block:: python
 
     tune.run(Trainable)
 
-1. using the `Trainable API <tune-usage.html#training-api>`__ and
-2. running Tune via `tune.run <tune-usage.html#launching-tune>`__.
+1. The `Trainable <tune-usage.html#training-api>`__ API, and
+2. `tune.run <tune-usage.html#launching-tune>`__.
 
 You can checkout out our `examples page <tune-examples.html>`__ for more code examples.
 
@@ -69,8 +66,8 @@ Both the Trainable and function-based API will have `autofilled metrics <tune-us
 .. note:: See previous versions of the documentation for the ``reporter`` API.
 
 
-Launching Tune
-~~~~~~~~~~~~~~
+Launching Tune (Parallelism)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Use ``tune.run`` to generate and execute your hyperparameter sweep:
 
@@ -81,7 +78,7 @@ Use ``tune.run`` to generate and execute your hyperparameter sweep:
     # Run a total of 10 evaluations of the Trainable. Tune runs in parallel and automatically determines concurrency.
     tune.run(trainable, num_samples=10)
 
-Tune automatically sets the trial concurrency to N, where N is the number of CPUs (cores) on your machine. You can override this with ``resources_per_trial``:
+Tune automatically sets the trial concurrency to N, where N is the number of CPUs (cores) on your machine. You can override the detected number of cores with ``resources_per_trial``:
 
 .. code-block:: python
 
@@ -111,6 +108,7 @@ To attach to a Ray cluster or use ``ray.init`` manual resource overrides, simply
     ray.init(address=<ray_redis_address>)
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
 
+.. tip:: To run everything sequentially, use `Ray Local Mode <tune-usage.html#debugging>`_.
 
 This function will report status on the command line until all Trials stop:
 
@@ -129,7 +127,6 @@ This function will report status on the command line until all Trials stop:
 
 
 All results reported by the trainable will be logged locally to a unique directory per experiment, e.g. ``~/ray_results/example-experiment`` in the above example. On a cluster, incremental results will be synced to local disk on the head node.
-
 
 Analyzing Results
 -----------------
@@ -600,8 +597,8 @@ And stopping a trial (``PUT /trials/:id``):
 
     $ curl -X PUT http://<address>:<port>/trials/<trial_id>
 
-Debugging (Single Process)
---------------------------
+Debugging
+---------
 
 By default, Tune will run hyperparameter evaluations on multiple processes. However, if you need to debug your training process, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following before ``tune.run``.
 
