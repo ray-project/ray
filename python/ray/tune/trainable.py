@@ -45,7 +45,7 @@ class Trainable(object):
 
     Note that, if you don't require checkpoint/restore functionality, then
     instead of implementing this class you can also get away with supplying
-    just a ``my_train(config, reporter)`` function to the config.
+    just a ``my_train(config)`` function to the config.
     The function will be automatically converted to this interface
     (sans checkpoint functionality).
 
@@ -451,7 +451,7 @@ class Trainable(object):
 
         The return value will be automatically passed to the loggers. Users
         can also return `tune.result.DONE` or `tune.result.SHOULD_CHECKPOINT`
-        to manually trigger termination of this trial or checkpointing of this
+        as a key to manually trigger termination or checkpointing of this
         trial. Note that manual checkpointing only works when subclassing
         Trainables.
 
@@ -476,7 +476,7 @@ class Trainable(object):
 
         Returns:
             checkpoint (str | dict): If string, the return value is
-                expected to be passed to `_restore()`. If dict, the
+                expected to be suffixed by `tmp_checkpoint_dir`. If dict, the
                 return value will be automatically
                 serialized by Tune and passed to `_restore()`.
 
@@ -492,10 +492,15 @@ class Trainable(object):
     def _restore(self, checkpoint):
         """Subclasses should override this to implement restore().
 
+         The directory structure is expected to be the same as that left by
+         _save. Important: do not rely on absolute paths. The trial
+         may be restored on a different node with a different file system,
+         If the trial is PAUSED, its checkpoint directory will be temporary,
+
         Args:
-            checkpoint (str | dict): Value as returned by `_save`.
-                If a string, then it is the checkpoint path returned
-                by `_save`.
+            checkpoint (str | dict): If dict, the return value is as
+                returned by `_save`. If a string, then it is a checkpoint path
+                that may be different than that returned by `_save`.
         """
 
         raise NotImplementedError

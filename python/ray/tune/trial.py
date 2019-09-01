@@ -134,6 +134,8 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
+
+        #: Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or []
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
@@ -235,7 +237,6 @@ class Trial(object):
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
-                evaluted_params=self.evaluted_params,
                 loggers=self.loggers,
                 sync_function=self.sync_to_driver_fn)
 
