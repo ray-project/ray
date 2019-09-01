@@ -163,6 +163,7 @@ class TF2Logger(Logger):
     If you need to do more advanced logging, it is recommended
     to use a Summary Writer in the Trainable yourself.
     """
+
     def _init(self):
         self._file_writer = tf.summary.create_file_writer(self.logdir)
 
@@ -215,6 +216,7 @@ class TFLogger(Logger):
     If you need to do more advanced logging, it is recommended
     to use a Summary Writer in the Trainable yourself.
     """
+
     def _init(self):
         logger.info(
             "Initializing TFLogger instead of TF2Logger. We recommend "
