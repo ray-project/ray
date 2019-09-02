@@ -332,12 +332,19 @@ texinfo_documents = [
 autodoc_member_order = 'bysource'
 
 # Taken from https://github.com/edx/edx-documentation
-# TODO: Fix this form
-FEEDBACK_FORM_FMT = "https://docs.google.com/forms/d/1T5QGnYb_QnQoMO7T_eatq02miPTY40WVe3cgGphNAdY/viewform?entry.1952574704&entry.241692674={pageid}"
+FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}&labels=docs&body={body}"
+
 
 def feedback_form_url(project, page):
     """Create a URL for feedback on a particular page in a project."""
-    return FEEDBACK_FORM_FMT.format(pageid=urllib.parse.quote("{}: {}".format(project, page)))
+    return FEEDBACK_FORM_FMT.format(
+        title=urllib.parse.quote("[docs] Issue on `{page}.rst`".format(page=page)),
+        body=urllib.parse.quote(
+            "# Documentation Problem/Question/Comment\n"
+            "<!-- Describe your issue/question/comment below. -->\n"
+            "<!-- If there are typos or errors in the docs, feel free to create a pull-request. -->\n"
+            "\n\n\n\n"
+            "(Created directly from the docs)\n"))
 
 def update_context(app, pagename, templatename, context, doctree):
     """Update the page rendering context to include ``feedback_form_url``."""
