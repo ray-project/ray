@@ -9,6 +9,10 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.generated.Gcs.ErrorType;
 import org.ray.runtime.util.Serializer;
 
+/**
+ * Serialize to and deserialize from {@link NativeRayObject}. Metadata is generated during
+ * serialization and respected during deserialization.
+ */
 public class ObjectSerializer {
 
   private static final byte[] WORKER_EXCEPTION_META = String
@@ -24,7 +28,7 @@ public class ObjectSerializer {
   private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
   /**
-   * Deserialize an object.
+   * Deserialize an object from an {@link NativeRayObject} instance.
    *
    * @param nativeRayObject The object to deserialize.
    * @param objectId The associated object ID of the object.
@@ -36,7 +40,6 @@ public class ObjectSerializer {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
 
-    // If meta is not null, deserialize the object from meta.
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
       if (Arrays.equals(meta, RAW_TYPE_META)) {
@@ -58,7 +61,7 @@ public class ObjectSerializer {
   }
 
   /**
-   * Serialize an object.
+   * Serialize an Java object to an {@link NativeRayObject} instance.
    *
    * @param object The object to serialize.
    * @return The serialized object.
@@ -74,7 +77,7 @@ public class ObjectSerializer {
       return new NativeRayObject(Serializer.encode(object),
           TASK_EXECUTION_EXCEPTION_META);
     } else {
-      return new NativeRayObject(Serializer.encode(object), new byte[0]);
+      return new NativeRayObject(Serializer.encode(object), null);
     }
   }
 }

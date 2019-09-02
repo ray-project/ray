@@ -1,13 +1,13 @@
 package org.ray.runtime.task;
 
+import com.google.common.base.Preconditions;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.object.NativeRayObject;
 
 /**
  * Represents a function argument in task spec.
- * <p>
- * Either `id` or `data` should be null, when id is not null, this argument will be passed by
- * reference, otherwise it will be passed by value.
+ * Either `id` or `data` should be null, when id is not null, this argument will be
+ * passed by reference, otherwise it will be passed by value.
  */
 public class FunctionArg {
 
@@ -21,6 +21,7 @@ public class FunctionArg {
   public final NativeRayObject value;
 
   private FunctionArg(ObjectId id, NativeRayObject value) {
+    Preconditions.checkState((id == null) != (value == null));
     this.id = id;
     this.value = value;
   }

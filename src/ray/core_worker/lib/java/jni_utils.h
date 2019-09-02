@@ -3,6 +3,7 @@
 
 #include <jni.h>
 #include "ray/common/buffer.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/store_provider/store_provider.h"

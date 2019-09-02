@@ -248,7 +248,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 // If the task is an actor task or an actor creation task,
                 // put the dummy object in object store, so those tasks which depends on it
                 // can be executed.
-                putObject = new NativeRayObject(new byte[]{}, new byte[]{});
+                putObject = new NativeRayObject(new byte[]{1}, null);
               } else {
                 putObject = returnObjects.get(i);
               }

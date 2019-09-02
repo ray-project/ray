@@ -11,15 +11,21 @@ public class NativeRayObject {
   public byte[] metadata;
 
   public NativeRayObject(byte[] data, byte[] metadata) {
-    Preconditions.checkNotNull(data);
-    Preconditions.checkNotNull(metadata);
+    Preconditions.checkState(bufferLength(data) > 0 || bufferLength(metadata) > 0);
     this.data = data;
     this.metadata = metadata;
   }
 
+  private static int bufferLength(byte[] buffer) {
+    if (buffer == null) {
+      return 0;
+    }
+    return buffer.length;
+  }
+
   @Override
   public String toString() {
-    return "<data>: " + data.length + ", <metadata>: " + metadata.length;
+    return "<data>: " + bufferLength(data) + ", <metadata>: " + bufferLength(metadata);
   }
 }
 

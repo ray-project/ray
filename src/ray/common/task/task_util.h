@@ -2,6 +2,7 @@
 #define RAY_COMMON_TASK_TASK_UTIL_H
 
 #include "ray/common/buffer.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/protobuf/common.pb.h"
 
@@ -68,16 +69,16 @@ class TaskSpecBuilder {
 
   /// Add a by-value argument to the task.
   ///
-  /// \param data Buffer object that contains the data.
-  /// \param metadata Buffer object that contains the metadata.
+  /// \param value the RayObject instance that contains the data and the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::shared_ptr<Buffer> &data,
-                                 const std::shared_ptr<Buffer> &metadata) {
+  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
     auto arg = message_->add_args();
-    if (data) {
+    if (value.HasData()) {
+      const auto &data = value.GetData();
       arg->set_data(data->Data(), data->Size());
     }
-    if (metadata) {
+    if (value.HasMetadata()) {
+      const auto &metadata = value.GetMetadata();
       arg->set_metadata(metadata->Data(), metadata->Size());
     }
     return *this;
