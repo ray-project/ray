@@ -25,7 +25,7 @@ parser.add_argument(
     default=False,
     help="enables CUDA training")
 parser.add_argument(
-    "--ray-redis-address", type=str, help="The Redis address of the cluster.")
+    "--ray-address", type=str, help="The Redis address of the cluster.")
 parser.add_argument(
     "--smoke-test", action="store_true", help="Finish quickly for testing")
 
@@ -64,7 +64,7 @@ class TrainMNIST(tune.Trainable):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(redis_address=args.ray_redis_address)
+    ray.init(address=args.ray_address)
     sched = ASHAScheduler(metric="mean_accuracy")
     analysis = tune.run(
         TrainMNIST,
