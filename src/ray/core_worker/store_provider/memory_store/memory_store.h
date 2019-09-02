@@ -54,8 +54,6 @@ class CoreWorkerMemoryStore {
 
   /// Protect the two maps above.
   std::mutex lock_;
-
-  friend class CoreWorkerMemoryStoreProvider;
 };
 
 }  // namespace ray
