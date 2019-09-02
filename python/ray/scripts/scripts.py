@@ -409,32 +409,31 @@ def stop():
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
-        # The first element is to filter ps results by command name (only the
-        # executable name). The second element is to filter ps results by
+        # The first element is the substring to filter.
+        # The second element, if True, is to filter ps results by command name
+        # (only the executable name); if False, is to filter ps results by
         # command with all its arguments. See STANDARD FORMAT SPECIFIERS
         # section of http://man7.org/linux/man-pages/man1/ps.1.html about comm
-        # and args. The two levels of filters can help avoid killing non-ray
-        # processes.
-        ["raylet", None],
-        ["plasma_store_server", None],
-        ["raylet_monitor", None],
-        [None, "monitor.py"],
-        ["redis-server", None],
-        [None, "default_worker.py"],  # Python worker.
-        [" ray_", None],  # Python worker.
-        [None, "org.ray.runtime.runner.worker.DefaultWorker"],  # Java worker.
-        [None, "log_monitor.py"],
-        [None, "reporter.py"],
-        [None, "dashboard.py"],
+        # and args. This can help avoid killing non-ray processes.
+        ["raylet", True],
+        ["plasma_store_server", True],
+        ["raylet_monitor", True],
+        ["monitor.py", False],
+        ["redis-server", True],
+        ["default_worker.py", False],  # Python worker.
+        [" ray_", True],  # Python worker.
+        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["log_monitor.py", False],
+        ["reporter.py", False],
+        ["dashboard.py", False],
     ]
 
     for process in processes_to_kill:
-        if process[0]:
+        filter = process[0]
+        if process[1]:
             format = "pid,comm"
-            filter = process[0]
         else:
             format = "pid,args"
-            filter = process[1]
         command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
                    "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
         subprocess.call([command], shell=True)
