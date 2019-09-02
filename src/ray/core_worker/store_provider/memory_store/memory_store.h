@@ -45,10 +45,6 @@ class CoreWorkerMemoryStore {
   void Delete(const std::vector<ObjectID> &object_ids);
 
  private:
-  static const std::string ObjectExistError() {
-    return "object already exists in the memory store";
-  }
-
   /// Map from object ID to `RayObject`.
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
 

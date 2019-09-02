@@ -19,8 +19,7 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   auto status = store_->Put(object_id, object);
-  if (status.IsKeyError() &&
-      status.message() == CoreWorkerMemoryStore::ObjectExistError()) {
+  if (status.IsObjectExists()) {
     // object already exists in store, treat it as ok.
     return Status::OK();
   } else {
