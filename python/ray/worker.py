@@ -25,6 +25,7 @@ import random
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+from ray.cloudpickle import USE_NEW_SERIALIZER
 import ray.experimental.signal as ray_signal
 import ray.experimental.no_return
 import ray.gcs_utils
@@ -394,7 +395,7 @@ class Worker(object):
         for attempt in reversed(
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
-                if ray.USE_NEW_SERIALIZER:
+                if USE_NEW_SERIALIZER:
                     self.store_with_plasma(object_id, value)
                 else:
                     self._try_store_and_register(object_id, value)
@@ -561,7 +562,7 @@ class Worker(object):
             # Note, the lock is needed because `serialization_context` isn't
             # thread-safe.
             with self.plasma_client.lock:
-                if ray.USE_NEW_SERIALIZER:
+                if USE_NEW_SERIALIZER:
                     r, buffers = pyarrow.deserialize(data, serialization_context)
                     buffers = [pickle.PickleBuffer(b) for b in buffers]
                     return pickle.loads(r, buffers=buffers)
@@ -1321,7 +1322,7 @@ def _initialize_serialization(job_id, worker=global_worker):
 
     worker.serialization_context_map[job_id] = serialization_context
 
-    if not ray.USE_NEW_SERIALIZER:
+    if not USE_NEW_SERIALIZER:
         for error_cls in RAY_EXCEPTION_TYPES:
             register_custom_serializer(
                 error_cls,
@@ -2020,7 +2021,7 @@ def connect(node,
 
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
-        plasma.connect(node.plasma_store_socket_name, 3) if ray.USE_NEW_SERIALIZER else
+        plasma.connect(node.plasma_store_socket_name, 3) if USE_NEW_SERIALIZER else
             plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
     if driver_object_store_memory is not None:
@@ -2328,7 +2329,7 @@ def register_custom_serializer(cls,
     assert isinstance(job_id, JobID)
 
     def register_class_for_serialization(worker_info):
-        if ray.USE_NEW_SERIALIZER:
+        if USE_NEW_SERIALIZER:
             # construct a reducer
             pickle.CloudPickler.dispatch[cls] = lambda obj: (deserializer, (serializer(obj),))
         else:

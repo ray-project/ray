@@ -5,9 +5,6 @@ from __future__ import print_function
 import os
 import sys
 
-# TODO(suquark): This is a temporary flag for the new serialization implementation.
-# Remove it when the old one is deprecated.
-USE_NEW_SERIALIZER = False
 
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the

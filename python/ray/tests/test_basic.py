@@ -375,7 +375,7 @@ def test_ray_recursive_objects(ray_start_regular):
     # Create a list of recursive objects.
     recursive_objects = [lst, a1, a2, a3, d1]
 
-    if ray.USE_NEW_SERIALIZER:
+    if ray.worker.USE_NEW_SERIALIZER:
         # Serialize the recursive objects.
         for obj in recursive_objects:
             ray.put(obj)
