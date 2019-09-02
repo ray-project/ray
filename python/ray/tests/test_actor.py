@@ -374,11 +374,15 @@ def test_actor_inheritance(ray_start_regular):
             pass
 
     # Test that you can't instantiate an actor class directly.
-    with pytest.raises(Exception):
+    with pytest.raises(
+            Exception, match="Actors cannot be instantiated directly."):
         ActorBase()
 
     # Test that you can't inherit from an actor class.
-    with pytest.raises(TypeError):
+    with pytest.raises(
+            TypeError,
+            match="Inheriting from actor classes is not "
+            "currently supported."):
 
         class Derived(ActorBase):
             def __init__(self):
