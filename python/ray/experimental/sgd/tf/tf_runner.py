@@ -18,11 +18,7 @@ logger = logging.getLogger(__name__)
 class TFRunner(object):
     """Manages a TensorFlow model for training."""
 
-    def __init__(self,
-                 model_creator,
-                 data_creator,
-                 config=None,
-                 batch_size=16,
+    def __init__(self, model_creator, data_creator, config=None,
                  verbose=False):
         """Initializes the runner.
 
@@ -30,14 +26,12 @@ class TFRunner(object):
             model_creator (dict -> Model): see tf_trainer.py.
             data_creator (dict -> tf.Dataset, tf.Dataset): see tf_trainer.py.
             config (dict): see tf_trainer.py.
-            batch_size (int): see tf_trainer.py.
             verbose (bool): Outputs training data if true.
         """
 
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.config = {} if config is None else config
-        self.batch_size = batch_size
         self.epoch = 0
         self.verbose = verbose
 
@@ -48,7 +42,6 @@ class TFRunner(object):
 
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
-
 
     def setup_distributed(self, urls, world_rank, world_size):
         """Sets up TensorFLow distributed environment and initializes the model.

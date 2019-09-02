@@ -197,14 +197,14 @@ if __name__ == "__main__":
         use_gpu=args.use_gpu,
         verbose=True,
         config={
+            "batch_size": batch_size,
             "fit_config": {
                 "steps_per_epoch": num_train_steps,
             },
             "evaluate_config": {
                 "steps": num_eval_steps,
             }
-        },
-        batch_size=batch_size)
+        })
 
     for i in range(3):
         # Trains num epochs
@@ -214,7 +214,8 @@ if __name__ == "__main__":
 
     model = trainer.get_model()
     trainer.shutdown()
-    dataset, test_dataset = data_augmentation_creator(batch_size=batch_size)
+    dataset, test_dataset = data_augmentation_creator(
+        dict(batch_size=batch_size))
     model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
     scores = model.evaluate(test_dataset, steps=num_eval_steps)
     print("Test loss:", scores[0])

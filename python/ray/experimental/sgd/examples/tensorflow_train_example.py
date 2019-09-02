@@ -18,13 +18,14 @@ NUM_TEST_SAMPLES = 400
 
 def create_config(batch_size):
     return {
-            "fit_config": {
-                "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
-            },
-            "evaluate_config": {
-                "steps": NUM_TEST_SAMPLES // batch_size,
-            }
+        "batch_size": batch_size,
+        "fit_config": {
+            "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
+        },
+        "evaluate_config": {
+            "steps": NUM_TEST_SAMPLES // batch_size,
         }
+    }
 
 
 def linear_dataset(a=2, b=5, size=1000):
@@ -69,8 +70,7 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         verbose=True,
-        config=create_config(batch_size),
-        batch_size=batch_size)
+        config=create_config(batch_size))
 
     train_stats1 = trainer.train()
     train_stats1.update(trainer.validate())
@@ -91,8 +91,7 @@ def tune_example(num_replicas=1, use_gpu=False):
         "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
-        "trainer_config": create_config(batch_size),
-        "batch_size": 128
+        "trainer_config": create_config(batch_size=128)
     }
 
     analysis = tune.run(
