@@ -44,7 +44,7 @@ class Trainable(object):
     ``_save``, and ``_restore`` when subclassing Trainable.
 
     Other implementation methods that may be helpful to override are
-    ``_log_result``, ``_stop``, and ``_export_model``.
+    ``_log_result``, ``reset_config``, ``_stop``, and ``_export_model``.
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
@@ -463,8 +463,12 @@ class Trainable(object):
         """Subclasses should override this to implement save().
 
         Do not rely on absolute paths in the implementation of `_save` and
-        `_restore`. Use `validate_save_restore(use_object_store=True)`
-        to catch _save/_restore errors before execution.
+        `_restore`. Use `validate_save_restore` to catch _save/_restore
+        errors before execution.
+
+            >>> from ray.tune.util import validate_save_restore
+            >>> validate_save_restore(MyTrainableClass)
+            >>> validate_save_restore(MyTrainableClass, use_object_store=True)
 
         Args:
             tmp_checkpoint_dir (str): The directory where the checkpoint
@@ -481,6 +485,9 @@ class Trainable(object):
             "/tmp/checkpoint_1/my_checkpoint_file"
             >>> print(trainable2._save("/tmp/checkpoint_2"))
             {"some": "data"}
+
+            >>> trainable._save("/tmp/bad_example")
+            "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
 
         raise NotImplementedError
@@ -522,7 +529,10 @@ class Trainable(object):
         """Subclasses should override this for any cleanup on stop.
 
         If any Ray actors are launched in the Trainable (i.e., with a RLlib
-        trainer), be sure to kill the Ray actors here.
+        trainer), be sure to kill the Ray actor process here.
+
+        You can kill a Ray actor by calling `actor.__ray_terminate__.remote()`
+        on the actor.
         """
         pass
 

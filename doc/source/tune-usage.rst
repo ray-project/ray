@@ -10,7 +10,7 @@ Each hyperparameter configuration evaluation is called a *trial*, and multiple t
 
 .. image:: images/tune-api.svg
 
-More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__. You can checkout out our `examples page <tune-examples.html>`__ for more code examples.
+More information about Tune's `search algorithms can be found here <tune-searchalg.html>`__. More information about Tune's `trial schedulers can be found here <tune-schedulers.html>`__. You can check out our `examples page <tune-examples.html>`__ for more code examples.
 
 Tune Training API
 -----------------
@@ -106,9 +106,12 @@ All results reported by the trainable will be logged locally to a unique directo
 Trial Parallelism
 ~~~~~~~~~~~~~~~~~
 
-Tune automatically sets the trial concurrency to N, where N is the number of CPUs (cores) on your machine. You can override the detected number of cores with ``resources_per_trial``:
+Tune automatically N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this ``resources_per_trial``:
 
 .. code-block:: python
+
+    # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
+    tune.run(trainable, num_samples=10)
 
     # If you have 4 CPUs on your machine, this will run 2 concurrent trials at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2})
@@ -116,7 +119,7 @@ Tune automatically sets the trial concurrency to N, where N is the number of CPU
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
 
-Tune can also automatically detect GPUs on your machine. To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``. See more details about `using GPUs <tune-usage#using-gpus-resource-allocation>`_. Trials will only be executed if all resources are satisifed:
+To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See more details about `resource allocation <tune-usage#using-gpus-resource-allocation>`_, which provides more details about GPU usage and trials that are distributed:
 
 .. code-block:: python
 
