@@ -5,7 +5,6 @@ from __future__ import print_function
 import logging
 import json
 import os
-from tensorflow.distribute.experimental import MultiWorkerMirroredStrategy
 import numpy as np
 
 import ray
@@ -13,6 +12,12 @@ import ray.services
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
+
+
+def _try_import_strategy():
+    """Late import for Tesnorflow"""
+    from tensorflow.distribute.experimental import MultiWorkerMirroredStrategy
+    return MultiWorkerMirroredStrategy
 
 
 class TFRunner(object):
@@ -63,6 +68,7 @@ class TFRunner(object):
         }
         os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
+        MultiWorkerMirroredStrategy = _try_import_strategy()
         self.strategy = MultiWorkerMirroredStrategy()
 
         self.train_dataset, self.test_dataset = self.data_creator(self.config)
