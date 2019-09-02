@@ -338,7 +338,8 @@ FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}
 def feedback_form_url(project, page):
     """Create a URL for feedback on a particular page in a project."""
     return FEEDBACK_FORM_FMT.format(
-        title=urllib.parse.quote("[docs] Issue on `{page}.rst`".format(page=page)),
+        title=urllib.parse.quote(
+            "[docs] Issue on `{page}.rst`".format(page=page)),
         body=urllib.parse.quote(
             "# Documentation Problem/Question/Comment\n"
             "<!-- Describe your issue/question/comment below. -->\n"
@@ -346,9 +347,12 @@ def feedback_form_url(project, page):
             "\n\n\n\n"
             "(Created directly from the docs)\n"))
 
+
 def update_context(app, pagename, templatename, context, doctree):
     """Update the page rendering context to include ``feedback_form_url``."""
-    context['feedback_form_url'] = feedback_form_url(app.config.project, pagename)
+    context['feedback_form_url'] = feedback_form_url(app.config.project,
+                                                     pagename)
+
 
 def setup(app):
     app.connect('html-page-context', update_context)
