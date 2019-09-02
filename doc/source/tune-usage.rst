@@ -119,7 +119,7 @@ Tune automatically N concurrent trials, where N is the number of CPUs (cores) on
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
 
-To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See more details about `resource allocation <tune-usage#using-gpus-resource-allocation>`_, which provides more details about GPU usage and trials that are distributed:
+To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See more details about `resource allocation <tune-usage#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
 
 .. code-block:: python
 
@@ -282,7 +282,7 @@ By default, each random variable and grid search point is sampled once. To take 
 E.g. in the above, ``num_samples=10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
 
 
-Using GPUs (Resource Allocation)
+Resource Allocation (Using GPUs)
 --------------------------------
 
 Tune will allocate the specified GPU and CPU ``resources_per_trial`` to each individual trial (defaulting to 1 CPU per trial). Under the hood, Tune runs each trial as a Ray actor, using Ray's resource handling to allocate resources and place actors. A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
@@ -292,8 +292,10 @@ Fractional values are also supported, (i.e., ``"gpu": 0.2``). You can find an ex
 If GPU resources are not requested, the ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 Otherwise, it will be set to the GPUs in the list (this is managed by Ray).
 
+Advanced Resource Allocation
+----------------------------
 
-If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots for the actors you will create. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.
+Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots for the actors you will create. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.
 
 .. code-block:: python
    :emphasize-lines: 4-8
@@ -307,6 +309,12 @@ If your trainable function / class creates further Ray actors or tasks that also
             "extra_gpu": 4
         }
     )
+
+The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically declare the ``resources_per_trial`` based on the given configuration.
+
+.. automethod:: ray.tune.Trainable.default_resource_request
+    :noindex:
+
 
 Save and Restore
 ----------------
@@ -336,16 +344,12 @@ For PyTorch model training, this would look something like this `PyTorch example
 
 Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
 
-.. caution:: Do not rely on absolute paths in the implementation of ``_save`` and ``_restore``. This is to enable saving checkpoints to memory and allowing for trial migrations in fault-tolerant workloads.
+.. automethod:: ray.tune.Trainable._save
+    :noindex:
 
-To test if your Trainable will checkpoint and restore correctly, you can use ``tune.util.validate_save_restore``:
 
- .. code-block:: python
-
-    from ray.tune.util import validate_save_restore
-
-    validate_save_restore(MyTrainableClass)
-    validate_save_restore(MyTrainableClass, use_object_store=True)
+.. automethod:: ray.tune.Trainable._restore
+    :noindex:
 
 
 Trainable (Trial) Checkpointing

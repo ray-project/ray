@@ -109,6 +109,14 @@ class Trainable(object):
 
         This can be overriden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
+
+        Example:
+            >>> def default_resource_request(cls, config):
+                    return Resources(
+                        cpu=0,
+                        gpu=0,
+                        extra_cpu=config["workers"],
+                        extra_gpu=int(config["use_gpu"]) * config["workers"])
         """
 
         return None
@@ -460,15 +468,18 @@ class Trainable(object):
         raise NotImplementedError
 
     def _save(self, tmp_checkpoint_dir):
-        """Subclasses should override this to implement save().
+        """Subclasses should override this to implement ``save()``.
 
-        Do not rely on absolute paths in the implementation of `_save` and
-        `_restore`. Use `validate_save_restore` to catch _save/_restore
-        errors before execution.
+        Warning:
+            Do not rely on absolute paths in the implementation of ``_save``
+            and ``_restore``.
 
-            >>> from ray.tune.util import validate_save_restore
-            >>> validate_save_restore(MyTrainableClass)
-            >>> validate_save_restore(MyTrainableClass, use_object_store=True)
+        Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors
+        before execution.
+
+        >>> from ray.tune.util import validate_save_restore
+        >>> validate_save_restore(MyTrainableClass)
+        >>> validate_save_restore(MyTrainableClass, use_object_store=True)
 
         Args:
             tmp_checkpoint_dir (str): The directory where the checkpoint
@@ -477,7 +488,7 @@ class Trainable(object):
 
         Returns:
             A dict or string. If string, the return value is expected to be
-            suffixed by `tmp_checkpoint_dir`. If dict, the return value will
+            prefixed by `tmp_checkpoint_dir`. If dict, the return value will
             be automatically serialized by Tune and passed to `_restore()`.
 
         Examples:
@@ -495,8 +506,9 @@ class Trainable(object):
     def _restore(self, checkpoint):
         """Subclasses should override this to implement restore().
 
-        IMPORTANT: in this method, do not rely on absolute paths. The absolute
-        path of the checkpoint_dir used in ``_save`` may be changed.
+        Warning:
+            In this method, do not rely on absolute paths. The absolute
+            path of the checkpoint_dir used in ``_save`` may be changed.
 
         If ``_save`` returned a prefixed string, the prefix of the checkpoint
         string returned by ``_save`` may be changed. This is because trial
@@ -507,21 +519,22 @@ class Trainable(object):
 
         See the example below.
 
-        Example:
-            >>> class Example(Trainable):
-                    def _save(self, checkpoint_path):
-                        print(checkpoint_path)
-                        return os.path.join(checkpoint_path, "my/check/point")
+        .. code-block:: python
 
-                    def _restore(self, checkpoint):
-                        print(checkpoint)
+            class Example(Trainable):
+                def _save(self, checkpoint_path):
+                    print(checkpoint_path)
+                    return os.path.join(checkpoint_path, "my/check/point")
 
-            >>> trainable = Example()
-            >>> obj = trainable.save_to_object()  # This is used when PAUSED.
+                def _restore(self, checkpoint):
+                    print(checkpoint)
+
+            >>> trainer = Example()
+            >>> obj = trainer.save_to_object()  # This is used when PAUSED.
             <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-
-            >>> trainable.restore_from_object(obj)  # Unpausing.
+            >>> trainer.restore_from_object(obj)  # Note the different prefix.
             <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
+
 
         Args:
             checkpoint (str|dict): If dict, the return value is as
