@@ -285,12 +285,13 @@ class Worker(object):
         """
         self.mode = mode
 
-    def store_and_register(self, object_id, value):
+    def store_and_register(self, object_id, value, depth=100):
         """Store an object and attempt to register its class if needed.
 
         Args:
             object_id: The ID of the object to store.
             value: The value to put in the object store.
+            depth: The maximum number of classes to recursively register.
 
         Raises:
             Exception: An exception is raised if the attempt to store the
@@ -298,27 +299,67 @@ class Worker(object):
                 with the same ID in the object store or if the object store is
                 full.
         """
-        buffers = []
-        meta = pickle.dumps(value, protocol=5, buffer_callback=buffers.append)
-        buffers = [b.raw().tobytes() for b in buffers]
-        value = (meta, buffers)
-
-        if isinstance(value, bytes):
-            # If the object is a byte array, skip serializing it and
-            # use a special metadata to indicate it's raw binary. So
-            # that this object can also be read by Java.
-            self.plasma_client.put_raw_buffer(
+        counter = 0
+        while True:
+            if counter == depth:
+                raise Exception("Ray exceeded the maximum number of classes "
+                                "that it will recursively serialize when "
+                                "attempting to serialize an object of "
+                                "type {}.".format(type(value)))
+            counter += 1
+            try:
+                if isinstance(value, bytes):
+                    # If the object is a byte array, skip serializing it and
+                    # use a special metadata to indicate it's raw binary. So
+                    # that this object can also be read by Java.
+                    self.plasma_client.put_raw_buffer(
                         value,
                         object_id=pyarrow.plasma.ObjectID(object_id.binary()),
                         metadata=ray_constants.RAW_BUFFER_METADATA,
                         memcopy_threads=self.memcopy_threads)
-        else:
-            self.plasma_client.put(
+                else:
+                    self.plasma_client.put(
                         value,
                         object_id=pyarrow.plasma.ObjectID(object_id.binary()),
                         memcopy_threads=self.memcopy_threads,
                         serialization_context=self.get_serialization_context(
                             self.current_job_id))
+                break
+            except pyarrow.SerializationCallbackError as e:
+                try:
+                    register_custom_serializer(
+                        type(e.example_object), use_dict=True)
+                    warning_message = ("WARNING: Serializing objects of type "
+                                       "{} by expanding them as dictionaries "
+                                       "of their fields. This behavior may "
+                                       "be incorrect in some cases.".format(
+                                           type(e.example_object)))
+                    logger.debug(warning_message)
+                except (serialization.RayNotDictionarySerializable,
+                        serialization.CloudPickleError,
+                        pickle.pickle.PicklingError, Exception):
+                    # We also handle generic exceptions here because
+                    # cloudpickle can fail with many different types of errors.
+                    try:
+                        register_custom_serializer(
+                            type(e.example_object), use_pickle=True)
+                        warning_message = ("WARNING: Falling back to "
+                                           "serializing objects of type {} by "
+                                           "using pickle. This may be "
+                                           "inefficient.".format(
+                                               type(e.example_object)))
+                        logger.warning(warning_message)
+                    except serialization.CloudPickleError:
+                        register_custom_serializer(
+                            type(e.example_object),
+                            use_pickle=True,
+                            local=True)
+                        warning_message = ("WARNING: Pickling the class {} "
+                                           "failed, so we are using pickle "
+                                           "and only registering the class "
+                                           "locally.".format(
+                                               type(e.example_object)))
+                        logger.warning(warning_message)
 
     def put_object(self, object_id, value):
         """Put value in the local object store with object id `objectid`.
@@ -353,7 +394,10 @@ class Worker(object):
         for attempt in reversed(
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
-                self._try_store_and_register(object_id, value)
+                if ray.USE_NEW_SERIALIZER:
+                    self.store_with_plasma(object_id, value)
+                else:
+                    self._try_store_and_register(object_id, value)
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
@@ -370,6 +414,50 @@ class Worker(object):
         msg = "\n" + self.plasma_client.debug_string()
         msg = msg.replace("\n", "\nplasma: ")
         logger.warning("Local object store memory usage:\n{}\n".format(msg))
+
+    def store_with_plasma(self, object_id, value):
+        """Serialize and store an object.
+
+        Args:
+            object_id: The ID of the object to store.
+            value: The value to put in the object store.
+
+        Raises:
+            Exception: An exception is raised if the attempt to store the
+                object fails. This can happen if there is already an object
+                with the same ID in the object store or if the object store is
+                full.
+        """
+        try:
+            buffers = []
+            meta = pickle.dumps(value, protocol=5, buffer_callback=buffers.append)
+            buffers = [b.raw().tobytes() for b in buffers]
+            value = (meta, buffers)
+
+            if isinstance(value, bytes):
+                # If the object is a byte array, skip serializing it and
+                # use a special metadata to indicate it's raw binary. So
+                # that this object can also be read by Java.
+                self.plasma_client.put_raw_buffer(
+                    value,
+                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                    metadata=ray_constants.RAW_BUFFER_METADATA,
+                    memcopy_threads=self.memcopy_threads)
+            else:
+                self.plasma_client.put(
+                    value,
+                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
+                    memcopy_threads=self.memcopy_threads,
+                    serialization_context=self.get_serialization_context(
+                        self.current_job_id))
+        except pyarrow.plasma.PlasmaObjectExists:
+            # The object already exists in the object store, so there is no
+            # need to add it again. TODO(rkn): We need to compare hashes
+            # and make sure that the objects are in fact the same. We also
+            # should return an error code to caller instead of printing a
+            # message.
+            logger.info("The object with ID {} already exists "
+                        "in the object store.".format(object_id))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -391,9 +479,15 @@ class Worker(object):
                         "in the object store.".format(object_id))
         except TypeError:
             # TypeError can happen because one of the members of the object
-            # may not be serializable for cloudpickle.
-            # NOTE: We should not fix this path now. Just raise it.
-            raise
+            # may not be serializable for cloudpickle. So we need
+            # these extra fallbacks here to start from the beginning.
+            # Hopefully the object could have a `__reduce__` method.
+            register_custom_serializer(type(value), use_pickle=True)
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "falling back to cloudpickle.".format(
+                                   type(value)))
+            logger.warning(warning_message)
+            self.store_and_register(object_id, value)
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -467,10 +561,12 @@ class Worker(object):
             # Note, the lock is needed because `serialization_context` isn't
             # thread-safe.
             with self.plasma_client.lock:
-                import _pickle
-                r, buffers = pyarrow.deserialize(data, serialization_context)
-                buffers = [_pickle.PickleBuffer(b) for b in buffers]
-                return pickle.loads(r, buffers=buffers)
+                if ray.USE_NEW_SERIALIZER:
+                    r, buffers = pyarrow.deserialize(data, serialization_context)
+                    buffers = [pickle.PickleBuffer(b) for b in buffers]
+                    return pickle.loads(r, buffers=buffers)
+                else:
+                    return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
@@ -1225,6 +1321,33 @@ def _initialize_serialization(job_id, worker=global_worker):
 
     worker.serialization_context_map[job_id] = serialization_context
 
+    if not ray.USE_NEW_SERIALIZER:
+        for error_cls in RAY_EXCEPTION_TYPES:
+            register_custom_serializer(
+                error_cls,
+                use_dict=True,
+                local=True,
+                job_id=job_id,
+                class_id=error_cls.__module__ + ". " + error_cls.__name__,
+            )
+        # Tell Ray to serialize lambdas with pickle.
+        register_custom_serializer(
+            type(lambda: 0),
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="lambda")
+        # Tell Ray to serialize types with pickle.
+        register_custom_serializer(
+            type(int), use_pickle=True, local=True, job_id=job_id, class_id="type")
+        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # used when passing around actor handles.
+        register_custom_serializer(
+            ray.signature.FunctionSignature,
+            use_dict=True,
+            local=True,
+            job_id=job_id,
+            class_id="ray.signature.FunctionSignature")
 
 def init(address=None,
          redis_address=None,
@@ -1897,7 +2020,8 @@ def connect(node,
 
     # Create an object store client.
     worker.plasma_client = thread_safe_client(
-        plasma.connect(node.plasma_store_socket_name, 3))
+        plasma.connect(node.plasma_store_socket_name, 3) if ray.USE_NEW_SERIALIZER else
+            plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
     if driver_object_store_memory is not None:
         worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
@@ -2204,22 +2328,23 @@ def register_custom_serializer(cls,
     assert isinstance(job_id, JobID)
 
     def register_class_for_serialization(worker_info):
-        # TODO(rkn): We need to be more thoughtful about what to do if custom
-        # serializers have already been registered for class_id. In some cases,
-        # we may want to use the last user-defined serializers and ignore
-        # subsequent calls to register_custom_serializer that were made by the
-        # system.
-
-        serialization_context = worker_info[
-            "worker"].get_serialization_context(job_id)
-        # construct a reducer
-        pickle.CloudPickler.dispatch[cls] = lambda obj: (deserializer, (serializer(obj),))
-        serialization_context.register_type(
-            cls,
-            class_id,
-            pickle=use_pickle,
-            custom_serializer=serializer,
-            custom_deserializer=deserializer)
+        if ray.USE_NEW_SERIALIZER:
+            # construct a reducer
+            pickle.CloudPickler.dispatch[cls] = lambda obj: (deserializer, (serializer(obj),))
+        else:
+            # TODO(rkn): We need to be more thoughtful about what to do if custom
+            # serializers have already been registered for class_id. In some cases,
+            # we may want to use the last user-defined serializers and ignore
+            # subsequent calls to register_custom_serializer that were made by the
+            # system.
+            serialization_context = worker_info[
+                "worker"].get_serialization_context(job_id)
+            serialization_context.register_type(
+                cls,
+                class_id,
+                pickle=use_pickle,
+                custom_serializer=serializer,
+                custom_deserializer=deserializer)
 
     if not local:
         worker.run_function_on_all_workers(register_class_for_serialization)
