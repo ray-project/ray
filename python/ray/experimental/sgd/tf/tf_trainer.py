@@ -23,8 +23,7 @@ class TFTrainer(object):
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
-                 verbose=False,
-                 batch_size=512):
+                 verbose=False):
         """Sets up the TensorFlow trainer.
 
         Args:
@@ -42,12 +41,10 @@ class TFTrainer(object):
                 cluster.
             use_gpu (bool): Enables all workers to use GPU.
             verbose (bool): Prints output of one model if true.
-            batch_size (int): Batch size to be split across all workers.
         """
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.config = {} if config is None else config
-        self.batch_size = batch_size
         self.use_gpu = use_gpu
         self.num_replicas = num_replicas
         self.verbose = verbose
@@ -62,7 +59,6 @@ class TFTrainer(object):
                     model_creator,
                     data_creator,
                     config=self.config,
-                    batch_size=batch_size,
                     verbose=self.verbose)
             ]
             # Get setup tasks in order to throw errors on failure
@@ -74,7 +70,6 @@ class TFTrainer(object):
                     model_creator,
                     data_creator,
                     config=self.config,
-                    batch_size=batch_size,
                     verbose=self.verbose and i == 0)
                 for i in range(num_replicas)
             ]
@@ -151,7 +146,7 @@ class TFTrainer(object):
     def _get_model_from_state(self, state):
         """Creates model and load weights from state"""
 
-        model = self.model_creator()
+        model = self.model_creator(self.config)
         model.set_weights(state["weights"])
 
         # This part is due to ray.get() changing scalar np.int64 object to int

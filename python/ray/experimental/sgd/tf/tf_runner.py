@@ -99,7 +99,7 @@ class TFRunner(object):
             # Using local Model since model.evaluate() returns None
             # for MultiWorkerMirroredStrategy
             logger.warning("Running a local model to get validation score.")
-            self.local_model = self.model_creator()
+            self.local_model = self.model_creator(self.config)
             self.local_model.set_weights(self.model.get_weights())
             results = self.local_model.evaluate(self.test_dataset,
                                                 **evaluate_config)
@@ -125,7 +125,7 @@ class TFRunner(object):
     def set_state(self, state):
         """Sets the state of the model."""
 
-        self.model = self.model_creator()
+        self.model = self.model_creator(self.config)
         self.epoch = state["epoch"]
         self.model.set_weights(state["weights"])
         # This part is due to ray.get() changing scalar np.int64 object to int

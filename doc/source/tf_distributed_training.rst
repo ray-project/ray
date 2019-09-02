@@ -28,8 +28,7 @@ Wrap your training with this:
             "evaluate_config": {
                 "steps": num_eval_steps,
             }
-        },
-        batch_size=batch_size)
+        })
 
 
 Then, start a Ray cluster `via autoscaler <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
