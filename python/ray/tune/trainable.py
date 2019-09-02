@@ -495,15 +495,40 @@ class Trainable(object):
     def _restore(self, checkpoint):
         """Subclasses should override this to implement restore().
 
-         The directory structure is expected to be the same as that left by
-         _save. Important: do not rely on absolute paths. The trial
-         may be restored on a different node with a different file system,
-         If the trial is PAUSED, its checkpoint directory will be temporary,
+        IMPORTANT: in this method, do not rely on absolute paths. The absolute
+        path of the checkpoint_dir used in ``_save`` may be changed.
+
+        If ``_save`` returned a prefixed string, the prefix of the checkpoint
+        string returned by ``_save`` may be changed. This is because trial
+        pausing depends on temporary directories.
+
+        The directory structure under the checkpoint_dir provided to ``_save``
+        is preserved.
+
+        See the example below.
+
+        Example:
+            >>> class Example(Trainable):
+                    def _save(self, checkpoint_path):
+                        print(checkpoint_path)
+                        return os.path.join(checkpoint_path, "my/check/point")
+
+                    def _restore(self, checkpoint):
+                        print(checkpoint)
+
+            >>> trainable = Example()
+            >>> obj = trainable.save_to_object()  # This is used when PAUSED.
+            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
+
+            >>> trainable.restore_from_object(obj)  # Unpausing.
+            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
 
         Args:
             checkpoint (str|dict): If dict, the return value is as
                 returned by `_save`. If a string, then it is a checkpoint path
-                that may be different than that returned by `_save`.
+                that may have a different prefix than that returned by `_save`.
+                The directory structure underneath the `checkpoint_dir`
+                `_save` is preserved.
         """
 
         raise NotImplementedError

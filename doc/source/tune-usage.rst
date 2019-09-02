@@ -17,7 +17,7 @@ Tune Training API
 
 The Tune training API [``tune.run(Trainable)``] has two concepts:
 
-1. The `Trainable <tune-usage.html#training-api>`__ API, and
+1. The `Trainable <tune-usage.html#trainable-api>`__ API, and
 2. `tune.run <tune-usage.html#launching-tune>`__.
 
 Training can be done with either the Trainable **Class API** or **function-based API**.
@@ -318,7 +318,7 @@ When running a hyperparameter search, Tune can automatically and periodically sa
  * fault-tolerance in experiments with pre-emptible machines.
  * enables certain Trial Schedulers such as HyperBand and PBT.
 
-To enable checkpointing, you must implement a `Trainable class <tune-usage.html#training-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
+To enable checkpointing, you must implement a `Trainable class <tune-usage.html#trainable-api>`__ (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``_save``, and ``_restore`` abstract methods, as seen in `this example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
 
 For PyTorch model training, this would look something like this `PyTorch example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch_trainable.py>`__:
 
