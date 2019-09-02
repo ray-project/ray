@@ -198,7 +198,7 @@ def ray_start_workers_separate_multinode(request):
     cluster = Cluster()
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_initial_workers)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield num_nodes, num_initial_workers
     # The code after the yield will run as teardown code.

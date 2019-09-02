@@ -8,6 +8,7 @@
 
 <!-- For example: "Closes #1234" -->
 
-## Linter
+## Checks
 
 - [ ] I've run `scripts/format.sh` to lint the changes in this PR.
+- [ ] I've included any doc changes needed for https://ray.readthedocs.io/en/latest/.

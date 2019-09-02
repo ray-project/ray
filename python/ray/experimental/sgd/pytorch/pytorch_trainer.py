@@ -91,7 +91,7 @@ class PyTorchTrainer(object):
             batch_size_per_replica = batch_size // num_replicas
             if batch_size % num_replicas > 0:
                 new_batch_size = batch_size_per_replica * num_replicas
-                logger.warn(
+                logger.warning(
                     ("Changing batch size from {old_batch_size} to "
                      "{new_batch_size} to evenly distribute batches across "
                      "{num_replicas} replicas.").format(
