@@ -63,7 +63,7 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(type(p2), OneHotPreprocessor)
 
     def testTuplePreprocessor(self):
-        ray.init()
+        ray.init(object_store_memory=1000 * 1024 * 1024)
 
         class TupleEnv(object):
             def __init__(self):
@@ -78,7 +78,7 @@ class ModelCatalogTest(unittest.TestCase):
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
     def testCustomPreprocessor(self):
-        ray.init()
+        ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
         ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
         env = gym.make("CartPole-v0")
@@ -90,7 +90,7 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(type(p3), NoPreprocessor)
 
     def testDefaultModels(self):
-        ray.init()
+        ray.init(object_store_memory=1000 * 1024 * 1024)
 
         with tf.variable_scope("test1"):
             p1 = ModelCatalog.get_model({
@@ -106,7 +106,7 @@ class ModelCatalogTest(unittest.TestCase):
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):
-        ray.init()
+        ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model({
             "obs": tf.constant([1, 2, 3])
@@ -118,7 +118,7 @@ class ModelCatalogTest(unittest.TestCase):
         class Model():
             pass
 
-        ray.init()
+        ray.init(object_store_memory=1000 * 1024 * 1024)
         # registration
         ModelCatalog.register_custom_action_dist("test",
                                                  CustomActionDistribution)

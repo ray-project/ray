@@ -202,6 +202,22 @@ You can also access just the "master" copy of the trainer state through ``traine
     # Same as above
     trainer.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
 
+Accessing Model State
+~~~~~~~~~~~~~~~~~~~~~
+
+Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
+
+.. code-block:: python
+
+    >>> from ray.rllib.agents.dqn import DQNTrainer
+    >>> trainer = DQNTrainer(env="CartPole-v0")
+    >>> trainer.get_policy().model
+    <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
+    >>> trainer.get_policy().model.variables()
+    [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
+
+This is especially useful when used with `custom model classes <rllib-models.html>`__.
+
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
 Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
@@ -259,23 +275,39 @@ You can provide callback functions to be called at points during policy evaluati
         print("trainer.train() result: {} -> {} episodes".format(
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
+    def on_postprocess_traj(info):
+        episode = info["episode"]
+        batch = info["post_batch"]  # note: you can mutate this
+        print("postprocessed {} steps".format(batch.count))
+
     ray.init()
     analysis = tune.run(
         "PG",
         config={
             "env": "CartPole-v0",
             "callbacks": {
-                "on_episode_start": tune.function(on_episode_start),
-                "on_episode_step": tune.function(on_episode_step),
-                "on_episode_end": tune.function(on_episode_end),
-                "on_train_result": tune.function(on_train_result),
+                "on_episode_start": on_episode_start,
+                "on_episode_step": on_episode_step,
+                "on_episode_end": on_episode_end,
+                "on_train_result": on_train_result,
+                "on_postprocess_traj": on_postprocess_traj,
             },
         },
     )
 
+Visualizing Custom Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+Rewriting Trajectories
+~~~~~~~~~~~~~~~~~~~~~~
+
+Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+ * Backdating rewards to previous time steps (e.g., based on values in ``info``).
+ * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
 Example: Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -345,7 +377,7 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         config={
             "env": YourEnv,
             "callbacks": {
-                "on_train_result": tune.function(on_train_result),
+                "on_train_result": on_train_result,
             },
         },
     )
