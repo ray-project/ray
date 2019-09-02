@@ -428,7 +428,7 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
         def _train(self):
             self.state["hi"] += 1
             time.sleep(0.5)
-            return {"done": self.state["hi"] >= 4}
+            return {"done": self.state["hi"] >= 20}
 
         def _save(self, path):
             return self.state
