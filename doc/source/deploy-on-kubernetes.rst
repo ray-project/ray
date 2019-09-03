@@ -151,8 +151,8 @@ This section assumes that you have a running Ray cluster (if you don't, please
 refer to the section above to get started) and will walk you through three
 different options to run a Ray program on it.
 
-Run a program using 'kubectl exec'
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Running a program using 'kubectl exec'
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To run an example program that tests object transfers between nodes in the
 cluster, try the following commands (don't forget to replace the head pod name
@@ -167,8 +167,8 @@ cluster, try the following commands (don't forget to replace the head pod name
   $ kubectl -n ray exec ray-head-5455bb66c9-7l6xj -- python example.py
   # You should see repeated output for 10 iterations and then 'Success!'
 
-Run a program in a remote shell
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Running a program in a remote shell
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can also run tasks interactively on the cluster by connecting a remote
 shell to one of the pods.
