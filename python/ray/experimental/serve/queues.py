@@ -95,8 +95,10 @@ class CentralizedQueues:
         self.flush()
 
     def flush(self):
-        """In the default case, flush is calls ._flush. When this class is a
-        Ray actor, .flush can be scheduled as a remote call
+        """In the default case, flush is calls ._flush.
+
+        When this class is a Ray actor, .flush can be scheduled as a remote
+        method invocation.
         """
         self._flush()
 

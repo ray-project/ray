@@ -8,6 +8,7 @@ from ray.experimental.serve.utils import logger
 
 class NamespacedKVStore(ABC):
     """Abstract base class for a namespaced key-value store.
+
     The idea is that multiple key-value stores can be created while sharing
     the same database connection. The keys of each instance are namespaced
     for conflict avoidance.
@@ -42,7 +43,7 @@ class NamespacedKVStore(ABC):
         Args:
             key (str)
             value (object): any serializable object. The serialization method
-                            is determined by the subclass implementation.
+                is determined by the subclass implementation.
         """
         raise NotImplementedError()
 
@@ -140,7 +141,7 @@ class KVStoreProxy:
         Args:
             route: http path name. Must begin with /
             service: service name. This is the name http actor will push
-                     request to.
+                request to.
         """
         logger.debug("[KV] Registering route %s to service %s", route, service)
         self.routing_table.put(route, service)

@@ -10,9 +10,10 @@ from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 
 
 class JSONResponse:
-    """
-    ASGI compliant response class. It is expected to be called in async
-    context and pass along `scope, receive, send` as in ASGI spec.
+    """ASGI compliant response class.
+
+    It is expected to be called in async context and pass along
+    `scope, receive, send` as in ASGI spec.
 
     >>> await JSONResponse({"k": "v"})(scope, receive, send)
     """

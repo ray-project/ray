@@ -3,8 +3,10 @@ import ray.experimental.serve as srv
 
 
 class RayServeHandle:
-    """A handle to service endpoint. Invoking this endpoint with .remote
-    is equivalent to pinging a HTTP endpoint.
+    """A handle to service endpoint.
+
+    Invoking this endpoint with .remote is equivalent to pinging
+    a HTTP endpoint.
 
     Usage:
        >>> import serve as srv
@@ -35,7 +37,11 @@ class RayServeHandle:
     def get_traffic_policy(self):
         # Currently checks global state because we are sure handle and
         # global_state are in the same process.
-        return srv.global_state.policy_action_history[self.endpoint_name][-1]
+        history = srv.global_state.policy_action_history[self.endpoint_name]
+        if len(history):
+            return history[-1]
+        else:
+            return None
 
     def get_http_endpoint(self):
         return srv.global_state.http_address

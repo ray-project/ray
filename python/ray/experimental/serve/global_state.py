@@ -47,7 +47,6 @@ class GlobalState:
             "[Global State] Health Checking Routing Table %s",
             ray.get(self.api_handle.get_request_count.remote()),
         )
-        # register_actor(API_SERVICE_NAME, self.api_handle)
 
     def init_http_server(self):
         logger.info("[Global State] Initializing HTTP Server")
@@ -55,44 +54,24 @@ class GlobalState:
         self.http_handle.run.remote(host="0.0.0.0", port=8000)
         self.http_address = f"http://localhost:8000"
 
-        # script = "uvicorn server:app"
-        # new_env = os.environ.copy()
-        # new_env.update(
-        #     {
-        #         "RAY_SERVE_ADMIN_NAME": API_SERVICE_NAME,
-        #         "RAY_ADDRESS": redis_addr,
-        #         "RAY_ROUTER_NAME": ROUTER_NAME,
-        #     }
-        # )
-        # self.server_proc = Popen(
-        #     script,
-        #     # stdout=sys.stdout,
-        #     # stderr=STDOUT,
-        #     shell=True,
-        #     env=new_env,
-        #     cwd=os.path.split(os.path.abspath(__file__))[0],
-        # )
-
     def init_router(self):
         logger.info("[Global State] Initializing Queuing System")
         self.router = CentralizedQueuesActor.remote()
         self.router.register_self_handle.remote(self.router)
 
     def shutdown(self):
-        # if self.server_proc:
-        #     self.server_proc.terminate()
-
         ray.shutdown()
 
     def __del__(self):
         self.shutdown()
 
     def wait_until_http_ready(self):
-        req_cnt = 0
+        routing_table_request_count = 0
         retries = 5
 
-        while not req_cnt:
-            req_cnt = ray.get(self.api_handle.get_request_count.remote())
+        while not routing_table_request_count:
+            routing_table_request_count = (ray.get(
+                self.api_handle.get_request_count.remote()))
             logger.debug(("[Global State] Making sure HTTP Server is ready."
                           "{} retries left.").format(retries))
             time.sleep(1)

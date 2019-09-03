@@ -27,8 +27,7 @@ def wrap_to_ray_error(callable_obj, *args):
 
 
 class RayServeMixin:
-    """This mixin class adds the functionality to fetch from router queues,
-    using router.consume method.
+    """This mixin class adds the functionality to fetch from router queues.
 
     Warning:
         It assumes the main execution method is __call__ of the current class.
