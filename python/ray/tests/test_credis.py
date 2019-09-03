@@ -9,8 +9,8 @@ import ray
 
 
 def parse_client(addr_port_str):
-    redis_address, redis_port = addr_port_str.split(":")
-    return redis.StrictRedis(host=redis_address, port=redis_port)
+    address, redis_port = addr_port_str.split(":")
+    return redis.StrictRedis(host=address, port=redis_port)
 
 
 @unittest.skipIf(not os.environ.get("RAY_USE_NEW_GCS", False),

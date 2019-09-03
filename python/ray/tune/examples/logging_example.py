@@ -64,7 +64,7 @@ if __name__ == "__main__":
         MyTrainableClass,
         name="hyperband_test",
         num_samples=5,
-        trial_name_creator=tune.function(trial_str_creator),
+        trial_name_creator=trial_str_creator,
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
