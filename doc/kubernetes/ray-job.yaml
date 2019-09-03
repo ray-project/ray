@@ -1,3 +1,5 @@
+# Job to run a Ray program in its own pod. Assumes that a cluster is already
+# running (e.g., from './ray-cluster.yaml').
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,21 +14,17 @@ spec:
           image: rayproject/autoscaler
           command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "wget https://raw.githubusercontent.com/ray-project/ray/ae40bf730a85e14d9accece1cb0840c827ee07f5/doc/kubernetes/example.py &&
+            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
               ray start --node-ip-address=$MY_POD_IP --num-cpus=0 --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 && 
               python example.py"
           ports:
-            - containerPort: 12345
-            - containerPort: 12346
+            - containerPort: 12345 # Ray internal communication.
+            - containerPort: 12346 # Ray internal communication.
           env:
             - name: MY_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: MY_CPU_REQUEST
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.cpu
           resources:
             requests:
               cpu: 100m
