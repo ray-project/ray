@@ -122,7 +122,7 @@ spec:
         image: rayproject/autoscaler
         command: ["/bin/bash", "-c", "--"]
         args:
-          - "ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 --block"
+          - "ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 --block"
         ports:
           - containerPort: 12345 # Ray internal communication.
           - containerPort: 12346 # Ray internal communication.

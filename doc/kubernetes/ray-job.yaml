@@ -13,7 +13,7 @@ spec:
           command: [ "/bin/bash", "-c", "--" ]
           args:
             - "wget https://raw.githubusercontent.com/ray-project/ray/ae40bf730a85e14d9accece1cb0840c827ee07f5/doc/kubernetes/example.py &&
-              ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 && 
+              ray start --node-ip-address=$MY_POD_IP --num-cpus=0 --redis-address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 && 
               python example.py"
           ports:
             - containerPort: 12345
