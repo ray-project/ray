@@ -52,7 +52,7 @@ class GlobalState:
         logger.info("[Global State] Initializing HTTP Server")
         self.http_handle = HTTPActor.remote(self.api_handle, self.router)
         self.http_handle.run.remote(host="0.0.0.0", port=8000)
-        self.http_address = f"http://localhost:8000"
+        self.http_address = "http://localhost:8000"
 
     def init_router(self):
         logger.info("[Global State] Initializing Queuing System")

@@ -147,13 +147,15 @@ def rollback(endpoint_name):
     action_queues = global_state.policy_action_history[endpoint_name]
     cur_policy, prev_policy = action_queues[-1], action_queues[-2]
 
-    logger.warning(f"""
+    logger.warning("""
 Current traffic policy is:
-{pformat_color_json(cur_policy)}
+{cur_policy}
 
 Will rollback to:
-{pformat_color_json(prev_policy)}
-""")
+{prev_policy}
+""").format(
+        cur_policy=pformat_color_json(cur_policy),
+        prev_policy=pformat_color_json(prev_policy))
 
     action_queues.pop()
     global_state.router.set_traffic.remote(endpoint_name, prev_policy)

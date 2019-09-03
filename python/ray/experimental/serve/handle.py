@@ -46,10 +46,12 @@ class RayServeHandle:
         return serve.global_state.http_address
 
     def __repr__(self):
-        return f"""
+        return """
 RayServeHandle(
-    Endpoint="{self.endpoint_name}",
-    URL="{self.get_http_endpoint()}/{self.endpoint_name},
-    Traffic={self.get_traffic_policy()}
+    Endpoint="{endpoint_name}",
+    URL="{http_endpoint}/{endpoint_name},
+    Traffic={traffic_policy}
 )
-"""
+""".format(endpoint_name=self.endpoint_name,
+           http_endpoint=self.get_http_endpoint(),
+           traffic_policy=self.get_traffic_policy())
