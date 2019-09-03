@@ -175,7 +175,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
                                                    /*timeout_ms=*/0, &num_objects,
                                                    &ready));
 
-  if (num_objects >= 0) {
+  if (num_objects > 0) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
     RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,

@@ -77,7 +77,6 @@ class Experiment(object):
                  restore=None,
                  repeat=None,
                  trial_resources=None,
-                 custom_loggers=None,
                  sync_function=None):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
