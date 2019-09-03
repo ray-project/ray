@@ -505,8 +505,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
-  wait_ids.clear();
-  wait_ids.insert(ids.begin(), ids.end());
   wait_results.clear();
   RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), ids.size());
@@ -575,9 +573,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
   }
 
-  wait_ids.clear();
-  wait_ids.insert(ready_ids.begin(), ready_ids.end());
-  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   wait_results.clear();
   // Check that enough objects are returned after the thread inserts at least one object.
   RAY_CHECK_OK(
@@ -587,9 +582,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
   }
 
-  wait_ids.clear();
-  wait_ids.insert(ready_ids.begin(), ready_ids.end());
-  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   wait_results.clear();
   // Check that all objects are returned after the thread completes.
   RAY_CHECK_OK(

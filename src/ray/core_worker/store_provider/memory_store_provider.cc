@@ -38,7 +38,7 @@ Status CoreWorkerMemoryStoreProvider::Get(
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Wait(std::unordered_set<ObjectID> &object_ids,
+Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::unordered_set<ObjectID> *ready) {
@@ -51,7 +51,6 @@ Status CoreWorkerMemoryStoreProvider::Wait(std::unordered_set<ObjectID> &object_
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i]) {
       ready->insert(id_vector[i]);
-      object_ids.erase(id_vector[i]);
     }
   }
 

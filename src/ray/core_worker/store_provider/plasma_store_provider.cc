@@ -150,7 +150,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   return raylet_client_->NotifyUnblocked(task_id);
 }
 
-Status CoreWorkerPlasmaStoreProvider::Wait(std::unordered_set<ObjectID> &object_ids,
+Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::unordered_set<ObjectID> *ready) {
@@ -161,7 +161,6 @@ Status CoreWorkerPlasmaStoreProvider::Wait(std::unordered_set<ObjectID> &object_
 
   for (const auto &entry : result_pair.first) {
     ready->insert(entry);
-    object_ids.erase(entry);
   }
 
   return Status::OK();

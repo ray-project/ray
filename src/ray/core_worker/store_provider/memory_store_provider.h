@@ -29,7 +29,7 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
 
   /// See `CoreWorkerStoreProvider::Wait` for semantics.
   /// Note that `num_objects` must equal to number of items in `object_ids`.
-  Status Wait(std::unordered_set<ObjectID> &object_ids, int num_objects,
+  Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::unordered_set<ObjectID> *ready) override;
 
