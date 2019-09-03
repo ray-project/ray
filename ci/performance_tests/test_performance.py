@@ -26,7 +26,7 @@ parser.add_argument(
     help="True if the object store should not be warmed up. This could cause "
     "the benchmarks to appear slower than usual.")
 parser.add_argument(
-    "--redis-address",
+    "--address",
     required=False,
     type=str,
     help="The address of the cluster to connect to. If this is ommitted, then "
@@ -57,7 +57,7 @@ def start_local_cluster(num_nodes, object_store_memory):
             resources={str(i): 500},
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     return cluster
 
@@ -228,12 +228,12 @@ if __name__ == "__main__":
     if num_nodes < 2:
         raise ValueError("The --num-nodes argument must be at least 2.")
 
-    if args.redis_address:
-        ray.init(redis_address=args.redis_address)
+    if args.address:
+        ray.init(address=args.address)
         wait_for_and_check_cluster_configuration(num_nodes)
         logger.warning(
             "Running performance benchmarks on the cluster with "
-            "address %s.", args.redis_address)
+            "address %s.", args.address)
     else:
         logger.warning(
             "Running performance benchmarks on a simulated cluster "

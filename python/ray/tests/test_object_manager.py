@@ -28,7 +28,7 @@ def create_cluster(num_nodes):
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 100}, object_store_memory=10**9)
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
     return cluster
 
 
@@ -52,11 +52,11 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def f(x):
         return
 
-    x = np.zeros(150 * 1024 * 1024, dtype=np.uint8)
+    x = np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     @ray.remote
     def create_object():
-        return np.zeros(150 * 1024 * 1024, dtype=np.uint8)
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     object_ids = []
 
@@ -226,7 +226,7 @@ def test_object_transfer_retry(ray_start_cluster):
         num_gpus=1,
         object_store_memory=object_store_memory,
         _internal_config=config)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     def f(size):

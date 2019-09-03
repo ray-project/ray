@@ -32,7 +32,7 @@ for i in range(num_nodes):
         resources={str(i): 5},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory)
-ray.init(redis_address=cluster.redis_address)
+ray.init(address=cluster.address)
 
 # Run the workload.
 
@@ -41,7 +41,7 @@ ray.init(redis_address=cluster.redis_address)
 driver_script = """
 import ray
 
-ray.init(redis_address="{}")
+ray.init(address="{}")
 
 num_nodes = {}
 
@@ -65,7 +65,7 @@ for _ in range(5):
         assert ray.get(actor.method.remote()) == 1
 
 print("success")
-""".format(cluster.redis_address, num_nodes)
+""".format(cluster.address, num_nodes)
 
 
 @ray.remote

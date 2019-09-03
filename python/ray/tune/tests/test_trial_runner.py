@@ -972,8 +972,8 @@ class RunExperimentTest(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
-                "trial_name_creator": tune.function(
-                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
+                "trial_name_creator":
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id)
             }
         })
         self.assertEquals(
@@ -1113,7 +1113,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 "training_iteration": 1
             },
             upload_dir=tmpdir2,
-            sync_to_cloud=tune.function(sync_func)).trials
+            sync_to_cloud=sync_func).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
@@ -1134,7 +1134,7 @@ class TestSyncFunctionality(unittest.TestCase):
             stop={
                 "training_iteration": 1
             },
-            sync_to_driver=tune.function(sync_func_driver)).trials
+            sync_to_driver=sync_func_driver).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -1147,7 +1147,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 stop={
                     "training_iteration": 1
                 },
-                sync_to_driver=tune.function(sync_func_driver)).trials
+                sync_to_driver=sync_func_driver).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -1166,8 +1166,8 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_driver": tune.function(sync_func),
-                    "sync_to_cloud": tune.function(sync_func)
+                    "sync_to_driver": sync_func,
+                    "sync_to_cloud": sync_func
                 }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
@@ -2273,11 +2273,9 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial(
             "__fake",
-            config={
-                "callbacks": {
-                    "on_episode_start": tune.function(lambda i: i),
-                }
-            },
+            config={"callbacks": {
+                "on_episode_start": lambda i: i,
+            }},
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)

@@ -185,7 +185,7 @@ def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
                         }
                     }),
                 },
-                "policy_mapping_fn": tune.function(select_policy),
+                "policy_mapping_fn": select_policy,
             },
         })
 
