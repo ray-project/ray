@@ -25,7 +25,7 @@ def ray_start_sharded(request):
 
     # Start the Ray processes.
     ray.init(
-        object_store_memory=int(0.1 * 10**9),
+        object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
         num_redis_shards=num_redis_shards,
         redis_max_memory=10**7)
@@ -49,7 +49,7 @@ def ray_start_combination(request):
         })
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield num_nodes, num_workers_per_scheduler, cluster
     # The code after the yield will run as teardown code.
@@ -200,7 +200,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.1 * 10**9)
+    plasma_store_memory = int(0.5 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
@@ -219,7 +219,7 @@ def ray_start_reconstruction(request):
             _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield plasma_store_memory, num_nodes, cluster
 

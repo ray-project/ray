@@ -72,6 +72,17 @@ public class RayFunction {
     return rayRemote;
   }
 
+  /**
+   * @return Whether this function has a return value.
+   */
+  public boolean hasReturn() {
+    if (isConstructor()) {
+      return true;
+    } else {
+      return !getMethod().getReturnType().equals(void.class);
+    }
+  }
+
   @Override
   public String toString() {
     return executable.toString();

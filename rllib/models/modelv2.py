@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.utils.annotations import PublicAPI
 
@@ -41,6 +42,7 @@ class ModelV2(object):
         self.model_config = model_config
         self.name = name or "default_model"
         self.framework = framework
+        self._last_output = None
 
     def get_initial_state(self):
         """Get the initial recurrent state values for the model.
@@ -165,4 +167,31 @@ class ModelV2(object):
         if not isinstance(state, list):
             raise ValueError("State output is not a list: {}".format(state))
 
+        self._last_output = outputs
         return outputs, state
+
+    def from_batch(self, train_batch, is_training=True):
+        """Convenience function that calls this model with a tensor batch.
+
+        All this does is unpack the tensor batch to call this model with the
+        right input dict, state, and seq len arguments.
+        """
+
+        input_dict = {
+            "obs": train_batch[SampleBatch.CUR_OBS],
+            "is_training": is_training,
+        }
+        if SampleBatch.PREV_ACTIONS in train_batch:
+            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
+        if SampleBatch.PREV_REWARDS in train_batch:
+            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        states = []
+        i = 0
+        while "state_in_{}".format(i) in train_batch:
+            states.append(train_batch["state_in_{}".format(i)])
+            i += 1
+        return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+
+    def last_output(self):
+        """Returns the last output returned from calling the model."""
+        return self._last_output

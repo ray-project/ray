@@ -2,15 +2,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import logging
 import os
 import sys
 from shutil import copyfile
-
+import time
 import click
 import jsonschema
 
 import ray
+from ray.autoscaler.commands import (
+    attach_cluster,
+    exec_cluster,
+    create_or_update_cluster,
+    rsync,
+    teardown_cluster,
+)
 
 logging.basicConfig(format=ray.ray_constants.LOGGER_FORMAT)
 logger = logging.getLogger(__file__)
@@ -51,11 +59,11 @@ def project_cli():
 def validate(verbose):
     try:
         project = ray.projects.load_project(os.getcwd())
-        print("🍰 Project files validated!", file=sys.stderr)
+        print("Project files validated!", file=sys.stderr)
         if verbose:
             print(project)
     except (jsonschema.exceptions.ValidationError, ValueError) as e:
-        print("💔 Validation failed for the following reason", file=sys.stderr)
+        print("Validation failed for the following reason", file=sys.stderr)
         raise click.ClickException(e)
 
 
@@ -76,7 +84,7 @@ def create(project_name, cluster_yaml, requirements):
     os.makedirs(PROJECT_DIR)
 
     if cluster_yaml is None:
-        logger.warn("Using default autoscaler yaml")
+        logger.warning("Using default autoscaler yaml")
 
         with open(CLUSTER_TEMPLATE) as f:
             template = f.read().replace(r"{{name}}", project_name)
@@ -86,7 +94,7 @@ def create(project_name, cluster_yaml, requirements):
         cluster_yaml = CLUSTER_YAML
 
     if requirements is None:
-        logger.warn("Using default requirements.txt")
+        logger.warning("Using default requirements.txt")
         # no templating required, just copy the file
         copyfile(REQUIREMENTS_TXT_TEMPLATE, REQUIREMENTS_TXT)
 
@@ -107,6 +115,175 @@ def create(project_name, cluster_yaml, requirements):
 
 
 @click.group(
-    "session", help="[Experimental] Commands working with ray session")
+    "session",
+    help="[Experimental] Commands working with sessions, which are "
+    "running instances of a project.")
 def session_cli():
     pass
+
+
+def load_project_or_throw():
+    # Validate the project file
+    try:
+        return ray.projects.load_project(os.getcwd())
+    except (jsonschema.exceptions.ValidationError, ValueError):
+        raise click.ClickException(
+            "Project file validation failed. Please run "
+            "`ray project validate` to inspect the error.")
+
+
+@session_cli.command(help="Attach to an existing cluster")
+def attach():
+    project_definition = load_project_or_throw()
+    attach_cluster(
+        project_definition["cluster"],
+        start=False,
+        use_tmux=False,
+        override_cluster_name=None,
+        new=False,
+    )
+
+
+@session_cli.command(help="Stop a session based on current project config")
+def stop():
+    project_definition = load_project_or_throw()
+    teardown_cluster(
+        project_definition["cluster"],
+        yes=True,
+        workers_only=False,
+        override_cluster_name=None)
+
+
+@session_cli.command(
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Start a session based on current project config")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def start(command, args):
+    project_definition = load_project_or_throw()
+
+    if command:
+        command_to_run = _get_command_to_run(command, project_definition, args)
+    else:
+        command_to_run = _get_command_to_run("default", project_definition,
+                                             args)
+
+    # Check for features we don't support right now
+    project_environment = project_definition["environment"]
+    need_docker = ("dockerfile" in project_environment
+                   or "dockerimage" in project_environment)
+    if need_docker:
+        raise click.ClickException(
+            "Docker support in session is currently not implemented. "
+            "Please file an feature request at"
+            "https://github.com/ray-project/ray/issues")
+
+    cluster_yaml = project_definition["cluster"]
+    working_directory = project_definition["name"]
+
+    logger.info("[1/4] Creating cluster")
+    create_or_update_cluster(
+        config_file=cluster_yaml,
+        override_min_workers=None,
+        override_max_workers=None,
+        no_restart=False,
+        restart_only=False,
+        yes=True,
+        override_cluster_name=None,
+    )
+
+    logger.info("[2/4] Syncing the repo")
+    if "repo" in project_definition:
+        # HACK: Skip git clone if exists so the this command can be idempotent
+        # More advanced repo update behavior can be found at
+        # https://github.com/jupyterhub/nbgitpuller/blob/master/nbgitpuller/pull.py
+        session_exec_cluster(
+            cluster_yaml,
+            "git clone {repo} {directory} || true".format(
+                repo=project_definition["repo"],
+                directory=project_definition["name"]),
+        )
+    else:
+        session_exec_cluster(
+            cluster_yaml,
+            "mkdir {directory} || true".format(
+                directory=project_definition["name"]))
+
+    logger.info("[3/4] Setting up environment")
+    _setup_environment(
+        cluster_yaml, project_definition["environment"], cwd=working_directory)
+
+    logger.info("[4/4] Running command")
+    logger.debug("Running {}".format(command))
+    session_exec_cluster(cluster_yaml, command_to_run, cwd=working_directory)
+
+
+def session_exec_cluster(cluster_yaml, cmd, cwd=None):
+    if cwd is not None:
+        cmd = "cd {cwd}; {cmd}".format(cwd=cwd, cmd=cmd)
+    exec_cluster(
+        config_file=cluster_yaml,
+        cmd=cmd,
+        docker=False,
+        screen=False,
+        tmux=False,
+        stop=False,
+        start=False,
+        override_cluster_name=None,
+        port_forward=None,
+    )
+
+
+def _setup_environment(cluster_yaml, project_environment, cwd):
+
+    if "requirements" in project_environment:
+        requirements_txt = project_environment["requirements"]
+
+        # Create a temporary requirements_txt in the head node.
+        remote_requirements_txt = (
+            "/tmp/" + "ray_project_requirements_txt_{}".format(time.time()))
+
+        rsync(
+            cluster_yaml,
+            source=requirements_txt,
+            target=remote_requirements_txt,
+            override_cluster_name=None,
+            down=False,
+        )
+        session_exec_cluster(
+            cluster_yaml,
+            "pip install -r {}".format(remote_requirements_txt),
+            cwd=cwd)
+
+    if "shell" in project_environment:
+        for cmd in project_environment["shell"]:
+            session_exec_cluster(cluster_yaml, cmd, cwd=cwd)
+
+
+def _get_command_to_run(command, project_definition, args):
+    command_to_run = None
+    params = None
+
+    for command_definition in project_definition["commands"]:
+        if command_definition["name"] == command:
+            command_to_run = command_definition["command"]
+            params = command_definition.get("params", [])
+    if not command_to_run:
+        raise click.ClickException(
+            "Cannot find the command '" + command +
+            "' in commmands section of the project file.")
+
+    # Build argument parser dynamically to parse parameter arguments.
+    parser = argparse.ArgumentParser(prog=command)
+    for param in params:
+        parser.add_argument(
+            "--" + param["name"],
+            required=True,
+            help=param.get("help"),
+            choices=param.get("choices"))
+
+    result = parser.parse_args(list(args))
+    for key, val in result.__dict__.items():
+        command_to_run = command_to_run.replace("{{" + key + "}}", val)
+
+    return command_to_run

@@ -162,9 +162,7 @@ def _resolve_lambda_vars(spec, lambda_vars):
                 error = e
             except Exception:
                 raise ValueError(
-                    "Failed to evaluate expression: {}: {}".format(path, fn) +
-                    ". If you meant to pass this as a function literal, use "
-                    "tune.function() to escape it.")
+                    "Failed to evaluate expression: {}: {}".format(path, fn))
             else:
                 _assign_value(spec, path, value)
                 resolved[path] = value
@@ -207,16 +205,7 @@ def _is_resolved(v):
 
 
 def _try_resolve(v):
-    if isinstance(v, types.FunctionType):
-        raise DeprecationWarning(
-            "Function values are ambiguous in Tune "
-            "configuations. Either wrap the function with "
-            "`tune.function(func)` to specify a function literal, or "
-            "`tune.sample_from(func)` to tell Tune to "
-            "sample values from the function during variant generation: "
-            "{}".format(v))
-        return False, v
-    elif isinstance(v, sample_from):
+    if isinstance(v, sample_from):
         # Function to sample from
         return False, v.func
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:

@@ -18,14 +18,10 @@ public class PlasmaStoreTest extends BaseTest {
     ObjectId objectId = ObjectId.fromRandom();
     AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     ObjectStore objectStore = runtime.getObjectStore();
-    objectStore.putRaw(new NativeRayObject(new byte[]{1}, null), objectId);
-    Assert.assertEquals(
-        objectStore.getRaw(Collections.singletonList(objectId), -1).get(0).data[0],
-        (byte) 1);
-    objectStore.putRaw(new NativeRayObject(new byte[]{2}, null), objectId);
-    // Putting 2 objects with duplicate ID should fail but ignored.
-    Assert.assertEquals(
-        objectStore.getRaw(Collections.singletonList(objectId), -1).get(0).data[0],
-        (byte) 1);
+    objectStore.put("1", objectId);
+    Assert.assertEquals(Ray.get(objectId), "1");
+    objectStore.put("2", objectId);
+    // Putting the second object with duplicate ID should fail but ignored.
+    Assert.assertEquals(Ray.get(objectId), "1");
   }
 }

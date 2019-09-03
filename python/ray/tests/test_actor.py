@@ -444,7 +444,8 @@ def test_actor_deletion(ray_start_regular):
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     # When an actor that uses a GPU exits, make sure that the GPU resources
     # are released.
@@ -516,7 +517,7 @@ def test_resource_assignment(shutdown_only):
         num_cpus=16,
         num_gpus=1,
         resources={"Custom": 1},
-        object_store_memory=int(10**8))
+        object_store_memory=int(150 * 1024 * 1024))
 
     class Actor(object):
         def __init__(self):
@@ -868,7 +869,7 @@ def test_actor_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     class Actor1(object):
@@ -915,7 +916,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
     class Actor(object):
@@ -939,7 +940,7 @@ def test_actor_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -978,7 +979,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
     class Actor1(object):
@@ -1048,7 +1049,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     cluster.add_node(num_cpus=10, num_gpus=0)
     cluster.add_node(num_cpus=10, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -1092,7 +1093,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             _internal_config=json.dumps({
                 "num_heartbeats_timeout": 1000
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def create_actors(i, n):
@@ -1167,7 +1168,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     def check_intervals_non_overlapping(list_of_intervals):
         for i in range(len(list_of_intervals)):
@@ -1296,7 +1297,8 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
-    ray.init(num_cpus=10, num_gpus=10, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=10, num_gpus=10, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -1330,7 +1332,8 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
 
 
 def test_blocking_actor_task(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -1740,7 +1743,7 @@ def test_nondeterministic_reconstruction_concurrent_forks(
 
 @pytest.fixture
 def setup_queue_actor():
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(num_cpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote
     class Queue(object):
@@ -2031,7 +2034,7 @@ def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
     cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):
@@ -2105,7 +2108,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**8], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory
 

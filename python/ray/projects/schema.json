@@ -55,6 +55,27 @@
           "command": {
             "description": "Shell command to run on the cluster",
             "type": "string"
+          },
+          "params" : {
+            "type": "array",
+            "items": {
+              "description": "Possible parameters in the command",
+              "type": "object",
+              "properties": {
+                "name": {
+                  "description": "Name of the parameter",
+                  "type": "string"
+                },
+                "help": {
+                  "description": "Help string for the parameter",
+                  "type": "string"
+                },
+                "choices": {
+                  "description": "Possible values the parameter can take",
+                  "type": "array"
+                }
+              }
+            }
           }
         }
       }

@@ -14,7 +14,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0
+    rllib train --run DQN --env CartPole-v0  # add --eager for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -122,6 +122,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
+    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -156,6 +157,7 @@ All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This 
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
+            "eager": False,
         },
     )
 
@@ -199,6 +201,22 @@ You can also access just the "master" copy of the trainer state through ``traine
 
     # Same as above
     trainer.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
+
+Accessing Model State
+~~~~~~~~~~~~~~~~~~~~~
+
+Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
+
+.. code-block:: python
+
+    >>> from ray.rllib.agents.dqn import DQNTrainer
+    >>> trainer = DQNTrainer(env="CartPole-v0")
+    >>> trainer.get_policy().model
+    <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
+    >>> trainer.get_policy().model.variables()
+    [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
+
+This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
@@ -257,23 +275,39 @@ You can provide callback functions to be called at points during policy evaluati
         print("trainer.train() result: {} -> {} episodes".format(
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
+    def on_postprocess_traj(info):
+        episode = info["episode"]
+        batch = info["post_batch"]  # note: you can mutate this
+        print("postprocessed {} steps".format(batch.count))
+
     ray.init()
     analysis = tune.run(
         "PG",
         config={
             "env": "CartPole-v0",
             "callbacks": {
-                "on_episode_start": tune.function(on_episode_start),
-                "on_episode_step": tune.function(on_episode_step),
-                "on_episode_end": tune.function(on_episode_end),
-                "on_train_result": tune.function(on_train_result),
+                "on_episode_start": on_episode_start,
+                "on_episode_step": on_episode_step,
+                "on_episode_end": on_episode_end,
+                "on_train_result": on_train_result,
+                "on_postprocess_traj": on_postprocess_traj,
             },
         },
     )
 
+Visualizing Custom Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+Rewriting Trajectories
+~~~~~~~~~~~~~~~~~~~~~~
+
+Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+ * Backdating rewards to previous time steps (e.g., based on values in ``info``).
+ * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
 Example: Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -343,7 +377,7 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         config={
             "env": YourEnv,
             "callbacks": {
-                "on_train_result": tune.function(on_train_result),
+                "on_train_result": on_train_result,
             },
         },
     )
@@ -370,7 +404,9 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 TensorFlow Eager
 ~~~~~~~~~~~~~~~~
 
-While RLlib uses TF graph mode for all computations, you can still leverage TF eager to inspect the intermediate state of computations using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager mode in `a custom RLlib model and loss <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it is slower than graph mode.
 
 Episode Traces
 ~~~~~~~~~~~~~~
