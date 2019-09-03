@@ -380,8 +380,7 @@ class ActorClass(object):
 
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
-            creation_args = signature.extend_args(function_signature, args,
-                                                  kwargs)
+            creation_args = signature.flatten_args(args, kwargs)
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
                 self._modified_class.__name__)
@@ -535,11 +534,9 @@ class ActorHandle(object):
         worker.check_connected()
 
         function_signature = self._ray_method_signatures[method_name]
-        if args is None:
-            args = []
-        if kwargs is None:
-            kwargs = {}
-        args = signature.extend_args(function_signature, args, kwargs)
+        args = args or []
+        kwargs = kwargs or {}
+        list_args = signature.flatten_args(args, kwargs)
 
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
@@ -547,12 +544,12 @@ class ActorHandle(object):
         if worker.mode == ray.LOCAL_MODE:
             function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
-                function, function_descriptor, args, num_return_vals)
+                function, function_descriptor, [args, kwargs], num_return_vals)
         else:
             with self._ray_actor_lock:
                 object_ids = worker.submit_task(
                     function_descriptor,
-                    args,
+                    list_args,
                     actor_id=self._ray_actor_id,
                     actor_handle_id=self._ray_actor_handle_id,
                     actor_counter=self._ray_actor_counter,

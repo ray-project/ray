@@ -18,6 +18,8 @@ FunctionSignature = namedtuple("FunctionSignature", [
     "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",
     "function_name"
 ])
+
+DUMMY_TYPE = "__RAY_ARG_DUMMY__"
 """This class is used to represent a function signature.
 
 Attributes:
@@ -155,6 +157,52 @@ def extract_signature(func, ignore_first=False):
 
     return FunctionSignature(arg_names, arg_defaults, arg_is_positionals,
                              keyword_names, func.__name__)
+
+def flatten_args(args, kwargs):
+    """Generates a serializable format for the arguments.
+
+    Args:
+        args: The non-keyword arguments passed into the function.
+        kwargs: The keyword arguments passed into the function.
+
+    Returns:
+        List of args and kwargs. Non-keyword arguments are prefixed
+            by internal enum DUMMY_TYPE.
+
+    Example:
+        >>> flatten_args([1, 2, 3], {"a": 4})
+        [None, 1, None, 2, None, 3, "a", 4]
+    """
+    list_args = []
+    for arg in args:
+        list_args += [DUMMY_TYPE, arg]
+
+    for keyword, arg in kwargs.items():
+        list_args += [keyword, arg]
+    return list_args
+
+
+def recover_args(flattened_args):
+    """
+
+    Args:
+        flattened_args: List of args and kwargs. This should be the output of
+            flatten_args.
+    Returns:
+        args: The non-keyword arguments passed into the function.
+        kwargs: The keyword arguments passed into the function.
+    """
+    assert len(list_args) % 2 == 0, "Unexpected argument formatting."
+    args = []
+    kwargs = {}
+    for name_index in range(0, len(list_args), 2):
+        name, arg = list_args[name_index], list_args[name_index + 1]
+        if name == DUMMY_TYPE:
+            args.append(arg)
+        else:
+            kwargs[name] = arg
+
+    return args, kwargs
 
 
 def extend_args(function_signature, args, kwargs):

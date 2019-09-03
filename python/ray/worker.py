@@ -866,19 +866,7 @@ class Worker(object):
                 else:
                     arguments[object_indices[i]] = value
 
-        return self._to_args_kwargs(arguments)
-
-    def _to_args_kwargs(self, list_args):
-        assert len(list_args) % 2 == 0, "Unexpected argument formatting."
-        args = []
-        kwargs = {}
-        for i in range(len(list_args) // 2):
-            if list_args[2 * i] is None:
-                args.append(list_args[2 * i + 1])
-            else:
-                kwargs[list_args[2 * i]] = list_args[2 * i + 1]
-
-        return args, kwargs
+        return ray.signature.recover_args(arguments)
 
     def _store_outputs_in_object_store(self, object_ids, outputs):
         """Store the outputs of a remote function in the local object store.
