@@ -113,7 +113,7 @@ void CallbackReply::ReadAsStringArray(std::vector<std::string> *array) const {
     RAY_CHECK(!is_pubsub_reply) << "Subpub reply cannot be read as a string array.";
   }
 
-  array->resize(array_size);
+  array->reserve(array_size);
   for (size_t i = 0; i < array_size; ++i) {
     auto *entry = redis_reply_->element[i];
     RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
