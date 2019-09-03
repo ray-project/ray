@@ -81,10 +81,10 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
   // desirable if other store providers use up the timeout and leaves no time
   // for plasma provider to reconstruct the objects as necessary.
-  std::list<
-      std::pair<StoreProviderType, std::reference_wrapper<std::unordered_set<ObjectID>>>>
+  std::list<std::pair<StoreProviderType,
+                      std::reference_wrapper<const std::unordered_set<ObjectID>>>>
       ids_per_provider;
-  for (auto &entry : object_ids_per_store_provider) {
+  for (const auto &entry : object_ids_per_store_provider) {
     auto list_entry = std::make_pair(entry.first, std::ref(entry.second));
     if (entry.first == StoreProviderType::PLASMA) {
       ids_per_provider.emplace_front(list_entry);
@@ -95,10 +95,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   // Note that if one store provider uses up the timeout, we will still try the others
   // with a timeout of 0.
-  for (auto &entry : object_ids_per_store_provider) {
-    if (entry.second.empty()) {
-      continue;
-    }
+  for (const auto &entry : ids_per_provider) {
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
         entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),

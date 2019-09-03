@@ -540,11 +540,8 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
-  ids_set.clear();
-  ids_set.insert(ids.begin(), ids.end());
   usleep(200 * 1000);
   RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results));
-  ASSERT_EQ(ids_set.size(), 2);
   ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
@@ -786,8 +783,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
-
-  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());
