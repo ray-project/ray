@@ -68,30 +68,34 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
-    std::unordered_set<ObjectID> &ids, const std::vector<ObjectID> &batch_ids,
-    const std::vector<plasma::ObjectID> &plasma_batch_ids, int64_t timeout_ms,
-    bool fetch_only, const TaskID &task_id,
+    std::unordered_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+    int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   RAY_CHECK_OK(raylet_client_->FetchOrReconstruct(batch_ids, fetch_only, task_id));
 
-  std::vector<plasma::ObjectBuffer> batch_results;
+  std::vector<plasma::ObjectID> plasma_batch_ids;
+  plasma_batch_ids.reserve(batch_ids.size());
+  for (size_t i = 0; i < batch_ids.size(); i++) {
+    plasma_batch_ids.push_back(batch_ids[i].ToPlasmaId());
+  }
+  std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::unique_lock<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(
-        store_client_.Get(plasma_batch_ids, timeout_ms, &batch_results));
+        store_client_.Get(plasma_batch_ids, timeout_ms, &plasma_results));
   }
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
-  for (size_t i = 0; i < batch_results.size(); i++) {
-    if (batch_results[i].data != nullptr || batch_results[i].metadata != nullptr) {
+  for (size_t i = 0; i < plasma_results.size(); i++) {
+    if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
       const auto &object_id = batch_ids[i];
       const auto result_object = std::make_shared<RayObject>(
-          std::make_shared<PlasmaBuffer>(batch_results[i].data),
-          std::make_shared<PlasmaBuffer>(batch_results[i].metadata));
+          std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+          std::make_shared<PlasmaBuffer>(plasma_results[i].metadata));
       (*results)[object_id] = result_object;
-      ids.erase(object_id);
+      remaining.erase(object_id);
       if (IsException(*result_object)) {
         *got_exception = true;
       }
@@ -102,30 +106,29 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
-    std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const TaskID &task_id,
     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   bool got_exception = false;
   std::vector<ObjectID> batch_ids;
-  std::vector<plasma::ObjectID> plasma_batch_ids;
+  std::unordered_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
   // First, attempt to fetch all of the required objects once without reconstructing.
-  std::vector<ObjectID> id_vector(ids.begin(), ids.end());
-  int64_t total_size = static_cast<int64_t>(ids.size());
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += batch_size) {
     batch_ids.clear();
-    plasma_batch_ids.clear();
-    for (int64_t i = start; i < total_size; i++) {
+    for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
-      plasma_batch_ids.push_back(id_vector[start + i].ToPlasmaId());
     }
-    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(
-        ids, batch_ids, plasma_batch_ids, /*timeout_ms=*/0,
-        /*fetch_only=*/true, task_id, results, &got_exception));
+    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
+                                                 /*fetch_only=*/true, task_id, results,
+                                                 &got_exception));
   }
 
   // If all objects were fetched already, return.
-  if (ids.empty() || got_exception) {
+  if (remaining.empty() || got_exception) {
     return Status::OK();
   }
 
@@ -135,15 +138,13 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   int unsuccessful_attempts = 0;
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
-  while (!ids.empty() && !should_break) {
+  while (!remaining.empty() && !should_break) {
     batch_ids.clear();
-    plasma_batch_ids.clear();
-    for (const auto &id : ids) {
+    for (const auto &id : remaining) {
       if (int64_t(batch_ids.size()) == batch_size) {
         break;
       }
       batch_ids.push_back(id);
-      plasma_batch_ids.push_back(id.ToPlasmaId());
     }
 
     int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
@@ -154,17 +155,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       should_break = remaining_timeout <= 0;
     }
 
-    size_t previous_size = ids.size();
-    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(
-        ids, batch_ids, plasma_batch_ids, batch_timeout,
-        /*fetch_only=*/false, task_id, results, &got_exception));
-    if (got_exception) {
-      should_break = true;
-    }
+    size_t previous_size = remaining.size();
+    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
+                                                 /*fetch_only=*/false, task_id, results,
+                                                 &got_exception));
+    should_break = should_break || got_exception;
 
-    if ((ids.size() - previous_size) < batch_ids.size()) {
+    if ((remaining.size() - previous_size) < batch_ids.size()) {
       unsuccessful_attempts++;
-      WarnIfAttemptedTooManyTimes(unsuccessful_attempts, ids);
+      WarnIfAttemptedTooManyTimes(unsuccessful_attempts, remaining);
     }
   }
 
@@ -173,18 +172,17 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   return raylet_client_->NotifyUnblocked(task_id);
 }
 
-Status CoreWorkerPlasmaStoreProvider::Wait(std::unordered_set<ObjectID> &object_ids,
+Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::unordered_set<ObjectID> *ready) {
   WaitResultPair result_pair;
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms,
-                                         /*wait_local=*/false, task_id, &result_pair));
+  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms, false,
+                                         task_id, &result_pair));
 
   for (const auto &entry : result_pair.first) {
     ready->insert(entry);
-    object_ids.erase(entry);
   }
 
   return Status::OK();

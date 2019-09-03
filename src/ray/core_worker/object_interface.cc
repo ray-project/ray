@@ -98,10 +98,10 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
   // desirable if other store providers use up the timeout and leaves no time
   // for plasma provider to reconstruct the objects as necessary.
-  std::list<
-      std::pair<StoreProviderType, std::reference_wrapper<std::unordered_set<ObjectID>>>>
+  std::list<std::pair<StoreProviderType,
+                      std::reference_wrapper<const std::unordered_set<ObjectID>>>>
       ids_per_provider;
-  for (auto &entry : object_ids_per_store_provider) {
+  for (const auto &entry : object_ids_per_store_provider) {
     auto list_entry = std::make_pair(entry.first, std::ref(entry.second));
     if (entry.first == StoreProviderType::PLASMA) {
       ids_per_provider.emplace_front(list_entry);
@@ -112,10 +112,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   // Note that if one store provider uses up the timeout, we will still try the others
   // with a timeout of 0.
-  for (auto &entry : object_ids_per_store_provider) {
-    if (entry.second.empty()) {
-      continue;
-    }
+  for (const auto &entry : ids_per_provider) {
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
         entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
@@ -175,15 +172,15 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
   RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,
-                                                   /*timeout_ms=*/0, num_objects,
+                                                   /*timeout_ms=*/0, &num_objects,
                                                    &ready));
 
-  if (ready.size() < static_cast<size_t>(num_objects)) {
+  if (num_objects >= 0) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
     RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,
                                                      /*timeout_ms=*/timeout_ms,
-                                                     num_objects, &ready));
+                                                     &num_objects, &ready));
   }
 
   for (size_t i = 0; i < ids.size(); i++) {
@@ -197,22 +194,32 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
 
 Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
-    int64_t timeout_ms, int num_objects, std::unordered_set<ObjectID> *ready) {
-  auto remaining_timeout_ms = timeout_ms;
-  for (auto &entry : ids_per_provider) {
-    auto start_time = current_time_ms();
-    int required_objects = std::min(static_cast<int>(entry.second.size()), num_objects);
-    RAY_RETURN_NOT_OK(store_providers_[entry.first]->Wait(
-        entry.second, required_objects, remaining_timeout_ms,
-        worker_context_.GetCurrentTaskID(), ready));
+    int64_t timeout_ms, int *num_objects, std::unordered_set<ObjectID> *ready) {
+  int64_t remaining_timeout_ms = timeout_ms;
+  for (auto &provider_entry : ids_per_provider) {
+    if (*num_objects <= 0) {
+      break;
+    }
+    int64_t start_time = current_time_ms();
+    int required_objects =
+        std::min(static_cast<int>(provider_entry.second.size()), *num_objects);
+    std::unordered_set<ObjectID> provider_ready;
+    RAY_RETURN_NOT_OK(store_providers_[provider_entry.first]->Wait(
+        provider_entry.second, required_objects, remaining_timeout_ms,
+        worker_context_.GetCurrentTaskID(), &provider_ready));
+
+    // Update num_objects and remove the ready objects from the list so they don't get
+    // double-counted.
+    *num_objects -= provider_ready.size();
+    for (const ObjectID &ready_id : provider_ready) {
+      ready->insert(ready_id);
+      provider_entry.second.erase(ready_id);
+    }
+
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =
           std::max(static_cast<int64_t>(0), remaining_timeout_ms - duration);
-    }
-
-    if (ready->size() >= static_cast<size_t>(num_objects)) {
-      break;
     }
   }
 

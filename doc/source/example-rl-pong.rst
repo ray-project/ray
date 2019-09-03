@@ -20,7 +20,7 @@ Then you can run the example as follows.
   python ray/doc/examples/rl_pong/driver.py --batch-size=10
 
 To run the example on a cluster, simply pass in the flag
-``--redis-address=<redis-address>``.
+``--address=<address>``.
 
 At the moment, on a large machine with 64 physical cores, computing an update
 with a batch of size 1 takes about 1 second, a batch of size 10 takes about 2.5

@@ -11,6 +11,7 @@ import os
 import re
 import time
 import traceback
+import types
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
@@ -19,7 +20,6 @@ from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.sample import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.util import warn_if_slow, flatten_dict
@@ -48,7 +48,7 @@ def _find_newest_ckpt(ckpt_dir):
 
 class _TuneFunctionEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, function):
+        if isinstance(obj, types.FunctionType):
             return self._to_cloudpickle(obj)
         try:
             return super(_TuneFunctionEncoder, self).default(obj)

@@ -35,11 +35,12 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   Status Seal(const ObjectID &object_id) override;
 
   /// See `CoreWorkerStoreProvider::Get` for semantics.
-  Status Get(std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+  Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+             const TaskID &task_id,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
   /// See `CoreWorkerStoreProvider::Wait` for semantics.
-  Status Wait(std::unordered_set<ObjectID> &object_ids, int num_objects,
+  Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::unordered_set<ObjectID> *ready) override;
 
@@ -50,11 +51,10 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
-  /// from the input set of IDs and added to the results map.
+  /// from the input set of remaining IDs and added to the results map.
   ///
-  /// \param[in/out] ids IDs of the objects to get.
+  /// \param[in/out] remaining IDs of the remaining objects to get.
   /// \param[in] batch_ids IDs of the objects to get.
-  /// \param[in] plasma_batch_ids IDs of the objects to get (used for plasma call).
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
   /// reconstruct objects.
@@ -66,9 +66,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// exception.
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
-      std::unordered_set<ObjectID> &ids, const std::vector<ObjectID> &batch_ids,
-      const std::vector<plasma::ObjectID> &plasma_batch_ids, int64_t timeout_ms,
-      bool fetch_only, const TaskID &task_id,
+      std::unordered_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+      int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
       std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 

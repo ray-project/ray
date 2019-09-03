@@ -505,8 +505,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
-  wait_ids.clear();
-  wait_ids.insert(ids.begin(), ids.end());
   wait_results.clear();
   RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), ids.size());
@@ -536,11 +534,8 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
-  ids_set.clear();
-  ids_set.insert(ids.begin(), ids.end());
   usleep(200 * 1000);
   RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results));
-  ASSERT_EQ(ids_set.size(), 2);
   ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
@@ -578,9 +573,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
   }
 
-  wait_ids.clear();
-  wait_ids.insert(ready_ids.begin(), ready_ids.end());
-  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   wait_results.clear();
   // Check that enough objects are returned after the thread inserts at least one object.
   RAY_CHECK_OK(
@@ -590,9 +582,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
   }
 
-  wait_ids.clear();
-  wait_ids.insert(ready_ids.begin(), ready_ids.end());
-  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   wait_results.clear();
   // Check that all objects are returned after the thread completes.
   RAY_CHECK_OK(
@@ -823,8 +812,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
-
-  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());

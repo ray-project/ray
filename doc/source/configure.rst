@@ -36,7 +36,7 @@ When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-cpu
   $ ray start --head --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
 
   # To start a non-head node.
-  $ ray start --redis-address=<redis-address> --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
+  $ ray start --address=<address> --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
 
   # Specifying custom resources
   ray start [--head] --num-cpus=<NUM_CPUS> --resources='{"Resource1": 4, "Resource2": 16}'
@@ -46,7 +46,7 @@ If using the command line, connect to the Ray cluster as follow:
 .. code-block:: python
 
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
-  ray.init(redis_address=<redis-address>)
+  ray.init(address=<address>)
 
 
 Logging and Debugging

@@ -97,30 +97,30 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Seal(const ObjectID &object_id) = 0;
 
-  /// Get a set of objects from the object store. Successfully retrieved objects will be
-  /// removed from the input set of IDs and added to the results map.
+  /// Get a set of objects from the object store.
   ///
-  /// \param[in/out] ids IDs of the objects to get.
+  /// \param[in] object_ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] task_id ID for the current task.
   /// \param[out] results Map of objects to write results into. Get will only add to this
   /// map, not clear or remove from it, so the caller can pass in a non-empty map.
   /// \return Status.
   virtual Status Get(
-      std::unordered_set<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
+      const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+      const TaskID &task_id,
       std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) = 0;
 
   /// Wait for a list of objects to appear in the object store. Objects that appear will
-  /// be removed from the input set of IDs and added to the ready set.
+  /// be added to the ready set.
   ///
-  /// \param[in/out] IDs of the objects to wait for.
+  /// \param[in] object_ids IDs of the objects to wait for.
   /// \param[in] num_objects Number of objects that should appear before returning.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] task_id ID for the current task.
   /// \param[out] ready IDs of objects that have appeared. Wait will only add to this
   /// set, not clear or remove from it, so the caller can pass in a non-empty set.
   /// \return Status.
-  virtual Status Wait(std::unordered_set<ObjectID> &object_ids, int num_objects,
+  virtual Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
                       int64_t timeout_ms, const TaskID &task_id,
                       std::unordered_set<ObjectID> *ready) = 0;
 

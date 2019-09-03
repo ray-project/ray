@@ -679,8 +679,8 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
     assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
     assert ray.get(actor.g.remote()) == list(range(1, 6))
-    assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == list(
-        range(1, 6))
+    assert ray.get(actor.h.remote([f.remote(i)
+                                   for i in range(5)])) == list(range(1, 6))
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
@@ -751,8 +751,8 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
         return ray.get([actor.get_value.remote() for _ in range(n)])
 
     assert ray.get(f.remote(3, 1)) == [3]
-    assert ray.get(
-        [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
+    assert ray.get([f.remote(i, 20)
+                    for i in range(10)]) == [20 * [i] for i in range(10)]
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
@@ -869,7 +869,7 @@ def test_actor_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     class Actor1(object):
@@ -916,7 +916,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
     class Actor(object):
@@ -940,7 +940,7 @@ def test_actor_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -979,7 +979,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
     class Actor1(object):
@@ -1049,7 +1049,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     cluster.add_node(num_cpus=10, num_gpus=0)
     cluster.add_node(num_cpus=10, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -1093,7 +1093,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             _internal_config=json.dumps({
                 "num_heartbeats_timeout": 1000
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def create_actors(i, n):
@@ -1168,7 +1168,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     def check_intervals_non_overlapping(list_of_intervals):
         for i in range(len(list_of_intervals)):
@@ -1699,8 +1699,8 @@ def _test_nondeterministic_reconstruction(
     enqueue_tasks = []
     for fork in range(num_forks):
         enqueue_tasks.append(
-            enqueue.remote(actor,
-                           [(fork, i) for i in range(num_items_per_fork)]))
+            enqueue.remote(actor, [(fork, i)
+                                   for i in range(num_items_per_fork)]))
     # Wait for the forks to complete their tasks.
     enqueue_tasks = ray.get(enqueue_tasks)
     enqueue_tasks = [fork_ids[0] for fork_ids in enqueue_tasks]
@@ -2034,7 +2034,7 @@ def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
     cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):

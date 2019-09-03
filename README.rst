@@ -133,7 +133,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 RLlib Quick Start
 -----------------
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/rllib-stack.svg
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-stack.png
 
 `RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
 
