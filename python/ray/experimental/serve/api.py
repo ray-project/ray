@@ -87,12 +87,12 @@ def link(endpoint_name, backend_tag):
 
     Example:
 
-    >>> srv.link("service-name", "backend:v1")
+    >>> serve.link("service-name", "backend:v1")
 
     Note:
     This is equivalent to
 
-    >>> srv.split("service-name", {"backend:v1": 1.0})
+    >>> serve.split("service-name", {"backend:v1": 1.0})
     """
     assert endpoint_name in global_state.registered_endpoints
 
@@ -105,7 +105,7 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     Example:
 
-    >>> srv.split("service-name", {
+    >>> serve.split("service-name", {
         "backend:v1": 0.5,
         "backend:v2": 0.5
     })

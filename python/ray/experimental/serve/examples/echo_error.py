@@ -11,7 +11,7 @@ from pprint import pprint
 import requests
 
 import ray
-import ray.experimental.serve as srv
+from ray.experimental import serve
 
 
 def echo(context):
@@ -19,11 +19,11 @@ def echo(context):
     return context
 
 
-srv.init(blocking=True)
+serve.init(blocking=True)
 
-srv.create_endpoint("my_endpoint", "/echo", blocking=True)
-srv.create_backend(echo, "echo:v1")
-srv.link("my_endpoint", "echo:v1")
+serve.create_endpoint("my_endpoint", "/echo", blocking=True)
+serve.create_backend(echo, "echo:v1")
+serve.link("my_endpoint", "echo:v1")
 
 for _ in range(2):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
@@ -32,6 +32,6 @@ for _ in range(2):
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
 
-handle = srv.get_handle("my_endpoint")
+handle = serve.get_handle("my_endpoint")
 
 ray.get(handle.remote(33))

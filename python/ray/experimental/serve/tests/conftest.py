@@ -1,15 +1,15 @@
 import pytest
 
 import ray
-import ray.experimental.serve as srv
+from ray.experimental import serve
 
 
 @pytest.fixture(scope="session")
 def serve_instance():
-    srv.init()
-    srv.global_state.wait_until_http_ready()
+    serve.init()
+    serve.global_state.wait_until_http_ready()
     yield
-    srv.global_state.shutdown()
+    serve.global_state.shutdown()
 
 
 @pytest.fixture(scope="session")

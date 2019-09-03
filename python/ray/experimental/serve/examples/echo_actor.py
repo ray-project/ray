@@ -7,7 +7,7 @@ import time
 import requests
 from werkzeug import urls
 
-import ray.experimental.serve as srv
+from ray.experimental import serve
 from utils import pprint_color_json
 
 
@@ -24,11 +24,11 @@ class EchoActor:
         return message
 
 
-srv.init(blocking=True)
+serve.init(blocking=True)
 
-srv.create_endpoint("my_endpoint", "/echo", blocking=True)
-srv.create_backend(EchoActor, "echo:v1", "world")
-srv.link("my_endpoint", "echo:v1")
+serve.create_endpoint("my_endpoint", "/echo", blocking=True)
+serve.create_backend(EchoActor, "echo:v1", "world")
+serve.link("my_endpoint", "echo:v1")
 
 while True:
     resp = requests.get("http://127.0.0.1:8000/echo?message=hello").json()

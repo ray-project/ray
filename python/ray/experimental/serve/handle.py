@@ -1,5 +1,5 @@
 import ray
-import ray.experimental.serve as srv
+from ray.experimental import serve
 
 
 class RayServeHandle:
@@ -9,8 +9,7 @@ class RayServeHandle:
     a HTTP endpoint.
 
     Example:
-       >>> import serve as srv
-       >>> handle = srv.get_handle("my_endpoint")
+       >>> handle = serve.get_handle("my_endpoint")
        >>> handle
        RayServeHandle(
             Endpoint="my_endpoint",
@@ -37,14 +36,14 @@ class RayServeHandle:
     def get_traffic_policy(self):
         # Currently checks global state because we are sure handle and
         # global_state are in the same process.
-        history = srv.global_state.policy_action_history[self.endpoint_name]
+        history = serve.global_state.policy_action_history[self.endpoint_name]
         if len(history):
             return history[-1]
         else:
             return None
 
     def get_http_endpoint(self):
-        return srv.global_state.http_address
+        return serve.global_state.http_address
 
     def __repr__(self):
         return f"""

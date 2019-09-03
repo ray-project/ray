@@ -4,7 +4,7 @@ import requests
 from flaky import flaky
 
 import ray
-import ray.experimental.serve as srv
+from ray.experimental import serve
 
 
 def delay_rerun(*args):
@@ -15,8 +15,8 @@ def delay_rerun(*args):
 # flaky test because the routing table might not be populated
 @flaky(rerun_filter=delay_rerun)
 def test_e2e(serve_instance):
-    srv.create_endpoint("endpoint", "/api")
-    result = ray.get(srv.global_state.api_handle.list_service.remote())
+    serve.create_endpoint("endpoint", "/api")
+    result = ray.get(serve.global_state.api_handle.list_service.remote())
     assert result == {"/api": "endpoint"}
 
     assert requests.get("http://127.0.0.1:8000/").json() == result
@@ -24,8 +24,8 @@ def test_e2e(serve_instance):
     def echo(i):
         return i
 
-    srv.create_backend(echo, "echo:v1")
-    srv.link("endpoint", "echo:v1")
+    serve.create_backend(echo, "echo:v1")
+    serve.link("endpoint", "echo:v1")
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
     assert resp["path"] == "/api"
