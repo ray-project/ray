@@ -240,17 +240,22 @@ class TrialRunner(object):
         else:
             logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
-    def checkpoint(self):
+    def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
+
+        Args:
+            force (bool): Forces a checkpoint despite checkpoint_period.
         """
         if not self._local_checkpoint_dir:
             return
-        if time.time() - self._last_checkpoint_time < self._checkpoint_period:
+        now = time.time()
+        if now - self._last_checkpoint_time < self._checkpoint_period and (
+                not force):
             return
-        self._last_checkpoint_time = time.time()
+        self._last_checkpoint_time = now
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
