@@ -32,7 +32,7 @@ class RayServeMixin:
     Warning:
         It assumes the main execution method is __call__ of the current class.
 
-    Usage:
+    Example:
         >>> # to make MyClass servable
         >>> @ray.remote
             class RayServeActor(MyClass, RayServeMixin):

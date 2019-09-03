@@ -85,7 +85,7 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
 def link(endpoint_name, backend_tag):
     """Associate a service endpoint with backend tag.
 
-    Usage:
+    Example:
 
     >>> srv.link("service-name", "backend:v1")
 
@@ -103,7 +103,7 @@ def link(endpoint_name, backend_tag):
 def split(endpoint_name, traffic_policy_dictionary):
     """Associate a service endpoint with traffic policy.
 
-    Usage:
+    Example:
 
     >>> srv.split("service-name", {
         "backend:v1": 0.5,

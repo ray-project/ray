@@ -13,7 +13,7 @@ class NamespacedKVStore(ABC):
     the same database connection. The keys of each instance are namespaced
     for conflict avoidance.
 
-    Usage:
+    Example:
 
     >>> store_ns1 = NamespacedKVStore(namespace="ns1")
     >>> store_ns2 = NamespacedKVStore(namespace="ns2")

@@ -8,7 +8,7 @@ class RayServeHandle:
     Invoking this endpoint with .remote is equivalent to pinging
     a HTTP endpoint.
 
-    Usage:
+    Example:
        >>> import serve as srv
        >>> handle = srv.get_handle("my_endpoint")
        >>> handle
