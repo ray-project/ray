@@ -41,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Apply a state preprocessor with spec given by the "model" config option
     # (like other RL algorithms). This is mostly useful if you have a weird
-    # observation shape, like an image. Auto-enabled if a custom model is set.
+    # observation shape, like an image. Disabled by default.
     "use_state_preprocessor": False,
     # Postprocess the policy network model output with these hidden layers. If
     # use_state_preprocessor is False, then these will be the *only* hidden
@@ -173,7 +173,7 @@ def make_exploration_schedule(config, worker_index):
     if config["per_worker_exploration"]:
         assert config["num_workers"] > 1, "This requires multiple workers"
         if worker_index >= 0:
-            # Exploration constants from the Ape-X paper
+            # FIXME: what do magic constants mean? (0.4, 7)
             max_index = float(config["num_workers"] - 1)
             exponent = 1 + worker_index / max_index * 7
             return ConstantSchedule(0.4**exponent)
