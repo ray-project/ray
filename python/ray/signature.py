@@ -192,11 +192,11 @@ def recover_args(flattened_args):
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
     """
-    assert len(list_args) % 2 == 0, "Unexpected argument formatting."
+    assert len(flattened_args) % 2 == 0, "Unexpected argument formatting."
     args = []
     kwargs = {}
-    for name_index in range(0, len(list_args), 2):
-        name, arg = list_args[name_index], list_args[name_index + 1]
+    for name_index in range(0, len(flattened_args), 2):
+        name, arg = flattened_args[name_index], flattened_args[name_index + 1]
         if name == DUMMY_TYPE:
             args.append(arg)
         else:

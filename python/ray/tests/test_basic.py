@@ -755,10 +755,6 @@ def test_star_kwargs(shutdown_only):
         return a, b, kwargs
 
     @ray.remote
-    def keyword_fct4(a="hello", b="hello", *, **kwargs):
-        return a, b, kwargs
-
-    @ray.remote
     def keyword_fct4(*, a="hello", b="hello", **kwargs):
         return a, b, kwargs
 
