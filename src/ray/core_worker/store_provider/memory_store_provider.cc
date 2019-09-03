@@ -20,7 +20,7 @@ Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   auto status = store_->Put(object_id, object);
   if (status.IsObjectExists()) {
-    // object already exists in store, treat it as ok.
+    // Object already exists in store, treat it as ok.
     return Status::OK();
   } else {
     return status;
