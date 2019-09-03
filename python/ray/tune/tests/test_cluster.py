@@ -428,7 +428,7 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
         def _train(self):
             self.state["hi"] += 1
             time.sleep(0.5)
-            return {"done": self.state["hi"] >= 20}
+            return {"done": self.state["hi"] >= 4}
 
         def _save(self, path):
             return self.state
@@ -455,6 +455,7 @@ tune.run(
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
+    global_checkpoint_period=0,
     max_failures=1,
     raise_on_failed_trial=False)
 """.format(
