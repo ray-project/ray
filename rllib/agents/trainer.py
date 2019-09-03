@@ -434,10 +434,10 @@ class Trainer(Trainable):
 
         if self.config["evaluation_interval"]:
             if self._iteration % self.config["evaluation_interval"] == 0:
-                evaluation_metrics = self._evaluate()
-                assert isinstance(evaluation_metrics, dict), \
+                self.evaluation_metrics = self._evaluate()
+                assert isinstance(self.evaluation_metrics, dict), \
                     "_evaluate() needs to return a dict."
-                result.update(evaluation_metrics)
+            result.update(self.evaluation_metrics)
 
         return result
 
@@ -500,7 +500,7 @@ class Trainer(Trainable):
                     self._policy,
                     merge_dicts(self.config, extra_config),
                     num_workers=0)
-                self.evaluation_metrics = self._evaluate()
+                self.evaluation_metrics = {}
 
     @override(Trainable)
     def _stop(self):
