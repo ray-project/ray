@@ -106,7 +106,7 @@ All results reported by the trainable will be logged locally to a unique directo
 Trial Parallelism
 ~~~~~~~~~~~~~~~~~
 
-Tune automatically N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this ``resources_per_trial``:
+Tune automatically N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this with ``resources_per_trial``:
 
 .. code-block:: python
 
@@ -119,7 +119,7 @@ Tune automatically N concurrent trials, where N is the number of CPUs (cores) on
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
 
-To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See more details about `resource allocation <tune-usage#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
+To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See the section on`resource allocation <tune-usage#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
 
 .. code-block:: python
 
@@ -209,7 +209,7 @@ Use ``tune.sample_from(<func>)`` to sample a value for a hyperparameter. The ``f
         }
     )
 
-Tune provides a couple utilities for specifying custom functions, wrapping popular numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See the `Package Reference <tune-package-ref.html#ray.tune.uniform>`_ for more details.
+Tune provides a couple helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See the `Package Reference <tune-package-ref.html#ray.tune.uniform>`_ for more details.
 
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
@@ -343,6 +343,8 @@ For PyTorch model training, this would look something like this `PyTorch example
             self.model.load_state_dict(torch.load(checkpoint_path))
 
 Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
+
+Tune also generates temporary checkpoints for pausing and switching between trials. For this purpose, it is important not to depend on absolute paths in the implementation of ``save``. See the below reference:
 
 .. automethod:: ray.tune.Trainable._save
     :noindex:
