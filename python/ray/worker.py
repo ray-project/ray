@@ -1765,7 +1765,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     try:
         # Get the exports that occurred before the call to subscribe.
-        error_messages = ray.errors(include_cluster_errors=False)
+        error_messages = ray.errors(all_jobs=False)
         for error_message in error_messages:
             logger.error(error_message)
 

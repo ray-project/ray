@@ -1058,12 +1058,11 @@ class DeprecatedGlobalState(object):
             "instead.")
         return ray.available_resources()
 
-    def error_messages(self, job_id=None):
+    def error_messages(self, all_jobs=True):
         logger.warning(
             "ray.global_state.error_messages() is deprecated and will be "
-            "removed in a subsequent release. Use ray.errors() "
-            "instead.")
-        return ray.errors(job_id=job_id)
+            "removed in a subsequent release. Use ray.errors() instead.")
+        return ray.errors(all_jobs=all_jobs)
 
 
 state = GlobalState()
@@ -1186,21 +1185,20 @@ def available_resources():
     return state.available_resources()
 
 
-def errors(include_cluster_errors=True):
+def errors(all_jobs=True):
     """Get error messages from the cluster.
 
     Args:
-        include_cluster_errors: True if we should include error messages for
-            all drivers, and False if we should only include error messages for
-            this specific driver.
+        all_jobs: True if we should include error messages for all jobs, or
+            False if we should only include error messages for this specific
+            job.
 
     Returns:
         Error messages pushed from the cluster. This will be a single list if
-            include_cluster_errors is False, or a dictionary mapping each
-            driver ID to a list of error messages if include_cluster_errors is
-            True.
+            all_jobs is False, or a dictionary mapping each job ID to a list of
+            error messages if all_jobs is True.
     """
-    if not include_cluster_errors:
+    if not all_jobs:
         worker = ray.worker.global_worker
         error_messages = state.error_messages(job_id=worker.current_job_id)
     else:
