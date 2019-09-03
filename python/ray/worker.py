@@ -895,7 +895,7 @@ class Worker(object):
                             ray_constants.from_memory_units(
                                 task.required_resources()["memory"]))
                     if "object_store_memory" in task.required_resources():
-                        self._set_plasma_client_options(
+                        self._set_object_store_client_options(
                             worker_name,
                             int(
                                 ray_constants.from_memory_units(
@@ -930,7 +930,7 @@ class Worker(object):
                 function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-    def _set_plasma_client_options(self, name, object_store_memory):
+    def _set_object_store_client_options(self, name, object_store_memory):
         try:
             logger.debug("Setting plasma memory limit to {} for {}".format(
                 object_store_memory, name))
@@ -1980,7 +1980,7 @@ def connect(node,
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
-        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
+        worker._set_object_store_client_options("ray_driver_{}".format(os.getpid()),
                                           driver_object_store_memory)
 
     # Start the import thread
