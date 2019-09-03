@@ -19,7 +19,7 @@ class TestUnreconstructableErrors(unittest.TestCase):
         ray.shutdown()
 
     def testDriverPutEvictedCannotReconstruct(self):
-        x_id = ray.put(np.zeros(1 * 1024 * 1024))
+        x_id = ray.put(np.zeros(1 * 1024 * 1024), weakref=True)
         ray.get(x_id)
         for _ in range(20):
             ray.put(np.zeros(10 * 1024 * 1024))

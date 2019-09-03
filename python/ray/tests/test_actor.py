@@ -362,6 +362,33 @@ def test_actor_class_name(ray_start_regular):
     assert actor_class_info[b"module"] == b"ray.tests.test_actor"
 
 
+def test_actor_inheritance(ray_start_regular):
+    class NonActorBase(object):
+        def __init__(self):
+            pass
+
+    # Test that an actor class can inherit from a non-actor class.
+    @ray.remote
+    class ActorBase(NonActorBase):
+        def __init__(self):
+            pass
+
+    # Test that you can't instantiate an actor class directly.
+    with pytest.raises(
+            Exception, match="Actors cannot be instantiated directly."):
+        ActorBase()
+
+    # Test that you can't inherit from an actor class.
+    with pytest.raises(
+            TypeError,
+            match="Inheriting from actor classes is not "
+            "currently supported."):
+
+        class Derived(ActorBase):
+            def __init__(self):
+                pass
+
+
 def test_multiple_return_values(ray_start_regular):
     @ray.remote
     class Foo(object):
@@ -869,7 +896,7 @@ def test_actor_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     class Actor1(object):
@@ -916,7 +943,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
     class Actor(object):
@@ -940,7 +967,7 @@ def test_actor_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -979,7 +1006,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
     class Actor1(object):
@@ -1049,7 +1076,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     cluster.add_node(num_cpus=10, num_gpus=0)
     cluster.add_node(num_cpus=10, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -1093,7 +1120,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             _internal_config=json.dumps({
                 "num_heartbeats_timeout": 1000
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def create_actors(i, n):
@@ -1168,7 +1195,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     def check_intervals_non_overlapping(list_of_intervals):
         for i in range(len(list_of_intervals)):
@@ -2034,7 +2061,7 @@ def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
     cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):

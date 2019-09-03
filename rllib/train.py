@@ -156,7 +156,7 @@ def run(args, parser):
                 object_store_memory=args.ray_object_store_memory,
                 memory=args.ray_memory,
                 redis_max_memory=args.ray_redis_max_memory)
-        ray.init(address=cluster.redis_address)
+        ray.init(address=cluster.address)
     else:
         ray.init(
             address=args.ray_address,

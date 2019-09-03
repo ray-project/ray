@@ -50,7 +50,7 @@ class TestMemoryLimits(unittest.TestCase):
     def testTooLargeAllocation(self):
         try:
             ray.init(num_cpus=1, driver_object_store_memory=100 * MB)
-            ray.put(np.zeros(50 * MB, dtype=np.uint8))
+            ray.put(np.zeros(50 * MB, dtype=np.uint8), weakref=True)
             self.assertRaises(
                 OBJECT_TOO_LARGE,
                 lambda: ray.put(np.zeros(200 * MB, dtype=np.uint8)))
@@ -64,7 +64,7 @@ class TestMemoryLimits(unittest.TestCase):
                 num_cpus=1,
                 object_store_memory=300 * MB,
                 driver_object_store_memory=driver_quota)
-            z = ray.put("hi")
+            z = ray.put("hi", weakref=True)
             a = LightActor._remote(object_store_memory=a_quota)
             b = GreedyActor._remote(object_store_memory=b_quota)
             for _ in range(5):
