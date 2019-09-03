@@ -209,7 +209,7 @@ class ActorClass(object):
 
         This will be called when a class is defined with an ActorClass object
         as one of its base classes. To intentionally construct an ActorClass,
-        use the 'from_modified_class' classmethod.
+        use the '_from_modified_class' classmethod.
 
         Raises:
             TypeError: Always.
@@ -224,13 +224,9 @@ class ActorClass(object):
                                 "@ray.remote).".format(name, base._class_name))
 
         # This shouldn't be reached because one of the base classes must be
-        # an actor class if this was called, but raise a more generic error
-        # just in case.
-        raise TypeError("Attempted to define subclass '{}' of an actor class. "
-                        "Inheriting from actor classes is not currently "
-                        "supported. You can instead inherit from a non-actor "
-                        "base class and make the derived class an actor class "
-                        "(with @ray.remote).".format(name, base._class_name))
+        # an actor class if this was meant to be subclassed.
+        assert False, ("ActorClass.__init__ should not be called. Please use "
+                       "the @ray.remote decorator instead.")
 
     def __call__(self, *args, **kwargs):
         """Prevents users from directly instantiating an ActorClass.
@@ -247,9 +243,9 @@ class ActorClass(object):
                             self._class_name, self._class_name))
 
     @classmethod
-    def from_modified_class(cls, modified_class, class_id, max_reconstructions,
-                            num_cpus, num_gpus, memory, object_store_memory,
-                            resources):
+    def _from_modified_class(cls, modified_class, class_id,
+                             max_reconstructions, num_cpus, num_gpus, memory,
+                             object_store_memory, resources):
         # Construct the base object.
         self = cls.__new__(cls)
 
@@ -850,7 +846,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    return ActorClass.from_modified_class(
+    return ActorClass._from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
         num_gpus, memory, object_store_memory, resources)
 
