@@ -46,9 +46,9 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
   AddStoreProvider(StoreProviderType::MEMORY);
 }
 
-Status CoreWorkerObjectInterface::SetMemoryLimit(int64_t limit_bytes) {
-  // Currently only the Plasma store support memory limits.
-  return store_providers_[StoreProviderType::PLASMA]->SetMemoryLimit(limit_bytes);
+Status CoreWorkerObjectInterface::SetClientOptions(std::string name, int64_t limit_bytes) {
+  // Currently only the Plasma store supports client options.
+  return store_providers_[StoreProviderType::PLASMA]->SetClientOptions(name, limit_bytes);
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
@@ -242,6 +242,11 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
   }
 
   return Status::OK();
+}
+
+std::string CoreWorkerObjectInterface::MemoryUsageString() {
+  // Currently only the Plasma store returns a debug string.
+  return store_providers_[StoreProviderType::PLASMA]->MemoryUsageString();
 }
 
 void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {

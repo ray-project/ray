@@ -19,7 +19,8 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerMemoryStoreProvider(std::shared_ptr<CoreWorkerMemoryStore> store);
 
-  Status SetMemoryLimit(int64_t limit_bytes) override;
+  /// See `CoreWorkerStoreProvider::SetClientOptions` for semantics.
+  Status SetClientOptions(std::string name, int64_t limit_bytes) override;
 
   /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
@@ -46,6 +47,9 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
+
+  /// See `CoreWorkerStoreProvider::MemoryUsageString` for semantics.
+  std::string MemoryUsageString() override;
 
  private:
   /// Implementation.

@@ -13,8 +13,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
-Status CoreWorkerPlasmaStoreProvider::SetMemoryLimit(int64_t limit_bytes) {
-  RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions("test_client_name", limit_bytes));
+Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name, int64_t limit_bytes) {
+  RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
   return Status::OK();
 }
 
@@ -49,7 +49,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
       return Status::OK();
     }
     if (plasma::IsPlasmaStoreFull(status)) {
-      return Status::ObjectStoreFull(status.message());
+      std::ostringstream message;
+      message << "Failed to put object " << object_id
+              << " in object store because it is full: " << status.message();
+      return Status::ObjectStoreFull(message.str());
     }
     RAY_ARROW_RETURN_NOT_OK(status);
   }
@@ -192,6 +195,10 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
                                              bool local_only,
                                              bool delete_creating_tasks) {
   return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+}
+
+std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
+  return store_client_.DebugString();
 }
 
 bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {

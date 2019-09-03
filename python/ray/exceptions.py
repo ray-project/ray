@@ -97,13 +97,11 @@ class ObjectStoreFullError(RayError):
     because the object store is full even after multiple retries.
     """
 
-    def __init__(self, object_id, message):
-        self.object_id = object_id
+    def __init__(self, message):
         self.message = message
 
     def __str__(self):
-        return ("Failed to put object {} in object store "
-                "because it is full: {}".format(self.object_id, self.message))
+        return self.message
 
 
 class UnreconstructableError(RayError):

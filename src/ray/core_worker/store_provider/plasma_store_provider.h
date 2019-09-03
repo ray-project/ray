@@ -22,7 +22,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
-  Status SetMemoryLimit(int64_t limit_bytes);
+  /// See `CoreWorkerStoreProvider::SetClientOptions` for semantics.
+  Status SetClientOptions(std::string name, int64_t limit_bytes);
 
   /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
@@ -47,6 +48,9 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// See `CoreWorkerStoreProvider::Delete` for semantics.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
+
+  /// See `CoreWorkerStoreProvider::MemoryUsageString` for semantics.
+  std::string MemoryUsageString() override;
 
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them

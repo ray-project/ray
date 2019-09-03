@@ -80,6 +80,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
+
+    if status.IsObjectStoreFull():
+        raise ObjectStoreFullError(message)
+    else:
         raise RayletError(message)
 
 
@@ -427,25 +431,9 @@ cdef class CoreWorker:
         serialized = pyarrow.serialize(value, serialization_context)
         data_size = serialized.total_bytes
 
-        delay = DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(DEFAULT_PUT_OBJECT_RETRIES)):
-            with nogil:
-                status = self.core_worker.get().Objects().Create(
-                            metadata, data_size, c_object_id, &data)
-            if status.ok():
-                break
-            if status.IsObjectStoreFull():
-                if attempt:
-                    logger.debug(
-                        "Waiting {} secs for plasma to drain.".format(delay))
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    raise ObjectStoreFullError(object_id, status.message().decode())
-            else:
-                message = status.message().decode()
-                raise RayletError(message)
+        with nogil:
+            check_status(self.core_worker.get().Objects().Create(
+                        metadata, data_size, c_object_id, &data))
 
         # If data is nullptr, that means the ObjectID already existed,
         # which we ignore.
@@ -530,9 +518,18 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
 
-    def set_memory_limit(self, int64_t limit_bytes):
+    def set_object_store_client_options(self, c_string client_name, int64_t limit_bytes):
         with nogil:
-            check_status(self.core_worker.get().Objects().SetMemoryLimit(limit_bytes))
+            check_status(self.core_worker.get().Objects().SetClientOptions(client_name, limit_bytes))
+
+    def object_store_memory_usage_string(self):
+        cdef:
+            c_string message
+
+        with nogil:
+            message = self.core_worker.get().Objects().MemoryUsageString()
+
+        return message
 
     def disconnect(self):
         with nogil:

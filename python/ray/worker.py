@@ -55,6 +55,7 @@ from ray.exceptions import (
     RayError,
     RayTaskError,
     RayWorkerError,
+    ObjectStoreFullError,
     UnreconstructableError,
     RAY_EXCEPTION_TYPES,
 )
@@ -376,9 +377,9 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            ray.ObjectStoreFullError: This is raised if the attempt to store
-                the object fails because the object store is full even after
-                multiple retries.
+            ray.exceptions.ObjectStoreFullError: This is raised if the attempt
+                to store the object fails because the object store is full even
+                after multiple retries.
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
@@ -395,7 +396,7 @@ class Worker(object):
             try:
                 self._try_store_and_register(object_id, value)
                 break
-            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
+            except ObjectStoreFullError as e:
                 if attempt:
                     logger.warning("Waiting {} seconds for space to free up "
                                    "in the object store.".format(delay))
@@ -403,13 +404,12 @@ class Worker(object):
                     delay *= 2
                 else:
                     self.dump_object_store_memory_usage()
-                    raise plasma_exc
+                    raise e
 
     def dump_object_store_memory_usage(self):
         """Prints object store debug string to stdout."""
-        msg = "\n" + self.plasma_client.debug_string()
-        msg = msg.replace("\n", "\nplasma: ")
-        logger.warning("Local object store memory usage:\n{}\n".format(msg))
+        logger.warning("Local object store memory usage:\n{}\n".format(
+            self.core_worker.object_store_memory_usage_string()))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -930,13 +930,12 @@ class Worker(object):
                 function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-    def _set_plasma_client_options(self, client_name, object_store_memory):
+    def _set_plasma_client_options(self, name, object_store_memory):
         try:
             logger.debug("Setting plasma memory limit to {} for {}".format(
-                object_store_memory, client_name))
-            # self.plasma_client.set_client_options(client_name,
-            # object_store_memory)
-            self.core_worker.set_memory_limit(object_store_memory)
+                object_store_memory, name))
+            self.core_worker.set_object_store_client_options(
+                name.encode("ascii"), object_store_memory)
         except Exception as e:
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
@@ -944,7 +943,7 @@ class Worker(object):
                 "to satisfy this limit (30% of object store memory is "
                 "permanently reserved for shared usage). The current "
                 "object store memory status is:\n\n{}".format(
-                    object_store_memory, client_name, e))
+                    object_store_memory, name, e))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1897,10 +1896,6 @@ def connect(node,
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
-    if driver_object_store_memory is not None:
-        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
-                                          driver_object_store_memory)
-
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if mode == SCRIPT_MODE:
@@ -1983,6 +1978,10 @@ def connect(node,
     worker.core_worker.set_current_job_id(worker.current_job_id)
     worker.core_worker.set_current_task_id(worker.current_task_id)
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
+
+    if driver_object_store_memory is not None:
+        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
+                                          driver_object_store_memory)
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
@@ -2319,7 +2318,7 @@ def put(value, weakref=False):
             )
             try:
                 worker.put_object(object_id, value)
-            except pyarrow.plasma.PlasmaStoreFull:
+            except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
                     "store was full of pinned objects. If you are putting "

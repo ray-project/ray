@@ -68,7 +68,12 @@ class CoreWorkerStoreProvider {
 
   virtual ~CoreWorkerStoreProvider() {}
 
-  virtual Status SetMemoryLimit(int64_t limit_bytes) = 0;
+  /// Set options for this client's interactions with the object store.
+  /// 
+  /// \param[in] name Unique name for this object store client.
+  /// \param[in] limit The maximum amount of memory in bytes that this client
+  /// can use in the object store.
+  virtual Status SetClientOptions(std::string name, int64_t limit_bytes) = 0;
 
   /// Put an object with specified ID into object store.
   ///
@@ -134,6 +139,11 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                         bool delete_creating_tasks = false) = 0;
+
+  /// Get a string describing object store memory usage for debugging purposes.
+  ///
+  /// \return std::string The string describing memory usage.
+  virtual std::string MemoryUsageString() = 0;
 };
 
 }  // namespace ray

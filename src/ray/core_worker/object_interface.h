@@ -22,10 +22,12 @@ class CoreWorkerObjectInterface {
                             std::unique_ptr<RayletClient> &raylet_client,
                             const std::string &store_socket);
 
-  /// Set the maximum amount of memory that can be used by operations on this
-  /// object interface.
-  /// \param[in] limit The memory limit in bytes.
-  Status SetMemoryLimit(int64_t limit_bytes);
+  /// Set options for this client's interactions with the object store.
+  /// 
+  /// \param[in] name Unique name for this object store client.
+  /// \param[in] limit The maximum amount of memory in bytes that this client
+  /// can use in the object store.
+  Status SetClientOptions(std::string name, int64_t limit_bytes);
 
   /// Put an object into object store.
   ///
@@ -95,6 +97,11 @@ class CoreWorkerObjectInterface {
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
+
+  /// Get a string describing object store memory usage for debugging purposes.
+  ///
+  /// \return std::string The string describing memory usage.
+  std::string MemoryUsageString();
 
  private:
   /// Helper function to get a set of objects from different store providers.
