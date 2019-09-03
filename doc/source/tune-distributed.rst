@@ -8,7 +8,7 @@ Tune is commonly used for large-scale distributed hyperparameter optimization. T
 
 **Quick Summary**: To run a distributed experiment with Tune, you need to:
 
-  1. Make sure your script has ``ray.init(redis_address=...)`` to connect to the existing Ray cluster.
+  1. Make sure your script has ``ray.init(address=...)`` to connect to the existing Ray cluster.
   2. If a ray cluster does not exist, start a Ray cluster (instructions for `local machines <tune-distributed.html#local-cluster-setup>`_, `cloud <tune-distributed.html#launching-a-cloud-cluster>`_).
   3. Run the script on the head node (or use ``ray submit``).
 
@@ -19,7 +19,7 @@ Running a distributed (multi-node) experiment requires Ray to be started already
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
-To execute a distributed experiment, call ``ray.init(redis_address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray redis address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
+To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray redis address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
 
 One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
 
@@ -29,22 +29,22 @@ One common approach to modifying an existing Tune experiment to go distributed i
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-redis-address")
+    parser.add_argument("--ray-address")
     args = parser.parse_args()
-    ray.init(redis_address=args.ray_redis_address)
+    ray.init(address=args.ray_address)
 
     tune.run(...)
 
 .. code-block:: bash
 
     # On the head node, connect to an existing ray cluster
-    $ python tune_script.py --ray-redis-address=localhost:XXXX
+    $ python tune_script.py --ray-address=localhost:XXXX
 
 If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray submit --start``), use:
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --args="--ray-redis-address=localhost:6379"
+    ray submit tune-default.yaml tune_script.py --args="--ray-address=localhost:6379"
 
 .. tip::
 
@@ -69,7 +69,7 @@ If you have already have a list of nodes, you can follow the local private clust
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --args="--ray-redis-address=localhost:6379"
+    ray submit tune-default.yaml tune_script.py --args="--ray-address=localhost:6379"
 
 Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -85,18 +85,18 @@ If you run into issues using the local cluster setup (or want to add nodes manua
 
 The command will print out the address of the Redis server that was started (and some other address information).
 
-**Then on all of the other nodes**, run the following. Make sure to replace ``<redis-address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
+**Then on all of the other nodes**, run the following. Make sure to replace ``<address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
 
 .. code-block:: bash
 
-    $ ray start --redis-address=<redis-address>
+    $ ray start --address=<address>
 
 Then, you can run your Tune Python script on the head node like:
 
 .. code-block:: bash
 
     # On the head node, execute using existing ray cluster
-    $ python tune_script.py --ray-redis-address=<redis-address>
+    $ python tune_script.py --ray-address=<address>
 
 Launching a cloud cluster
 -------------------------
@@ -121,7 +121,7 @@ Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will
 
 .. code-block:: bash
 
-    ray submit tune-default.yaml tune_script.py --start --args="--ray-redis-address=localhost:6379"
+    ray submit tune-default.yaml tune_script.py --start --args="--ray-address=localhost:6379"
 
 .. image:: images/tune-upload.png
     :scale: 50%
@@ -208,7 +208,7 @@ Here is an example for running Tune on spot instances. This assumes your AWS cre
 .. code-block:: bash
 
     ray submit tune-default.yaml mnist_pytorch_trainable.py \
-        --args="--ray-redis-address=localhost:6379" \
+        --args="--ray-address=localhost:6379" \
         --start
 
 4. Optionally for testing on AWS or GCP, you can use the following to kill a random worker node after all the worker nodes are up
@@ -223,7 +223,7 @@ To summarize, here are the commands to run:
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch_trainable.py
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-default.yaml
-    ray submit tune-default.yaml mnist_pytorch_trainable.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-default.yaml mnist_pytorch_trainable.py --args="--ray-address=localhost:6379" --start
 
     # wait a while until after all nodes have started
     ray kill-random-node tune-default.yaml --hard
@@ -240,13 +240,13 @@ Below are some commonly used commands for submitting experiments. Please see the
 .. code-block:: bash
 
     # Upload `tune_experiment.py` from your local machine onto the cluster. Then,
-    # run `python tune_experiment.py --redis-address=localhost:6379` on the remote machine.
-    $ ray submit CLUSTER.YAML tune_experiment.py --args="--redis-address=localhost:6379"
+    # run `python tune_experiment.py --address=localhost:6379` on the remote machine.
+    $ ray submit CLUSTER.YAML tune_experiment.py --args="--address=localhost:6379"
 
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
     # In `tune_experiment.py`, set `tune.run(upload_dir="s3://...")` to persist results
-    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py  --args="--redis-address=localhost:6379"
+    $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py  --args="--address=localhost:6379"
 
     # To start or update your cluster:
     $ ray up CLUSTER.YAML [-y]

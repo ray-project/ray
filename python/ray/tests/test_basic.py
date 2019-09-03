@@ -28,6 +28,7 @@ import pickle
 import pytest
 
 import ray
+import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
 
@@ -1234,7 +1235,7 @@ def test_wait_cluster(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
     cluster.add_node(num_cpus=1, resources={"RemoteResource": 1})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"RemoteResource": 1})
     def f():
@@ -1262,7 +1263,7 @@ def test_object_transfer_dump(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f(x):
@@ -1533,7 +1534,7 @@ def test_free_objects_multi_node(ray_start_cluster):
             num_cpus=1,
             resources={"Custom{}".format(i): 1},
             _internal_config=config)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     class RawActor(object):
         def get(self):
@@ -1995,7 +1996,7 @@ def test_zero_cpus_actor(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=2)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -2068,7 +2069,7 @@ def test_multiple_raylets(ray_start_cluster):
     cluster.add_node(num_cpus=11, num_gpus=0)
     cluster.add_node(num_cpus=5, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
     # Define a bunch of remote functions that all return the socket name of
@@ -2190,7 +2191,7 @@ def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
     cluster.add_node(num_cpus=3, resources={"CustomResource": 1})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f():
@@ -2234,7 +2235,7 @@ def test_two_custom_resources(ray_start_cluster):
             "CustomResource1": 3,
             "CustomResource2": 4
         })
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
@@ -2467,7 +2468,7 @@ def test_load_balancing(ray_start_cluster):
     num_cpus = 7
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_cpus)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f():
@@ -2485,7 +2486,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     num_nodes = 3
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def f(x):
@@ -3029,9 +3030,45 @@ def test_shutdown_disconnect_global_state():
 
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
+def test_put_pins_object(ray_start_object_store_memory):
+    x_id = ray.put("HI")
+    x_copy = ray.ObjectID(x_id.binary())
+    assert ray.get(x_copy) == "HI"
+
+    # x cannot be evicted since x_id pins it
+    for _ in range(10):
+        ray.put(np.zeros(10 * 1024 * 1024))
+    assert ray.get(x_id) == "HI"
+    assert ray.get(x_copy) == "HI"
+
+    # now it can be evicted since x_id pins it but x_copy does not
+    del x_id
+    for _ in range(10):
+        ray.put(np.zeros(10 * 1024 * 1024))
+    with pytest.raises(ray.exceptions.UnreconstructableError):
+        ray.get(x_copy)
+
+    # weakref put
+    y_id = ray.put("HI", weakref=True)
+    for _ in range(10):
+        ray.put(np.zeros(10 * 1024 * 1024))
+    with pytest.raises(ray.exceptions.UnreconstructableError):
+        ray.get(y_id)
+
+    @ray.remote
+    def check_no_buffer_ref(x):
+        assert x[0].get_buffer_ref() is None
+
+    z_id = ray.put("HI")
+    assert z_id.get_buffer_ref() is not None
+    ray.get(check_no_buffer_ref.remote([z_id]))
+
+
+@pytest.mark.parametrize(
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_redis_lru_with_set(ray_start_object_store_memory):
     x = np.zeros(8 * 10**7, dtype=np.uint8)
-    x_id = ray.put(x)
+    x_id = ray.put(x, weakref=True)
 
     # Remove the object from the object table to simulate Redis LRU eviction.
     removed = False
@@ -3137,6 +3174,41 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till the log monitor reads the file.
     time.sleep(1.0)
+
+    # Make sure that nothing has died.
+    assert ray.services.remaining_processes_alive()
+
+
+@pytest.mark.skip(reason="This test is too expensive to run.")
+def test_move_log_files_to_old(shutdown_only):
+    info = ray.init(num_cpus=1)
+
+    logs_dir = os.path.join(info["session_dir"], "logs")
+
+    @ray.remote
+    class Actor(object):
+        def f(self):
+            print("function f finished")
+
+    # First create a temporary actor.
+    actors = [
+        Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)
+    ]
+    ray.get([a.f.remote() for a in actors])
+
+    # Make sure no log files are in the "old" directory before the actors
+    # are killed.
+    assert len(glob.glob("{}/old/worker*.out".format(logs_dir))) == 0
+
+    # Now kill the actors so the files get moved to logs/old/.
+    [a.__ray_terminate__.remote() for a in actors]
+
+    while True:
+        log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
+        if len(log_file_paths) > 0:
+            with open(log_file_paths[0], "r") as f:
+                assert "function f finished\n" in f.readlines()
+            break
 
     # Make sure that nothing has died.
     assert ray.services.remaining_processes_alive()

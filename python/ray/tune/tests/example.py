@@ -6,9 +6,9 @@
 # import ray
 # import argparse
 # parser = argparse.ArgumentParser()
-# parser.add_argument("--redis-address")
+# parser.add_argument("--address")
 # args = parser.parse_args()
-# ray.init(redis_address=args.redis_address)
+# ray.init(address=args.address)
 
 # __quick_start_begin__
 import torch.optim as optim

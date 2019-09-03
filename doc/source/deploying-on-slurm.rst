@@ -23,7 +23,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
 
   node1=${nodes_array[0]}
 
-  ip_prefix=$(srun --nodes=1 --ntasks=1 -w $node1 hostname --ip-address) # Making redis-address
+  ip_prefix=$(srun --nodes=1 --ntasks=1 -w $node1 hostname --ip-address) # Making address
   suffix=':6379'
   ip_head=$ip_prefix$suffix
 
@@ -35,7 +35,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   for ((  i=1; i<=$worker_num; i++ ))
   do
     node2=${nodes_array[$i]}
-    srun --nodes=1 --ntasks=1 -w $node2 ray start --block --redis-address=$ip_head & # Starting the workers
+    srun --nodes=1 --ntasks=1 -w $node2 ray start --block --address=$ip_head & # Starting the workers
     sleep 5
   done
 
@@ -49,7 +49,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   import time
   import ray
   
-  ray.init(redis_address=os.environ["ip_head"])
+  ray.init(address=os.environ["ip_head"])
  
   @ray.remote
   def f():

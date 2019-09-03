@@ -57,9 +57,9 @@ Distributed Quick Start
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-redis-address")
+    parser.add_argument("--ray-address")
     args = parser.parse_args()
-    ray.init(redis_address=args.ray_redis_address)
+    ray.init(address=args.ray_address)
 
 Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
@@ -74,7 +74,7 @@ Alternatively, download it here: :download:`tune-local-default.yaml <../../pytho
 
 .. code-block:: bash
 
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
 
 This will start Ray on all of your machines and run a distributed hyperparameter search across them.
 
@@ -84,7 +84,7 @@ To summarize, here are the full set of commands:
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-local-default.yaml
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
 
 
 Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:

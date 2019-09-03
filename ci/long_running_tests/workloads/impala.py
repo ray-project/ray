@@ -30,7 +30,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory)
-ray.init(redis_address=cluster.redis_address)
+ray.init(address=cluster.address)
 
 # Run the workload.
 

@@ -258,3 +258,5 @@ class DDPGModel(TFModelV2):
                 add_noise_ops.append(tf.assign_add(var, var_noise))
             self.add_noise_op = tf.group(*tuple(add_noise_ops))
         self.pi_distance = None
+        self.register_variables(self.parameter_noise)
+        self.register_variables([self.parameter_noise_sigma])
