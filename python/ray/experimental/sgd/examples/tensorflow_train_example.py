@@ -28,9 +28,9 @@ def create_config(batch_size):
     }
 
 
-def linear_dataset(a=2, b=5, size=1000):
-    x = np.arange(0, 10, 10 / size, dtype=np.float32)
-    y = a * x + b
+def linear_dataset(a=2, size=1000):
+    x = np.random.rand(size)
+    y = x / 2
 
     x = x.reshape((-1, 1))
     y = y.reshape((-1, 1))
