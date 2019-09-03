@@ -161,7 +161,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                                  &got_exception));
     should_break = should_break || got_exception;
 
-    if ((remaining.size() - previous_size) < batch_ids.size()) {
+    if ((previous_size - remaining.size()) < batch_ids.size()) {
       unsuccessful_attempts++;
       WarnIfAttemptedTooManyTimes(unsuccessful_attempts, remaining);
     }
