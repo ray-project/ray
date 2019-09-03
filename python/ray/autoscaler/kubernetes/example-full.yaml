@@ -90,6 +90,7 @@ head_node:
     apiVersion: v1
     kind: Pod
     metadata:
+        # Automatically generates a name for the pod with this prefix.
         generateName: ray-head-
     spec:
         # Change this if you altered the autoscaler_service_account above
@@ -110,6 +111,7 @@ head_node:
 
         containers:
         - name: ray-node
+          imagePullPolicy: Always
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
@@ -151,6 +153,7 @@ worker_nodes:
     apiVersion: v1
     kind: Pod
     metadata:
+        # Automatically generates a name for the pod with this prefix.
         generateName: ray-worker-
     spec:
         serviceAccountName: default
@@ -169,6 +172,7 @@ worker_nodes:
 
         containers:
         - name: ray-node
+          imagePullPolicy: Always
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
