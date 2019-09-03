@@ -30,7 +30,7 @@ passed to ``kubectl``.
 
 .. code-block:: shell
 
-  $ kubectl create namespace ray
+  $ kubectl create -f ray/doc/kubernetes/ray-namespace.yaml
 
 Starting a Ray Cluster
 ----------------------
