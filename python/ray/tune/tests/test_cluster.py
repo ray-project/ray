@@ -366,7 +366,6 @@ tune.run(
     config=dict(env="CartPole-v1"),
     stop=dict(training_iteration=10),
     local_dir="{checkpoint_dir}",
-    global_checkpoint_period=0,
     checkpoint_freq=1,
     max_failures=1,
     dict(experiment=kwargs),
