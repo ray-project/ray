@@ -29,7 +29,7 @@ Test that it works by running the following commands from your local machine:
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
     $ source activate tensorflow_p36
-    $ # Try running a Ray program with 'ray.init(redis_address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
 
     # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
@@ -52,7 +52,7 @@ Test that it works by running the following commands from your local machine:
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
     $ source activate tensorflow_p36
-    $ # Try running a Ray program with 'ray.init(redis_address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
 
     # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
@@ -80,7 +80,7 @@ Test that it works by running the following commands from your local machine:
 
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
-    $ # Try running a Ray program with 'ray.init(redis_address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
 
     # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
@@ -101,7 +101,7 @@ Test that it works by running the following commands from your local machine:
 
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
-    $ # Try running a Ray program with 'ray.init(redis_address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
 
     # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/local/example-full.yaml
@@ -153,7 +153,7 @@ If you don't want the update to restart services (e.g., because the changes don'
 Running commands on new and existing clusters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(redis_address="localhost:6379")``.
+You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(address="localhost:6379")``.
 
 .. code-block:: bash
 

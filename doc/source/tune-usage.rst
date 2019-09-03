@@ -167,9 +167,8 @@ The following shows grid search over two nested parameters combined with random 
         }
     )
 
-
-.. note::
-    Use ``tune.sample_from(...)`` to sample from a function during trial variant generation. If you need to pass a literal function in your config, use ``tune.function(...)`` to escape it.
+.. note::	
+    Use ``tune.sample_from(...)`` to sample from a function during trial variant generation.
 
 For more information on variant generation, see `basic_variant.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/suggest/basic_variant.py>`__.
 
@@ -177,8 +176,7 @@ Custom Trial Names
 ------------------
 
 To specify custom trial names, you can pass use the ``trial_name_creator`` argument
-to `tune.run`.  This takes a function with the following signature, and
-be sure to wrap it with `tune.function`:
+to `tune.run`.  This takes a function with the following signature:
 
 .. code-block:: python
 
@@ -196,7 +194,7 @@ be sure to wrap it with `tune.function`:
         MyTrainableClass,
         name="example-experiment",
         num_samples=1,
-        trial_name_creator=tune.function(trial_name_string)
+        trial_name_creator=trial_name_string
     )
 
 An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
@@ -496,7 +494,7 @@ Uploading/Syncing
 Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the `autoscaler <autoscaling.html>`__.
 By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
 
-If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature (and must be wrapped with ``tune.function``):
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
 
 .. code-block:: python
 
@@ -510,7 +508,7 @@ If a string is provided, then it must include replacement fields ``{source}`` an
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        sync_to_driver=tune.function(custom_sync_func),
+        sync_to_driver=custom_sync_func,
     )
 
 When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
@@ -524,7 +522,7 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        sync_to_cloud=tune.function(custom_sync_func),
+        sync_to_cloud=custom_sync_func,
     )
 
 Tune Client API
