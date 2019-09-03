@@ -1980,8 +1980,8 @@ def connect(node,
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
-        worker._set_object_store_client_options("ray_driver_{}".format(os.getpid()),
-                                          driver_object_store_memory)
+        worker._set_object_store_client_options(
+            "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
