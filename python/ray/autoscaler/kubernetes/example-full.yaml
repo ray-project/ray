@@ -37,6 +37,9 @@ idle_timeout_minutes: 5
 provider:
     type: kubernetes
 
+    # Exposing external IP addresses for ray pods isn't currently supported.
+    use_internal_ips: true
+
     # Namespace to use for all resources created.
     namespace:
         apiVersion: v1

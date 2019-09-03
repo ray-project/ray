@@ -37,7 +37,10 @@ def not_provided_msg(resource_type):
 
 
 def bootstrap_kubernetes(config):
-    config["provider"]["use_internal_ips"] = True
+    if not config["provider"]["use_internal_ips"]:
+        return ValueError("Exposing external IP addresses for ray pods isn't "
+                          "currently supported. Please set "
+                          "'use_internal_ips' to false.")
     namespace = _configure_namespace(config["provider"])
     _configure_autoscaler_service_account(namespace, config["provider"])
     _configure_autoscaler_role(namespace, config["provider"])
