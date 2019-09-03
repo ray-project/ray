@@ -72,6 +72,12 @@ Test that it works by running the following commands from your local machine:
     # out the command that can be used to get a remote shell into the head node.
     $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
+    # List the pods running in the cluster. You shoud only see one head node
+    # until you start running an application, at which point worker nodes
+    # should be started. Don't forget to include the Ray namespace in your
+    # 'kubectl' commands ('ray' by default).
+    $ kubectl -n ray get pods
+
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
     $ # Try running a Ray program with 'ray.init(redis_address="localhost:6379")'.
