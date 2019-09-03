@@ -11,6 +11,7 @@ import time
 
 import ray
 from ray.tests.cluster_utils import Cluster
+from ray.tests.utils import flat_errors
 import ray.ray_constants as ray_constants
 
 
@@ -397,13 +398,13 @@ def wait_for_errors(error_check):
     errors = []
     time_left = 100
     while time_left > 0:
-        errors = ray.errors()
+        errors = flat_errors()
         if error_check(errors):
             break
         time_left -= 1
         time.sleep(1)
 
-        # Make sure that enough errors came through.
+    # Make sure that enough errors came through.
     assert error_check(errors)
     return errors
 

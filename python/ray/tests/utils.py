@@ -75,8 +75,12 @@ def run_string_as_driver_nonblocking(driver_script):
             [sys.executable, f.name], stdout=subprocess.PIPE)
 
 
+def flat_errors():
+    return [error for errors in ray.errors().values() for error in errors]
+
+
 def relevant_errors(error_type):
-    return [info for info in ray.errors() if info["type"] == error_type]
+    return [error for error in flat_errors() if error["type"] == error_type]
 
 
 def wait_for_errors(error_type, num_errors, timeout=10):
