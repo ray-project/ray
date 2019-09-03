@@ -44,7 +44,6 @@ class RemoteFunction(object):
             should call the function that was passed into the decorator and
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
-        _function_signature: The function signature.
         _last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
@@ -76,8 +75,6 @@ class RemoteFunction(object):
                                   None)
 
         ray.signature.check_signature_supported(self._function)
-        self._function_signature = ray.signature.extract_signature(
-            self._function)
         self._last_export_session_and_job = None
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -140,6 +137,7 @@ class RemoteFunction(object):
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
+            ray.signature.validate_args(self._function, args, kwargs)
             list_args = ray.signature.flatten_args(args, kwargs)
 
             # args = ray.signature.extend_args(self._function_signature, args,

@@ -14,12 +14,12 @@ from ray.utils import is_cython
 # entry/init points.
 logger = logging.getLogger(__name__)
 
+DUMMY_TYPE = "__RAY_ARG_DUMMY__"
+
 FunctionSignature = namedtuple("FunctionSignature", [
     "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",
     "function_name"
 ])
-
-DUMMY_TYPE = "__RAY_ARG_DUMMY__"
 """This class is used to represent a function signature.
 
 Attributes:
@@ -183,11 +183,12 @@ def flatten_args(args, kwargs):
 
 
 def recover_args(flattened_args):
-    """
+    """Recreates `args` and `kwargs` from the flattened arg list.
 
     Args:
         flattened_args: List of args and kwargs. This should be the output of
             flatten_args.
+
     Returns:
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
@@ -203,6 +204,17 @@ def recover_args(flattened_args):
             kwargs[name] = arg
 
     return args, kwargs
+
+
+def validate_args(func, args, kwargs):
+    """Validates that this function can be called with given arguments.
+
+    Raises:
+        TypeError if provided argument is incorrect.
+
+    """
+    funcsigs_signature = funcsigs.signature(func)
+    funcsigs_signature.bind(*args, **kwargs)
 
 
 def extend_args(function_signature, args, kwargs):
@@ -224,6 +236,7 @@ def extend_args(function_signature, args, kwargs):
         Exception: An exception may be raised if the function cannot be called
             with these arguments.
     """
+    raise DeprecationWarning
     arg_names = function_signature.arg_names
     arg_defaults = function_signature.arg_defaults
     arg_is_positionals = function_signature.arg_is_positionals
