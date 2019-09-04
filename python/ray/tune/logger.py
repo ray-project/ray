@@ -153,10 +153,9 @@ def tf2_compat_logger(config, logdir):
 
 
 class TF2Logger(Logger):
-    def _init(self):
-        self._file_writer = tf.summary.create_file_writer(self.logdir)
-
     def on_result(self, result):
+        if not hasattr(self, "_file_writer"):
+            self._file_writer = tf.summary.create_file_writer(self.logdir)
         with tf.device("/CPU:0"):
             with self._file_writer.as_default():
                 step = result.get(
@@ -179,10 +178,12 @@ class TF2Logger(Logger):
         self._file_writer.flush()
 
     def flush(self):
-        self._file_writer.flush()
+        if hasattr(self, "_file_writer"):
+            self._file_writer.flush()
 
     def close(self):
-        self._file_writer.close()
+        if hasattr(self, "_file_writer"):
+            self._file_writer.close()
 
 
 def to_tf_values(result, path):
