@@ -219,16 +219,18 @@ program:
 Submitting a Job
 ~~~~~~~~~~~~~~~~
 
-You can also submit a Ray application to run on the cluster as a Kubernetes
-Job. The Job will run a single pod running the Ray driver program to
+You can also submit a Ray application to run on the cluster as a `Kubernetes
+Job_`. The Job will run a single pod running the Ray driver program to
 completion, then terminate the pod but allow you to access the logs.
+
+.. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
 
 To submit a Job that downloads and executes an `example program`_ that tests
 object transfers between nodes in the cluster, run the following command:
 
 .. code-block:: shell
 
-  $ kubectl create -f ray/kubernetes/ray-job.yaml
+  $ kubectl create -f ray/doc/kubernetes/ray-job.yaml
   job.batch/ray-test-job-kw5gn created
 
 .. _`example program`: https://github.com/ray-project/ray/blob/master/doc/kubernetes/example.py
