@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from functools import partial
+from pprint import pformat
 
 
 def list_changed_files(commit_range):
@@ -43,7 +44,7 @@ if __name__ == "__main__":
         files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
             "...", ".."))
 
-        print(files, file=sys.stderr)
+        print(pformat(files), file=sys.stderr)
 
         skip_prefix_list = [
             "doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"
