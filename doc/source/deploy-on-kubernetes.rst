@@ -12,7 +12,7 @@ Deploying on Kubernetes
   Running Ray on Kubernetes is still a work in progress. If you have a
   suggestion for how to improve them or want to request a missing feature,
   please get in touch using one of the channels in the 
-  QuestionsOrIssues_ section.
+  `Questions or Issues?`_ section below.
 
 This document assumes that you have access to a Kubernetes cluster and have
 ``kubectl`` installed locally and configured to access the cluster.
@@ -279,8 +279,6 @@ To delete a running Ray cluster, you can run the following command:
 .. code-block:: shell
 
   kubectl delete -f ray/doc/kubernetes/ray-cluster.yaml
-
-.. _QuestionsOrIssues:
 
 Questions or Issues?
 --------------------
