@@ -31,6 +31,7 @@ cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
         CRayStatus Seal(const CObjectID &object_id)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
+        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,

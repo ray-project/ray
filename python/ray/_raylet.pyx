@@ -420,6 +420,16 @@ cdef class CoreWorker:
 
         return data_metadata_pairs
 
+    def contains_object(self, ObjectID object_id):
+        cdef:
+            c_bool has_object
+            CObjectID c_object_id = object_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().Objects().Contains(c_object_id, &has_object))
+
+        return has_object
+
     def serialize_and_put(self, object value, ObjectID object_id,
                           serialization_context=None, int memcopy_threads=6):
         cdef:

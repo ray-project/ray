@@ -115,6 +115,13 @@ class CoreWorkerStoreProvider {
       const TaskID &task_id,
       std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) = 0;
 
+  /// Return whether or not the object store contains the given object.
+  ///
+  /// \param[in] object_id ID of the objects to check for.
+  /// \param[out] has_object Whether or not the object is present.
+  /// \return Status.
+  virtual Status Contains(const ObjectID &object_id, bool *has_object) = 0;
+
   /// Wait for a list of objects to appear in the object store. Objects that appear will
   /// be added to the ready set.
   ///

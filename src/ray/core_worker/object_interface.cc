@@ -138,6 +138,11 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
+Status CoreWorkerObjectInterface::Contains(const ObjectID &object_id, bool *has_object) {
+  // Currently only the Plasma store supports Contains().
+  return store_providers_[StoreProviderType::PLASMA]->Contains(object_id, has_object);
+}
+
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num_objects,
                                        int64_t timeout_ms, std::vector<bool> *results) {
   (*results).resize(ids.size(), false);

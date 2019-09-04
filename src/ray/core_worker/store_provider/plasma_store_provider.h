@@ -40,6 +40,9 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
              const TaskID &task_id,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
+  /// See `CoreWorkerStoreProvider::Contains` for semantics.
+  Status Contains(const ObjectID &object_id, bool *has_object) override;
+
   /// See `CoreWorkerStoreProvider::Wait` for semantics.
   Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,

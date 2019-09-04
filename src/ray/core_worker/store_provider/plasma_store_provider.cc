@@ -176,6 +176,12 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   return raylet_client_->NotifyUnblocked(task_id);
 }
 
+Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
+                                               bool *has_object) {
+  RAY_ARROW_RETURN_NOT_OK(store_client_.Contains(object_id.ToPlasmaId(), has_object));
+  return Status::OK();
+}
+
 Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,

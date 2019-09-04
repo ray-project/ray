@@ -495,8 +495,7 @@ class Worker(object):
             # If data is not empty, deserialize the object.
             # Note, the lock is needed because `serialization_context` isn't
             # thread-safe.
-            with self.plasma_client.lock:
-                return pyarrow.deserialize(data, serialization_context)
+            return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
@@ -814,8 +813,7 @@ class Worker(object):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
             if outputs[i] is ray.experimental.no_return.NoReturn:
-                if not self.plasma_client.contains(
-                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                if not self.core_worker.contains_object(object_ids[i]):
                     raise RuntimeError(
                         "Attempting to return 'ray.experimental.NoReturn' "
                         "from a remote function, but the corresponding "
@@ -1892,10 +1890,6 @@ def connect(node,
     else:
         raise Exception("This code should be unreachable.")
 
-    # Create an object store client.
-    worker.plasma_client = thread_safe_client(
-        plasma.connect(node.plasma_store_socket_name, None, 0, 300))
-
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if mode == SCRIPT_MODE:
@@ -2083,8 +2077,6 @@ def disconnect():
         del worker.raylet_client
     if hasattr(worker, "core_worker"):
         del worker.core_worker
-    if hasattr(worker, "plasma_client"):
-        worker.plasma_client.disconnect()
 
 
 @contextmanager

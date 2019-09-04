@@ -73,6 +73,13 @@ class CoreWorkerObjectInterface {
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
+  /// Return whether or not the object store contains the given object.
+  ///
+  /// \param[in] object_id ID of the objects to check for.
+  /// \param[out] has_object Whether or not the object is present.
+  /// \return Status.
+  Status Contains(const ObjectID &object_id, bool *has_object);
+
   /// Wait for a list of objects to appear in the object store.
   /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
   /// case.

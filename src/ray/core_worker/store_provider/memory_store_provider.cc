@@ -18,7 +18,8 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 
 Status CoreWorkerMemoryStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
-  return Status::NotImplemented("Client options not implemented for in-memory store.");
+  return Status::NotImplemented(
+      "SetClientOptions() not implemented for in-memory store.");
 }
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
@@ -54,6 +55,11 @@ Status CoreWorkerMemoryStoreProvider::Get(
     }
   }
   return Status::OK();
+}
+
+Status CoreWorkerMemoryStoreProvider::Contains(const ObjectID &object_id,
+                                               bool *has_object) {
+  return Status::NotImplemented("Contains() not implemented for in-memory store.");
 }
 
 Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
