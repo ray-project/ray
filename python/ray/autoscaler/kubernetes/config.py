@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import logging
 
+from kubernetes import client
+
 from ray.autoscaler.kubernetes import auth_api, core_api, log_prefix
 
 logger = logging.getLogger(__name__)
@@ -53,18 +55,21 @@ def _configure_namespace(provider_config):
     if namespace_field not in provider_config:
         raise ValueError("Must specify namespace in Kubernetes config.")
 
-    name = provider_config[namespace_field]["metadata"]["name"]
-    field_selector = "metadata.name={}".format(name)
+    namespace = provider_config[namespace_field]
+    field_selector = "metadata.name={}".format(namespace)
     namespaces = core_api.list_namespace(field_selector=field_selector).items
     if len(namespaces) > 0:
         assert len(namespaces) == 1
-        logger.info(log_prefix + using_existing_msg(namespace_field, name))
-        return name
+        logger.info(log_prefix +
+                    using_existing_msg(namespace_field, namespace))
+        return namespace
 
-    logger.info(log_prefix + not_found_msg(namespace_field, name))
-    core_api.create_namespace(provider_config[namespace_field])
-    logger.info(log_prefix + created_msg(namespace_field, name))
-    return name
+    logger.info(log_prefix + not_found_msg(namespace_field, namespace))
+    namespace_config = client.V1Namespace(
+        metadata=client.V1ObjectMeta(name=namespace))
+    core_api.create_namespace(namespace_config)
+    logger.info(log_prefix + created_msg(namespace_field, namespace))
+    return namespace
 
 
 def _configure_autoscaler_service_account(namespace, provider_config):
