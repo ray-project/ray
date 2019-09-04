@@ -362,6 +362,33 @@ def test_actor_class_name(ray_start_regular):
     assert actor_class_info[b"module"] == b"ray.tests.test_actor"
 
 
+def test_actor_inheritance(ray_start_regular):
+    class NonActorBase(object):
+        def __init__(self):
+            pass
+
+    # Test that an actor class can inherit from a non-actor class.
+    @ray.remote
+    class ActorBase(NonActorBase):
+        def __init__(self):
+            pass
+
+    # Test that you can't instantiate an actor class directly.
+    with pytest.raises(
+            Exception, match="Actors cannot be instantiated directly."):
+        ActorBase()
+
+    # Test that you can't inherit from an actor class.
+    with pytest.raises(
+            TypeError,
+            match="Inheriting from actor classes is not "
+            "currently supported."):
+
+        class Derived(ActorBase):
+            def __init__(self):
+                pass
+
+
 def test_multiple_return_values(ray_start_regular):
     @ray.remote
     class Foo(object):

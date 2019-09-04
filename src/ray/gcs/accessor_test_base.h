@@ -24,7 +24,7 @@ class AccessorTestBase : public ::testing::Test {
     gcs_client_.reset(new RedisGcsClient(options_));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
-    work_thread.reset(new std::thread([this] {
+    work_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
@@ -35,8 +35,8 @@ class AccessorTestBase : public ::testing::Test {
     gcs_client_->Disconnect();
 
     io_service_.stop();
-    work_thread->join();
-    work_thread.reset();
+    work_thread_->join();
+    work_thread_.reset();
 
     gcs_client_.reset();
 
@@ -63,7 +63,7 @@ class AccessorTestBase : public ::testing::Test {
   std::unique_ptr<RedisGcsClient> gcs_client_;
 
   boost::asio::io_service io_service_;
-  std::unique_ptr<std::thread> work_thread;
+  std::unique_ptr<std::thread> work_thread_;
 
   std::unordered_map<ID, std::shared_ptr<Data>> id_to_data_;
 

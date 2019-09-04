@@ -7,7 +7,6 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 #include "ray/raylet/raylet_client.h"
@@ -468,10 +467,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store;
 
   switch (type) {
-  case StoreProviderType::LOCAL_PLASMA:
-    provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerLocalPlasmaStoreProvider(raylet_store_socket_names_[0]));
-    break;
   case StoreProviderType::MEMORY:
     memory_store = std::make_shared<CoreWorkerMemoryStore>();
     provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
@@ -522,19 +517,20 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
 
   // Test Get().
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, RandomTaskId(), &results));
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
+  std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
+  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results));
 
-  ASSERT_EQ(results.size(), ids_with_duplicate.size());
-  for (size_t i = 0; i < ids_with_duplicate.size(); i++) {
-    const auto &expected = buffers[i % ids.size()];
-    ASSERT_EQ(results[i]->GetData()->Size(), expected.GetData()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), expected.GetData()->Data(),
+  ASSERT_EQ(results.size(), ids.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    const auto &expected = buffers[i];
+    ASSERT_EQ(results[ids[i]]->GetData()->Size(), expected.GetData()->Size());
+    ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(), expected.GetData()->Data(),
                      expected.GetData()->Size()),
               0);
-    ASSERT_EQ(results[i]->GetMetadata()->Size(), expected.GetMetadata()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), expected.GetMetadata()->Data(),
-                     expected.GetMetadata()->Size()),
+    ASSERT_EQ(results[ids[i]]->GetMetadata()->Size(), expected.GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[ids[i]]->GetMetadata()->Data(),
+                     expected.GetMetadata()->Data(), expected.GetMetadata()->Size()),
               0);
   }
 
@@ -545,10 +541,8 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids, 0, RandomTaskId(), &results));
-  ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
+  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results));
+  ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
   std::vector<ObjectID> unready_ids(buffers.size());
@@ -789,8 +783,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
-
-  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());

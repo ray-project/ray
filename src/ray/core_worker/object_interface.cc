@@ -2,7 +2,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 
@@ -43,7 +42,6 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
       raylet_client_(raylet_client),
       store_socket_(store_socket),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
-  AddStoreProvider(StoreProviderType::LOCAL_PLASMA);
   AddStoreProvider(StoreProviderType::PLASMA);
   AddStoreProvider(StoreProviderType::MEMORY);
 }
@@ -76,17 +74,17 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
       object_ids_per_store_provider;
   GroupObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects;
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto remaining_timeout_ms = timeout_ms;
 
   // Re-order the list so that we always get from plasma store provider first,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
   // desirable if other store providers use up the timeout and leaves no time
   // for plasma provider to reconstruct the objects as necessary.
-  std::list<
-      std::pair<StoreProviderType, std::reference_wrapper<std::unordered_set<ObjectID>>>>
+  std::list<std::pair<StoreProviderType,
+                      std::reference_wrapper<const std::unordered_set<ObjectID>>>>
       ids_per_provider;
-  for (auto &entry : object_ids_per_store_provider) {
+  for (const auto &entry : object_ids_per_store_provider) {
     auto list_entry = std::make_pair(entry.first, std::ref(entry.second));
     if (entry.first == StoreProviderType::PLASMA) {
       ids_per_provider.emplace_front(list_entry);
@@ -97,10 +95,11 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   // Note that if one store provider uses up the timeout, we will still try the others
   // with a timeout of 0.
-  for (const auto &entry : object_ids_per_store_provider) {
+  for (const auto &entry : ids_per_provider) {
     auto start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(
-        GetFromStoreProvider(entry.first, entry.second, remaining_timeout_ms, &objects));
+    RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
+        entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
+        &result_map));
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =
@@ -113,24 +112,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   // they are in `ids`. When there are duplicate object ids, all the entries
   // for the same id are filled in.
   for (size_t i = 0; i < ids.size(); i++) {
-    (*results)[i] = objects[ids[i]];
-  }
-
-  return Status::OK();
-}
-
-Status CoreWorkerObjectInterface::GetFromStoreProvider(
-    StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
-    int64_t timeout_ms,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
-  std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());
-  if (!ids.empty()) {
-    std::vector<std::shared_ptr<RayObject>> objects;
-    RAY_RETURN_NOT_OK(store_providers_[type]->Get(
-        ids, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
-    RAY_CHECK(ids.size() == objects.size());
-    for (size_t i = 0; i < objects.size(); i++) {
-      (*results).emplace(ids[i], objects[i]);
+    if (result_map.find(ids[i]) != result_map.end()) {
+      (*results)[i] = result_map[ids[i]];
     }
   }
 
@@ -256,9 +239,6 @@ void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {
 std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreProvider(
     StoreProviderType type) const {
   switch (type) {
-  case StoreProviderType::LOCAL_PLASMA:
-    return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerLocalPlasmaStoreProvider(store_socket_));
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
