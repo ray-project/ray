@@ -584,6 +584,7 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   wait_results.clear();
   // Check that all objects are returned after the thread completes.
+  async_thread.join();
   RAY_CHECK_OK(
       provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
   ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
@@ -593,8 +594,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   for (const auto &unready_id : unready_ids) {
     ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
   }
-
-  async_thread.join();
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
