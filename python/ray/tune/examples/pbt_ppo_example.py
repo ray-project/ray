@@ -4,6 +4,9 @@
 Note that this requires a cluster with at least 8 GPUs in order for all trials
 to run concurrently, otherwise PBT will round-robin train the trials which
 is less efficient (or you can set {"gpu": 0} to use CPUs for SGD instead).
+
+Note that Tune in general does not need 8 GPUs, and this is just a more
+computationally demainding example.
 """
 
 from __future__ import absolute_import
@@ -51,9 +54,9 @@ if __name__ == "__main__":
         name="pbt_humanoid_test",
         scheduler=pbt,
         **{
-            "env": "Humanoid-v1",
             "num_samples": 8,
             "config": {
+                "env": "Humanoid-v1",
                 "kl_coeff": 1.0,
                 "num_workers": 8,
                 "num_gpus": 1,

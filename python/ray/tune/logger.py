@@ -136,6 +136,7 @@ class JsonLogger(Logger):
 
 
 def tf2_compat_logger(config, logdir):
+    """Chooses TensorBoard logger depending on imported TF version."""
     global tf
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
@@ -153,6 +154,16 @@ def tf2_compat_logger(config, logdir):
 
 
 class TF2Logger(Logger):
+    """TensorBoard Logger for TF version >= 1.14.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
     def _init(self):
         self._file_writer = None
 
@@ -202,6 +213,16 @@ def to_tf_values(result, path):
 
 
 class TFLogger(Logger):
+    """TensorBoard Logger for TF version < 1.14.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
     def _init(self):
         logger.info("Initializing TFLogger instead of TF2Logger.")
         self._file_writer = tf.compat.v1.summary.FileWriter(self.logdir)
@@ -232,9 +253,17 @@ class TFLogger(Logger):
 
 
 class CSVLogger(Logger):
+    """Logs results to progress.csv under the trial directory.
+
+    Automatically flattens nested dicts in the result dict before writing
+    to csv:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    """
+
     def _init(self):
         """CSV outputted with Headers as first set of results."""
-        # Note that we assume params.json was already created by JsonLogger
         progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
         self._continuing = os.path.exists(progress_file)
         self._file = open(progress_file, "a")
