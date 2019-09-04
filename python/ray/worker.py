@@ -2329,10 +2329,14 @@ def put(value, weakref=False):
         worker.task_context.put_index += 1
         # Pin the object buffer with the returned id. This avoids put returns
         # from getting evicted out from under the id.
+        # TODO(edoakes): we should be able to avoid this extra IPC by holding
+        # a reference to the buffer created when putting the object, but the
+        # buffer returned by the plasma store create method doesn't prevent
+        # the object from being evicted.
         if not weakref and not worker.mode == LOCAL_MODE:
             object_id.set_buffer_ref(
-                worker.plasma_client.get_buffers(
-                    [pyarrow.plasma.ObjectID(object_id.binary())]))
+                worker.core_worker.get_objects([object_id],
+                                               worker.current_task_id))
         return object_id
 
 

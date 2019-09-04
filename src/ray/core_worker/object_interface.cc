@@ -46,7 +46,8 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
   AddStoreProvider(StoreProviderType::MEMORY);
 }
 
-Status CoreWorkerObjectInterface::SetClientOptions(std::string name, int64_t limit_bytes) {
+Status CoreWorkerObjectInterface::SetClientOptions(std::string name,
+                                                   int64_t limit_bytes) {
   // Currently only the Plasma store supports client options.
   return store_providers_[StoreProviderType::PLASMA]->SetClientOptions(name, limit_bytes);
 }

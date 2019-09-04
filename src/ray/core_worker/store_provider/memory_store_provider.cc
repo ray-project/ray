@@ -16,7 +16,8 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
   RAY_CHECK(store != nullptr);
 }
 
-Status CoreWorkerMemoryStoreProvider::SetClientOptions(std::string name, int64_t limit_bytes) {
+Status CoreWorkerMemoryStoreProvider::SetClientOptions(std::string name,
+                                                       int64_t limit_bytes) {
   return Status::NotImplemented("Client options not implemented for in-memory store.");
 }
 
@@ -81,8 +82,6 @@ Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object
   return Status::OK();
 }
 
-std::string CoreWorkerMemoryStoreProvider::MemoryUsageString() {
-  return "";
-}
+std::string CoreWorkerMemoryStoreProvider::MemoryUsageString() { return ""; }
 
 }  // namespace ray

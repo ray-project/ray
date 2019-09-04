@@ -23,7 +23,7 @@ class CoreWorkerObjectInterface {
                             const std::string &store_socket);
 
   /// Set options for this client's interactions with the object store.
-  /// 
+  ///
   /// \param[in] name Unique name for this object store client.
   /// \param[in] limit The maximum amount of memory in bytes that this client
   /// can use in the object store.

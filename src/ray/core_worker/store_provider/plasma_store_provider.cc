@@ -13,7 +13,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
-Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name, int64_t limit_bytes) {
+Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
+                                                       int64_t limit_bytes) {
   RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
   return Status::OK();
 }
