@@ -60,7 +60,7 @@ Test that it works by running the following commands from your local machine:
 Kubernetes
 ~~~~~~~~~~
 
-The autoscaler can also be used to start Ray clusters on an existing (shared) Kubernetes cluster. First, install the Kubernetes API client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
+The autoscaler can also be used to start Ray clusters on an existing Kubernetes cluster. First, install the Kubernetes API client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
 
 Once you have ``kubectl`` configured locally to access the remote cluster, you should be ready to run the autoscaler. The provided `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ cluster config file will create a small cluster of one pod for the head node configured to autoscale up to two worker node pods, with all pods requiring 1 CPU and 0.5GiB of memory.
 
@@ -100,7 +100,7 @@ Test that it works by running the following commands from your local machine:
     $ ray up ray/python/ray/autoscaler/local/example-full.yaml
 
     # Get a remote screen on the head node.
-    $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
+    $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
     $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
 
     # Tear down the cluster
@@ -139,15 +139,18 @@ If you don't want the update to restart services (e.g., because the changes don'
 
 .. code-block:: bash
 
+    # Replace '<your_backend>' with one of: 'aws', 'gcp', 'kubernetes', or 'local'.
+    $ BACKEND=<your_backend>
+
     # Create or update the cluster.
-    $ ray up ray/python/ray/autoscaler/<your_backend>/example-full.yaml
+    $ ray up ray/python/ray/autoscaler/$BACKEND/example-full.yaml
 
     # Reconfigure autoscaling behavior without interrupting running jobs.
-    $ ray up ray/python/ray/autoscaler/<your_backend>/example-full.yaml \
+    $ ray up ray/python/ray/autoscaler/$BACKEND/example-full.yaml \
         --max-workers=N --no-restart
 
     # Tear down the cluster.
-    $ ray down ray/python/ray/autoscaler/<your_backend>/example-full.yaml
+    $ ray down ray/python/ray/autoscaler/$BACKEND/example-full.yaml
 
 
 Running commands on new and existing clusters
