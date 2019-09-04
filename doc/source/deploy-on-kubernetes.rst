@@ -5,16 +5,14 @@ Deploying on Kubernetes
 
   The easiest way to run a Ray cluster is by using the built-in autoscaler,
   which has support for running on top of Kubernetes. Please see the `autoscaler
-  documentation <autoscaling.html>`for details. If you have a use case not
-  supported by the autoscaler or want to run a cluster manually for another
-  reason, read on.
+  documentation <autoscaling.html>` for details.
 
 .. warning::
 
   Running Ray on Kubernetes is still a work in progress. If you have a
   suggestion for how to improve them or want to request a missing feature,
-  please file an issue on the Ray github repository
-  (https://github.com/ray-project/ray/).
+  please get in touch using one of the channels in the 
+  QuestionsOrIssues_ section.
 
 This document assumes that you have access to a Kubernetes cluster and have
 ``kubectl`` installed locally and configured to access the cluster.
@@ -281,6 +279,8 @@ To delete a running Ray cluster, you can run the following command:
 .. code-block:: shell
 
   kubectl delete -f ray/doc/kubernetes/ray-cluster.yaml
+
+.. _QuestionsOrIssues:
 
 Questions or Issues?
 --------------------
