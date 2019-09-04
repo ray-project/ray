@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import ray.worker
 from ray import profiling
+import pyarrow
 
 __all__ = ["free", "pin_object_data"]
 
@@ -20,7 +21,9 @@ def pin_object_data(obj_id):
     ray.put() already, unless you ray.put with weakref=True.
     """
 
-    obj_id.set_buffer_ref(ray.get(obj_id))
+    obj_id.set_buffer_ref(
+        ray.worker.global_worker.plasma_client.get_buffers(
+            [pyarrow.plasma.ObjectID(obj_id.binary())]))
 
 
 def free(object_ids, local_only=False, delete_creating_tasks=False):
