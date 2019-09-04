@@ -16,15 +16,16 @@ Quick start (CLI)
     # .rayproject subdirectory of the current directory.
     $ ray project create <project-name>
 
-    # Create a new session from the given project.
-    # Launch a cluster and run the appropriate command.
-    $ ray session start <command> [arguments]
+    # Create a new session from the given project.  Launch a cluster and run
+    # the command, which must be specified in the project.yaml file. If no
+    # command is specified, the "default" command in .rayproject/project.yaml
+    # will be used. Alternatively, use --shell to run a raw shell command.
+    $ ray session start <command-name> [arguments] [--shell]
 
     # Open a console for the given session.
     $ ray session attach
 
-    # Stop the given session and all of its worker nodes. The nodes/clusters
-    # are not actually terminated.
+    # Stop the given session and terminate all of its worker nodes.
     $ ray session stop
 
 Examples
