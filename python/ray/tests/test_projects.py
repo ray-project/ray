@@ -121,7 +121,6 @@ def test_session_start_default_project():
     # 1 for rsyncing the project directory, 1 for rsyncing the
     # requirements.txt.
     assert rsync_call.call_count == 2
-    print(rsync_call.call_args)
     _, kwargs = rsync_call.call_args
     assert kwargs["source"] == loaded_project["environment"]["requirements"]
 
