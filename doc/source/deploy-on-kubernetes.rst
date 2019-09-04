@@ -3,7 +3,7 @@ Deploying on Kubernetes
 
 .. note::
 
-	The easiest way to run a Ray cluster is by using the built-in autoscaler,
+  The easiest way to run a Ray cluster is by using the built-in autoscaler,
   which has support for running on top of Kubernetes. Please see the `autoscaler
   documentation <autoscaling.html>`for details. If you have a use case not
   supported by the autoscaler or want to run a cluster manually for another
