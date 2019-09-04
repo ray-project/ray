@@ -5,7 +5,22 @@ from __future__ import print_function
 import ray.worker
 from ray import profiling
 
-__all__ = ["free"]
+__all__ = ["free", "pin_object_data"]
+
+
+def pin_object_data(obj_id):
+    """Pin the object data referenced by this object id in memory.
+
+    The object data cannot be evicted while there exists a Python reference to
+    the object id passed to this function. In order to pin the object, we will
+    also download the object to the current node (this overhead is unavoidable
+    for now without a distributed ref counting solution).
+
+    Note that ray will automatically do this for objects created with
+    ray.put() already, unless you ray.put with weakref=True.
+    """
+
+    obj_id.set_buffer_ref(ray.get(obj_id))
 
 
 def free(object_ids, local_only=False, delete_creating_tasks=False):
