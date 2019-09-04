@@ -5,7 +5,7 @@ Deploying on Kubernetes
 
   The easiest way to run a Ray cluster is by using the built-in autoscaler,
   which has support for running on top of Kubernetes. Please see the `autoscaler
-  documentation <autoscaling.html>` for details.
+  documentation <autoscaling.html>`__ for details.
 
 .. warning::
 
@@ -20,11 +20,11 @@ This document assumes that you have access to a Kubernetes cluster and have
 Creating a Ray Namespace
 ------------------------
 
-First, create a namespace for Ray resources on your cluster. The following
-commands will create resources under this namespace, so if you want to
-use a different namespace than ``ray``, please be sure to also change the
-namespace in the provided ``yaml`` files and anytime you see a ``-n`` flag
-passed to ``kubectl``.
+First, create a `Kubernetes Namespace`_ for Ray resources on your cluster. The
+following commands will create resources under this Namespace, so if you want
+to use a different one than ``ray``, please be sure to also change the
+`namespace` fields in the provided ``yaml`` files and anytime you see a ``-n``
+flag passed to ``kubectl``.
 
 .. code-block:: shell
 
@@ -36,22 +36,17 @@ Starting a Ray Cluster
 A Ray cluster consists of a single head node and a set of worker nodes (the
 provided ``ray-cluster.yaml`` file will start 3 worker nodes). In the example
 Kubernetes configuration, this is implemented as:
-* A ``ray-head`` Service that enables the worker nodes to discover the head node
-when they start up.
-* A ``ray-head`` Deployment that backs the ``ray-head`` Service with a single
-head node pod (replica).
-* A ``ray-worker`` Deployment that backs the ``ray-head`` Service with multiple
-worker node pods (replicas).
+
+- A ``ray-head`` `Kubernetes Service`_ that enables the worker nodes to discover the head node when they start up.
+- A ``ray-head`` `Kubernetes Deployment`_ that backs the ``ray-head`` Service with a single head node pod (replica).
+- A ``ray-worker`` `Kubernetes Deployment`_ with multiple worker node pods (replicas) that connect to the ``ray-head`` pod using the ``ray-head`` Service..
 
 Note that because the head and worker nodes are Deployments, Kubernetes will
 automatically restart pods that crash to maintain the correct number of
 replicas.
-* If a worker node goes down, a replacement pod will be started and it should
-join the cluster normally.
-* If the head node goes down, it will be restarted and effectively start a new
-cluster. Worker nodes that were connected to the old head node will crash due
-to losing connection to the original head node, and will subsequently be
-restarted and connect to the new head node.
+
+- If a worker node goes down, a replacement pod will be started and it should join the cluster normally.
+- If the head node goes down, it will be restarted and effectively start a new cluster. Worker nodes that were connected to the old head node will crash due to losing connection to the original head node, and will subsequently be restarted and connect to the new head node.
 
 Try deploying a cluster with the provided Kubernetes config by running the
 following command:
@@ -218,10 +213,8 @@ Submitting a Job
 ~~~~~~~~~~~~~~~~
 
 You can also submit a Ray application to run on the cluster as a `Kubernetes
-Job_`. The Job will run a single pod running the Ray driver program to
+Job`_. The Job will run a single pod running the Ray driver program to
 completion, then terminate the pod but allow you to access the logs.
-
-.. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
 
 To submit a Job that downloads and executes an `example program`_ that tests
 object transfers between nodes in the cluster, run the following command:
@@ -293,3 +286,8 @@ You can post questions or issues or feedback through the following channels:
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+
+.. _`Kubernetes Namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+.. _`Kubernetes Service`: https://kubernetes.io/docs/concepts/services-networking/service/
+.. _`Kubernetes Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+.. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
