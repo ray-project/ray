@@ -153,8 +153,11 @@ def tf2_compat_logger(config, logdir):
 
 
 class TF2Logger(Logger):
+    def _init(self):
+        self._file_writer = None
+
     def on_result(self, result):
-        if not hasattr(self, "_file_writer"):
+        if self._file_writer is None:
             from tensorflow.python.eager import context
             self._context = context
             self._file_writer = tf.summary.create_file_writer(self.logdir)
@@ -180,11 +183,11 @@ class TF2Logger(Logger):
         self._file_writer.flush()
 
     def flush(self):
-        if hasattr(self, "_file_writer"):
+        if self._file_writer is not None:
             self._file_writer.flush()
 
     def close(self):
-        if hasattr(self, "_file_writer"):
+        if self._file_writer is not None:
             self._file_writer.close()
 
 
