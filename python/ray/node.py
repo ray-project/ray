@@ -231,6 +231,11 @@ class Node(object):
         return self._plasma_store_socket_name
 
     @property
+    def unique_id(self):
+        """Get a unique identifier for this node."""
+        return self._plasma_store_socket_name
+
+    @property
     def webui_url(self):
         """Get the cluster's web UI url."""
         return self._webui_url
