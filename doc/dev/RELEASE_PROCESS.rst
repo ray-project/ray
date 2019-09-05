@@ -19,7 +19,10 @@ This document describes the process for creating new releases.
    of the new release is 0.7.1, the master branch needs to be updated to
    0.8.0.dev1.
 
-   This should be merged as soon as step 1 is complete to make sure the links
+   After the wheels for the new version are built, create and merge a
+   `PR like this`_.
+
+   These should be merged as soon as step 1 is complete to make sure the links
    in the documentation keep working and the master stays on the development
    version.
 
@@ -152,5 +155,6 @@ This document describes the process for creating new releases.
     process so that whoever manages the release next will have an easier time.
 
 .. _`this example`: https://github.com/ray-project/ray/pull/4226
-.. _`this PR`: https://github.com/ray-project/ray/pull/5585
+.. _`this PR`: https://github.com/ray-project/ray/pull/5523
+.. _`PR like this`: https://github.com/ray-project/ray/pull/5585
 .. _`GitHub website`: https://github.com/ray-project/ray/releases
