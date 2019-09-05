@@ -16,43 +16,34 @@ class CoreWorker;
 /// The class provides implementations for accessing plasma store, which includes both
 /// local and remote stores. Local access goes is done via a
 /// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
-/// See `CoreWorkerStoreProvider` for the semantics of each method.
+/// See `CoreWorkerStoreProvider` for the semantics of public methods.
 class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
-  /// See `CoreWorkerStoreProvider::SetClientOptions` for semantics.
   Status SetClientOptions(std::string name, int64_t limit_bytes);
 
-  /// See `CoreWorkerStoreProvider::Put` for semantics.
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
-  /// See `CoreWorkerStoreProvider::Create` for semantics.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data) override;
 
-  /// See `CoreWorkerStoreProvider::Seal` for semantics.
   Status Seal(const ObjectID &object_id) override;
 
-  /// See `CoreWorkerStoreProvider::Get` for semantics.
   Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
              const TaskID &task_id,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
-  /// See `CoreWorkerStoreProvider::Contains` for semantics.
   Status Contains(const ObjectID &object_id, bool *has_object) override;
 
-  /// See `CoreWorkerStoreProvider::Wait` for semantics.
   Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::unordered_set<ObjectID> *ready) override;
 
-  /// See `CoreWorkerStoreProvider::Delete` for semantics.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
-  /// See `CoreWorkerStoreProvider::MemoryUsageString` for semantics.
   std::string MemoryUsageString() override;
 
  private:

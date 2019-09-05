@@ -836,7 +836,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   results.clear();
   RAY_CHECK_OK(core_worker.Objects().Delete(ids, true, false));
 
-  // Note that Delete() calls RayletClient::DeleteObjects and would not
+  // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
@@ -894,7 +894,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   results.clear();
   RAY_CHECK_OK(worker2.Objects().Delete(ids, false, false));
 
-  // Note that Delete() calls RayletClient::DeleteObjects and would not
+  // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(1000 * 1000);
