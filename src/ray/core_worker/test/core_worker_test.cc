@@ -494,27 +494,21 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait() with duplicate object ids.
-  std::vector<ObjectID> ids_with_duplicate;
-  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
-  // add the same ids again to test `Get` with duplicate object ids.
-  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_ids(ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_results;
 
-  std::vector<ObjectID> wait_ids(ids_with_duplicate);
-  ObjectID non_existent_id = ObjectID::FromRandom();
-  wait_ids.push_back(non_existent_id);
+  ObjectID nonexistent_id = ObjectID::FromRandom();
+  wait_ids.insert(nonexistent_id);
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
-  std::vector<bool> wait_results;
-  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 5);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
-
-  // Test Wait() with duplicate object ids, and the required `num_objects`
-  // is less than size of `wait_ids`.
+  // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
   wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 5);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Get().
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
@@ -545,8 +539,11 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> ready_ids(buffers.size());
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
+    ready_ids[i] = ObjectID::FromRandom();
+    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
     unready_ids[i] = ObjectID::FromRandom();
   }
 
@@ -560,12 +557,43 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::thread async_thread(thread_func);
 
-  // wait for the objects to appear.
+  wait_ids.clear();
+  wait_ids.insert(ready_ids.begin(), ready_ids.end());
+  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   wait_results.clear();
+
+  // Check that only the ready ids are returned when timeout ends before thread runs.
   RAY_CHECK_OK(
-      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
-  // wait for the thread to finish.
+      provider.Wait(wait_ids, ready_ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(ready_ids.size(), wait_results.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
+  }
+
+  wait_results.clear();
+  // Check that enough objects are returned after the thread inserts at least one object.
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ready_ids.size() + 1, 5000, RandomTaskId(), &wait_results));
+  ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+
+  wait_results.clear();
+  // Check that all objects are returned after the thread completes.
   async_thread.join();
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
+  }
 }
 
 class ZeroNodeTest : public CoreWorkerTest {

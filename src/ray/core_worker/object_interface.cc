@@ -125,89 +125,84 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
   (*results).resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
-    return Status::Invalid("num_objects value is not valid");
+    return Status::Invalid(
+        "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
   EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
       object_ids_per_store_provider;
   GroupObjectIdsByStoreProvider(ids, &object_ids_per_store_provider);
 
+  size_t total_count = 0;
+  for (const auto &entry : object_ids_per_store_provider) {
+    total_count += entry.second.size();
+  }
+  if (total_count != ids.size()) {
+    return Status::Invalid("Duplicate object IDs not supported in wait.");
+  }
+
+  // TODO(edoakes): this logic is not ideal, and will have to be addressed
+  // before we enable direct actor calls in the Python code. If we are waiting
+  // on a list of objects mixed between multiple store providers, we could
+  // easily end up in the situation where we're blocked waiting on one store
+  // provider while another actually has enough objects ready to fulfill
+  // 'num_objects'. This is partially addressed by trying them all once with
+  // a timeout of 0, but that does not address the situation where objects
+  // become available on the second store provider while waiting on the first.
+
+  std::unordered_set<ObjectID> ready;
   // Wait from all the store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
-  RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(ids, object_ids_per_store_provider,
-                                                   /* timeout_ms= */ 0, &num_objects,
-                                                   results));
+  RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,
+                                                   /*timeout_ms=*/0, &num_objects,
+                                                   &ready));
 
   if (num_objects > 0) {
     // Wait from all the store providers with the specified timeout
     // if the required number of objects haven't been ready yet.
-    RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(ids, object_ids_per_store_provider,
-                                                     /* timeout_ms= */ timeout_ms,
-                                                     &num_objects, results));
+    RAY_RETURN_NOT_OK(WaitFromMultipleStoreProviders(object_ids_per_store_provider,
+                                                     /*timeout_ms=*/timeout_ms,
+                                                     &num_objects, &ready));
+  }
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (ready.find(ids[i]) != ready.end()) {
+      (*results)[i] = true;
+    }
   }
 
   return Status::OK();
 }
 
 Status CoreWorkerObjectInterface::WaitFromMultipleStoreProviders(
-    const std::vector<ObjectID> &ids,
-    const EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>>
-        &ids_per_provider,
-    int64_t timeout_ms, int *num_objects, std::vector<bool> *results) {
-  std::unordered_map<ObjectID, int> object_counts;
-  for (const auto &entry : ids) {
-    auto iter = object_counts.find(entry);
-    if (iter == object_counts.end()) {
-      object_counts.emplace(entry, 1);
-    } else {
-      iter->second++;
+    EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
+    int64_t timeout_ms, int *num_objects, std::unordered_set<ObjectID> *ready) {
+  int64_t remaining_timeout_ms = timeout_ms;
+  for (auto &provider_entry : ids_per_provider) {
+    if (*num_objects <= 0) {
+      break;
     }
-  }
+    int64_t start_time = current_time_ms();
+    int required_objects =
+        std::min(static_cast<int>(provider_entry.second.size()), *num_objects);
+    std::unordered_set<ObjectID> provider_ready;
+    RAY_RETURN_NOT_OK(store_providers_[provider_entry.first]->Wait(
+        provider_entry.second, required_objects, remaining_timeout_ms,
+        worker_context_.GetCurrentTaskID(), &provider_ready));
 
-  auto remaining_timeout_ms = timeout_ms;
-  for (const auto &entry : ids_per_provider) {
-    std::unordered_set<ObjectID> objects;
-    auto start_time = current_time_ms();
-    int required_objects = std::min(static_cast<int>(entry.second.size()), *num_objects);
-    RAY_RETURN_NOT_OK(WaitFromStoreProvider(entry.first, entry.second, required_objects,
-                                            remaining_timeout_ms, &objects));
+    // Update num_objects and remove the ready objects from the list so they don't get
+    // double-counted.
+    *num_objects -= provider_ready.size();
+    for (const ObjectID &ready_id : provider_ready) {
+      ready->insert(ready_id);
+      provider_entry.second.erase(ready_id);
+    }
+
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =
           std::max(static_cast<int64_t>(0), remaining_timeout_ms - duration);
-    }
-    for (const auto &entry : objects) {
-      *num_objects -= object_counts[entry];
-    }
-
-    for (size_t i = 0; i < ids.size(); i++) {
-      if (objects.count(ids[i]) > 0) {
-        (*results)[i] = true;
-      }
-    }
-
-    if (*num_objects <= 0) {
-      break;
-    }
-  }
-
-  return Status::OK();
-};
-
-Status CoreWorkerObjectInterface::WaitFromStoreProvider(
-    StoreProviderType type, const std::unordered_set<ObjectID> &object_ids,
-    int num_objects, int64_t timeout_ms, std::unordered_set<ObjectID> *results) {
-  std::vector<ObjectID> ids(object_ids.begin(), object_ids.end());
-  if (!ids.empty()) {
-    std::vector<bool> objects;
-    RAY_RETURN_NOT_OK(store_providers_[type]->Wait(
-        ids, num_objects, timeout_ms, worker_context_.GetCurrentTaskID(), &objects));
-    RAY_CHECK(ids.size() == objects.size());
-    for (size_t i = 0; i < objects.size(); i++) {
-      if (objects[i]) {
-        (*results).insert(ids[i]);
-      }
     }
   }
 
