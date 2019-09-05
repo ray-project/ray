@@ -96,12 +96,7 @@ class ObjectStoreFullError(RayError):
     This is raised if the attempt to store the object fails
     because the object store is full even after multiple retries.
     """
-
-    def __init__(self, message):
-        self.message = message
-
-    def __str__(self):
-        return self.message
+    pass
 
 
 class UnreconstructableError(RayError):
@@ -134,5 +129,6 @@ RAY_EXCEPTION_TYPES = [
     RayTaskError,
     RayWorkerError,
     RayActorError,
+    ObjectStoreFullError,
     UnreconstructableError,
 ]
