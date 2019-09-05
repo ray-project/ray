@@ -5,7 +5,7 @@ import sys
 # Remove it when the old one is deprecated.
 USE_NEW_SERIALIZER = True
 
-if USE_NEW_SERIALIZER and sys.version_info >= (3, 8):
+if USE_NEW_SERIALIZER and sys.version_info[:2] >= (3, 8):
     from ray.cloudpickle.cloudpickle_fast import *
     FAST_CLOUDPICKLE_USED = True
 else:
