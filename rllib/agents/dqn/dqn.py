@@ -184,8 +184,9 @@ def check_config_and_setup_param_noise(config):
             # between noisy policy and original policy
             policies = info["policy"]
             episode = info["episode"]
-            episode.custom_metrics["policy_distance"] = policies[
-                DEFAULT_POLICY_ID].model.pi_distance
+            model = policies[DEFAULT_POLICY_ID].model
+            if hasattr(model, "pi_distance"):
+                episode.custom_metrics["policy_distance"] = model.pi_distance
             if end_callback:
                 end_callback(info)
 
