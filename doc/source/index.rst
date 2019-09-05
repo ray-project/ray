@@ -270,6 +270,5 @@ Getting Involved
 
    development.rst
    profiling.rst
-   internals-overview.rst
    fault-tolerance.rst
    contrib.rst
