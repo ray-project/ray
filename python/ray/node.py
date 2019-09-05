@@ -61,9 +61,38 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        if shutdown_at_exit and connect_only:
-            raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
-                             "be both true.")
+        # Make ourselves a process group session leader to ensure we can clean
+        # up child processes later without killing a process that started us.
+        try:
+            os.setpgrp()
+        except OSError as e:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+
+        if shutdown_at_exit:
+            if connect_only:
+                raise ValueError("'shutdown_at_exit' and 'connect_only' "
+                                 "cannot both be true.")
+
+            def clean_up_children(*args, **kwargs):
+                logger.info("Cleaning up children and exiting...")
+                self.kill_all_processes(check_alive=False, allow_graceful=True)
+                signal.signal(signal.SIGTERM, lambda: sys.exit(1))
+                try:
+                    # SIGTERM our process group as a last resort in case there
+                    # were processes that we spawned but didn't add to the list
+                    # (could happen if interrupted just after spawning them).
+                    # We could send SIGKILL here to be sure, but we're also
+                    # sending it to ourselves.
+                    os.killpg(0, signal.SIGTERM)
+                except OSError as e:
+                    logger.warning("killpg failed, processes may not have "
+                                   "been cleaned up properly: {}.".format(e))
+
+            atexit.register(clean_up_children)
+            signal.signal(signal.SIGINT, clean_up_children)
+            signal.signal(signal.SIGTERM, clean_up_children)
+
         self.head = head
         self.all_processes = {}
 
@@ -151,10 +180,6 @@ class Node(object):
 
         if not connect_only:
             self.start_ray_processes()
-
-        if shutdown_at_exit:
-            atexit.register(lambda: self.kill_all_processes(
-                check_alive=False, allow_graceful=True))
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
