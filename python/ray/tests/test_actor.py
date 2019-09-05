@@ -23,7 +23,6 @@ import ray.tests.utils
 import ray.tests.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (
-    flat_errors,
     relevant_errors,
     wait_for_condition,
     wait_for_errors,
@@ -2537,7 +2536,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = flat_errors()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.
@@ -2581,7 +2580,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = flat_errors()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.

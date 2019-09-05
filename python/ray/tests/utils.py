@@ -76,7 +76,10 @@ def run_string_as_driver_nonblocking(driver_script):
 
 
 def flat_errors():
-    return [error for errors in ray.errors().values() for error in errors]
+    errors = []
+    for job_errors in ray.errors(all_jobs=True).values():
+        errors.extend(job_errors)
+    return errors
 
 
 def relevant_errors(error_type):

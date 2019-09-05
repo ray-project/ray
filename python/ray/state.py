@@ -1058,7 +1058,7 @@ class DeprecatedGlobalState(object):
             "instead.")
         return ray.available_resources()
 
-    def error_messages(self, all_jobs=True):
+    def error_messages(self, all_jobs=False):
         logger.warning(
             "ray.global_state.error_messages() is deprecated and will be "
             "removed in a subsequent release. Use ray.errors() instead.")
@@ -1185,13 +1185,13 @@ def available_resources():
     return state.available_resources()
 
 
-def errors(all_jobs=True):
+def errors(all_jobs=False):
     """Get error messages from the cluster.
 
     Args:
-        all_jobs: True if we should include error messages for all jobs, or
-            False if we should only include error messages for this specific
-            job.
+        all_jobs: False if we should only include error messages for this
+            specific job, or True if we should include error messages for all
+            jobs.
 
     Returns:
         Error messages pushed from the cluster. This will be a single list if
