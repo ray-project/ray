@@ -219,13 +219,54 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.variables()
     [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
 
-    # Access the embedded Keras models (this is algorithm-specific)
-    >>> model.base_model
-    <tensorflow.python.keras.engine.training.Model object at 0x7feff40cbf60>
-    >>> model.q_value_head
-    <tensorflow.python.keras.engine.training.Model object at 0x7feff403a470>
-    >>> model.state_value_head
-    <tensorflow.python.keras.engine.training.Model object at 0x7feff403ac50>
+    # Access the base Keras models (all default models have a base)
+    >>> model.base_model.summary()
+    Model: "model"
+    _______________________________________________________________________
+    Layer (type)                Output Shape    Param #  Connected to      
+    =======================================================================
+    observations (InputLayer)   [(None, 4)]     0                          
+    _______________________________________________________________________
+    fc_1 (Dense)                (None, 256)     1280     observations[0][0]
+    _______________________________________________________________________
+    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]        
+    _______________________________________________________________________
+    value_out (Dense)           (None, 1)       257      fc_1[0][0]        
+    =======================================================================
+    Total params: 67,329
+    Trainable params: 67,329
+    Non-trainable params: 0
+    ______________________________________________________________________________
+
+    # Access the Q value model (specific to DQN)
+    >>> model.q_value_head.summary()
+    Model: "model_1"
+    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    model_out (InputLayer)       [(None, 256)]             0         
+    _________________________________________________________________
+    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306     
+    =================================================================
+    Total params: 66,306
+    Trainable params: 66,306
+    Non-trainable params: 0
+    _________________________________________________________________
+
+    # Access the state value model (specific to DQN)
+    >>> model.state_value_head.summary()
+    Model: "model_2"
+    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    model_out (InputLayer)       [(None, 256)]             0         
+    _________________________________________________________________
+    lambda_1 (Lambda)            (None, 1)                 66049     
+    =================================================================
+    Total params: 66,049
+    Trainable params: 66,049
+    Non-trainable params: 0
+    _________________________________________________________________
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
