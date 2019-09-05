@@ -1,5 +1,5 @@
-Built-in Cluster Launcher
-=========================
+Automatic Cluster Setup
+=======================
 
 This document provides instructions for launching a Ray cluster either privately, on AWS, or on GCP.
 
