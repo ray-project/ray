@@ -7,6 +7,7 @@ USE_NEW_SERIALIZER = True
 
 if USE_NEW_SERIALIZER and sys.version_info >= (3, 8):
     from ray.cloudpickle.cloudpickle_fast import *
+    FAST_CLOUDPICKLE_USED = True
 else:
     try:
         import pickle5
@@ -14,5 +15,6 @@ else:
         # We need pickle5 backport support for the new serializer.
         USE_NEW_SERIALIZER = False
     from ray.cloudpickle.cloudpickle import *
+    FAST_CLOUDPICKLE_USED = False
 
 __version__ = '1.2.2.dev0'

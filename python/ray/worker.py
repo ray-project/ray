@@ -432,6 +432,7 @@ class Worker(object):
         try:
             buffers = []
             meta = pickle.dumps(value, protocol=5, buffer_callback=buffers.append)
+            # TODO(suquark): This could involve more copies. Should implement zero-copy for PickleBuffer.
             buffers = [b.raw().tobytes() for b in buffers]
             value = (meta, buffers)
 
@@ -2020,9 +2021,7 @@ def connect(node,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    worker.plasma_client = thread_safe_client(
-        plasma.connect(node.plasma_store_socket_name, 3) if USE_NEW_SERIALIZER else
-            plasma.connect(node.plasma_store_socket_name, None, 0, 300))
+    worker.plasma_client = thread_safe_client(plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
     if driver_object_store_memory is not None:
         worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
@@ -2330,8 +2329,14 @@ def register_custom_serializer(cls,
 
     def register_class_for_serialization(worker_info):
         if USE_NEW_SERIALIZER:
-            # construct a reducer
-            pickle.CloudPickler.dispatch[cls] = lambda obj: (deserializer, (serializer(obj),))
+            if pickle.FAST_CLOUDPICKLE_USED:
+                # construct a reducer
+                pickle.CloudPickler.dispatch[cls] = lambda obj: (deserializer, (serializer(obj),))
+            else:
+                def _CloudPicklerReducer(_self, obj):
+                    _self.save_reduce(deserializer, (serializer(obj),), obj=obj)
+                # use a placeholder for 'self' argument
+                pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
         else:
             # TODO(rkn): We need to be more thoughtful about what to do if custom
             # serializers have already been registered for class_id. In some cases,
