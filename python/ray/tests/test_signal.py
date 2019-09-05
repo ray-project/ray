@@ -282,7 +282,7 @@ def test_signal_on_node_failure(two_node_cluster):
             pass
 
         def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     # Place the actor on the remote node.
     cluster, remote_node = two_node_cluster
