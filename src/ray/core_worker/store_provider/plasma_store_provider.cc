@@ -150,27 +150,20 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   return raylet_client_->NotifyUnblocked(task_id);
 }
 
-Status CoreWorkerPlasmaStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
-                                           std::vector<bool> *results) {
+                                           std::unordered_set<ObjectID> *ready) {
   WaitResultPair result_pair;
-  auto status = raylet_client_->Wait(object_ids, num_objects, timeout_ms, false, task_id,
-                                     &result_pair);
-  std::unordered_set<ObjectID> ready_ids;
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms, false,
+                                         task_id, &result_pair));
+
   for (const auto &entry : result_pair.first) {
-    ready_ids.insert(entry);
+    ready->insert(entry);
   }
 
-  // TODO(zhijunfu): change RayletClient::Wait() to return a bit set, so that we don't
-  // need
-  // to do this translation.
-  (*results).resize(object_ids.size());
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    (*results)[i] = ready_ids.count(object_ids[i]) > 0;
-  }
-
-  return status;
+  return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
