@@ -15,7 +15,6 @@ except ImportError:
 import signal
 import sys
 import time
-from pyarrow import plasma
 
 import ray
 import ray.ray_constants as ray_constants
@@ -1130,8 +1129,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
                 self.gpu_ids = ray.get_gpu_ids()
 
             def get_location_and_ids(self):
-                return ((
-                    ray.worker.global_worker.node.unique_id),
+                return ((ray.worker.global_worker.node.unique_id),
                         tuple(self.gpu_ids))
 
             def sleep(self):
@@ -1221,8 +1219,8 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
         assert gpu_ids[0] in range(num_gpus_per_raylet)
-        return (ray.worker.global_worker.node.unique_id,
-                tuple(gpu_ids), [t1, t2])
+        return (ray.worker.global_worker.node.unique_id, tuple(gpu_ids),
+                [t1, t2])
 
     @ray.remote(num_gpus=2)
     def f2():
@@ -1233,8 +1231,8 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         assert len(gpu_ids) == 2
         assert gpu_ids[0] in range(num_gpus_per_raylet)
         assert gpu_ids[1] in range(num_gpus_per_raylet)
-        return (ray.worker.global_worker.node.unique_id,
-                tuple(gpu_ids), [t1, t2])
+        return (ray.worker.global_worker.node.unique_id, tuple(gpu_ids),
+                [t1, t2])
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -2246,7 +2244,8 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     os.kill(pid, signal.SIGKILL)
     # Wait until the actor is reconstructed.
     assert wait_for_condition(
-        lambda: object_exists(obj_ids[1]), timeout_ms=5000)
+        lambda: ray.worker.global_worker.core_worker.object_exists(obj_ids[1]),
+        timeout_ms=5000)
 
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):

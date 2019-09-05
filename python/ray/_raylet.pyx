@@ -420,7 +420,7 @@ cdef class CoreWorker:
 
         return data_metadata_pairs
 
-    def contains_object(self, ObjectID object_id):
+    def object_exists(self, ObjectID object_id):
         cdef:
             c_bool has_object
             CObjectID c_object_id = object_id.native()

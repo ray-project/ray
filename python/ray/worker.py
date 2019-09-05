@@ -812,7 +812,7 @@ class Worker(object):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
             if outputs[i] is ray.experimental.no_return.NoReturn:
-                if not self.core_worker.contains_object(object_ids[i]):
+                if not self.core_worker.object_exists(object_ids[i]):
                     raise RuntimeError(
                         "Attempting to return 'ray.experimental.NoReturn' "
                         "from a remote function, but the corresponding "

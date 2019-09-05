@@ -2820,7 +2820,7 @@ def test_wait_reconstruction(shutdown_only):
     x_id = f.remote()
     ray.wait([x_id])
     ray.wait([f.remote()])
-    assert not ray.worker.global_worker.core_worker.contains_object(x_id)
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
