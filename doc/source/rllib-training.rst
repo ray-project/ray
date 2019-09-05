@@ -454,8 +454,8 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
 
-TensorFlow Eager
-~~~~~~~~~~~~~~~~
+Eager Mode
+~~~~~~~~~~
 
 Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
 
