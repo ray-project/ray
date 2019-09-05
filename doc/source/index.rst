@@ -197,8 +197,6 @@ Getting Involved
    configure.rst
    troubleshooting.rst
    advanced.rst
-   user-profiling.rst
-   inspect.rst
    package-ref.rst
 
 .. toctree::
