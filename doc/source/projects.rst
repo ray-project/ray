@@ -30,6 +30,8 @@ Quick start (CLI)
 
 Examples
 --------
+See `the readme <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/README.md>`__
+for instructions on how to run these examples:
 - `Open Tacotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
   A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)
 - `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/.rayproject/project.yaml>`__:
