@@ -195,8 +195,8 @@ Getting Involved
    object-store.rst
    memory-management.rst
    configure.rst
-   advanced.rst
    troubleshooting.rst
+   advanced.rst
    user-profiling.rst
    inspect.rst
    package-ref.rst
