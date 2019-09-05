@@ -19,7 +19,9 @@ This document describes the process for creating new releases.
    of the new release is 0.7.1, the master branch needs to be updated to
    0.8.0.dev1.
 
-   This can be merged as soon as step 1 is complete.
+   This should be merged as soon as step 1 is complete to make sure the links
+   in the documentation keep working and the master stays on the development
+   version.
 
 3. **Create a release branch:** Create the branch from the version bump PR (the
    one from step 1, not step 2). In order to create the branch, locally checkout
@@ -42,8 +44,8 @@ This document describes the process for creating new releases.
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
    cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
-   branch. 2) Revert the commit that introduced the bug on the release branch
-   (using ``git revert``), but not on the master.
+   branch (recommended). 2) Revert the commit that introduced the bug on the
+   release branch (using ``git revert``), but not on the master (not recommended).
 
    These changes should then be pushed directly to the release branch.
 
@@ -128,6 +130,7 @@ This document describes the process for creating new releases.
     list. You will need to create a GitHub token for this task. Example usage:
 
     .. code-block:: bash
+
       python get_contributors.py --help
       python get_contributors.py \
         --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
