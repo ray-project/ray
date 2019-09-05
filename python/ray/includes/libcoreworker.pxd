@@ -20,8 +20,8 @@ from ray.includes.common cimport (
 from ray.includes.libraylet cimport CRayletClient
 
 
-cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
-    cdef cppclass CObjectInterface "CoreWorkerObjectInterface":
+cdef extern from "ray/core_worker/object_interface.h" nogil:
+    cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
@@ -35,15 +35,16 @@ cdef extern from "ray/core_worker/object_interface.h" namespace "ray" nogil:
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                        c_bool local_only, c_bool delete_creating_tasks)
+                          c_bool local_only, c_bool delete_creating_tasks)
         c_string MemoryUsageString()
 
-cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
+cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
-                    const CGcsClientOptions &gcs_options, void* execution_callback)
+                    const CGcsClientOptions &gcs_options,
+                    void* execution_callback)
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
@@ -51,8 +52,10 @@ cdef extern from "ray/core_worker/core_worker.h" namespace "ray" nogil:
         # CTaskSubmissionInterface &Tasks()
         # CTaskExecutionInterface &Execution()
 
-        # TODO(edoakes): remove this once the raylet client is no longer used directly
+        # TODO(edoakes): remove this once the raylet client is no longer used
+        # directly.
         CRayletClient &GetRayletClient()
-        # TODO(edoakes): remove this once the Python core worker uses task interfaces
+        # TODO(edoakes): remove this once the Python core worker uses the task
+        # interfaces
         void SetCurrentJobId(const CJobID &job_id)
         void SetCurrentTaskId(const CTaskID &task_id)

@@ -46,7 +46,10 @@ from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError, ObjectStoreFullError
 from ray.utils import decode
-from ray.ray_constants import DEFAULT_PUT_OBJECT_DELAY, DEFAULT_PUT_OBJECT_RETRIES
+from ray.ray_constants import (
+    DEFAULT_PUT_OBJECT_DELAY,
+    DEFAULT_PUT_OBJECT_RETRIES,
+)
 
 # pyarrow cannot be imported until after _raylet finishes initializing
 # (see ray/__init__.py for details).
@@ -102,6 +105,7 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
     for object_id in object_ids:
         result.push_back(object_id.native())
     return result
+
 
 def compute_put_id(TaskID task_id, int64_t put_index):
     if put_index < 1 or put_index > <int64_t>CObjectID.MaxObjectIndex():
@@ -426,7 +430,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Contains(c_object_id, &has_object))
+            check_status(self.core_worker.get().Objects().Contains(
+                c_object_id, &has_object))
 
         return has_object
 
@@ -497,7 +502,7 @@ cdef class CoreWorker:
         assert len(results) == len(object_ids)
 
         ready, not_ready = [], []
-        for i,object_id in enumerate(object_ids):
+        for i, object_id in enumerate(object_ids):
             if results[i]:
                 ready.append(object_id)
             else:
@@ -528,9 +533,11 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
 
-    def set_object_store_client_options(self, c_string client_name, int64_t limit_bytes):
+    def set_object_store_client_options(self, c_string client_name,
+                                        int64_t limit_bytes):
         with nogil:
-            check_status(self.core_worker.get().Objects().SetClientOptions(client_name, limit_bytes))
+            check_status(self.core_worker.get().Objects().SetClientOptions(
+                client_name, limit_bytes))
 
     def object_store_memory_usage_string(self):
         cdef:

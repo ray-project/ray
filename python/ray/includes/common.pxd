@@ -101,19 +101,18 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
+cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
-cdef extern from "ray/protobuf/common.pb.h" namespace "ray" nogil:
+cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
 
 
-cdef extern from "ray/common/task/scheduling_resources.h" \
-        namespace "ray" nogil:
-    cdef cppclass ResourceSet "ResourceSet":
+cdef extern from "ray/common/task/scheduling_resources.h" nogil:
+    cdef cppclass ResourceSet "ray::ResourceSet":
         ResourceSet()
         ResourceSet(const unordered_map[c_string, double] &resource_map)
         ResourceSet(const c_vector[c_string] &resource_labels,
@@ -141,14 +140,14 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size)
 
-cdef extern from "ray/core_worker/store_provider/store_provider.h" namespace "ray" nogil:
+cdef extern from "ray/core_worker/store_provider/store_provider.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
         const shared_ptr[CBuffer] &GetData()
         const size_t DataSize() const
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool HasMetadata() const
 
-cdef extern from "ray/gcs/gcs_client_interface.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
                           const c_string &password,
