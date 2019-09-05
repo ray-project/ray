@@ -212,19 +212,19 @@ Similar to accessing policy state, you may want to get a reference to the underl
     # Get a reference to the model through the policy
     >>> from ray.rllib.agents.dqn import DQNTrainer
     >>> trainer = DQNTrainer(env="CartPole-v0")
-    >>> trainer.get_policy().model
+    >>> model = trainer.get_policy().model
     <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
     # List of all model variables
-    >>> trainer.get_policy().model.variables()
+    >>> model.variables()
     [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
 
     # Access the embedded Keras models (this is algorithm-specific)
-    >>> trainer.get_policy().model.base_model
+    >>> model.base_model
     <tensorflow.python.keras.engine.training.Model object at 0x7feff40cbf60>
-    >>> trainer.get_policy().model.q_value_head
+    >>> model.q_value_head
     <tensorflow.python.keras.engine.training.Model object at 0x7feff403a470>
-    >>> trainer.get_policy().model.state_value_head
+    >>> model.state_value_head
     <tensorflow.python.keras.engine.training.Model object at 0x7feff403ac50>
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
