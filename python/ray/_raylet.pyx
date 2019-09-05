@@ -9,7 +9,12 @@ import logging
 
 from libc.stdint cimport uint8_t, int32_t, int64_t
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport unique_ptr, shared_ptr
+from libcpp.memory cimport (
+    dynamic_pointer_cast,
+    make_shared,
+    shared_ptr,
+    unique_ptr,
+)
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -470,9 +475,10 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_id.native()
             shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata = shared_ptr[CBuffer](
-                <CBuffer*>new LocalMemoryBuffer(
-                    <uint8_t*>(metadata_str.data()), metadata_str.size()))
+            shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
 
         with nogil:
             check_status(self.core_worker.get().Objects().Create(
