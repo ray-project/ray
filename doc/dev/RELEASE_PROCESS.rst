@@ -7,8 +7,8 @@ This document describes the process for creating new releases.
    package version. See `this example`_.
 
 2. **Bump version on Ray master branch again:** Create a pull request to
-   increment the version of the master branch. The format of the new version is
-   as follows:
+   increment the version of the master branch, see `this PR`_. The format of
+   the new version is as follows:
 
    New minor release (e.g., 0.7.0): Increment the minor version and append
    ``.dev0`` to the version. For example, if the version of the new release is
@@ -152,4 +152,5 @@ This document describes the process for creating new releases.
     process so that whoever manages the release next will have an easier time.
 
 .. _`this example`: https://github.com/ray-project/ray/pull/4226
+.. _`this PR`: https://github.com/ray-project/ray/pull/5585
 .. _`GitHub website`: https://github.com/ray-project/ray/releases
