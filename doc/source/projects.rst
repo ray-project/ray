@@ -18,7 +18,7 @@ Quick start (CLI)
 
     # Create a new session from the given project.
     # Launch a cluster and run the appropriate command.
-    $ ray session start
+    $ ray session start <command> [arguments]
 
     # Open a console for the given session.
     $ ray session attach
@@ -63,8 +63,19 @@ Here is an example for a minimal project format:
     # and the environment is set up.
     # A command can also specify a cluster that overwrites the default cluster.
     commands:
+      - name: default
+        command: python default.py
+        help: "The command that will be executed if no command name is specified"
       - name: test
-        command: python test.py
+        command: python test.py --param1={{param1}} --param2={{param2}}
+        help: "A test command"
+        params:
+          - name: "param1"
+            help: "The first parameter"
+            # The following line indicates possible values this parameter can take.
+            choices: ["1", "2"]
+          - name: "param2"
+            help: "The second parameter"
 
 Project files have to adhere to the following schema:
 

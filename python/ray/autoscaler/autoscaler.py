@@ -28,7 +28,7 @@ from ray.autoscaler.updater import NodeUpdaterThread
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL, MEMORY_RESOURCE_UNIT_BYTES
 from six import string_types
 from six.moves import queue
 
@@ -254,11 +254,19 @@ class LoadMetrics(object):
             ip: (now - t)
             for ip, t in most_delayed_heartbeats
         }
+
+        def format_resource(key, value):
+            if key in ["object_store_memory", "memory"]:
+                return "{} GiB".format(
+                    round(value * MEMORY_RESOURCE_UNIT_BYTES / 1e9, 2))
+            else:
+                return round(value, 2)
+
         return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
-                    round(resources_used[rid], 2),
-                    round(resources_total[rid], 2), rid)
+                    format_resource(rid, resources_used[rid]),
+                    format_resource(rid, resources_total[rid]), rid)
                 for rid in sorted(resources_used)
             ]),
             "NumNodesConnected": len(self.static_resources_by_ip),

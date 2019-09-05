@@ -204,8 +204,51 @@ class ActorClass(object):
             each actor method.
     """
 
-    def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, memory, object_store_memory, resources):
+    def __init__(cls, name, bases, attr):
+        """Prevents users from directly inheriting from an ActorClass.
+
+        This will be called when a class is defined with an ActorClass object
+        as one of its base classes. To intentionally construct an ActorClass,
+        use the '_from_modified_class' classmethod.
+
+        Raises:
+            TypeError: Always.
+        """
+        for base in bases:
+            if isinstance(base, ActorClass):
+                raise TypeError("Attempted to define subclass '{}' of actor "
+                                "class '{}'. Inheriting from actor classes is "
+                                "not currently supported. You can instead "
+                                "inherit from a non-actor base class and make "
+                                "the derived class an actor class (with "
+                                "@ray.remote).".format(name, base._class_name))
+
+        # This shouldn't be reached because one of the base classes must be
+        # an actor class if this was meant to be subclassed.
+        assert False, ("ActorClass.__init__ should not be called. Please use "
+                       "the @ray.remote decorator instead.")
+
+    def __call__(self, *args, **kwargs):
+        """Prevents users from directly instantiating an ActorClass.
+
+        This will be called instead of __init__ when 'ActorClass()' is executed
+        because an is an object rather than a metaobject. To properly
+        instantiated a remote actor, use 'ActorClass.remote()'.
+
+        Raises:
+            Exception: Always.
+        """
+        raise Exception("Actors cannot be instantiated directly. "
+                        "Instead of '{}()', use '{}.remote()'.".format(
+                            self._class_name, self._class_name))
+
+    @classmethod
+    def _from_modified_class(cls, modified_class, class_id,
+                             max_reconstructions, num_cpus, num_gpus, memory,
+                             object_store_memory, resources):
+        # Construct the base object.
+        self = cls.__new__(cls)
+
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
@@ -262,10 +305,7 @@ class ActorClass(object):
                 self._method_decorators[method_name] = (
                     method.__ray_invocation_decorator__)
 
-    def __call__(self, *args, **kwargs):
-        raise Exception("Actors methods cannot be instantiated directly. "
-                        "Instead of running '{}()', try '{}.remote()'.".format(
-                            self._class_name, self._class_name))
+        return self
 
     def remote(self, *args, **kwargs):
         """Create an actor.
@@ -806,10 +846,9 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = ActorClassID.from_random()
-
-    return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      memory, object_store_memory, resources)
+    return ActorClass._from_modified_class(
+        Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
+        num_gpus, memory, object_store_memory, resources)
 
 
 def exit_actor():

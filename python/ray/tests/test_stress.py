@@ -49,7 +49,7 @@ def ray_start_combination(request):
         })
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield num_nodes, num_workers_per_scheduler, cluster
     # The code after the yield will run as teardown code.
@@ -219,7 +219,7 @@ def ray_start_reconstruction(request):
             _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield plasma_store_memory, num_nodes, cluster
 

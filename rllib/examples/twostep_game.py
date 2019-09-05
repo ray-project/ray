@@ -129,8 +129,7 @@ if __name__ == "__main__":
                                  "agent_id": 1,
                              }),
                 },
-                "policy_mapping_fn": tune.function(
-                    lambda x: "pol1" if x == 0 else "pol2"),
+                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
         }
         group = False
