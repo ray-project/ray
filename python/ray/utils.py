@@ -555,23 +555,6 @@ class _ThreadSafeProxy(object):
             return wrapper
 
 
-def thread_safe_client(client, lock=None):
-    """Create a thread-safe proxy which locks every method call
-    for the given client.
-
-    Args:
-        client: the client object to be guarded.
-        lock: the lock object that will be used to lock client's methods.
-            If None, a new lock will be used.
-
-    Returns:
-        A thread-safe proxy for the given client.
-    """
-    if lock is None:
-        lock = threading.Lock()
-    return _ThreadSafeProxy(client, lock)
-
-
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
 

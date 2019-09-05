@@ -15,6 +15,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
+  std::unique_lock<std::mutex> guard(store_client_mutex_);
   RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
   return Status::OK();
 }
@@ -205,6 +206,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
+  std::unique_lock<std::mutex> guard(store_client_mutex_);
   return store_client_.DebugString();
 }
 

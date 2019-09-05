@@ -68,7 +68,6 @@ from ray.utils import (
     check_oversized_pickle,
     is_cython,
     setup_logger,
-    thread_safe_client,
 )
 from ray.local_mode_manager import LocalModeManager
 
