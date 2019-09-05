@@ -161,7 +161,7 @@ Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num
     total_count += entry.second.size();
   }
   if (total_count != ids.size()) {
-    return Status::Invalid("Duplicated object IDs not supported in wait.");
+    return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
 
   // TODO(edoakes): this logic is not ideal, and will have to be addressed
