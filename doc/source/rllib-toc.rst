@@ -13,6 +13,7 @@ Training APIs
    -  `Global Coordination <rllib-training.html#global-coordination>`__
    -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
    -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
+   -  `Curriculum Learning <rllib-training.html#curriculum-learning>`__
 * `Debugging <rllib-training.html#debugging>`__
 * `REST API <rllib-training.html#rest-api>`__
 

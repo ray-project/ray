@@ -362,8 +362,8 @@ Note that in the ``on_postprocess_batch`` callback you have full access to the t
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
-Example: Curriculum Learning
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Curriculum Learning
+~~~~~~~~~~~~~~~~~~~
 
 Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
 
