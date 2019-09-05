@@ -49,7 +49,6 @@ import itertools
 import logging
 import opcode
 import operator
-import pickle
 import platform
 import struct
 import sys
@@ -59,6 +58,14 @@ import weakref
 import uuid
 import threading
 
+PICKLE5_ENABLED = False
+
+try:
+    import pickle5 as pickle
+    from pickle5 import PickleBuffer  # export PickleBuffer
+    PICKLE5_ENABLED = True
+except ImportError:
+    import pickle
 
 try:
     from enum import Enum
@@ -95,7 +102,10 @@ if sys.version_info[0] < 3:  # pragma: no branch
     PY2 = True
 else:
     types.ClassType = type
-    from pickle import _Pickler as Pickler
+    if PICKLE5_ENABLED:
+        from pickle5 import _Pickler as Pickler
+    else:
+        from pickle import _Pickler as Pickler
     from io import BytesIO as StringIO
     string_types = (str,)
     PY3 = True
@@ -466,13 +476,15 @@ def _extract_class_dict(cls):
 
 
 class CloudPickler(Pickler):
-
     dispatch = Pickler.dispatch.copy()
 
-    def __init__(self, file, protocol=None):
+    def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:
             protocol = DEFAULT_PROTOCOL
-        Pickler.__init__(self, file, protocol=protocol)
+        if PICKLE5_ENABLED:
+            Pickler.__init__(self, file, protocol=protocol, buffer_callback=buffer_callback)
+        else:
+            Pickler.__init__(self, file, protocol=protocol)
         # map ids to dictionary. used to ensure that functions can share global env
         self.globals_ref = {}
 
@@ -1094,7 +1106,7 @@ def _rebuild_tornado_coroutine(func):
 
 # Shorthands for legacy support
 
-def dump(obj, file, protocol=None):
+def dump(obj, file, protocol=None, buffer_callback=None):
     """Serialize obj as bytes streamed into file
 
     protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
@@ -1104,10 +1116,10 @@ def dump(obj, file, protocol=None):
     Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
     compatibility with older versions of Python.
     """
-    CloudPickler(file, protocol=protocol).dump(obj)
+    CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback).dump(obj)
 
 
-def dumps(obj, protocol=None):
+def dumps(obj, protocol=None, buffer_callback=None):
     """Serialize obj as a string of bytes allocated in memory
 
     protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
@@ -1119,7 +1131,7 @@ def dumps(obj, protocol=None):
     """
     file = StringIO()
     try:
-        cp = CloudPickler(file, protocol=protocol)
+        cp = CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback)
         cp.dump(obj)
         return file.getvalue()
     finally:
