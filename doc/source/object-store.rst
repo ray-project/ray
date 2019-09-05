@@ -46,20 +46,11 @@ Ray will place objects in the object store in the following situations:
 
 Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
 
-
-.. tip:: In certain cases, it may be necessary to either write `your own serialization protocol <object-store.html#custom-serialization>`_ or use Actors to hold objects and transfer object state (i.e., weight matrices) among Ray workers.
-
-Advanced: Huge Pages
-~~~~~~~~~~~~~~~~~~~~
-
-On Linux, it is possible to increase the write throughput of the Plasma object store by using huge pages. See the `Configuration page <configure.html#using-the-object-store-with-huge-pages>`_ for information on how to use huge pages in Ray.
+.. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors hold objects that cannot be serialized.
 
 
-.. _`Apache Arrow`: https://arrow.apache.org/
-
-
-Serialization Overview
-----------------------
+Overview
+--------
 
 Objects that are serialized for transfer among Ray processes go through three stages:
 
@@ -73,48 +64,9 @@ Objects that are serialized for transfer among Ray processes go through three st
 
 **3. Cloudpickle**:  Ray falls back to ``cloudpickle`` as a final attempt for serialization. This may be slow.
 
-Custom Serialization
-~~~~~~~~~~~~~~~~~~~~
 
-If none of these options work, we recommend registering a custom serializer.
-
-.. autofunction:: ray.register_custom_serializer
-  :noindex:
-
-Below is an example of using ``ray.register_custom_serializer``:
-
-.. code-block:: python
-
-      import ray
-
-      ray.init()
-
-      class Foo(object):
-          def __init__(self, value):
-              self.value = value
-
-      def custom_serializer(obj):
-          return obj.value
-
-      def custom_deserializer(value):
-          object = Foo()
-          object.value = value
-          return object
-
-      ray.register_custom_serializer(
-          Foo, serializer=custom_serializer, deserializer=custom_deserializer)
-
-      object_id = ray.put(Foo(100))
-      assert ray.get(object_id).value == 100
-
-
-If you find cases where Ray serialization doesn't work or does something unexpected, please `let us know`_ so we can fix it.
-
-.. _`let us know`: https://github.com/ray-project/ray/issues
-
-
-Serialization: Numpy Arrays
----------------------------
+Numpy Arrays
+------------
 
 Ray optimizes for numpy arrays by using the `Apache Arrow`_ data format.
 The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
@@ -159,4 +111,52 @@ Serialization notes and limitations
 
     This object exceeds the maximum recursion depth. It may contain itself recursively.
 
-- Whenever possible, use numpy arrays for maximum performance.
+- Whenever possible, use numpy arrays or Python collections of numpy arrays for maximum performance.
+
+Last resort: Custom Serialization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If none of these options work, you can try registering a custom serializer.
+
+.. autofunction:: ray.register_custom_serializer
+  :noindex:
+
+Below is an example of using ``ray.register_custom_serializer``:
+
+.. code-block:: python
+
+      import ray
+
+      ray.init()
+
+      class Foo(object):
+          def __init__(self, value):
+              self.value = value
+
+      def custom_serializer(obj):
+          return obj.value
+
+      def custom_deserializer(value):
+          object = Foo()
+          object.value = value
+          return object
+
+      ray.register_custom_serializer(
+          Foo, serializer=custom_serializer, deserializer=custom_deserializer)
+
+      object_id = ray.put(Foo(100))
+      assert ray.get(object_id).value == 100
+
+
+If you find cases where Ray serialization doesn't work or does something unexpected, please `let us know`_ so we can fix it.
+
+.. _`let us know`: https://github.com/ray-project/ray/issues
+
+Advanced: Huge Pages
+~~~~~~~~~~~~~~~~~~~~
+
+On Linux, it is possible to increase the write throughput of the Plasma object store by using huge pages. See the `Configuration page <configure.html#using-the-object-store-with-huge-pages>`_ for information on how to use huge pages in Ray.
+
+
+.. _`Apache Arrow`: https://arrow.apache.org/
+

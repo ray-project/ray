@@ -192,13 +192,13 @@ Getting Involved
    walkthrough.rst
    actors.rst
    using-ray-with-gpus.rst
-   user-profiling.rst
-   inspect.rst
    object-store.rst
-   configure.rst
    memory-management.rst
+   configure.rst
    advanced.rst
    troubleshooting.rst
+   user-profiling.rst
+   inspect.rst
    package-ref.rst
 
 .. toctree::
