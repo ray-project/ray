@@ -6,6 +6,13 @@ Training APIs
 * `Command-line <rllib-training.html>`__
 * `Configuration <rllib-training.html#configuration>`__
 * `Python API <rllib-training.html#python-api>`__
+
+   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
+   -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
+   -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
+   -  `Global Coordination <rllib-training.html#global-coordination>`__
+   -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
+   -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
 * `Debugging <rllib-training.html#debugging>`__
 * `REST API <rllib-training.html#rest-api>`__
 
