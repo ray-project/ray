@@ -1,6 +1,9 @@
 Ray Projects
 ============
 
+To run these example projects, we first have to make sure the full
+repository is checked out into the project directory.
+
 Open Tacotron
 -------------
 
