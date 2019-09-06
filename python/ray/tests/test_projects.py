@@ -87,10 +87,9 @@ def _chdir_and_back(d):
         os.chdir(old_dir)
 
 
-def test_session_start_default_project():
+def run_test_project(project_dir, command, args):
     # Run the CLI commands with patching
-    test_dir = os.path.join(TEST_DIR,
-                            "project_files/session-tests/project-pass")
+    test_dir = os.path.join(TEST_DIR, "project_files", project_dir)
     with _chdir_and_back(test_dir):
         runner = CliRunner()
         with patch.multiple(
@@ -99,11 +98,17 @@ def test_session_start_default_project():
                 rsync=DEFAULT,
                 exec_cluster=DEFAULT,
         ) as mock_calls:
-            result = runner.invoke(start, [])
-            assert result.exit_code == 0
+            result = runner.invoke(command, args)
 
-    # Check we are calling autoscaler correctly
+    return result, mock_calls, test_dir
+
+
+def test_session_start_default_project():
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/project-pass", start, [])
+
     loaded_project = ray.projects.load_project(test_dir)
+    assert result.exit_code == 0
 
     # Part 1/3: Cluster Launching Call
     create_or_update_cluster_call = mock_calls["create_or_update_cluster"]
@@ -113,7 +118,9 @@ def test_session_start_default_project():
 
     # Part 2/3: Rsync Calls
     rsync_call = mock_calls["rsync"]
-    assert rsync_call.call_count == 1
+    # 1 for rsyncing the project directory, 1 for rsyncing the
+    # requirements.txt.
+    assert rsync_call.call_count == 2
     _, kwargs = rsync_call.call_args
     assert kwargs["source"] == loaded_project["environment"]["requirements"]
 
@@ -136,80 +143,40 @@ def test_session_start_default_project():
             cmd for cmd in commands_executed if "pip install -r" not in cmd
         ]
 
-    # if we don't have a repo, we will be creating a directory
-    if "repo" not in loaded_project:
-        mkdir_command = "mkdir {project_name}".format(
-            project_name=loaded_project["name"])
-        assert any(mkdir_command in cmd for cmd in commands_executed)
-        # pop the `pip install` off commands executed
-        commands_executed = [
-            cmd for cmd in commands_executed if mkdir_command not in cmd
-        ]
-
     assert expected_commands == commands_executed
 
 
 def test_session_start_docker_fail():
-    # Run the CLI commands with patching
-    test_dir = os.path.join(TEST_DIR,
-                            "project_files/session-tests/with-docker-fail")
-    with _chdir_and_back(test_dir):
-        runner = CliRunner()
-        with patch.multiple(
-                "ray.projects.scripts",
-                create_or_update_cluster=DEFAULT,
-                rsync=DEFAULT,
-                exec_cluster=DEFAULT,
-        ) as _:
-            result = runner.invoke(start, [])
-            assert result.exit_code == 1
-            assert ("Docker support in session is currently "
-                    "not implemented") in result.output
+    result, _, _ = run_test_project("session-tests/with-docker-fail", start,
+                                    [])
 
-
-def test_session_git_repo_cloned():
-    # Run the CLI commands with patching
-    test_dir = os.path.join(TEST_DIR,
-                            "project_files/session-tests/git-repo-pass")
-    with _chdir_and_back(test_dir):
-        runner = CliRunner()
-        with patch.multiple(
-                "ray.projects.scripts",
-                create_or_update_cluster=DEFAULT,
-                rsync=DEFAULT,
-                exec_cluster=DEFAULT,
-        ) as mock_calls:
-            result = runner.invoke(start, [])
-            assert result.exit_code == 0
-
-    loaded_project = ray.projects.load_project(test_dir)
-
-    exec_cluster_call = mock_calls["exec_cluster"]
-    commands_executed = []
-    for _, kwargs in exec_cluster_call.call_args_list:
-        command_executed = kwargs["cmd"]
-        # Filter out the cd call that was appended to each command
-        cd_project_dir_call = "cd {}; ".format(loaded_project["name"])
-        command_executed = command_executed.replace(cd_project_dir_call, "")
-        commands_executed.append(command_executed)
-
-    assert any("git clone" in cmd for cmd in commands_executed)
+    assert result.exit_code == 1
+    assert ("Docker support in session is currently "
+            "not implemented") in result.output
 
 
 def test_session_invalid_config_errored():
-    # Run the CLI commands with patching
-    test_dir = os.path.join(TEST_DIR,
-                            "project_files/session-tests/invalid-config-fail")
-    with _chdir_and_back(test_dir):
-        runner = CliRunner()
-        with patch.multiple(
-                "ray.projects.scripts",
-                create_or_update_cluster=DEFAULT,
-                rsync=DEFAULT,
-                exec_cluster=DEFAULT,
-        ) as _:
-            result = runner.invoke(start, [])
-            assert result.exit_code == 1
-            assert "validation failed" in result.output
-            # check that we are displaying actional error message
-            assert "ray project validate" in result.output
+    result, _, _ = run_test_project("session-tests/invalid-config-fail", start,
+                                    [])
+
+    assert result.exit_code == 1
+    assert "validation failed" in result.output
+    # check that we are displaying actional error message
+    assert "ray project validate" in result.output
+
+
+def test_session_create_command():
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/commands-test", start,
+        ["first", "--a", "1", "--b", "2"])
+
+    # Verify the project can be loaded.
+    ray.projects.load_project(test_dir)
+    assert result.exit_code == 0
+
+    exec_cluster_call = mock_calls["exec_cluster"]
+    found_command = False
+    for _, kwargs in exec_cluster_call.call_args_list:
+        if "Starting ray job with 1 and 2" in kwargs["cmd"]:
+            found_command = True
+    assert found_command

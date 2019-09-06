@@ -16,19 +16,23 @@ Quick start (CLI)
     # .rayproject subdirectory of the current directory.
     $ ray project create <project-name>
 
-    # Create a new session from the given project.
-    # Launch a cluster and run the appropriate command.
-    $ ray session start
+    # Create a new session from the given project.  Launch a cluster and run
+    # the command, which must be specified in the project.yaml file. If no
+    # command is specified, the "default" command in .rayproject/project.yaml
+    # will be used. Alternatively, use --shell to run a raw shell command.
+    $ ray session start <command-name> [arguments] [--shell]
 
     # Open a console for the given session.
     $ ray session attach
 
-    # Stop the given session and all of its worker nodes. The nodes/clusters
-    # are not actually terminated.
+    # Stop the given session and terminate all of its worker nodes.
     $ ray session stop
 
 Examples
 --------
+See `the readme <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/README.md>`__
+for instructions on how to run these examples:
+
 - `Open Tacotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
   A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)
 - `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/.rayproject/project.yaml>`__:
@@ -63,8 +67,19 @@ Here is an example for a minimal project format:
     # and the environment is set up.
     # A command can also specify a cluster that overwrites the default cluster.
     commands:
+      - name: default
+        command: python default.py
+        help: "The command that will be executed if no command name is specified"
       - name: test
-        command: python test.py
+        command: python test.py --param1={{param1}} --param2={{param2}}
+        help: "A test command"
+        params:
+          - name: "param1"
+            help: "The first parameter"
+            # The following line indicates possible values this parameter can take.
+            choices: ["1", "2"]
+          - name: "param2"
+            help: "The second parameter"
 
 Project files have to adhere to the following schema:
 

@@ -398,12 +398,19 @@ class Worker(object):
                 break
             except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
                 if attempt:
-                    logger.debug(
-                        "Waiting {} secs for plasma to drain.".format(delay))
+                    logger.warning("Waiting {} seconds for space to free up "
+                                   "in the object store.".format(delay))
                     time.sleep(delay)
                     delay *= 2
                 else:
+                    self.dump_object_store_memory_usage()
                     raise plasma_exc
+
+    def dump_object_store_memory_usage(self):
+        """Prints object store debug string to stdout."""
+        msg = "\n" + self.plasma_client.debug_string()
+        msg = msg.replace("\n", "\nplasma: ")
+        logger.warning("Local object store memory usage:\n{}\n".format(msg))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -1007,14 +1014,13 @@ class Worker(object):
             self.plasma_client.set_client_options(client_name,
                                                   object_store_memory)
         except pyarrow._plasma.PlasmaStoreFull:
+            self.dump_object_store_memory_usage()
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
                 "plasma store may have insufficient memory remaining "
                 "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage). The current "
-                "object store memory status is:\n\n{}".format(
-                    object_store_memory, client_name,
-                    self.plasma_client.debug_string()))
+                "permanently reserved for shared usage).".format(
+                    object_store_memory, client_name))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1292,8 +1298,8 @@ def _initialize_serialization(job_id, worker=global_worker):
         class_id="ray.signature.FunctionSignature")
 
 
-def init(redis_address=None,
-         address=None,
+def init(address=None,
+         redis_address=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -1340,14 +1346,14 @@ def init(redis_address=None,
 
     .. code-block:: python
 
-        ray.init(redis_address="123.45.67.89:6379")
+        ray.init(address="123.45.67.89:6379")
 
     Args:
-        redis_address (str): The address of the Redis server to connect to. If
+        address (str): The address of the Ray cluster to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
-        address (str): Same as redis_address.
+        redis_address (str): Deprecated; same as address.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -1758,8 +1764,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     # worker.error_message_pubsub_client.psubscribe("*")
 
     try:
-        # Get the exports that occurred before the call to subscribe.
-        error_messages = ray.errors(include_cluster_errors=False)
+        # Get the errors that occurred before the call to subscribe.
+        error_messages = ray.errors()
         for error_message in error_messages:
             logger.error(error_message)
 
@@ -1788,7 +1794,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 # Delay it a bit to see if we can suppress it
                 task_error_queue.put((error_message, time.time()))
             else:
-                logger.error(error_message)
+                logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
@@ -2329,6 +2335,8 @@ def get(object_ids):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
+                if isinstance(value, ray.exceptions.UnreconstructableError):
+                    worker.dump_object_store_memory_usage()
                 raise value
 
         # Run post processors.
@@ -2340,11 +2348,18 @@ def get(object_ids):
         return values
 
 
-def put(value):
+def put(value, weakref=False):
     """Store an object in the object store.
+
+    The object may not be evicted while a reference to the returned ID exists.
+    Note that this pinning only applies to the particular object ID returned
+    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
+        weakref: If set, allows the object to be evicted while a reference
+            to the returned ID exists. You might want to set this if putting
+            a lot of objects that you might not need in the future.
 
     Returns:
         The object ID assigned to this value.
@@ -2359,8 +2374,23 @@ def put(value):
                 worker.current_task_id,
                 worker.task_context.put_index,
             )
-            worker.put_object(object_id, value)
+            try:
+                worker.put_object(object_id, value)
+            except pyarrow.plasma.PlasmaStoreFull:
+                logger.info(
+                    "Put failed since the value was either too large or the "
+                    "store was full of pinned objects. If you are putting "
+                    "and holding references to a lot of object ids, consider "
+                    "ray.put(value, weakref=True) to allow object data to "
+                    "be evicted early.")
+                raise
         worker.task_context.put_index += 1
+        # Pin the object buffer with the returned id. This avoids put returns
+        # from getting evicted out from under the id.
+        if not weakref and not worker.mode == LOCAL_MODE:
+            object_id.set_buffer_ref(
+                worker.plasma_client.get_buffers(
+                    [pyarrow.plasma.ObjectID(object_id.binary())]))
         return object_id
 
 

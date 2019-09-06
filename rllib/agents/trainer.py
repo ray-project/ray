@@ -72,6 +72,9 @@ COMMON_CONFIG = {
     "log_sys_usage": True,
     # Enable TF eager execution (TF policies only)
     "eager": False,
+    # Disable eager execution on workers (but allow it on the driver). This
+    # only has an effect is eager is enabled.
+    "no_eager_on_workers": False,
 
     # === Policy ===
     # Arguments to pass to model. See models/catalog.py for a full list of the

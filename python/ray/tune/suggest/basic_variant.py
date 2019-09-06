@@ -84,6 +84,7 @@ class BasicVariantGenerator(SearchAlgorithm):
                     spec,
                     output_path,
                     self._parser,
+                    evaluated_params=resolved_vars,
                     experiment_tag=experiment_tag)
 
     def is_finished(self):

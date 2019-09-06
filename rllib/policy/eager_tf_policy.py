@@ -204,13 +204,16 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def get_weights(self):
-            return tf.nest.map_structure(lambda var: var.numpy(),
-                                         self.model.variables())
+            variables = self.model.variables()
+            return [v.numpy() for v in variables]
 
         @override(Policy)
         def set_weights(self, weights):
-            tf.nest.map_structure(lambda var, value: var.assign(value),
-                                  self.model.variables(), weights)
+            variables = self.model.variables()
+            assert len(weights) == len(variables), (len(weights),
+                                                    len(variables))
+            for v, w in zip(variables, weights):
+                v.assign(w)
 
         def is_recurrent(self):
             return len(self._state_in) > 0

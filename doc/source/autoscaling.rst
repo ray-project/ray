@@ -14,7 +14,7 @@ as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/conf
 Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with a m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(address="localhost:6379")``.
 
 .. code-block:: bash
 
@@ -37,7 +37,7 @@ First, install the Google API client (``pip install google-api-python-client``),
 Then you're ready to go. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+SSH into the head node and then run Ray programs with ``ray.init(address="localhost:6379")``.
 
 .. code-block:: bash
 
@@ -59,7 +59,7 @@ This is used when you have a list of machine IP addresses to connect in a Ray cl
 Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+SSH into the head node and then run Ray programs with ``ray.init(address="localhost:6379")``.
 
 .. code-block:: bash
 
@@ -77,7 +77,7 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
 Running commands on new and existing clusters
 ---------------------------------------------
 
-You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(redis_address="localhost:6379")``.
+You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(address="localhost:6379")``.
 
 .. code-block:: bash
 
