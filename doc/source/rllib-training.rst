@@ -219,7 +219,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.variables()
     [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
 
-    # Run a forward pass to get logits
+    # Run a forward pass to get logits, can run with policy.get_session()
     >>> model.from_batch({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
     (<tf.Tensor 'model_3/fc_out/Tanh:0' shape=(1, 256) dtype=float32>, [])
 
