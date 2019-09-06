@@ -21,8 +21,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
-      store_provider_(std::move(store_provider)) {
-}
+      store_provider_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
@@ -227,9 +226,11 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) {
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : object_interface_(object_interface),
+    WorkerContext &worker_context, CoreWorkerObjectInterface &object_interface,
+    boost::asio::io_service &io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler)
+    : worker_context_(worker_context),
+      object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
   server.RegisterService(task_service_);
@@ -244,6 +245,11 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     send_reply_callback(
         Status::Invalid("direct actor call only supports by value arguments"), nullptr,
         nullptr);
+    return;
+  }
+  if (task_spec.IsActorTask() && !worker_context_.IsDirectCallActor()) {
+    send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
+                        nullptr, nullptr);
     return;
   }
 

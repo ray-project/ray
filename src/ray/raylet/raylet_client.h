@@ -155,10 +155,9 @@ class RayletClient {
   /// Request raylet backend to prepare a checkpoint for an actor.
   ///
   /// \param actor_id ID of the actor.
-  /// \param is_direct_call Whether direct actor call is used.
   /// \param checkpoint_id ID of the new checkpoint (output parameter).
   /// \return ray::Status.
-  ray::Status PrepareActorCheckpoint(const ActorID &actor_id, bool is_direct_call,
+  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
                                      ActorCheckpointID &checkpoint_id);
 
   /// Notify raylet backend that an actor was resumed from a checkpoint.

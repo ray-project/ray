@@ -354,11 +354,10 @@ ray::Status RayletClient::FreeObjects(const std::vector<ray::ObjectID> &object_i
 }
 
 ray::Status RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                 bool is_direct_call,
                                                  ActorCheckpointID &checkpoint_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreatePrepareActorCheckpointRequest(
-      fbb, to_flatbuf(fbb, actor_id), is_direct_call);
+  auto message =
+      ray::protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
   fbb.Finish(message);
 
   std::unique_ptr<uint8_t[]> reply;

@@ -25,7 +25,7 @@ public class ArgumentsBuilder {
    * Convert real function arguments to task spec arguments.
    */
   public static List<FunctionArg> wrap(Object[] args, boolean crossLanguage,
-      boolean isDirectActorCall) {
+      boolean isDirectCall) {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
       ObjectId id = null;
@@ -33,14 +33,14 @@ public class ArgumentsBuilder {
       if (arg == null) {
         data = Serializer.encode(null);
       } else if (arg instanceof RayObject) {
-        if (isDirectActorCall) {
+        if (isDirectCall) {
           throw new IllegalArgumentException(
               "Passing RayObject to a direct call actor is not supported.");
         }
         id = ((RayObject) arg).getId();
       } else if (arg instanceof byte[] && crossLanguage) {
         // TODO (kfstorm): This could be supported once we supported passing by value with metadata.
-        if (isDirectActorCall) {
+        if (isDirectCall) {
           throw new IllegalArgumentException(
               "Passing raw bytes to a direct call actor is not supported.");
         }
@@ -50,7 +50,7 @@ public class ArgumentsBuilder {
         id = Ray.put(arg).getId();
       } else {
         byte[] serialized = Serializer.encode(arg);
-        if (!isDirectActorCall && serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
+        if (!isDirectCall && serialized.length > LARGEST_SIZE_PASS_BY_VALUE) {
           id = ((AbstractRayRuntime) Ray.internal()).getObjectStore()
               .put(new NativeRayObject(serialized, null));
         } else {

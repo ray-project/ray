@@ -26,7 +26,7 @@ class WorkerContext {
 
   const ActorID &GetCurrentActorID() const;
 
-  bool IsDirectCall() const;
+  bool IsDirectCallActor() const;
 
   int GetNextTaskIndex();
 
@@ -44,6 +44,9 @@ class WorkerContext {
 
   /// ID of current actor.
   ActorID current_actor_id_;
+
+  /// Whether direct actor call is used.
+  bool is_direct_call_actor_;
 
  private:
   static WorkerThreadContext &GetThreadContext();

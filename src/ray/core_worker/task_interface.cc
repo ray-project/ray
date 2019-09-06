@@ -173,7 +173,8 @@ Status CoreWorkerTaskInterface::CreateActor(
                       actor_creation_options.resources, actor_creation_options.resources,
                       TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
-                                   actor_creation_options.dynamic_worker_options);
+                                   actor_creation_options.dynamic_worker_options,
+                                   actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
       actor_id, ActorHandleID::Nil(), function.language,
@@ -217,8 +218,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
       actor_creation_dummy_object_id,
       /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
-      actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles(),
-      actor_handle.IsDirectCallActor());
+      actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();

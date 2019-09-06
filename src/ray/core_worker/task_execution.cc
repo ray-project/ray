@@ -22,12 +22,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_, *main_service_, worker_server_, func)));
+          worker_context_, raylet_client, object_interface_, *main_service_,
+          worker_server_, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(object_interface_, *main_service_,
-                                                worker_server_, func)));
+          new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+                                                *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();

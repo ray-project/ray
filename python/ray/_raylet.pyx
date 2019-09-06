@@ -357,7 +357,7 @@ cdef class RayletClient:
         # the GIL so other Python threads can run.
         with nogil:
             check_status(self.client.get().PrepareActorCheckpoint(
-                c_actor_id, False, checkpoint_id))
+                c_actor_id, checkpoint_id))
         return ActorCheckpointID(checkpoint_id.Binary())
 
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,

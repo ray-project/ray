@@ -26,7 +26,7 @@ Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
   RAY_CHECK(task_spec->IsActorTask());
   ActorCheckpointID checkpoint_id;
   auto status = core_worker.GetRayletClient().PrepareActorCheckpoint(
-      actor_id, task_spec->IsDirectCall(), checkpoint_id);
+      actor_id, checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   jbyteArray result = env->NewByteArray(checkpoint_id.Size());
   env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),

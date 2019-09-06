@@ -68,7 +68,6 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
                                c_bool local_only, c_bool delete_creating_tasks)
         CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
-                                          c_bool is_direct_call,
                                           CActorCheckpointID &checkpoint_id)
         CRayStatus NotifyActorResumedFromCheckpoint(
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)

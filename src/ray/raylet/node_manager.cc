@@ -1219,7 +1219,6 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   auto message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointRequest>(message_data);
   ActorID actor_id = from_flatbuf<ActorID>(*message->actor_id());
-  bool is_direct_call = message->is_direct_call();
   RAY_LOG(DEBUG) << "Preparing checkpoint for actor " << actor_id;
   const auto &actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
@@ -1229,7 +1228,7 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
 
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
   std::shared_ptr<ActorCheckpointData> checkpoint_data;
-  if (is_direct_call) {
+  if (actor_entry->second.GetTableData().is_direct_call()) {
     checkpoint_data =
         actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
   } else {
@@ -1922,6 +1921,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
+    actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.

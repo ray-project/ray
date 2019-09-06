@@ -119,7 +119,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                                           public rpc::DirectActorHandler {
  public:
-  CoreWorkerDirectActorTaskReceiver(CoreWorkerObjectInterface &object_interface,
+  CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
+                                    CoreWorkerObjectInterface &object_interface,
                                     boost::asio::io_service &io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
@@ -135,6 +136,8 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                       rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  // Worker context.
+  WorkerContext &worker_context_;
   // Object interface.
   CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.

@@ -79,6 +79,7 @@ cdef class TaskSpec:
                 actor_creation_id.native(),
                 max_actor_reconstructions,
                 [],
+                False,
             )
         elif not actor_id.is_nil():
             # Actor task.
@@ -92,7 +93,6 @@ cdef class TaskSpec:
                 previous_actor_task_dummy_object_id.native(),
                 actor_counter,
                 c_new_actor_handles,
-                False,
             )
         else:
             # Normal task.

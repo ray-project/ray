@@ -147,8 +147,8 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
 }
 
 bool TaskSpecification::IsDirectCall() const {
-  RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().is_direct_call();
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().is_direct_call();
 }
 
 std::string TaskSpecification::DebugString() const {
@@ -174,13 +174,13 @@ std::string TaskSpecification::DebugString() const {
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_reconstructions=" << MaxActorReconstructions() << "}";
+           << ", max_reconstructions=" << MaxActorReconstructions()
+           << ", is_direct_call=" << IsDirectCall() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_handle_id=" << ActorHandleId()
-           << ", actor_counter=" << ActorCounter()
-           << ", is_direct_call=" << IsDirectCall() << "}";
+           << ", actor_counter=" << ActorCounter() << "}";
   }
 
   return stream.str();

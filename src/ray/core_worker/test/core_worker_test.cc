@@ -674,8 +674,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetActorTaskSpec(
         actor_handle.ActorID(), actor_handle.ActorHandleID(),
         actor_creation_dummy_object_id,
-        /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(), 0, {},
-        actor_handle.IsDirectCallActor());
+        /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(), 0, {});
 
     const auto &task_spec = builder.Build();
 

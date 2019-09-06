@@ -59,10 +59,10 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeIsDirectCall
+ * Method:    nativeIsDirectCallActor
  * Signature: (J)Z
  */
-JNIEXPORT jboolean JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCall(
+JNIEXPORT jboolean JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return GetActorHandle(nativeActorHandle).IsDirectCallActor();
 }

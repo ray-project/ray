@@ -160,7 +160,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, int numReturns, CallOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, /*isDirectActorCall*/false);
+        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, /*isDirectCall*/false);
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -174,7 +174,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject callActorFunction(RayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, isDirectActorCall(rayActor));
+        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, isDirectCall(rayActor));
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -188,7 +188,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, /*isDirectActorCall*/false);
+        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA, /*isDirectCall*/false);
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
@@ -198,9 +198,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return actor;
   }
 
-  private boolean isDirectActorCall(RayActor rayActor) {
+  private boolean isDirectCall(RayActor rayActor) {
     if (rayActor instanceof NativeRayActor) {
-      return ((NativeRayActor) rayActor).isDirectCall();
+      return ((NativeRayActor) rayActor).isDirectCallActor();
     }
     return false;
   }

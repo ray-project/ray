@@ -219,8 +219,6 @@ table FreeObjectsRequest {
 table PrepareActorCheckpointRequest {
   // ID of the actor.
   actor_id: string;
-  // Whether direct actor call is used.
-  is_direct_call: bool;
 }
 
 table PrepareActorCheckpointReply {
