@@ -129,6 +129,25 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(
   ray::RayLog::ShutDownRayLog();
 }
 
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeSetResource
+ * Signature: (JLjava/lang/String;D[B)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jstring resourceName,
+    jdouble capacity, jbyteArray nodeId) {
+  const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
+  const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
+
+  auto &raylet_client =
+      reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->GetRayletClient();
+  auto status = raylet_client.SetResource(native_resource_name,
+                                          static_cast<double>(capacity), node_id);
+  env->ReleaseStringUTFChars(resourceName, native_resource_name);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -33,13 +33,17 @@ public class ArgumentsBuilder {
       if (arg == null) {
         data = Serializer.encode(null);
       } else if (arg instanceof RayObject) {
-        throwExceptionIfIsDirectActorCall(isDirectActorCall,
-            "Passing RayObject to a direct call actor is not supported.");
+        if (isDirectActorCall) {
+          throw new IllegalArgumentException(
+              "Passing RayObject to a direct call actor is not supported.");
+        }
         id = ((RayObject) arg).getId();
       } else if (arg instanceof byte[] && crossLanguage) {
         // TODO (kfstorm): This could be supported once we supported passing by value with metadata.
-        throwExceptionIfIsDirectActorCall(isDirectActorCall,
-            "Passing raw bytes to a direct call actor is not supported.");
+        if (isDirectActorCall) {
+          throw new IllegalArgumentException(
+              "Passing raw bytes to a direct call actor is not supported.");
+        }
         // If the argument is a byte array and will be used by a different language,
         // do not inline this argument. Because the other language doesn't know how
         // to deserialize it.
@@ -60,13 +64,6 @@ public class ArgumentsBuilder {
       }
     }
     return ret;
-  }
-
-  private static void throwExceptionIfIsDirectActorCall(boolean isDirectActorCall, String message) {
-    if (isDirectActorCall) {
-      throw new IllegalArgumentException(
-          message != null ? message : "Direct actor call only supports by-value arguments.");
-    }
   }
 
   /**

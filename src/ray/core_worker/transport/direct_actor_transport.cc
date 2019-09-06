@@ -160,7 +160,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client
                                                   const ActorID &actor_id,
                                                   const TaskID &task_id,
                                                   int num_returns) {
-  RAY_LOG(DEBUG) << "Push task " << task_id;
+  RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
   auto status =
       client.PushTask(request, [this, actor_id, task_id, num_returns](

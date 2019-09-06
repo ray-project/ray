@@ -12,7 +12,6 @@ import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
 import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
-import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
@@ -28,7 +27,6 @@ import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.ObjectStore;
 import org.ray.runtime.object.RayObjectImpl;
-import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskExecutor;
@@ -51,7 +49,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
-  protected RayletClient rayletClient;
   protected WorkerContext workerContext;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
@@ -88,15 +85,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
     objectStore.delete(objectIds, localOnly, deleteCreatingTasks);
-  }
-
-  @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
-    if (nodeId == null) {
-      nodeId = UniqueId.NIL;
-    }
-    rayletClient.setResource(resourceName, capacity, nodeId);
   }
 
   @Override
@@ -223,10 +211,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public ObjectStore getObjectStore() {
     return objectStore;
-  }
-
-  public RayletClient getRayletClient() {
-    return rayletClient;
   }
 
   public FunctionManager getFunctionManager() {

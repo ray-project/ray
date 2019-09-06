@@ -6,6 +6,7 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import org.ray.api.id.JobId;
+import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
 import org.ray.runtime.gcs.GcsClient;
@@ -13,8 +14,8 @@ import org.ray.runtime.gcs.GcsClientOptions;
 import org.ray.runtime.gcs.RedisClient;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.object.NativeObjectStore;
-import org.ray.runtime.raylet.NativeRayletClient;
 import org.ray.runtime.runner.RunManager;
+import org.ray.runtime.task.NativeTaskExecutor;
 import org.ray.runtime.task.NativeTaskSubmitter;
 import org.ray.runtime.task.TaskExecutor;
 import org.ray.runtime.util.FileUtil;
@@ -103,11 +104,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         new GcsClientOptions(rayConfig));
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
 
-    taskExecutor = new TaskExecutor(this);
+    taskExecutor = new NativeTaskExecutor(nativeCoreWorkerPointer, this);
     workerContext = new NativeWorkerContext(nativeCoreWorkerPointer);
     objectStore = new NativeObjectStore(workerContext, nativeCoreWorkerPointer);
     taskSubmitter = new NativeTaskSubmitter(nativeCoreWorkerPointer);
-    rayletClient = new NativeRayletClient(nativeCoreWorkerPointer);
 
     // register
     registerWorker();
@@ -125,6 +125,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (null != manager) {
       manager.cleanup();
     }
+  }
+
+  @Override
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
+    if (nodeId == null) {
+      nodeId = UniqueId.NIL;
+    }
+    nativeSetResource(nativeCoreWorkerPointer, resourceName, capacity, nodeId.getBytes());
   }
 
   public void run() {
@@ -167,4 +176,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetup(String logDir);
 
   private static native void nativeShutdownHook();
+
+  private static native void nativeSetResource(long conn, String resourceName, double capacity,
+      byte[] nodeId);
 }
