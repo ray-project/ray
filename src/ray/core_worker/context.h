@@ -45,7 +45,7 @@ class WorkerContext {
   /// ID of current actor.
   ActorID current_actor_id_;
 
-  /// Whether direct actor call is used.
+  /// Whether current actor accepts direct calls.
   bool is_direct_call_actor_;
 
  private:

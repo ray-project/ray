@@ -104,8 +104,7 @@ std::shared_ptr<ActorCheckpointData> ActorRegistration::GenerateCheckpointData(
   if (task) {
     const auto actor_handle_id = task->GetTaskSpecification().ActorHandleId();
     const auto dummy_object = task->GetTaskSpecification().ActorDummyObject();
-    // Extend its frontier to include
-    // the most recent task.
+    // Extend its frontier to include the most recent task.
     // Note(hchen): this is needed because this method is called before
     // `FinishAssignedTask`, which will be called when the worker tries to fetch
     // the next task.
