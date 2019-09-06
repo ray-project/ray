@@ -78,17 +78,6 @@ Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(
   return IdToJavaByteBuffer<ray::ActorID>(env, actor_id);
 }
 
-/*
- * Class:     org_ray_runtime_context_NativeWorkerContext
- * Method:    nativeGetIsDirectCall
- * Signature: (J)Z
- */
-JNIEXPORT jboolean JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetIsDirectCall(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
-  return GetWorkerContextFromPointer(nativeCoreWorkerPointer).IsDirectCall();
-}
-
 #ifdef __cplusplus
 }
 #endif

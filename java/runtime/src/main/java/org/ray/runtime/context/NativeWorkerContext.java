@@ -39,11 +39,6 @@ public class NativeWorkerContext implements WorkerContext {
   }
 
   @Override
-  public boolean getIsDirectCall() {
-    return nativeGetIsDirectCall(nativeCoreWorkerPointer);
-  }
-
-  @Override
   public ClassLoader getCurrentClassLoader() {
     return currentClassLoader;
   }
@@ -74,6 +69,4 @@ public class NativeWorkerContext implements WorkerContext {
   private static native ByteBuffer nativeGetCurrentWorkerId(long nativeCoreWorkerPointer);
 
   private static native ByteBuffer nativeGetCurrentActorId(long nativeCoreWorkerPointer);
-
-  private static native boolean nativeGetIsDirectCall(long nativeCoreWorkerPointer);
 }

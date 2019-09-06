@@ -13,7 +13,7 @@ public class LocalModeTaskExecutor extends TaskExecutor {
   }
 
   @Override
-  protected void maybeSaveCheckpoint(Object actor, ActorId actorId, boolean isDirectCall) {
+  protected void maybeSaveCheckpoint(Object actor, ActorId actorId) {
   }
 
   @Override

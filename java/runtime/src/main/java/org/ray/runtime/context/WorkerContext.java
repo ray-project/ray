@@ -27,11 +27,6 @@ public interface WorkerContext {
   ActorId getCurrentActorId();
 
   /**
-   * Whether the current task is a direct call task.
-   */
-  boolean getIsDirectCall();
-
-  /**
    * The class loader that is associated with the current job. It's used for locating classes when
    * dealing with serialization and deserialization in {@link org.ray.runtime.util.Serializer}.
    */

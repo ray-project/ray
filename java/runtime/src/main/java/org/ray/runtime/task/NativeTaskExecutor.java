@@ -44,7 +44,7 @@ public class NativeTaskExecutor extends TaskExecutor {
   }
 
   @Override
-  protected void maybeSaveCheckpoint(Object actor, ActorId actorId, boolean isDirectCall) {
+  protected void maybeSaveCheckpoint(Object actor, ActorId actorId) {
     if (!(actor instanceof Checkpointable)) {
       return;
     }

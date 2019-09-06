@@ -76,8 +76,7 @@ public abstract class TaskExecutor {
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (taskType == TaskType.ACTOR_TASK) {
           // TODO (kfstorm): handle checkpoint in core worker.
-          maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId(),
-              runtime.getWorkerContext().getIsDirectCall());
+          maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
         }
         if (rayFunction.hasReturn()) {
           returnObjects.add(runtime.getObjectStore().serialize(result));
@@ -91,7 +90,7 @@ public abstract class TaskExecutor {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        if(rayFunction.hasReturn()) {
+        if (rayFunction.hasReturn()) {
           returnObjects.add(runtime.getObjectStore()
               .serialize(new RayTaskException("Error executing task " + taskId, e)));
         }
@@ -111,7 +110,7 @@ public abstract class TaskExecutor {
         rayFunctionInfo.get(2));
   }
 
-  protected abstract void maybeSaveCheckpoint(Object actor, ActorId actorId, boolean isDirectCall);
+  protected abstract void maybeSaveCheckpoint(Object actor, ActorId actorId);
 
   protected abstract void maybeLoadCheckpoint(Object actor, ActorId actorId);
 }

@@ -52,15 +52,6 @@ JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *, jclass,
                                                                          jlong);
 
-/*
- * Class:     org_ray_runtime_context_NativeWorkerContext
- * Method:    nativeGetIsDirectCall
- * Signature: (J)Z
- */
-JNIEXPORT jboolean JNICALL
-Java_org_ray_runtime_context_NativeWorkerContext_nativeGetIsDirectCall(JNIEnv *, jclass,
-                                                                       jlong);
-
 #ifdef __cplusplus
 }
 #endif
