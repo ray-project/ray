@@ -47,8 +47,6 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
-    // By design. No lineage cache when direct actor call is enabled.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
@@ -67,7 +65,7 @@ public class ActorReconstructionTest extends BaseTest {
 
     // Try calling increase on this actor again and check the value is now 4.
     int value = Ray.call(Counter::increase, actor).get();
-    Assert.assertEquals(value, 4);
+    Assert.assertEquals(value, options.isDirectCall ? 1 : 4);
 
     Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
 
