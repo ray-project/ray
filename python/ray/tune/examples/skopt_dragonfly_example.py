@@ -6,7 +6,7 @@
 
 from __future__ import print_function
 from argparse import Namespace
-from dragonfly import TuneOptimizer
+from ray.tune.integration import TuneOptimizer
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -33,10 +33,11 @@ def objective(x):
 def main():
     """ Main function. """
     optimizer = TuneOptimizer([(0, 7.25), (0, 7.25), (0, 7.25)])
-    points = optimizer.ask(n_points=10, strategy="max")
+    points = optimizer.ask(n_points=10)
     y_vals = []
     for point in points:
         y_vals.append(objective(point))
+    print(points, y_vals)
     optimizer.tell(points, y_vals)
 
 
