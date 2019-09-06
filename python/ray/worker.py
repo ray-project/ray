@@ -1032,6 +1032,7 @@ class Worker(object):
         reached_max_executions = (self.function_actor_manager.get_task_counter(
             job_id, function_descriptor) == execution_info.max_calls)
         if reached_max_executions:
+            self.core_worker.disconnect()
             self.raylet_client.disconnect()
             sys.exit(0)
 
@@ -2075,6 +2076,7 @@ def disconnect():
     if hasattr(worker, "raylet_client"):
         del worker.raylet_client
     if hasattr(worker, "core_worker"):
+        worker.core_worker.disconnect()
         del worker.core_worker
 
 
