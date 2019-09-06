@@ -56,7 +56,7 @@ public class MultiThreadingTest extends BaseTest {
     @RayRemote
     public ActorId getCurrentActorId() throws Exception {
       final Object[] result = new Object[1];
-      Thread thread = new Thread(Ray.asyncClosure(() -> {
+      Thread thread = new Thread(Ray.wrapRunnable(() -> {
         try {
           result[0] = Ray.getRuntimeContext().getCurrentActorId();
         } catch (Exception e) {
@@ -150,7 +150,7 @@ public class MultiThreadingTest extends BaseTest {
     try {
       List<Future<String>> futures = new ArrayList<>();
       for (int i = 0; i < NUM_THREADS; i++) {
-        Callable<String> task = Ray.asyncClosure(() -> {
+        Callable<String> task = Ray.wrapCallable(() -> {
           for (int j = 0; j < numRepeats; j++) {
             TimeUnit.MILLISECONDS.sleep(1);
             testCase.run();

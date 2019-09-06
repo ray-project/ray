@@ -1012,7 +1012,6 @@ def start_raylet(redis_address,
                  config=None,
                  include_java=False,
                  java_worker_options=None,
-                 java_num_workers_per_process=None,
                  load_code_from_local=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1045,14 +1044,10 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
-        java_num_workers_per_process (int): The number of workers per Java
-            worker process.
     Returns:
         ProcessInfo for the process that was started.
     """
     config = config or {}
-    if java_num_workers_per_process:
-        config["num_workers_per_process_java"] = java_num_workers_per_process
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
 
     if use_valgrind and use_profiler:
@@ -1079,7 +1074,6 @@ def start_raylet(redis_address,
                                or DEFAULT_JAVA_WORKER_OPTIONS)
         java_worker_command = build_java_worker_command(
             java_worker_options,
-            java_num_workers_per_process,
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1148,7 +1142,6 @@ def start_raylet(redis_address,
 
 def build_java_worker_command(
         java_worker_options,
-        java_num_workers_per_process,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1159,8 +1152,6 @@ def build_java_worker_command(
 
     Args:
         java_worker_options (str): The command options for Java worker.
-        java_num_workers_per_process (int): The number of workers per Java
-            worker process.
         redis_address (str): Redis address of GCS.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.

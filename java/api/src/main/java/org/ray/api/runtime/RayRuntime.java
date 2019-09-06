@@ -148,12 +148,12 @@ public interface RayRuntime {
    * @param runnable The runnable to wrap.
    * @return The wrapped runnable.
    */
-  Runnable asyncClosure(Runnable runnable);
+  Runnable wrapRunnable(Runnable runnable);
 
   /**
    * Wrap a {@link Callable} with necessary context capture.
    * @param callable The callable to wrap.
    * @return The wrapped callable.
    */
-  Callable asyncClosure(Callable callable);
+  Callable wrapCallable(Callable callable);
 }

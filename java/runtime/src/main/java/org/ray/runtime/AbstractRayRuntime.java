@@ -165,12 +165,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public Runnable asyncClosure(Runnable runnable) {
+  public Runnable wrapRunnable(Runnable runnable) {
     return runnable;
   }
 
   @Override
-  public Callable asyncClosure(Callable callable) {
+  public Callable wrapCallable(Callable callable) {
     return callable;
   }
 

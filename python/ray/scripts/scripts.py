@@ -215,12 +215,6 @@ def cli(logging_level, logging_format):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--java-num-workers-per-process",
-    required=False,
-    default=None,
-    type=int,
-    help="The number of workers per Java worker process.")
-@click.option(
     "--internal-config",
     default=None,
     type=str,
@@ -237,8 +231,7 @@ def start(node_ip_address, redis_address, address, redis_port,
           head, include_webui, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, java_num_workers_per_process,
-          load_code_from_local, internal_config):
+          java_worker_options, load_code_from_local, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -282,7 +275,6 @@ def start(node_ip_address, redis_address, address, redis_port,
         include_java=include_java,
         include_webui=include_webui,
         java_worker_options=java_worker_options,
-        java_num_workers_per_process=java_num_workers_per_process,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config)
 

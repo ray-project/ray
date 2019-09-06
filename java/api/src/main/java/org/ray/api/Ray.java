@@ -120,20 +120,22 @@ public final class Ray extends RayCall {
 
   /**
    * Wrap a {@link Runnable} with necessary context capture.
+   *
    * @param runnable The runnable to wrap.
    * @return The wrapped runnable.
    */
-  public static Runnable asyncClosure(Runnable runnable) {
-    return runtime.asyncClosure(runnable);
+  public static Runnable wrapRunnable(Runnable runnable) {
+    return runtime.wrapRunnable(runnable);
   }
 
   /**
    * Wrap a {@link Callable} with necessary context capture.
+   *
    * @param callable The callable to wrap.
    * @return The wrapped callable.
    */
-  public static Callable asyncClosure(Callable callable) {
-    return runtime.asyncClosure(callable);
+  public static Callable wrapCallable(Callable callable) {
+    return runtime.wrapCallable(callable);
   }
 
   /**

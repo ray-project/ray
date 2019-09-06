@@ -100,7 +100,8 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     Preconditions.checkNotNull(currentRuntime,
         "RayRuntime is not set on current thread."
             + " If you want to use Ray API in your own threads,"
-            + " please wrap your `Runnable`s or `Callable`s with `Ray.asyncClosure`.");
+            + " please wrap your `Runnable`s or `Callable`s with"
+            + " `Ray.wrapRunnable` or `Ray.wrapCallable`.");
     return currentRuntime;
   }
 
@@ -173,7 +174,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public Runnable asyncClosure(Runnable runnable) {
+  public Runnable wrapRunnable(Runnable runnable) {
     RayNativeRuntime runtime = getCurrentRuntime();
     return () -> {
       currentThreadRuntime.set(runtime);
@@ -182,7 +183,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public Callable asyncClosure(Callable callable) {
+  public Callable wrapCallable(Callable callable) {
     RayNativeRuntime runtime = getCurrentRuntime();
     return () -> {
       currentThreadRuntime.set(runtime);

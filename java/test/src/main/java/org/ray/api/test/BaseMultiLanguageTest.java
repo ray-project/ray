@@ -79,7 +79,8 @@ public abstract class BaseMultiLanguageTest {
         .getProperty("ray.raylet.config.num_workers_per_process_java");
     if (!Strings.isNullOrEmpty(numWorkersPerProcessJava)) {
       startCommand = ImmutableList.<String>builder().addAll(startCommand)
-          .add("--java-num-workers-per-process=" + numWorkersPerProcessJava).build();
+          .add(String.format("--internal-config={\"num_workers_per_process_java\": %s}",
+              numWorkersPerProcessJava)).build();
     }
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
