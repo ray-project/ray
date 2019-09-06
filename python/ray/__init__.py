@@ -53,9 +53,6 @@ except ImportError as e:
             e.args += (helpful_message, )
     raise
 
-modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
-sys.path.append(modin_path)
-
 from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,
