@@ -17,6 +17,7 @@ import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+@Test(groups = {"directCall"})
 public class ActorReconstructionTest extends BaseTest {
 
   @RayRemote()
@@ -44,7 +45,6 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
@@ -125,7 +125,6 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =

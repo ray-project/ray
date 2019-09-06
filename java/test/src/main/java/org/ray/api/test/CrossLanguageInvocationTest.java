@@ -46,7 +46,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "Response from Python: hello".getBytes());
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testCallingPythonActor() {
     // Direct actor call only allows passing arguments as values.
     // However, bytes arguments are passed from Java to Python as references.

@@ -18,6 +18,7 @@ import org.ray.runtime.object.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+@Test(groups = {"directCall"})
 public class ActorTest extends BaseTest {
 
   @RayRemote
@@ -48,7 +49,6 @@ public class ActorTest extends BaseTest {
     }
   }
 
-  @Test
   public void testCreateAndCallActor() {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
@@ -59,7 +59,6 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(3), Ray.call(Counter::increaseAndGet, actor, 1).get());
   }
 
-  @Test
   public void testCallActorWithLargeObject() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     LargeObject largeObject = new LargeObject();
@@ -68,11 +67,10 @@ public class ActorTest extends BaseTest {
   }
 
   @RayRemote
-  public static Counter factory(int initValue) {
+  static Counter factory(int initValue) {
     return new Counter(initValue);
   }
 
-  @Test
   public void testCreateActorFromFactory() {
     // Test creating an actor from a factory method
     RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
@@ -82,24 +80,23 @@ public class ActorTest extends BaseTest {
   }
 
   @RayRemote
-  public static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
+  static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
     RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor, delta);
     return res.get();
   }
 
   @RayRemote
-  public static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
+  static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
     RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor, delta);
     return res.get();
   }
 
   @RayRemote
-  public static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
+  static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
     RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor.get(0), delta);
     return res.get();
   }
 
-  @Test
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
     Assert.assertEquals(Integer.valueOf(1),
@@ -111,7 +108,6 @@ public class ActorTest extends BaseTest {
             .get());
   }
 
-  @Test
   public void testForkingActorHandle() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
@@ -120,7 +116,6 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increaseAndGet, counter2, 2).get());
   }
 
-  @Test
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     // The UnreconstructableException is created by raylet.

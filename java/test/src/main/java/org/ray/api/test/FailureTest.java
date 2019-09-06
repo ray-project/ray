@@ -20,16 +20,16 @@ public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
 
-  public static int badFunc() {
+  static int badFunc() {
     throw new RuntimeException(EXCEPTION_MESSAGE);
   }
 
-  public static int badFunc2() {
+  static int badFunc2() {
     System.exit(-1);
     return 0;
   }
 
-  public static int slowFunc() {
+  static int slowFunc() {
     try {
       Thread.sleep(10000);
     } catch (InterruptedException e) {
@@ -76,14 +76,14 @@ public class FailureTest extends BaseTest {
     assertTaskFailedWithRayTaskException(Ray.call(FailureTest::badFunc));
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
     assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
@@ -102,7 +102,7 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
     // This test case hangs if the worker to worker connection is implemented with grpc.

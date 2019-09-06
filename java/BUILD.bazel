@@ -2,7 +2,6 @@ load("//bazel:ray.bzl", "define_java_module")
 load("@build_stack_rules_proto//java:java_proto_compile.bzl", "java_proto_compile")
 
 exports_files([
-    "testng.xml",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
     "streaming/testng.xml",
@@ -131,9 +130,7 @@ define_java_module(
 
 java_binary(
     name = "all_tests",
-    main_class = "org.testng.TestNG",
-    data = ["testng.xml"],
-    args = ["java/testng.xml"],
+    main_class = "org.ray.api.RunTestNG",
     runtime_deps = [
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
