@@ -254,10 +254,7 @@ cdef class RayletClient:
         # complete, so we don't want to change the unique_ptr in core worker
         # to a shared_ptr. This means the core worker *must* be
         # initialized before the raylet client.
-        self.client = &core_worker.core_worker.get().GetRayletClient()
-
-    def disconnect(self):
-        check_status(self.client.Disconnect())
+        self.client = &core_worker.core_worker.GetRayletClient()
 
     def submit_task(self, TaskSpec task_spec):
         cdef:
@@ -388,19 +385,22 @@ cdef class RayletClient:
 
 
 cdef class CoreWorker:
-    cdef unique_ptr[CCoreWorker] core_worker
+    cdef CCoreWorker *core_worker
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options):
-        self.core_worker.reset(new CCoreWorker(
+        self.core_worker = new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], NULL))
+            gcs_options.native()[0], NULL)
 
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "
                                      "details.")
+
+    def disconnect(self):
+        del self.core_worker
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
@@ -409,7 +409,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Get(
+            check_status(self.core_worker.Objects().Get(
                 c_object_ids, -1, &results))
 
         data_metadata_pairs = []
@@ -435,7 +435,7 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Contains(
+            check_status(self.core_worker.Objects().Contains(
                 c_object_id, &has_object))
 
         return has_object
@@ -452,7 +452,7 @@ cdef class CoreWorker:
         data_size = serialized.total_bytes
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(
+            check_status(self.core_worker.Objects().Create(
                         metadata, data_size, c_object_id, &data))
 
         # If data is nullptr, that means the ObjectID already existed,
@@ -468,7 +468,7 @@ cdef class CoreWorker:
         serialized.write_to(stream)
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+            check_status(self.core_worker.Objects().Seal(c_object_id))
 
     def put_raw_buffer(self, c_string value, ObjectID object_id,
                        c_string metadata_str=b"", int memcopy_threads=6):
@@ -481,7 +481,7 @@ cdef class CoreWorker:
                         <uint8_t*>(metadata_str.data()), metadata_str.size()))
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Create(
+            check_status(self.core_worker.Objects().Create(
                 metadata, value.size(), c_object_id, &data))
 
         stream = pyarrow.FixedSizeBufferWriter(
@@ -490,7 +490,7 @@ cdef class CoreWorker:
         stream.write(pyarrow.py_buffer(value))
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+            check_status(self.core_worker.Objects().Seal(c_object_id))
 
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
              TaskID current_task_id):
@@ -502,7 +502,7 @@ cdef class CoreWorker:
 
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            check_status(self.core_worker.get().Objects().Wait(
+            check_status(self.core_worker.Objects().Wait(
                 wait_ids, num_returns, timeout_milliseconds, &results))
 
         assert len(results) == len(object_ids)
@@ -522,7 +522,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Delete(
+            check_status(self.core_worker.Objects().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
     def set_current_task_id(self, TaskID task_id):
@@ -530,19 +530,19 @@ cdef class CoreWorker:
             CTaskID c_task_id = task_id.native()
 
         with nogil:
-            self.core_worker.get().SetCurrentTaskId(c_task_id)
+            self.core_worker.SetCurrentTaskId(c_task_id)
 
     def set_current_job_id(self, JobID job_id):
         cdef:
             CJobID c_job_id = job_id.native()
 
         with nogil:
-            self.core_worker.get().SetCurrentJobId(c_job_id)
+            self.core_worker.SetCurrentJobId(c_job_id)
 
     def set_object_store_client_options(self, c_string client_name,
                                         int64_t limit_bytes):
         with nogil:
-            check_status(self.core_worker.get().Objects().SetClientOptions(
+            check_status(self.core_worker.Objects().SetClientOptions(
                 client_name, limit_bytes))
 
     def object_store_memory_usage_string(self):
@@ -550,10 +550,6 @@ cdef class CoreWorker:
             c_string message
 
         with nogil:
-            message = self.core_worker.get().Objects().MemoryUsageString()
+            message = self.core_worker.Objects().MemoryUsageString()
 
         return message
-
-    def disconnect(self):
-        with nogil:
-            self.core_worker.get().Disconnect()
