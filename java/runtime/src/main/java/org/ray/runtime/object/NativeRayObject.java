@@ -3,7 +3,7 @@ package org.ray.runtime.object;
 import com.google.common.base.Preconditions;
 
 /**
- * Binary representation of ray object.
+ * Binary representation of a ray object. See `RayObject` class in C++ for details.
  */
 public class NativeRayObject {
 

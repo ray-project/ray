@@ -19,7 +19,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.services
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory, try_to_symlink_directory
+from ray.utils import try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -176,7 +176,7 @@ class Node(object):
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
-        try_to_symlink_directory(self._session_dir, session_symlink)
+        try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
         try_to_create_directory(self._sockets_dir, warn_if_exist=False)

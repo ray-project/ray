@@ -247,6 +247,11 @@ def run(run_or_experiment,
                 print(runner.debug_string())
             last_debug = time.time()
 
+    try:
+        runner.checkpoint(force=True)
+    except Exception:
+        logger.exception("Trial Runner checkpointing failed.")
+
     if verbose:
         print(runner.debug_string(max_debug=99999))
 

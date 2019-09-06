@@ -6,8 +6,8 @@
 
 namespace ray {
 
-/// Binary representation of ray object. It houlds buffer pointers of data and metadata. A
-/// ray object may have both data and metadata, or only one of them.
+/// Binary representation of a ray object. It houlds buffer pointers of data and metadata.
+/// A ray object may have both data and metadata, or only one of them.
 class RayObject {
  public:
   /// Create a ray object instance.
