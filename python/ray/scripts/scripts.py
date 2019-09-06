@@ -411,12 +411,13 @@ def stop():
     processes_to_kill = [
         # The first element is the substring to filter.
         # The second element, if True, is to filter ps results by command name
-        # (only the executable name); if False, is to filter ps results by
-        # command with all its arguments. See STANDARD FORMAT SPECIFIERS
-        # section of http://man7.org/linux/man-pages/man1/ps.1.html about comm
-        # and args. This can help avoid killing non-ray processes.
+        # (only the first 15 charactors of the executable name);
+        # if False, is to filter ps results by command with all its arguments.
+        # See STANDARD FORMAT SPECIFIERS section of
+        # http://man7.org/linux/man-pages/man1/ps.1.html
+        # about comm and args. This can help avoid killing non-ray processes.
         ["raylet", True],
-        ["plasma_store_server", True],
+        ["plasma_store", True],
         ["raylet_monitor", True],
         ["monitor.py", False],
         ["redis-server", True],
@@ -432,6 +433,12 @@ def stop():
         filter = process[0]
         if process[1]:
             format = "pid,comm"
+            # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
+            # comm only prints the first 15 characters of the executable name.
+            if len(filter) > 15:
+                raise ValueError("The filter string should not be more than" +
+                                 " 15 characters. Actual length: " +
+                                 str(len(filter)) + ". Filter: " + filter)
         else:
             format = "pid,args"
         command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
