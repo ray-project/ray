@@ -336,6 +336,7 @@ void NodeManager::Heartbeat() {
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
     DumpDebugState();
     RecordMetrics();
+    WarnResourceDeadlock();
     last_debug_dump_at_ms_ = now_ms;
   }
 
@@ -345,6 +346,69 @@ void NodeManager::Heartbeat() {
     RAY_CHECK(!error);
     Heartbeat();
   });
+}
+
+void NodeManager::WarnResourceDeadlock() {
+  // Check if any progress is being made on this raylet.
+  for (const auto &task : local_queues_.GetTasks(TaskState::RUNNING)) {
+    // Ignore blocked tasks.
+    if (local_queues_.GetBlockedTaskIds().count(task.GetTaskSpecification().TaskId())) {
+      continue;
+    }
+    // Progress is being made, don't warn.
+    resource_deadlock_warned_ = false;
+    return;
+  }
+
+  // suppress duplicates warning messages
+  if (resource_deadlock_warned_) {
+    return;
+  }
+
+  // The node is full of actors and no progress has been made for some time.
+  // If there are any pending tasks, build a warning.
+  std::ostringstream error_message;
+  ray::Task exemplar;
+  bool should_warn = false;
+  int pending_actor_creations = 0;
+  int pending_tasks = 0;
+
+  // See if any tasks are blocked trying to acquire resources.
+  for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
+    const TaskSpecification &spec = task.GetTaskSpecification();
+    if (spec.IsActorCreationTask()) {
+      pending_actor_creations += 1;
+    } else {
+      pending_tasks += 1;
+    }
+    if (!should_warn) {
+      exemplar = task;
+      should_warn = true;
+    }
+  }
+
+  // Push an warning to the driver that a task is blocked trying to acquire resources.
+  if (should_warn) {
+    const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
+    SchedulingResources &local_resources = cluster_resource_map_[my_client_id];
+    error_message
+        << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
+        << " is pending and cannot currently be scheduled. It requires "
+        << exemplar.GetTaskSpecification().GetRequiredResources().ToString()
+        << " for execution and "
+        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << " for placement, but this node only has remaining "
+        << local_resources.GetAvailableResources().ToString() << ". In total there are "
+        << pending_tasks << " pending tasks and " << pending_actor_creations
+        << " pending actors on this node. "
+        << "This is likely due to all cluster resources being claimed by actors. "
+        << "To resolve the issue, consider creating fewer actors or increase the "
+        << "resources available to this Ray cluster.";
+    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+        exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
+        current_time_ms()));
+    resource_deadlock_warned_ = true;
+  }
 }
 
 void NodeManager::GetObjectManagerProfileInfo() {
@@ -1337,12 +1401,15 @@ void NodeManager::ScheduleTasks(
       std::string type = "infeasible_task";
       std::ostringstream error_message;
       error_message
-          << "The task with ID " << task.GetTaskSpecification().TaskId()
-          << " is infeasible and cannot currently be executed. It requires "
+          << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
+          << " is infeasible and cannot currently be scheduled. It requires "
           << task.GetTaskSpecification().GetRequiredResources().ToString()
           << " for execution and "
           << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-          << " for placement. Check the client table to view node resources.";
+          << " for placement, however there are no nodes in the cluster that can "
+          << "provide the requested resources. To resolve this issue, consider "
+          << "reducing the resource requests of this task or add nodes that "
+          << "can fit the task.";
       RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
           task.GetTaskSpecification().JobId(), type, error_message.str(),
           current_time_ms()));
@@ -1858,7 +1925,14 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
-    RAY_CHECK(actor_entry->second.GetState() == ActorTableData::RECONSTRUCTING);
+    // TODO: The following is a workaround for the issue described in
+    // https://github.com/ray-project/ray/issues/5524, please see the issue
+    // description for more information.
+    if (actor_entry->second.GetState() != ActorTableData::RECONSTRUCTING) {
+      RAY_LOG(WARNING) << "Actor not in reconstructing state, most likely it "
+                       << "died before creation handler could run. Actor state is "
+                       << actor_entry->second.GetState();
+    }
     // Copy the static fields from the current actor entry.
     actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
     // We are reconstructing the actor, so subtract its

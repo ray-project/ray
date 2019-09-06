@@ -1,30 +1,25 @@
 package org.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
-import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
@@ -48,8 +43,6 @@ public class RunManager {
   private List<Pair<String, Process>> processes;
 
   private static final int KILL_PROCESS_WAIT_TIMEOUT_SECONDS = 1;
-
-  private static final Map<String, File> tempFiles = new HashMap<>();
 
   public RunManager(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -89,31 +82,14 @@ public class RunManager {
   }
 
   private void createTempDirs() {
-    FileUtil.mkDir(new File(rayConfig.logDir));
-    FileUtil.mkDir(new File(rayConfig.rayletSocketName).getParentFile());
-    FileUtil.mkDir(new File(rayConfig.objectStoreSocketName).getParentFile());
-  }
-
-  /**
-   * Copy a file from resources to a temp dir, and return the file object.
-   */
-  private File getTempFile(String fileName) {
-    File file = tempFiles.get(fileName);
-    if (file == null) {
-      try {
-        file = File.createTempFile(fileName, "");
-        file.deleteOnExit();
-        try (InputStream in = RunManager.class.getResourceAsStream(fileName)) {
-          Preconditions.checkNotNull(in, "{} doesn't exist.", fileName);
-          Files.copy(in, Paths.get(file.getCanonicalPath()), StandardCopyOption.REPLACE_EXISTING);
-        }
-        file.setExecutable(true);
-      } catch (IOException e) {
-        throw new RuntimeException("Couldn't get temp file " + fileName, e);
-      }
-      tempFiles.put(fileName, file);
+    try {
+      FileUtils.forceMkdir(new File(rayConfig.logDir));
+      FileUtils.forceMkdir(new File(rayConfig.rayletSocketName).getParentFile());
+      FileUtils.forceMkdir(new File(rayConfig.objectStoreSocketName).getParentFile());
+    } catch (IOException e) {
+      LOGGER.error("Couldn't create temp directories.", e);
+      throw new RuntimeException(e);
     }
-    return file;
   }
 
   /**
@@ -125,18 +101,20 @@ public class RunManager {
    */
   private void startProcess(List<String> command, Map<String, String> env, String name) {
     if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Starting process {} with command: {}", name, command,
+      LOGGER.debug("Starting process {} with command: {}", name,
           Joiner.on(" ").join(command));
     }
 
     ProcessBuilder builder = new ProcessBuilder(command);
 
+    String stdout = "";
+    String stderr = "";
     if (rayConfig.redirectOutput) {
       // Set stdout and stderr paths.
       int logId = random.nextInt(10000);
       String date = DATE_TIME_FORMATTER.format(LocalDateTime.now());
-      String stdout = String.format("%s/%s-%s-%05d.out", rayConfig.logDir, name, date, logId);
-      String stderr = String.format("%s/%s-%s-%05d.err", rayConfig.logDir, name, date, logId);
+      stdout = String.format("%s/%s-%s-%05d.out", rayConfig.logDir, name, date, logId);
+      stderr = String.format("%s/%s-%s-%05d.err", rayConfig.logDir, name, date, logId);
       builder.redirectOutput(new File(stdout));
       builder.redirectError(new File(stderr));
     }
@@ -162,7 +140,13 @@ public class RunManager {
       throw new RuntimeException("Failed to start " + name);
     }
     processes.add(Pair.of(name, p));
-    LOGGER.info("{} process started", name);
+    if (LOGGER.isInfoEnabled()) {
+      String message = String.format("%s process started.", name);
+      if (rayConfig.redirectOutput) {
+        message += String.format(" Logs are redirected to %s and %s.", stdout, stderr);
+      }
+      LOGGER.info(message);
+    }
   }
 
   /**
@@ -194,7 +178,7 @@ public class RunManager {
         rayConfig.headRedisPort, rayConfig.headRedisPassword, null);
     rayConfig.setRedisAddress(primary);
     try (Jedis client = new Jedis("127.0.0.1", rayConfig.headRedisPort)) {
-      if (!StringUtil.isNullOrEmpty(rayConfig.headRedisPassword)) {
+      if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
         client.auth(rayConfig.headRedisPassword);
       }
       client.set("UseRaylet", "1");
@@ -214,30 +198,36 @@ public class RunManager {
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
-    List<String> command = Lists.newArrayList(
-        // The redis-server executable file.
-        getTempFile("/redis-server").getAbsolutePath(),
-        "--protected-mode",
-        "no",
-        "--port",
-        String.valueOf(port),
-        "--loglevel",
-        "warning",
-        "--loadmodule",
-        // The redis module file.
-        getTempFile("/libray_redis_module.so").getAbsolutePath()
-    );
+    try (FileUtil.TempFile redisServerFile = FileUtil.getTempFileFromResource("redis-server")) {
+      try (FileUtil.TempFile redisModuleFile = FileUtil.getTempFileFromResource(
+          "libray_redis_module.so")) {
+        redisServerFile.getFile().setExecutable(true);
+        List<String> command = Lists.newArrayList(
+            // The redis-server executable file.
+            redisServerFile.getFile().getAbsolutePath(),
+            "--protected-mode",
+            "no",
+            "--port",
+            String.valueOf(port),
+            "--loglevel",
+            "warning",
+            "--loadmodule",
+            // The redis module file.
+            redisModuleFile.getFile().getAbsolutePath()
+        );
 
-    if (!StringUtil.isNullOrEmpty(password)) {
-      command.add("--requirepass ");
-      command.add(password);
+        if (!Strings.isNullOrEmpty(password)) {
+          command.add("--requirepass ");
+          command.add(password);
+        }
+
+        String name = shard == null ? "redis" : "redis-" + shard;
+        startProcess(command, null, name);
+      }
     }
 
-    String name = shard == null ? "redis" : "redis-" + shard;
-    startProcess(command, null, name);
-
     try (Jedis client = new Jedis("127.0.0.1", port)) {
-      if (!StringUtil.isNullOrEmpty(password)) {
+      if (!Strings.isNullOrEmpty(password)) {
         client.auth(password);
       }
 
@@ -256,32 +246,34 @@ public class RunManager {
         Math.min(rayConfig.resources.getOrDefault("CPU", 0.0).intValue(), hardwareConcurrency));
 
     String redisPasswordOption = "";
-    if (!StringUtil.isNullOrEmpty(rayConfig.headRedisPassword)) {
+    if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
       redisPasswordOption = rayConfig.headRedisPassword;
     }
 
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
-    List<String> command = ImmutableList.of(
-        // The raylet executable file.
-        getTempFile("/raylet").getAbsolutePath(),
-        String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
-        String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
-        String.format("--object_manager_port=%d", 0), // The object manager port.
-        String.format("--node_manager_port=%d", 0),  // The node manager port.
-        String.format("--node_ip_address=%s", rayConfig.nodeIp),
-        String.format("--redis_address=%s", rayConfig.getRedisIp()),
-        String.format("--redis_port=%d", rayConfig.getRedisPort()),
-        String.format("--num_initial_workers=%d", 0),  // number of initial workers
-        String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
-        String.format("--static_resource_list=%s",
-            ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
-        String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
-        String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
-        String.format("--java_worker_command=%s", buildWorkerCommandRaylet()),
-        String.format("--redis_password=%s", redisPasswordOption)
-    );
+    try (FileUtil.TempFile rayletFile = FileUtil.getTempFileFromResource("raylet")) {
+      rayletFile.getFile().setExecutable(true);
+      List<String> command = ImmutableList.of(
+          rayletFile.getFile().getAbsolutePath(),
+          String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
+          String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
+          String.format("--object_manager_port=%d", 0), // The object manager port.
+          String.format("--node_manager_port=%d", 0),  // The node manager port.
+          String.format("--node_ip_address=%s", rayConfig.nodeIp),
+          String.format("--redis_address=%s", rayConfig.getRedisIp()),
+          String.format("--redis_port=%d", rayConfig.getRedisPort()),
+          String.format("--num_initial_workers=%d", 0),  // number of initial workers
+          String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
+          String.format("--static_resource_list=%s",
+              ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
+          String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+          String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
+          String.format("--java_worker_command=%s", buildWorkerCommandRaylet()),
+          String.format("--redis_password=%s", redisPasswordOption)
+      );
 
-    startProcess(command, null, "raylet");
+      startProcess(command, null, "raylet");
+    }
   }
 
   private String concatPath(Stream<String> stream) {
@@ -324,7 +316,7 @@ public class RunManager {
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
 
     // redis password
-    if (!StringUtil.isNullOrEmpty(rayConfig.headRedisPassword)) {
+    if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
       cmd.add("-Dray.redis.password=" + rayConfig.headRedisPassword);
     }
 
@@ -341,15 +333,19 @@ public class RunManager {
   }
 
   private void startObjectStore() {
-    List<String> command = ImmutableList.of(
-        // The plasma store executable file.
-        getTempFile("/plasma_store_server").getAbsolutePath(),
-        "-s",
-        rayConfig.objectStoreSocketName,
-        "-m",
-        rayConfig.objectStoreSize.toString()
-    );
-    startProcess(command, null, "plasma_store");
+    try (FileUtil.TempFile plasmaStoreFile = FileUtil
+        .getTempFileFromResource("plasma_store_server")) {
+      plasmaStoreFile.getFile().setExecutable(true);
+      List<String> command = ImmutableList.of(
+          // The plasma store executable file.
+          plasmaStoreFile.getFile().getAbsolutePath(),
+          "-s",
+          rayConfig.objectStoreSocketName,
+          "-m",
+          rayConfig.objectStoreSize.toString()
+      );
+      startProcess(command, null, "plasma_store");
+    }
   }
 
   private String buildPythonWorkerCommand() {

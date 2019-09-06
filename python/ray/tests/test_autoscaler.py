@@ -174,10 +174,19 @@ class LoadMetricsTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
         lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
+        lm.update("3.3.3.3", {
+            "memory": 20,
+            "object_store_memory": 40
+        }, {
+            "memory": 0,
+            "object_store_memory": 20
+        })
         debug = lm.info_string()
-        assert "ResourceUsage=2.0/4.0 CPU, 14.0/16.0 GPU" in debug
-        assert "NumNodesConnected=2" in debug
-        assert "NumNodesUsed=1.88" in debug
+        assert ("ResourceUsage=2.0/4.0 CPU, 14.0/16.0 GPU, "
+                "1.05 GiB/1.05 GiB memory, "
+                "1.05 GiB/2.1 GiB object_store_memory") in debug
+        assert "NumNodesConnected=3" in debug
+        assert "NumNodesUsed=2.88" in debug
 
 
 class AutoscalingTest(unittest.TestCase):

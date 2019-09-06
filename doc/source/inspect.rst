@@ -27,7 +27,7 @@ For context, when using Ray, several processes are involved.
   that it can submit tasks to its raylet and get objects from the object
   store, but it is different in that the raylet will not assign tasks to
   the driver to be executed.
-- A **Redis server** maintains much of the system's state. For example, it keeps
+- Multiple **Redis servers** maintain much of the system's state. For example, it keeps
   track of which objects live on which machines and of the task specifications
   (but not data). It can also be queried directly for debugging purposes.
 
@@ -42,9 +42,13 @@ To get information about the current nodes in your cluster, you can use ``ray.no
 
 .. code-block:: python
 
-    >>> import ray
-    >>> ray.init()
-    >>> ray.nodes()
+    import ray
+
+    ray.init()
+
+    print(ray.nodes())
+
+    """
     [{'ClientID': 'a9e430719685f3862ed7ba411259d4138f8afb1e',
       'IsInsertion': True,
       'NodeManagerAddress': '192.168.19.108',
@@ -54,6 +58,7 @@ To get information about the current nodes in your cluster, you can use ``ray.no
       'RayletSocketName': '/tmp/ray/session_2019-07-28_17-03-53_955034_24883/sockets/raylet',
       'Resources': {'CPU': 4.0},
       'alive': True}]
+    """
 
 The above information includes:
 
@@ -73,15 +78,5 @@ To get information about the current total resource capacity of your cluster, yo
 
 To get information about the current available resource capacity of your cluster, you can use ``ray.available_resources()``.
 
-.. autofunction:: ray.cluster_resources
+.. autofunction:: ray.available_resources
     :noindex:
-
-
-Object Information
-------------------
-
-To get information about the current objects that have been placed in the Ray object store across the cluster, you can use ``ray.objects()``.
-
-.. autofunction:: ray.objects
-    :noindex:
-

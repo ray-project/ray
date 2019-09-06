@@ -2,13 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-import os
-import sys
-from shutil import copyfile
-import time
+import argparse
 import click
 import jsonschema
+import logging
+import os
+from shutil import copyfile
+import subprocess
+import sys
+import time
 
 import ray
 from ray.autoscaler.commands import (
@@ -19,7 +21,7 @@ from ray.autoscaler.commands import (
     teardown_cluster,
 )
 
-logging.basicConfig(format=ray.ray_constants.LOGGER_FORMAT)
+logging.basicConfig(format=ray.ray_constants.LOGGER_FORMAT, level=logging.INFO)
 logger = logging.getLogger(__file__)
 
 # File layout for generated project files
@@ -83,7 +85,7 @@ def create(project_name, cluster_yaml, requirements):
     os.makedirs(PROJECT_DIR)
 
     if cluster_yaml is None:
-        logger.warn("Using default autoscaler yaml")
+        logger.warning("Using default autoscaler yaml")
 
         with open(CLUSTER_TEMPLATE) as f:
             template = f.read().replace(r"{{name}}", project_name)
@@ -93,11 +95,19 @@ def create(project_name, cluster_yaml, requirements):
         cluster_yaml = CLUSTER_YAML
 
     if requirements is None:
-        logger.warn("Using default requirements.txt")
+        logger.warning("Using default requirements.txt")
         # no templating required, just copy the file
         copyfile(REQUIREMENTS_TXT_TEMPLATE, REQUIREMENTS_TXT)
 
         requirements = REQUIREMENTS_TXT
+
+    repo = None
+    try:
+        repo = subprocess.check_output(
+            "git remote get-url origin".split(" ")).strip()
+        logger.info("Setting repo URL to %s", repo)
+    except subprocess.CalledProcessError:
+        pass
 
     with open(PROJECT_TEMPLATE) as f:
         project_template = f.read()
@@ -108,7 +118,12 @@ def create(project_name, cluster_yaml, requirements):
                                                     cluster_yaml)
         project_template = project_template.replace(r"{{requirements}}",
                                                     requirements)
-
+        if repo is None:
+            project_template = project_template.replace(
+                r"{{repo_string}}", "# repo: {}".format("..."))
+        else:
+            project_template = project_template.replace(
+                r"{{repo_string}}", "repo: {}".format(repo))
     with open(PROJECT_YAML, "w") as f:
         f.write(project_template)
 
@@ -153,9 +168,27 @@ def stop():
         override_cluster_name=None)
 
 
-@session_cli.command(help="Start a session based on current project config")
-def start():
+@session_cli.command(
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Start a session based on current project config")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--shell",
+    help=(
+        "If set, run the command as a raw shell command instead of looking up "
+        "the command in the project config"),
+    is_flag=True)
+def start(command, args, shell):
     project_definition = load_project_or_throw()
+
+    if shell:
+        command_to_run = command
+    elif command:
+        command_to_run = _get_command_to_run(command, project_definition, args)
+    else:
+        command_to_run = _get_command_to_run("default", project_definition,
+                                             args)
 
     # Check for features we don't support right now
     project_environment = project_definition["environment"]
@@ -181,30 +214,27 @@ def start():
         override_cluster_name=None,
     )
 
-    logger.info("[2/4] Syncing the repo")
-    if "repo" in project_definition:
-        # HACK: Skip git clone if exists so the this command can be idempotent
-        # More advanced repo update behavior can be found at
-        # https://github.com/jupyterhub/nbgitpuller/blob/master/nbgitpuller/pull.py
-        session_exec_cluster(
-            cluster_yaml,
-            "git clone {repo} {directory} || true".format(
-                repo=project_definition["repo"],
-                directory=project_definition["name"]),
-        )
-    else:
-        session_exec_cluster(
-            cluster_yaml,
-            "mkdir {directory} || true".format(
-                directory=project_definition["name"]))
+    logger.info("[2/4] Syncing the project")
+    project_root = ray.projects.find_root(os.getcwd())
+    # This is so that rsync syncs directly to the target directory, instead of
+    # nesting inside the target directory.
+    if not project_root.endswith("/"):
+        project_root += "/"
+    rsync(
+        cluster_yaml,
+        source=project_root,
+        target="~/{}/".format(working_directory),
+        override_cluster_name=None,
+        down=False,
+    )
 
     logger.info("[3/4] Setting up environment")
     _setup_environment(
         cluster_yaml, project_definition["environment"], cwd=working_directory)
 
-    logger.info("[4/4] Running commands")
-    _run_commands(
-        cluster_yaml, project_definition["commands"], cwd=working_directory)
+    logger.info("[4/4] Running command")
+    logger.debug("Running {}".format(command))
+    session_exec_cluster(cluster_yaml, command_to_run, cwd=working_directory)
 
 
 def session_exec_cluster(cluster_yaml, cmd, cwd=None):
@@ -249,7 +279,30 @@ def _setup_environment(cluster_yaml, project_environment, cwd):
             session_exec_cluster(cluster_yaml, cmd, cwd=cwd)
 
 
-def _run_commands(cluster_yaml, commands, cwd):
-    for cmd in commands:
-        logger.debug("Running {}".format(cmd["name"]))
-        session_exec_cluster(cluster_yaml, cmd["command"], cwd=cwd)
+def _get_command_to_run(command, project_definition, args):
+    command_to_run = None
+    params = None
+
+    for command_definition in project_definition["commands"]:
+        if command_definition["name"] == command:
+            command_to_run = command_definition["command"]
+            params = command_definition.get("params", [])
+    if not command_to_run:
+        raise click.ClickException(
+            "Cannot find the command '" + command +
+            "' in commmands section of the project file.")
+
+    # Build argument parser dynamically to parse parameter arguments.
+    parser = argparse.ArgumentParser(prog=command)
+    for param in params:
+        parser.add_argument(
+            "--" + param["name"],
+            required=True,
+            help=param.get("help"),
+            choices=param.get("choices"))
+
+    result = parser.parse_args(list(args))
+    for key, val in result.__dict__.items():
+        command_to_run = command_to_run.replace("{{" + key + "}}", val)
+
+    return command_to_run

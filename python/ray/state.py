@@ -945,8 +945,9 @@ class GlobalState(object):
                 None, then this method retrieves the errors for all jobs.
 
         Returns:
-            A dictionary mapping driver ID to a list of the error messages for
-                that driver.
+            A list of the error messages for the specified driver if one was
+                given, or a dictionary mapping from job ID to a list of error
+                messages for that driver otherwise.
         """
         self._check_connected()
 
@@ -1057,12 +1058,11 @@ class DeprecatedGlobalState(object):
             "instead.")
         return ray.available_resources()
 
-    def error_messages(self, job_id=None):
+    def error_messages(self, all_jobs=False):
         logger.warning(
             "ray.global_state.error_messages() is deprecated and will be "
-            "removed in a subsequent release. Use ray.errors() "
-            "instead.")
-        return ray.errors(job_id=job_id)
+            "removed in a subsequent release. Use ray.errors() instead.")
+        return ray.errors(all_jobs=all_jobs)
 
 
 state = GlobalState()
@@ -1185,19 +1185,22 @@ def available_resources():
     return state.available_resources()
 
 
-def errors(include_cluster_errors=True):
+def errors(all_jobs=False):
     """Get error messages from the cluster.
 
     Args:
-        include_cluster_errors: True if we should include error messages for
-            all drivers, and false if we should only include error messages for
-            this specific driver.
+        all_jobs: False if we should only include error messages for this
+            specific job, or True if we should include error messages for all
+            jobs.
 
     Returns:
-        Error messages pushed from the cluster.
+        Error messages pushed from the cluster. This will be a single list if
+            all_jobs is False, or a dictionary mapping from job ID to a list of
+            error messages for that job if all_jobs is True.
     """
-    worker = ray.worker.global_worker
-    error_messages = state.error_messages(job_id=worker.current_job_id)
-    if include_cluster_errors:
-        error_messages += state.error_messages(job_id=ray.JobID.nil())
+    if not all_jobs:
+        worker = ray.worker.global_worker
+        error_messages = state.error_messages(job_id=worker.current_job_id)
+    else:
+        error_messages = state.error_messages(job_id=None)
     return error_messages

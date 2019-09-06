@@ -12,7 +12,7 @@ from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 
-from ray.experimental.sgd.tests.pytorch_utils import (
+from ray.experimental.sgd.examples.train_example import (
     model_creator, optimizer_creator, data_creator)
 
 

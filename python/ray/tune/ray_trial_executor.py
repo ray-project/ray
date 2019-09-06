@@ -325,7 +325,7 @@ class RayTrialExecutor(TrialExecutor):
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
             self._last_nontrivial_wait = time.time()
         if time.time() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
-            logger.warn(
+            logger.warning(
                 "Over the last {} seconds, the Tune event loop has been "
                 "backlogged processing new results. Consider increasing your "
                 "period of result reporting to improve performance.".format(

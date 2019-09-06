@@ -7,7 +7,6 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 #include "ray/raylet/raylet_client.h"
@@ -468,10 +467,6 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store;
 
   switch (type) {
-  case StoreProviderType::LOCAL_PLASMA:
-    provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerLocalPlasmaStoreProvider(raylet_store_socket_names_[0]));
-    break;
   case StoreProviderType::MEMORY:
     memory_store = std::make_shared<CoreWorkerMemoryStore>();
     provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
@@ -499,42 +494,37 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  // Test Wait() with duplicate object ids.
-  std::vector<ObjectID> ids_with_duplicate;
-  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
-  // add the same ids again to test `Get` with duplicate object ids.
-  ids_with_duplicate.insert(ids_with_duplicate.end(), ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_ids(ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_results;
 
-  std::vector<ObjectID> wait_ids(ids_with_duplicate);
-  ObjectID non_existent_id = ObjectID::FromRandom();
-  wait_ids.push_back(non_existent_id);
+  ObjectID nonexistent_id = ObjectID::FromRandom();
+  wait_ids.insert(nonexistent_id);
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
-  std::vector<bool> wait_results;
-  RAY_CHECK_OK(provider.Wait(wait_ids, 5, 100, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 5);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
-
-  // Test Wait() with duplicate object ids, and the required `num_objects`
-  // is less than size of `wait_ids`.
+  // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
   wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(wait_ids, 4, -1, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), 5);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, true, true, false}));
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Get().
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(provider.Get(ids_with_duplicate, -1, RandomTaskId(), &results));
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
+  std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
+  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results));
 
-  ASSERT_EQ(results.size(), ids_with_duplicate.size());
-  for (size_t i = 0; i < ids_with_duplicate.size(); i++) {
-    const auto &expected = buffers[i % ids.size()];
-    ASSERT_EQ(results[i]->GetData()->Size(), expected.GetData()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetData()->Data(), expected.GetData()->Data(),
+  ASSERT_EQ(results.size(), ids.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    const auto &expected = buffers[i];
+    ASSERT_EQ(results[ids[i]]->GetData()->Size(), expected.GetData()->Size());
+    ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(), expected.GetData()->Data(),
                      expected.GetData()->Size()),
               0);
-    ASSERT_EQ(results[i]->GetMetadata()->Size(), expected.GetMetadata()->Size());
-    ASSERT_EQ(memcmp(results[i]->GetMetadata()->Data(), expected.GetMetadata()->Data(),
-                     expected.GetMetadata()->Size()),
+    ASSERT_EQ(results[ids[i]]->GetMetadata()->Size(), expected.GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[ids[i]]->GetMetadata()->Data(),
+                     expected.GetMetadata()->Data(), expected.GetMetadata()->Size()),
               0);
   }
 
@@ -545,14 +535,15 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids, 0, RandomTaskId(), &results));
-  ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
+  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results));
+  ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> ready_ids(buffers.size());
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
+    ready_ids[i] = ObjectID::FromRandom();
+    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
     unready_ids[i] = ObjectID::FromRandom();
   }
 
@@ -566,12 +557,43 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
 
   std::thread async_thread(thread_func);
 
-  // wait for the objects to appear.
+  wait_ids.clear();
+  wait_ids.insert(ready_ids.begin(), ready_ids.end());
+  wait_ids.insert(unready_ids.begin(), unready_ids.end());
   wait_results.clear();
+
+  // Check that only the ready ids are returned when timeout ends before thread runs.
   RAY_CHECK_OK(
-      provider.Wait(unready_ids, unready_ids.size(), -1, RandomTaskId(), &wait_results));
-  // wait for the thread to finish.
+      provider.Wait(wait_ids, ready_ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(ready_ids.size(), wait_results.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
+  }
+
+  wait_results.clear();
+  // Check that enough objects are returned after the thread inserts at least one object.
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ready_ids.size() + 1, 5000, RandomTaskId(), &wait_results));
+  ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+
+  wait_results.clear();
+  // Check that all objects are returned after the thread completes.
   async_thread.join();
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
+  }
 }
 
 class ZeroNodeTest : public CoreWorkerTest {
@@ -790,8 +812,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
-
-  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());

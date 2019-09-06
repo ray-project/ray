@@ -239,7 +239,8 @@ class RolloutWorker(EvaluatorInterface):
         _global_worker = self
 
         policy_config = policy_config or {}
-        if tf and policy_config.get("eager"):
+        if (tf and policy_config.get("eager")
+                and not policy_config.get("no_eager_on_workers")):
             tf.enable_eager_execution()
 
         if log_level:
@@ -258,10 +259,7 @@ class RolloutWorker(EvaluatorInterface):
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         if not callable(policy_mapping_fn):
-            raise ValueError(
-                "Policy mapping function not callable. If you're using Tune, "
-                "make sure to escape the function with tune.function() "
-                "to prevent it from being evaluated as an expression.")
+            raise ValueError("Policy mapping function not callable?")
         self.env_creator = env_creator
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode

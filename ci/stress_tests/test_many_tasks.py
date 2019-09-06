@@ -13,7 +13,7 @@ import ray
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-ray.init(redis_address="localhost:6379")
+ray.init(address="localhost:6379")
 
 # These numbers need to correspond with the autoscaler config file.
 # The number of remote nodes in the autoscaler should upper bound

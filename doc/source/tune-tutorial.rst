@@ -1,5 +1,5 @@
-Tune Example Walkthrough
-========================
+Tune Walkthrough
+================
 
 This tutorial will walk you through the following process to setup a Tune experiment. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
 
@@ -59,6 +59,8 @@ We can then plot the performance of this trial.
    :language: python
    :start-after: __plot_begin__
    :end-before: __plot_end__
+
+.. important:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
 
 
 Early Stopping with ASHA
