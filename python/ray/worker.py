@@ -431,8 +431,10 @@ class Worker(object):
         """
         try:
             buffers = []
-            meta = pickle.dumps(value, protocol=5, buffer_callback=buffers.append)
-            # TODO(suquark): This could involve more copies. Should implement zero-copy for PickleBuffer.
+            meta = pickle.dumps(
+                value, protocol=5, buffer_callback=buffers.append)
+            # TODO(suquark): This could involve more copies.
+            # Should implement zero-copy for PickleBuffer.
             buffers = [b.raw().tobytes() for b in buffers]
             value = (meta, buffers)
 
@@ -564,7 +566,8 @@ class Worker(object):
             # thread-safe.
             with self.plasma_client.lock:
                 if USE_NEW_SERIALIZER:
-                    r, buffers = pyarrow.deserialize(data, serialization_context)
+                    r, buffers = pyarrow.deserialize(data,
+                                                     serialization_context)
                     buffers = [pickle.PickleBuffer(b) for b in buffers]
                     return pickle.loads(r, buffers=buffers)
                 else:
@@ -1341,7 +1344,11 @@ def _initialize_serialization(job_id, worker=global_worker):
             class_id="lambda")
         # Tell Ray to serialize types with pickle.
         register_custom_serializer(
-            type(int), use_pickle=True, local=True, job_id=job_id, class_id="type")
+            type(int),
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="type")
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(
@@ -1350,6 +1357,7 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
+
 
 def init(address=None,
          redis_address=None,
@@ -2021,7 +2029,8 @@ def connect(node,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    worker.plasma_client = thread_safe_client(plasma.connect(node.plasma_store_socket_name, None, 0, 300))
+    worker.plasma_client = thread_safe_client(
+        plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
     if driver_object_store_memory is not None:
         worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
@@ -2331,18 +2340,22 @@ def register_custom_serializer(cls,
         if USE_NEW_SERIALIZER:
             if pickle.FAST_CLOUDPICKLE_USED:
                 # construct a reducer
-                pickle.CloudPickler.dispatch[cls] = lambda obj: (deserializer, (serializer(obj),))
+                pickle.CloudPickler.dispatch[
+                    cls] = lambda obj: (deserializer, (serializer(obj), ))
             else:
+
                 def _CloudPicklerReducer(_self, obj):
-                    _self.save_reduce(deserializer, (serializer(obj),), obj=obj)
+                    _self.save_reduce(
+                        deserializer, (serializer(obj), ), obj=obj)
+
                 # use a placeholder for 'self' argument
                 pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
         else:
-            # TODO(rkn): We need to be more thoughtful about what to do if custom
-            # serializers have already been registered for class_id. In some cases,
-            # we may want to use the last user-defined serializers and ignore
-            # subsequent calls to register_custom_serializer that were made by the
-            # system.
+            # TODO(rkn): We need to be more thoughtful about what to do if
+            # custom serializers have already been registered for class_id.
+            # In some cases, we may want to use the last user-defined
+            # serializers and ignore subsequent calls to
+            # register_custom_serializer that were made by the system.
             serialization_context = worker_info[
                 "worker"].get_serialization_context(job_id)
             serialization_context.register_type(

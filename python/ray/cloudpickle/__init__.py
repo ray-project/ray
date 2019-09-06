@@ -1,7 +1,8 @@
 from __future__ import absolute_import
 import sys
 
-# TODO(suquark): This is a temporary flag for the new serialization implementation.
+# TODO(suquark): This is a temporary flag for
+# the new serialization implementation.
 # Remove it when the old one is deprecated.
 USE_NEW_SERIALIZER = False
 
