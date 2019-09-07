@@ -1,6 +1,7 @@
 package org.ray.api;
 
 import java.util.List;
+import java.util.concurrent.Callable;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
@@ -115,6 +116,28 @@ public final class Ray extends RayCall {
    */
   public static <T> WaitResult<T> wait(List<RayObject<T>> waitList) {
     return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
+  }
+
+  /**
+   * If users want to use Ray API in there own threads, they should wrap their {@link Runnable}
+   * objects with this method.
+   *
+   * @param runnable The runnable to wrap.
+   * @return The wrapped runnable.
+   */
+  public static Runnable wrapRunnable(Runnable runnable) {
+    return runtime.wrapRunnable(runnable);
+  }
+
+  /**
+   * If users want to use Ray API in there own threads, they should wrap their {@link Callable}
+   * objects with this method.
+   *
+   * @param callable The callable to wrap.
+   * @return The wrapped callable.
+   */
+  public static Callable wrapCallable(Callable callable) {
+    return runtime.wrapCallable(callable);
   }
 
   /**
