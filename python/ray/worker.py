@@ -313,15 +313,13 @@ class Worker(object):
                     # use a special metadata to indicate it's raw binary. So
                     # that this object can also be read by Java.
                     self.core_worker.put_raw_buffer(
-                        value,
-                        object_id,
-                        metadata_str=ray_constants.RAW_BUFFER_METADATA,
-                        memcopy_threads=self.memcopy_threads)
+                        value, object_id, memcopy_threads=self.memcopy_threads)
                 else:
-                    self.core_worker.serialize_and_put(
-                        value,
+                    serialization_context = self.get_serialization_context(
+                        self.current_job_id)
+                    self.core_worker.put_serialized_object(
+                        pyarrow.serialize(value, serialization_context),
                         object_id,
-                        self.get_serialization_context(self.current_job_id),
                         memcopy_threads=self.memcopy_threads)
                 break
             except pyarrow.SerializationCallbackError as e:

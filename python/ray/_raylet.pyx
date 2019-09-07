@@ -54,6 +54,7 @@ from ray.utils import decode
 from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
+    RAW_BUFFER_METADATA,
 )
 
 # pyarrow cannot be imported until after _raylet finishes initializing
@@ -440,16 +441,15 @@ cdef class CoreWorker:
 
         return has_object
 
-    def serialize_and_put(self, object value, ObjectID object_id,
-                          serialization_context=None, int memcopy_threads=6):
+    def put_serialized_object(self, serialized_object, ObjectID object_id,
+                              int memcopy_threads=6):
         cdef:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
             CObjectID c_object_id = object_id.native()
             size_t data_size
 
-        serialized = pyarrow.serialize(value, serialization_context)
-        data_size = serialized.total_bytes
+        data_size = serialized_object.total_bytes
 
         with nogil:
             check_status(self.core_worker.Objects().Create(
@@ -465,14 +465,15 @@ cdef class CoreWorker:
         stream = pyarrow.FixedSizeBufferWriter(
             pyarrow.py_buffer(Buffer.make(data)))
         stream.set_memcopy_threads(memcopy_threads)
-        serialized.write_to(stream)
+        serialized_object.write_to(stream)
 
         with nogil:
             check_status(self.core_worker.Objects().Seal(c_object_id))
 
     def put_raw_buffer(self, c_string value, ObjectID object_id,
-                       c_string metadata_str=b"", int memcopy_threads=6):
+                       int memcopy_threads=6):
         cdef:
+            c_string metadata_str = RAW_BUFFER_METADATA
             CObjectID c_object_id = object_id.native()
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
