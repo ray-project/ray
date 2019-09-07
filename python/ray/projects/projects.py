@@ -112,6 +112,22 @@ def find_root(directory):
             os.path.join(directory, os.pardir))
     return None
 
+def validate_project_schema(project_config):
+    """Validate a project config against the official ray project schema.
+
+    Args:
+        project_config (dict): Parsed project yaml.
+
+    Raises:
+        jsonschema.exceptions.ValidationError: This exception is raised
+            if the project file is not valid.
+    """
+    dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(dir, "schema.json")) as f:
+        schema = json.load(f)
+
+    jsonschema.validate(instance=project_config, schema=schema)
+
 
 def check_project_config(project_root, project_config):
     """Checks if the project definition is valid.
@@ -126,12 +142,7 @@ def check_project_config(project_root, project_config):
         ValueError: This exception is raised if there are other errors in
             the project definition (e.g. files not existing).
     """
-    # Validate a project file against the official ray project schema.
-    dir = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(dir, "schema.json")) as f:
-        schema = json.load(f)
-
-    jsonschema.validate(instance=project_config, schema=schema)
+    validate_project_schema(project_config)
 
     # Make sure the cluster yaml file exists
     if "cluster" in project_config:
