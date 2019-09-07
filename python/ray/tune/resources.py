@@ -93,10 +93,8 @@ class Resources(
             assert isinstance(entry, Number), ("Improper resource value.",
                                                entry)
         return super(Resources, cls).__new__(
-            cls, cpu, gpu, memory,
-            object_store_memory, extra_cpu,
-            extra_gpu, extra_memory,
-            extra_object_store_memory, custom_resources,
+            cls, cpu, gpu, memory, object_store_memory, extra_cpu, extra_gpu,
+            extra_memory, extra_object_store_memory, custom_resources,
             extra_custom_resources)
 
     def summary_string(self):
