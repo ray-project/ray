@@ -9,7 +9,6 @@ def serve_instance():
     serve.init()
     serve.global_state.wait_until_http_ready()
     yield
-    serve.global_state.shutdown()
 
 
 @pytest.fixture(scope="session")

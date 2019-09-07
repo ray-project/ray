@@ -7,11 +7,17 @@ from ray.experimental.serve.queues import CentralizedQueuesActor
 from ray.experimental.serve.utils import logger
 from ray.experimental.serve.server import HTTPActor
 
-# TODO(simon): this will be moved in namespaced kv stores
+# TODO(simon): Global state currently is designed to resides in the driver
+#     process. In the next iteration, we will move all mutable states into
+#     two actors: (1) namespaced key-value store backed by persistent store
+#     (2) actor supervisors holding all actor handles and is responsible
+#     for new actor instantiation and dead actor termination.
+
+LOG_PREFIX = "[Global State] "
 
 
 class GlobalState:
-    """Encapsulate the global state in the serving system.
+    """Encapsulate all global state in the serving system.
 
     Warning:
         Currently the state resides inside driver process. The state will be
@@ -23,58 +29,56 @@ class GlobalState:
         self.actor_nursery = []
 
         #: actor handle to KV store actor
-        self.api_handle = None
+        self.kv_store_actor_handle = None
         #: actor handle to HTTP server
-        self.http_handle = None
-        #: actor handle the the router/queues actor
-        self.router = None
+        self.http_actor_handle = None
+        #: actor handle the the router actor
+        self.router_actor_handle = None
 
-        #: List[str] list of backend names, used for deduplication
-        self.registered_backends = []
-        #: List[str] list of service endpoint names, used for deduplication
-        self.registered_endpoints = []
+        #: Set[str] list of backend names, used for deduplication
+        self.registered_backends = set()
+        #: Set[str] list of service endpoint names, used for deduplication
+        self.registered_endpoints = set()
 
         #: Mapping of endpoints -> a stack of traffic policy
         self.policy_action_history = defaultdict(deque)
 
         #: HTTP address. Currently it's hard coded to localhost with port 8000
+        #  In future iteration, HTTP server will be started on every node and
+        #  use random/available port in a pre-defined port range. TODO(simon)
         self.http_address = ""
 
     def init_api_server(self):
-        logger.info("[Global State] Initalizing Routing Table")
-        self.api_handle = KVStoreProxyActor.remote()
-        logger.info(
-            "[Global State] Health Checking Routing Table %s",
-            ray.get(self.api_handle.get_request_count.remote()),
-        )
+        logger.info(LOG_PREFIX + "Initalizing routing table")
+        self.kv_store_actor_handle = KVStoreProxyActor.remote()
+        logger.info((LOG_PREFIX + "Health checking routing table {}").format(
+            ray.get(self.kv_store_actor_handle.get_request_count.remote())), )
 
     def init_http_server(self):
-        logger.info("[Global State] Initializing HTTP Server")
-        self.http_handle = HTTPActor.remote(self.api_handle, self.router)
-        self.http_handle.run.remote(host="0.0.0.0", port=8000)
+        logger.info(LOG_PREFIX + "Initializing HTTP server")
+        self.http_actor_handle = HTTPActor.remote(self.kv_store_actor_handle,
+                                                  self.router_actor_handle)
+        self.http_actor_handle.run.remote(host="0.0.0.0", port=8000)
         self.http_address = "http://localhost:8000"
 
     def init_router(self):
-        logger.info("[Global State] Initializing Queuing System")
-        self.router = CentralizedQueuesActor.remote()
-        self.router.register_self_handle.remote(self.router)
+        logger.info(LOG_PREFIX + "Initializing queuing system")
+        self.router_actor_handle = CentralizedQueuesActor.remote()
+        self.router_actor_handle.register_self_handle.remote(
+            self.router_actor_handle)
 
-    def shutdown(self):
-        ray.shutdown()
-
-    def __del__(self):
-        self.shutdown()
-
-    def wait_until_http_ready(self):
+    def wait_until_http_ready(self, num_retries=5, backoff_time_s=1):
         routing_table_request_count = 0
-        retries = 5
+        retries = num_retries
 
         while not routing_table_request_count:
             routing_table_request_count = (ray.get(
-                self.api_handle.get_request_count.remote()))
-            logger.debug(("[Global State] Making sure HTTP Server is ready."
+                self.kv_store_actor_handle.get_request_count.remote()))
+            logger.debug((LOG_PREFIX + "Checking if HTTP server is ready."
                           "{} retries left.").format(retries))
-            time.sleep(1)
+            time.sleep(backoff_time_s)
             retries -= 1
             if retries == 0:
-                raise Exception("Too many retries, HTTP is not ready")
+                raise Exception(
+                    "HTTP server not ready after {} retries.".format(
+                        num_retries))

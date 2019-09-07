@@ -11,13 +11,13 @@ class NamespacedKVStore(ABC):
 
     The idea is that multiple key-value stores can be created while sharing
     the same database connection. The keys of each instance are namespaced
-    for conflict avoidance.
+    to avoid key collision.
 
     Example:
 
     >>> store_ns1 = NamespacedKVStore(namespace="ns1")
     >>> store_ns2 = NamespacedKVStore(namespace="ns2")
-    # Two store can share the same connection like Redis or SQL Table
+    # Two stores can share the same connection like Redis or SQL Table
     >>> store_ns1.put("same-key", 1)
     >>> store_ns1.get("same-key")
     1
@@ -57,13 +57,13 @@ class NamespacedKVStore(ABC):
 
 
 class InMemoryKVStore(NamespacedKVStore):
-    """A reference implementation"""
+    """A reference implementation used for testing."""
 
     def __init__(self, namespace):
         self.data = dict()
 
-        # namepsace is ignored because each namespace is backed by
-        # one in memory dictionary
+        # Namepsace is ignored, because each namespace is backed by
+        # a in-memory Python dictionary.
         self.namespace = namespace
 
     def get(self, key):
@@ -141,7 +141,7 @@ class KVStoreProxy:
         Args:
             route: http path name. Must begin with /
             service: service name. This is the name http actor will push
-                request to.
+                the request to.
         """
         logger.debug("[KV] Registering route %s to service %s", route, service)
         self.routing_table.put(route, service)

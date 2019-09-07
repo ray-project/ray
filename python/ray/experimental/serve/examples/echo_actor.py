@@ -1,5 +1,5 @@
 """
-Example actor that adds message to the end of query_string
+Example actor that adds message to the end of query_string.
 """
 
 import time

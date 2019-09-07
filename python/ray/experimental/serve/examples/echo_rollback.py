@@ -1,6 +1,6 @@
 """
-Example rollback action in ray serve. Here we first deploy v1, and then
-a 50/50 deployment was set, lastly we rollback to v1
+Example rollback action in ray serve. We first deploy only v1, then set a
+ 50/50 deployment between v1 and v2, and finally roll back to only v1.
 """
 import time
 

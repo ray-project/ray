@@ -1,8 +1,16 @@
 """
-Example of error handling mechanism in ray serve
+Example of error handling mechanism in ray serve.
 
-- HTTP server should respond with "internal error"
-- ray.get(handle.remote(33)) should raise RayTaskError
+We are going to define a buggy function that raise some exception:
+>>> def echo(_):
+        raise Exception("oh no")
+
+The expected behavior is:
+- HTTP server should respond with "internal error" in the response JSON
+- ray.get(handle.remote(33)) should raise RayTaskError with traceback.
+
+This shows that error is hidden from HTTP side but always visible when calling
+from Python.
 """
 
 import time
@@ -14,9 +22,8 @@ import ray
 from ray.experimental import serve
 
 
-def echo(context):
+def echo(_):
     raise Exception("Something went wrong...")
-    return context
 
 
 serve.init(blocking=True)

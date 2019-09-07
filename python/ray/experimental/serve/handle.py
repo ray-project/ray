@@ -3,10 +3,10 @@ from ray.experimental import serve
 
 
 class RayServeHandle:
-    """A handle to service endpoint.
+    """A handle to a service endpoint.
 
     Invoking this endpoint with .remote is equivalent to pinging
-    a HTTP endpoint.
+    an HTTP endpoint.
 
     Example:
        >>> handle = serve.get_handle("my_endpoint")
@@ -34,8 +34,10 @@ class RayServeHandle:
         return ray.ObjectID(result_oid_bytes)
 
     def get_traffic_policy(self):
-        # Currently checks global state because we are sure handle and
-        # global_state are in the same process.
+        # TODO(simon): This method is implemented via checking global state
+        # because we are sure handle and global_state are in the same process.
+        # However, once global_state is deprecated, this method need to be
+        # updated accordingly.
         history = serve.global_state.policy_action_history[self.endpoint_name]
         if len(history):
             return history[-1]

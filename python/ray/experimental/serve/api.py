@@ -11,18 +11,24 @@ global_state = GlobalState()
 
 
 def init(blocking=False, object_store_memory=int(1e8)):
-    """Initialize a ray serve cluster.
+    """Initialize a serve cluster.
+
+    Calling `ray.init` before `serve.init` is optional. When there is not a ray
+    cluster initialized, serve will call `ray.init` with `object_store_memory`
+    requirement.
 
     Args:
-        blocking (bool): If true, the function will wait for HTTP server to be
-            healthy before returns
-        object_store_memory (int): Allocated shared memory size. The default
-            is 100MB. Unit in bytes.
+        blocking (bool): If true, the function will wait for the HTTP server to
+            be healthy before returns.
+        object_store_memory (int): Allocated shared memory size in bytes. The
+            default is 100MiB. The default is kept low for latency stability
+            reason.
     """
     if not ray.is_initialized():
         ray.init(object_store_memory=object_store_memory)
 
-    # Currently the initialization order is fixed.
+    # NOTE(simon): Currently the initialization order is fixed.
+    # HTTP server depends on the API server.
     global_state.init_api_server()
     global_state.init_router()
     global_state.init_http_server()
@@ -42,11 +48,11 @@ def create_endpoint(endpoint_name, route_expression, blocking=True):
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    future = global_state.api_handle.register_service.remote(
+    future = global_state.kv_store_actor_handle.register_service.remote(
         route_expression, endpoint_name)
     if blocking:
         ray.get(future)
-    global_state.registered_endpoints.append(endpoint_name)
+    global_state.registered_endpoints.add(endpoint_name)
 
 
 def create_backend(func_or_class, backend_tag, *actor_init_args):
@@ -76,10 +82,11 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
 
     global_state.actor_nursery.append(runner)
 
-    runner.setup.remote(backend_tag, global_state.router)
-    runner.main_loop.remote(runner)
+    runner._ray_serve_setup.remote(backend_tag,
+                                   global_state.router_actor_handle)
+    runner._ray_serve_main_loop.remote(runner)
 
-    global_state.registered_backends.append(backend_tag)
+    global_state.registered_backends.add(backend_tag)
 
 
 def link(endpoint_name, backend_tag):
@@ -96,7 +103,7 @@ def link(endpoint_name, backend_tag):
     """
     assert endpoint_name in global_state.registered_endpoints
 
-    global_state.router.link.remote(endpoint_name, backend_tag)
+    global_state.router_actor_handle.link.remote(endpoint_name, backend_tag)
     global_state.policy_action_history[endpoint_name].append({backend_tag: 1})
 
 
@@ -131,8 +138,8 @@ def split(endpoint_name, traffic_policy_dictionary):
         atol=0.02), "weights must sum to 1, currently it sums to {}".format(
             prob)
 
-    global_state.router.set_traffic.remote(endpoint_name,
-                                           traffic_policy_dictionary)
+    global_state.router_actor_handle.set_traffic.remote(
+        endpoint_name, traffic_policy_dictionary)
     global_state.policy_action_history[endpoint_name].append(
         traffic_policy_dictionary)
 
@@ -158,7 +165,8 @@ Will rollback to:
         prev_policy=pformat_color_json(prev_policy))
 
     action_queues.pop()
-    global_state.router.set_traffic.remote(endpoint_name, prev_policy)
+    global_state.router_actor_handle.set_traffic.remote(
+        endpoint_name, prev_policy)
 
 
 def get_handle(endpoint_name):
@@ -175,4 +183,4 @@ def get_handle(endpoint_name):
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle
 
-    return RayServeHandle(global_state.router, endpoint_name)
+    return RayServeHandle(global_state.router_actor_handle, endpoint_name)

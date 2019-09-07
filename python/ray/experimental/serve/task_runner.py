@@ -22,7 +22,7 @@ def wrap_to_ray_error(callable_obj, *args):
     try:
         return callable_obj(*args)
     except Exception:
-        traceback_str = traceback.format_exc()
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(str(callable_obj), traceback_str)
 
 
@@ -30,31 +30,35 @@ class RayServeMixin:
     """This mixin class adds the functionality to fetch from router queues.
 
     Warning:
-        It assumes the main execution method is __call__ of the current class.
+        It assumes the main execution method is `__call__` of the user defined
+        class. This means that serve will call `your_instance.__call__` when
+        each request comes in. This behavior will be fixed in the future to
+        allow assigning artibrary methods.
 
     Example:
-        >>> # to make MyClass servable
+        >>> # Use ray.remote decorator and RayServeMixin
+        >>> # to make MyClass servable.
         >>> @ray.remote
             class RayServeActor(MyClass, RayServeMixin):
                 pass
     """
+    _ray_serve_self_handle = None
+    _ray_serve_router_handle = None
+    _ray_serve_setup_completed = False
+    _ray_serve_consumer_name = None
 
-    self_handle = None
-    router_handle = None
-    setup_completed = False
-    consumer_name = None
+    def _ray_serve_setup(self, my_name, _ray_serve_router_handle):
+        self._ray_serve_consumer_name = my_name
+        self._ray_serve_router_handle = _ray_serve_router_handle
+        self._ray_serve_setup_completed = True
 
-    def setup(self, my_name, router_handle):
-        self.consumer_name = my_name
-        self.router_handle = router_handle
-        self.setup_completed = True
-
-    def main_loop(self, my_handle):
-        assert self.setup_completed
-        self.self_handle = my_handle
+    def _ray_serve_main_loop(self, my_handle):
+        assert self._ray_serve_setup_completed
+        self._ray_serve_self_handle = my_handle
 
         work_token = ray.get(
-            self.router_handle.consume.remote(self.consumer_name))
+            self._ray_serve_router_handle.consume.remote(
+                self._ray_serve_consumer_name))
         work_item = ray.get(ray.ObjectID(work_token))
 
         # TODO(simon): handle variadic arguments
@@ -64,7 +68,7 @@ class RayServeMixin:
 
         # tail recursively schedule itself
         # TODO(simon): remove tail recursion, ask router to callback instead
-        self.self_handle.main_loop.remote(my_handle)
+        self._ray_serve_self_handle._ray_serve_main_loop.remote(my_handle)
 
 
 # The TaskRunnerBackend class exists for documentation purpose

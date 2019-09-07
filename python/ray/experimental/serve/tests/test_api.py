@@ -7,7 +7,7 @@ import ray
 from ray.experimental import serve
 
 
-def delay_rerun(*args):
+def delay_rerun(*_):
     time.sleep(1)
     return True
 
@@ -16,7 +16,8 @@ def delay_rerun(*args):
 @flaky(rerun_filter=delay_rerun)
 def test_e2e(serve_instance):
     serve.create_endpoint("endpoint", "/api")
-    result = ray.get(serve.global_state.api_handle.list_service.remote())
+    result = ray.get(
+        serve.global_state.kv_store_actor_handle.list_service.remote())
     assert result == {"/api": "endpoint"}
 
     assert requests.get("http://127.0.0.1:8000/").json() == result

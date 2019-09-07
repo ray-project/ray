@@ -39,8 +39,8 @@ def test_runner_actor(serve_instance):
 
     runner = TaskRunnerActor.remote(echo)
 
-    runner.setup.remote(CONSUMER_NAME, q)
-    runner.main_loop.remote(runner)
+    runner._ray_serve_setup.remote(CONSUMER_NAME, q)
+    runner._ray_serve_main_loop.remote(runner)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
@@ -69,8 +69,8 @@ def test_ray_serve_mixin(serve_instance):
 
     runner = CustomActor.remote(3)
 
-    runner.setup.remote(CONSUMER_NAME, q)
-    runner.main_loop.remote(runner)
+    runner._ray_serve_setup.remote(CONSUMER_NAME, q)
+    runner._ray_serve_main_loop.remote(runner)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 

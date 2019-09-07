@@ -1,5 +1,5 @@
 """
-Example service that prints out http context
+Example service that prints out http context.
 """
 
 import time
